@@ -20,7 +20,7 @@ This module is the SINGLE place that decides, for a free-vs-paid enrichment:
 
 Boundary-clean: this module only ever chooses a tier NAME and reads adapter
 *metadata*; it NEVER imports or references a paid adapter, and it never imports
-``cograph.*``. It is importable by the ``/enrich`` route WITHOUT pulling in the
+``infona.*``. It is importable by the ``/enrich`` route WITHOUT pulling in the
 heavy agent capability chain (so no circular import).
 """
 
@@ -36,7 +36,7 @@ from infona_client.enrichment.sources.base import adapter_cost, get_adapter
 from infona_client.enrichment.tiers import get_chain
 from infona_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
 
-logger = structlog.stdlib.get_logger("cograph.enrichment.tier_router")
+logger = structlog.stdlib.get_logger("infona.enrichment.tier_router")
 
 # Functional confidence floor for web-sourced enrichments (COG-121). Web adapters
 # (Exa/Parallel/…) return verdicts at a low, conservative prior, so the global

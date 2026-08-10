@@ -50,7 +50,7 @@ from infona_client.api_registry.spec import ApiSourceSpec, validate_spec
 from infona_client.auth.api_keys import TenantContext, get_tenant
 from infona_client.auth.access import require_tenant_write
 
-logger = structlog.stdlib.get_logger("cograph.api_registry.routes")
+logger = structlog.stdlib.get_logger("infona.api_registry.routes")
 
 router = APIRouter(prefix="/graphs/{tenant}/api-sources")
 
@@ -184,13 +184,13 @@ def _validation_errors(spec: ApiSourceSpec) -> list[ValidationError]:
 
 def _require_cipher_if_secrets(secrets: dict[str, str]) -> None:
     """Fail closed: if the caller sent secrets but no cipher is configured, refuse
-    (never store plaintext). 503 = the deployment must set OMNIX_SECRETS_KEY or a
+    (never store plaintext). 503 = the deployment must set INFONA_SECRETS_KEY or a
     cipher plugin before it can hold credentials."""
     if secrets and get_secret_cipher() is None:
         raise HTTPException(
             status_code=503,
             detail=(
-                "secret storage is not configured (no cipher); set OMNIX_SECRETS_KEY "
+                "secret storage is not configured (no cipher); set INFONA_SECRETS_KEY "
                 "or register a secret-cipher plugin before storing credentials"
             ),
         )

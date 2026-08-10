@@ -3,9 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 # Distribution name is the public brand (PyPI short names may be taken —
-# hence -client). Canonical import path is `infona_client`. A thin
-# `cograph_client` shim package re-exports for back-compat — listed in the
-# wheel target below alongside the real package.
+# hence -client). Canonical import path is `infona_client`.
 [project]
 name = "infona-client"
 version = "0.1.0"
@@ -58,7 +56,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["infona_client", "cograph_client"]
+packages = ["infona_client"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

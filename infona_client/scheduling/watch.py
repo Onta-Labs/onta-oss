@@ -18,7 +18,7 @@ The snapshot lives in ``schedule.params['last_snapshot']`` (a plain JSON dict of
 ``{key: value}``), so it rides the existing ``Schedule`` model + store with no
 schema change — the row is the durable, per-tenant watch state.
 
-Boundary: OSS. Imports only stdlib / ``infona_client.*``. No ``from cograph.*``.
+Boundary: OSS. Imports only stdlib / ``infona_client.*``. No ``from infona.*``.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from typing import Any, Optional
 
 import structlog
 
-logger = structlog.stdlib.get_logger("cograph.scheduling.watch")
+logger = structlog.stdlib.get_logger("infona.scheduling.watch")
 
 #: Where the last-fire snapshot is stashed on a schedule's params (a flat
 #: ``{key: value}`` JSON map). Read/written by dispatch on every ``notify`` fire.

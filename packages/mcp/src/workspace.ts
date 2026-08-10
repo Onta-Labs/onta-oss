@@ -9,7 +9,7 @@
 // config), and everything it returns is rendered into a REMOTE model's context.
 // There is no sandbox anywhere in that path. Before this module the entire TS
 // tree had never enumerated a directory: filesystem access was exactly stat +
-// read of a caller-supplied path, plus ~/.onta/config.json. Directory listing is
+// read of a caller-supplied path, plus ~/.infona/config.json. Directory listing is
 // therefore a NEW CAPABILITY CLASS for this server, and every guard below is
 // load-bearing rather than defensive decoration.
 //
@@ -42,21 +42,13 @@ import {
   sep,
 } from "node:path";
 
-// Env vars consulted for the root, in precedence order. This MIRRORS the SDK's
-// private `envVar()` helper (packages/cograph/src/client.ts): INFONA_ (current
-// brand) then ONTA_ then COGRAPH_ then OMNIX_ (legacy). That helper is
-// module-private and is NOT exported from `@infona-ai/cli`, so it cannot
-// literally be reused here; the precedence is duplicated deliberately and
-// must stay in lockstep with it.
+// Env var for the local-files root. Mirrors the SDK's INFONA_* convention.
 export const LOCAL_FILES_ENV_VARS = [
   "INFONA_LOCAL_FILES_DIR",
-  "ONTA_LOCAL_FILES_DIR",
-  "COGRAPH_LOCAL_FILES_DIR",
-  "OMNIX_LOCAL_FILES_DIR",
 ] as const;
 
 // Extension allowlist. Deliberately EXACTLY the ingestible structured formats in
-// the SDK's `EXT_FORMAT` map (packages/cograph/src/client.ts):
+// the SDK's `EXT_FORMAT` map (packages/cli/src/client.ts):
 //   - `.tsv` is NOT included. It is absent from `EXT_FORMAT`, so it would fall
 //     through to `fmt = "text"`; listing it here as an ingestible data file
 //     would be a lie to the model.
@@ -276,7 +268,7 @@ export function describeRootResolution(res: RootResolution): string {
   const primary = LOCAL_FILES_ENV_VARS[0];
   if (!res.varName) {
     return (
-      `onta-mcp: list_local_files is disabled (not registered). Set ${primary} ` +
+      `infona-mcp: list_local_files is disabled (not registered). Set ${primary} ` +
       `to an absolute directory path to let the agent list local data files.`
     );
   }
@@ -297,12 +289,12 @@ export function describeRootResolution(res: RootResolution): string {
   const suffix = notes.length ? ` (${notes.join("; ")})` : "";
   if (!res.roots.length) {
     return (
-      `onta-mcp: list_local_files is disabled (not registered). ${res.varName} ` +
+      `infona-mcp: list_local_files is disabled (not registered). ${res.varName} ` +
       `is set but no entry was usable as a root${suffix}.`
     );
   }
   return (
-    `onta-mcp: list_local_files enabled from ${res.varName}; visible root(s): ` +
+    `infona-mcp: list_local_files enabled from ${res.varName}; visible root(s): ` +
     `${res.roots.join(", ")}${suffix}.`
   );
 }

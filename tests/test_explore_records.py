@@ -20,8 +20,8 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi.testclient import TestClient
 
-os.environ["OMNIX_API_KEYS"] = '{"test-key": "test-tenant"}'
-os.environ["OMNIX_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
+os.environ["INFONA_API_KEYS"] = '{"test-key": "test-tenant"}'
+os.environ["INFONA_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
 
 from infona_client.api.app import create_app
 from infona_client.graph.client import NeptuneClient
@@ -30,12 +30,12 @@ TENANT = "test-tenant"
 KG = "movies"
 TYPE = "Movie"
 
-ENTITIES = "https://graph.onta.sh/entities/"
-TYPES = "https://graph.onta.sh/types/"
-ONTO = "https://graph.onta.sh/onto/"
+ENTITIES = "https://graph.infona.ai/entities/"
+TYPES = "https://graph.infona.ai/types/"
+ONTO = "https://graph.infona.ai/onto/"
 RDFS = "http://www.w3.org/2000/01/rdf-schema"
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-STATS_ENTITY_COUNT = "https://graph.onta.sh/stats/entityCount"
+STATS_ENTITY_COUNT = "https://graph.infona.ai/stats/entityCount"
 
 E1 = ENTITIES + "Movie/m1"
 E2 = ENTITIES + "Movie/m2"
@@ -43,8 +43,8 @@ E3 = ENTITIES + "Movie/m3"
 
 TITLE_PRED = ONTO + "title"
 YEAR_PRED = ONTO + "year"
-INGESTED_AT_PRED = "https://graph.onta.sh/onto/ingested_at"
-SOURCE_PRED = "https://graph.onta.sh/onto/source"
+INGESTED_AT_PRED = "https://graph.infona.ai/onto/ingested_at"
+SOURCE_PRED = "https://graph.infona.ai/onto/source"
 LABEL_PRED = RDFS + "#label"
 TYPE_URI = TYPES + TYPE
 

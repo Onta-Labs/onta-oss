@@ -111,15 +111,15 @@ _HOLDOUT_V2_KGS_FALLBACK: frozenset[str] = frozenset({
 def _load_holdout_v2_kgs() -> frozenset[str]:
     """Load holdout-v2 KG IDs from eval_holdout_v2/HOLDOUT_V2_MANIFEST.json.
 
-    Searches a few plausible locations (the omnix-oss submodule lives inside
-    the parent cograph repo, so the manifest is typically two or three
+    Searches a few plausible locations (the infona-oss submodule lives inside
+    the parent infona repo, so the manifest is typically two or three
     parents up from this file). On any failure, returns the hardcoded
     fallback set and logs a warning so drift gets noticed.
     """
-    # __file__ = .../omnix-oss/omnix/nlp/example_bank.py
+    # __file__ = .../infona-oss/infona/nlp/example_bank.py
     here = Path(__file__).resolve()
     candidates = [
-        # cograph parent (submodule layout): .../cograph/omnix-oss/omnix/nlp/
+        # infona parent (submodule layout): .../infona/infona-oss/infona/nlp/
         here.parent.parent.parent.parent / "eval_holdout_v2" / "HOLDOUT_V2_MANIFEST.json",
         # alt: one level up (standalone)
         here.parent.parent.parent / "eval_holdout_v2" / "HOLDOUT_V2_MANIFEST.json",
@@ -451,7 +451,7 @@ class ExampleBank:
         Opening the real path ``"w"`` truncates before the first byte lands --
         an unacceptable failure mode for a file that is committed to git, is
         rewritten routinely now that the eval rebuild merges into it, and whose
-        loss is the exact thing that motivated onta-oss#291.
+        loss is the exact thing that motivated infona-oss#291.
         """
         self._bank_path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = self._bank_path.with_name(self._bank_path.name + ".tmp")
@@ -493,7 +493,7 @@ class ExampleBank:
             return False
 
         # Already present for this KG -> refresh in place instead of dropping
-        # the newer answer on the floor (onta-oss#280 follow-up).
+        # the newer answer on the floor (infona-oss#280 follow-up).
         key = example_key(question, kg_name)
         for ex in self._examples:
             if ex.key == key:
@@ -588,7 +588,7 @@ class ExampleBank:
         ``save()`` on exactly that). Benchmark-KG items are dropped (ONTA-449).
 
         Identity is ``(question, kg_name)`` -- see :func:`example_key`. Two
-        consequences, both deliberate (the onta-oss#280 follow-up):
+        consequences, both deliberate (the infona-oss#280 follow-up):
 
         - An item already in the bank REFRESHES it rather than being dropped.
           This is what lets a re-eval land a corrected SPARQL, and what lets the
@@ -598,7 +598,7 @@ class ExampleBank:
         - Within one batch, LAST write wins. ``finetune_pairs.jsonl`` is keyed
           on ``(question, graph_uri)`` and appended in time order, so when the
           graph IRI changes under a fixed question -- a namespace rename, the
-          exact case that stranded this bank on ``omnix.dev`` -- the file holds
+          exact case that stranded this bank on ``graph.infona.ai`` -- the file holds
           both pairs and the fresher one is later. First-wins kept the stale one.
 
         Refreshes are exempt from MAX_BANK_SIZE: they cannot grow the bank, and
@@ -620,7 +620,7 @@ class ExampleBank:
         # finetune_pairs.jsonl permanently (it keys on graph_uri, which differs;
         # the rebuild truncates both to the same kg_name), so every subsequent
         # eval re-saved a byte-identical bank and logged a bogus accepted count.
-        # Found by independent review of onta-oss#291.
+        # Found by independent review of infona-oss#291.
         collapsed: dict[tuple[str, str], dict] = {}
         for item in items:
             kg_name = item.get("kg_name", "")
@@ -849,7 +849,7 @@ class ExampleBank:
         # dropped the same wording asked of a DIFFERENT KG before add_batch ever
         # saw it, so the identity fix could not take effect on this path and the
         # winner was whichever KG `sorted(glob(...))` happened to reach first.
-        # Found by independent review of onta-oss#291.
+        # Found by independent review of infona-oss#291.
         seen_keys: set[tuple[str, str]] = set()
 
         # 1. Scan eval report JSON files

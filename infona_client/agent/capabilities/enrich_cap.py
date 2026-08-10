@@ -63,7 +63,7 @@ from infona_client.normalization.inference import (
 from infona_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
 from infona_client.web_sources.url_extract import extract_urls
 
-logger = structlog.stdlib.get_logger("cograph.agent.enrich")
+logger = structlog.stdlib.get_logger("infona.agent.enrich")
 
 _bg_tasks: set[asyncio.Task] = set()
 

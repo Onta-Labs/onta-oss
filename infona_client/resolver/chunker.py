@@ -25,14 +25,14 @@ import re
 #: Assumed OUTPUT tokens one record expands to under the reification/lift prompt.
 #: Conservative on purpose — over-estimating shrinks batches (more, cheaper
 #: extractions) but keeps them UNDER the cap; under-estimating is what causes the
-#: truncation this fix removes. Env: ``OMNIX_EXTRACT_TOKENS_PER_RECORD``.
-EXTRACT_TOKENS_PER_RECORD = int(os.environ.get("OMNIX_EXTRACT_TOKENS_PER_RECORD", "700"))
+#: truncation this fix removes. Env: ``INFONA_EXTRACT_TOKENS_PER_RECORD``.
+EXTRACT_TOKENS_PER_RECORD = int(os.environ.get("INFONA_EXTRACT_TOKENS_PER_RECORD", "700"))
 
 #: Target fraction of the extraction ``max_tokens`` an initial batch's predicted
 #: output should fill. Well under 1.0 so a batch that runs a little denser than
 #: assumed still fits — the recovery path stays a rare safety net, not the norm.
-#: Env: ``OMNIX_EXTRACT_BATCH_TARGET_FRAC``.
-EXTRACT_BATCH_TARGET_FRAC = float(os.environ.get("OMNIX_EXTRACT_BATCH_TARGET_FRAC", "0.55"))
+#: Env: ``INFONA_EXTRACT_BATCH_TARGET_FRAC``.
+EXTRACT_BATCH_TARGET_FRAC = float(os.environ.get("INFONA_EXTRACT_BATCH_TARGET_FRAC", "0.55"))
 
 #: Floor on the CALIBRATED tokens-per-record (ONTA-197 item 2). After the first
 #: budgeted batch extracts, we measure the REAL output-tokens-per-record and
@@ -41,9 +41,9 @@ EXTRACT_BATCH_TARGET_FRAC = float(os.environ.get("OMNIX_EXTRACT_BATCH_TARGET_FRA
 #: produce an absurdly small ratio → an oversized batch that overflows the cap on
 #: a denser remainder. Clamp the observed ratio to at least this floor so a fluke
 #: first batch can only ever SHRINK the win, never blow the budget.
-#: Env: ``OMNIX_EXTRACT_MIN_TOKENS_PER_RECORD``.
+#: Env: ``INFONA_EXTRACT_MIN_TOKENS_PER_RECORD``.
 EXTRACT_MIN_TOKENS_PER_RECORD = int(
-    os.environ.get("OMNIX_EXTRACT_MIN_TOKENS_PER_RECORD", "80")
+    os.environ.get("INFONA_EXTRACT_MIN_TOKENS_PER_RECORD", "80")
 )
 
 #: Chars-per-token divisor for the cheap output-size → tokens estimate used by
@@ -57,30 +57,30 @@ _CHARS_PER_TOKEN = 4.0
 #: entities + relationships than the flat :data:`EXTRACT_TOKENS_PER_RECORD`
 #: default assumed — sizing against INPUT density × this expansion catches those
 #: pages BEFORE the first call so they don't hit ``finish_reason=length``. Env:
-#: ``OMNIX_EXTRACT_OUTPUT_EXPANSION``.
-EXTRACT_OUTPUT_EXPANSION = float(os.environ.get("OMNIX_EXTRACT_OUTPUT_EXPANSION", "4.0"))
+#: ``INFONA_EXTRACT_OUTPUT_EXPANSION``.
+EXTRACT_OUTPUT_EXPANSION = float(os.environ.get("INFONA_EXTRACT_OUTPUT_EXPANSION", "4.0"))
 
 #: Headroom multiplier on the adaptive completion budget (ONTA-381). The call's
 #: ``max_tokens`` is ``ceil(n_records * tokens_per_record * headroom)``, clamped
 #: between the base and hard caps — a little slack so a batch that runs slightly
 #: denser than assumed still finishes cleanly. Env:
-#: ``OMNIX_EXTRACT_COMPLETION_HEADROOM``.
+#: ``INFONA_EXTRACT_COMPLETION_HEADROOM``.
 EXTRACT_COMPLETION_HEADROOM = float(
-    os.environ.get("OMNIX_EXTRACT_COMPLETION_HEADROOM", "1.25")
+    os.environ.get("INFONA_EXTRACT_COMPLETION_HEADROOM", "1.25")
 )
 
 #: Default extraction completion ceiling used when a caller doesn't pass an
 #: explicit ``max_tokens`` (mirrors :attr:`SchemaResolver.EXTRACT_MAX_TOKENS`).
 #: Raised 8192 → 16384 in ONTA-381: a dense 5-record page routinely expands past
-#: the old 8192 mid-JSON. Env: ``OMNIX_EXTRACT_MAX_TOKENS``.
-_DEFAULT_EXTRACT_MAX_TOKENS = int(os.environ.get("OMNIX_EXTRACT_MAX_TOKENS", "16384"))
+#: the old 8192 mid-JSON. Env: ``INFONA_EXTRACT_MAX_TOKENS``.
+_DEFAULT_EXTRACT_MAX_TOKENS = int(os.environ.get("INFONA_EXTRACT_MAX_TOKENS", "16384"))
 
 #: Absolute hard ceiling on one extraction call's completion budget (ONTA-381).
 #: Adaptive sizing may stretch up to this when a multi-record chunk's predicted
 #: output exceeds the base cap; beyond it we rely on proactive split instead of
-#: unbounded cost. Env: ``OMNIX_EXTRACT_MAX_TOKENS_HARD``.
+#: unbounded cost. Env: ``INFONA_EXTRACT_MAX_TOKENS_HARD``.
 _DEFAULT_EXTRACT_MAX_TOKENS_HARD = int(
-    os.environ.get("OMNIX_EXTRACT_MAX_TOKENS_HARD", "32768")
+    os.environ.get("INFONA_EXTRACT_MAX_TOKENS_HARD", "32768")
 )
 
 
@@ -228,7 +228,7 @@ def token_budget_batch_size(
     tpr = tokens_per_record if tokens_per_record is not None else EXTRACT_TOKENS_PER_RECORD
     frac = target_frac if target_frac is not None else EXTRACT_BATCH_TARGET_FRAC
     # A non-finite tpr/frac (an ``inf``/``nan`` env value for
-    # OMNIX_EXTRACT_BATCH_TARGET_FRAC or OMNIX_EXTRACT_TOKENS_PER_RECORD) slips
+    # INFONA_EXTRACT_BATCH_TARGET_FRAC or INFONA_EXTRACT_TOKENS_PER_RECORD) slips
     # past the ``<= 0`` guards — ``nan <= 0`` and ``inf <= 0`` are both False —
     # and would make ``int(max_tokens * frac / tpr)`` raise on ``inf``/``nan``.
     # Treat any non-finite knob as a pathological config and clamp to 1, the same

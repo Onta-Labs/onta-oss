@@ -95,7 +95,7 @@ class TestChunkJsonArray:
         content = json.dumps(data)
         chunks = chunk_json_array(content)  # token-budgeted default
         expected = token_budget_batch_size(
-            int(chunker.os.environ.get("OMNIX_EXTRACT_MAX_TOKENS", "16384"))
+            int(chunker.os.environ.get("INFONA_EXTRACT_MAX_TOKENS", "16384"))
         )
         # Batches never exceed the budgeted size (the last may be smaller).
         for c in chunks[:-1]:
@@ -161,7 +161,7 @@ class TestTokenBudgetBatchSize:
     @pytest.mark.parametrize("bad", [float("inf"), float("nan"), float("-inf")])
     def test_non_finite_frac_clamps_not_crashes(self, bad):
         """ONTA-197 item 4: a non-finite ``target_frac`` (an inf/nan env value for
-        OMNIX_EXTRACT_BATCH_TARGET_FRAC) slips past the ``<= 0`` guards —
+        INFONA_EXTRACT_BATCH_TARGET_FRAC) slips past the ``<= 0`` guards —
         ``nan <= 0`` and ``inf <= 0`` are both False — and ``int(inf/nan)`` would
         raise. The math.isfinite guard must make it clamp to the ≥1 floor
         instead of crashing."""

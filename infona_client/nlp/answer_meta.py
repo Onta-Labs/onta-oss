@@ -9,7 +9,7 @@ Read-only, POST-execution assembly that attaches, PER CITED FACT, its
     NO validity node is current by convention;
   * **confidence** — read from the companion provenance graph
     (``graph/provenance.py``); ``None`` when provenance is disabled/absent
-    (``COGRAPH_PROVENANCE_ENABLED``),
+    (``INFONA_PROVENANCE_ENABLED``),
 
 plus a **coverage caveat** that composes the A9 :class:`RunCoverage` summary
 ("N of M items…") with a validity-derived "K facts stale".
@@ -28,7 +28,7 @@ subject + predicate + object, or a row projecting ``?uri``/``?s`` alongside a
 predicate and object. For non-keyable rows the citation list is legitimately
 empty — that is honest, not a bug.
 
-Boundary: OSS. Imports only stdlib / ``infona_client.*`` — no ``from cograph.*``.
+Boundary: OSS. Imports only stdlib / ``infona_client.*`` — no ``from infona.*``.
 """
 
 from __future__ import annotations
@@ -110,7 +110,7 @@ async def _safe_provenance(
     neptune, instance_graph: str, subject: str, predicate: str
 ) -> list[ProvenanceRecord]:
     """``fetch_provenance`` does NOT catch (unlike ``fetch_history``) and the
-    provenance graph may be absent (``COGRAPH_PROVENANCE_ENABLED`` off) — so wrap
+    provenance graph may be absent (``INFONA_PROVENANCE_ENABLED`` off) — so wrap
     it and degrade to ``[]`` (⇒ ``confidence=None``) on any failure."""
     try:
         return await fetch_provenance(neptune, instance_graph, subject, predicate)

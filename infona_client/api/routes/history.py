@@ -2,7 +2,7 @@
 
 Exposes the companion value-history graph that ``graph/kg_writer.delete_facts``
 populates on every genuine attribute-value change (gated by
-``COGRAPH_VALUE_HISTORY_ENABLED``). Answers the persona question "which values
+``INFONA_VALUE_HISTORY_ENABLED``). Answers the persona question "which values
 changed since <date>, old → new, with a change date" — e.g. Speko's
 ``sp-price-changes``: "every model whose price changed this week, old → new".
 

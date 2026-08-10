@@ -15,10 +15,10 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-PACKAGES=(packages/cograph packages/cograph-mcp)
+PACKAGES=(packages/cli packages/mcp)
 
 # Paths that must never appear inside a published OSS tarball.
-FORBIDDEN='omnix-demo-tenant|cograph/auth/clerk|cograph/enrichment/(exa|perplexity|gs1)|cograph/billing|cograph/entitlement|/\.aws/|secretsmanager'
+FORBIDDEN='infona-demo-tenant|infona/auth/clerk|infona/enrichment/(exa|perplexity|gs1)|infona/billing|infona/entitlement|/\.aws/|secretsmanager'
 
 fail=0
 for pkg in "${PACKAGES[@]}"; do

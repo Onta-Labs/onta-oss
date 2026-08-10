@@ -518,9 +518,9 @@ async def test_injected_402_halts_enrichment_run_with_manifest():
     halts the run to terminal ``failed`` with a provider-exhaustion manifest whose
     coverage records the items that never completed (dropped)."""
     rows = [
-        {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Bosch", "vals": ""},
-        {"uri": "https://graph.onta.sh/entities/Product/p2", "label": "Makita", "vals": ""},
-        {"uri": "https://graph.onta.sh/entities/Product/p3", "label": "DeWalt", "vals": ""},
+        {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Bosch", "vals": ""},
+        {"uri": "https://graph.infona.ai/entities/Product/p2", "label": "Makita", "vals": ""},
+        {"uri": "https://graph.infona.ai/entities/Product/p3", "label": "DeWalt", "vals": ""},
     ]
     neptune = AsyncMock()
     neptune.query.return_value = _entities_query_response(rows)

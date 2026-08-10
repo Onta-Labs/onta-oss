@@ -15,8 +15,8 @@ Boundary split (docs/oss_proprietary_boundary.md, ONTA-323):
   helpers the event call sites use. No third-party analytics import anywhere.
 - **Premium (NOT here, just the hook):** a real sink that ships events to a
   hosted analytics provider registers via :func:`register_analytics_sink` at app
-  boot (through the ``OMNIX_ANALYTICS_PLUGIN`` env hook) and transparently
-  supersedes the no-op default. That code lives in the proprietary ``cograph/``
+  boot (through the ``INFONA_ANALYTICS_PLUGIN`` env hook) and transparently
+  supersedes the no-op default. That code lives in the proprietary ``infona/``
   tree and this OSS module never imports it.
 
 Discipline — **analytics must never break or slow a request** (the same contract
@@ -26,7 +26,7 @@ and :func:`flush_analytics` are strictly best-effort. They swallow every error
 responsible for its own non-blocking delivery (a real sink batches on a
 background thread). A misbehaving sink can never surface as a 500.
 
-Boundary: OSS. Imports only stdlib / ``infona_client.*``. No ``from cograph.*``
+Boundary: OSS. Imports only stdlib / ``infona_client.*``. No ``from infona.*``
 and no proprietary identifiers.
 """
 
@@ -37,7 +37,7 @@ from typing import Any, Mapping, Optional, Protocol, Tuple, Union, runtime_check
 
 import structlog
 
-logger = structlog.stdlib.get_logger("cograph.analytics")
+logger = structlog.stdlib.get_logger("infona.analytics")
 
 # A generic, sink-agnostic exception carrier (ONTA-358). Either a caught
 # exception instance or a ``sys.exc_info()``-style ``(type, value, traceback)``
@@ -117,7 +117,7 @@ def register_analytics_sink(sink: Optional[AnalyticsSink]) -> None:
     """Register (or clear, with ``None``) the process analytics sink.
 
     The premium analytics binding calls this at startup (via the
-    ``OMNIX_ANALYTICS_PLUGIN`` hook); OSS deployments never do and fall back to
+    ``INFONA_ANALYTICS_PLUGIN`` hook); OSS deployments never do and fall back to
     the no-op :class:`NoOpSink`. Idempotent — last write wins.
     """
     global _registered_sink

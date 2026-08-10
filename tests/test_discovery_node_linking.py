@@ -37,7 +37,7 @@ PHYS_URI = entity_uri("Physician", "p1")
 # — the only predicate the NL planner queries a type-ranged attribute on. (attrs/<leaf>
 # is the property DECLARATION; an instance edge written there is invisible to NL — the
 # #123 bug, fixed for enrichment in #126 and for discovery's promotion branch here.)
-LOCATED_IN = "https://graph.onta.sh/onto/located_in"
+LOCATED_IN = "https://graph.infona.ai/onto/located_in"
 
 
 async def _drive_promotion(tmp_path):
@@ -64,7 +64,7 @@ async def _drive_promotion(tmp_path):
         resolved_type="Physician",
         entity_uri=PHYS_URI,
         is_duplicate=False,
-        graph_uri="https://omnix.dev/graphs/test",
+        graph_uri="https://graph.infona.ai/graphs/test",
         existing_types={"Physician": "", "City": ""},
         existing_attrs={
             "Physician": {"located_in": AttributeSchema("located_in", "City")},
@@ -139,8 +139,8 @@ async def test_discovery_and_enrichment_emit_the_identical_fact(tmp_path):
 # / Company / AcmeCorp) so the test cannot be passing by memorizing a real ontology.
 
 GADGET_URI = entity_uri("Gadget", "g1")
-MANUFACTURED_BY = "https://graph.onta.sh/onto/manufactured_by"
-MANUFACTURED_BY_ATTR = "https://graph.onta.sh/types/Gadget/attrs/manufactured_by"
+MANUFACTURED_BY = "https://graph.infona.ai/onto/manufactured_by"
+MANUFACTURED_BY_ATTR = "https://graph.infona.ai/types/Gadget/attrs/manufactured_by"
 
 
 async def _drive_cold_start(tmp_path):
@@ -163,7 +163,7 @@ async def _drive_cold_start(tmp_path):
         resolved_type="Gadget",
         entity_uri=GADGET_URI,
         is_duplicate=False,
-        graph_uri="https://omnix.dev/graphs/test",
+        graph_uri="https://graph.infona.ai/graphs/test",
         existing_types={"Gadget": ""},   # Company does NOT exist yet
         existing_attrs={"Gadget": {}},    # manufactured_by NOT declared yet
         source="test",
@@ -181,7 +181,7 @@ async def test_cold_start_relationship_attr_mints_typed_node_and_onto_edge(tmp_p
     target = entity_uri("Company", "AcmeCorp")
 
     # Cross-rail node identity: the URI is exactly the shared entity_uri.
-    assert target == "https://graph.onta.sh/entities/Company/AcmeCorp"
+    assert target == "https://graph.infona.ai/entities/Company/AcmeCorp"
     assert (GADGET_URI, MANUFACTURED_BY, target) in collected        # edge on onto/<leaf>
     assert (target, RDF_TYPE, type_uri("Company")) in collected      # typed target node
     assert (target, RDFS_LABEL, "AcmeCorp") in collected             # labelled target node
@@ -205,14 +205,14 @@ async def test_cold_start_leaves_primitive_attribute_a_literal(tmp_path):
     written as a literal attribute — NOT minted as a node. Only an attribute
     EXPLICITLY typed as a relationship is promoted."""
     collected, result = await _drive_cold_start(tmp_path)
-    weight_attr = "https://graph.onta.sh/types/Gadget/attrs/weight_grams"
+    weight_attr = "https://graph.infona.ai/types/Gadget/attrs/weight_grams"
     # The integer literal stays on attrs/<leaf> as a typed literal value…
     assert any(
         s == GADGET_URI and p == weight_attr for (s, p, o) in collected
     ), "primitive attribute must be written as a literal"
     # …and never spawns a node/type of its own.
     assert "Grams" not in result.types_created and "42" not in str(result.types_created)
-    assert not any(p == "https://graph.onta.sh/onto/weight_grams" for (s, p, o) in collected)
+    assert not any(p == "https://graph.infona.ai/onto/weight_grams" for (s, p, o) in collected)
 
 
 def test_ingest_result_affected_types_unions_all_three_sources():

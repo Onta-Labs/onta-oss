@@ -94,7 +94,7 @@ ChunkKey = tuple[str, str, str, str, int]
 #: Why it exists: candidacy for the free-text index is decided by VALUE SHAPE
 #: (``graph/text_markers.classify_text_candidacy`` → the profiler's
 #: ``ValueShape.TEXT``, which needs multi-word values averaging > 25 chars,
-#: with ``COGRAPH_FREE_TEXT_AUTO_MIN_AVG_LEN``=120 above that as the
+#: with ``INFONA_FREE_TEXT_AUTO_MIN_AVG_LEN``=120 above that as the
 #: auto-mark line). Names are short, so they are ``LABEL`` / ``CODE_ID``-shaped
 #: and can NEVER be marked — which left ``/search`` structurally unable to find
 #: an entity by its own name, no matter how often the index was rebuilt. The

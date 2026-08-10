@@ -12,10 +12,10 @@ degrades gracefully to ``Tenant > Public``, never errors.
 
 Namespaces (one per layer, so shadowing is explicit and collisions impossible):
 
-  Tenant   — https://graph.onta.sh/types/          (the EXISTING namespace,
+  Tenant   — https://graph.infona.ai/types/          (the EXISTING namespace,
              unchanged — existing data keeps resolving via type_uri())
-  Enhanced — https://graph.onta.sh/types/x/
-  Public   — https://graph.onta.sh/types/public/
+  Enhanced — https://graph.infona.ai/types/x/
+  Public   — https://graph.infona.ai/types/public/
 
 **Reads are layered; writes are not (ONTA-397).** A workspace *read* sees the
 merged stack via :class:`LayerStack` / :func:`~infona_client.graph.global_ontology.fetch_ontology`.
@@ -42,7 +42,7 @@ from .ontology_queries import TYPE_URI_PREFIX, list_types_query, type_uri
 from .parser import parse_sparql_results
 from .queries import require_valid_type_name
 
-logger = structlog.stdlib.get_logger("cograph.graph.layers")
+logger = structlog.stdlib.get_logger("infona.graph.layers")
 
 
 class Layer(str, Enum):

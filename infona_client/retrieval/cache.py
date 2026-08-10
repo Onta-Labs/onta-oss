@@ -25,7 +25,7 @@ by the delegate's identity as well as ``url`` + ``want`` keeps a cheap ``static`
 hit from masquerading as an escalated ``render`` result, so each rung records its
 own once-scraped page.
 
-Modes (env ``COGRAPH_FETCH_CACHE``)
+Modes (env ``INFONA_FETCH_CACHE``)
 -----------------------------------
 * ``off`` (default) — no caching; :func:`maybe_wrap_ladder` returns the ladder
   UNCHANGED, so production behaviour is byte-identical to no cache at all.
@@ -35,7 +35,7 @@ Modes (env ``COGRAPH_FETCH_CACHE``)
   :class:`FetchedPage` (``ok=False``) and NEVER touches the network, so a replay
   run can never silently hit the web on an un-recorded URL.
 
-Cache dir is ``COGRAPH_FETCH_CACHE_DIR`` (default: a stable ``cograph-fetch-cache``
+Cache dir is ``INFONA_FETCH_CACHE_DIR`` (default: a stable ``infona-fetch-cache``
 dir under the system temp path, so it persists across runs). A corrupt or missing
 cache file is treated as a MISS, never a crash.
 
@@ -68,12 +68,12 @@ from infona_client.retrieval.types import FetchedPage
 if TYPE_CHECKING:  # avoid a runtime import cycle with fetch.py
     from infona_client.retrieval.fetch import PageFetcher
 
-logger = structlog.stdlib.get_logger("cograph.retrieval.cache")
+logger = structlog.stdlib.get_logger("infona.retrieval.cache")
 
 #: Env var selecting the cache mode (``off`` / ``record`` / ``replay`` / ``auto``).
-CACHE_MODE_ENV = "COGRAPH_FETCH_CACHE"
+CACHE_MODE_ENV = "INFONA_FETCH_CACHE"
 #: Env var overriding the on-disk cache directory.
-CACHE_DIR_ENV = "COGRAPH_FETCH_CACHE_DIR"
+CACHE_DIR_ENV = "INFONA_FETCH_CACHE_DIR"
 
 #: Bumped if the on-disk record format changes incompatibly. A file written by a
 #: different version is treated as a MISS (re-recorded), never a crash.
@@ -87,7 +87,7 @@ _CACHE_ONLY_OK = True
 
 
 class FetchCacheMode(enum.Enum):
-    """What the fetch cache does on a request (mirrors the ``COGRAPH_FETCH_CACHE``
+    """What the fetch cache does on a request (mirrors the ``INFONA_FETCH_CACHE``
     env). ``auto`` is an alias for :attr:`RECORD`."""
 
     OFF = "off"
@@ -123,13 +123,13 @@ def current_mode() -> FetchCacheMode:
 
 
 def default_cache_dir() -> Path:
-    """The on-disk cache directory: ``COGRAPH_FETCH_CACHE_DIR`` or a stable
-    ``cograph-fetch-cache`` folder under the system temp dir (persists across runs
+    """The on-disk cache directory: ``INFONA_FETCH_CACHE_DIR`` or a stable
+    ``infona-fetch-cache`` folder under the system temp dir (persists across runs
     so record → replay works, but stays out of the repo/product data)."""
     override = os.environ.get(CACHE_DIR_ENV)
     if override and override.strip():
         return Path(override.strip())
-    return Path(tempfile.gettempdir()) / "cograph-fetch-cache"
+    return Path(tempfile.gettempdir()) / "infona-fetch-cache"
 
 
 # --- The on-disk store -------------------------------------------------------- #

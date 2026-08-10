@@ -4,13 +4,9 @@ from urllib.parse import urlparse
 
 MUTATION_KEYWORDS = {"INSERT", "DELETE", "DROP", "CREATE", "CLEAR", "LOAD", "COPY", "MOVE", "ADD"}
 
-# Live URI namespace for this process. Historical hosts (omnix.dev, cograph.tech,
-# and any other brand base that is not the configured live base) are rewritten
-# onto IRI_BASE so few-shot banks and LLM echoes stay coherent.
+# Live URI namespace for this process.
 ONTO_BASE = IRI_BASE
-# Public alias kept for tests/docs that assert the retired-host set. Hosts only
-# (no scheme); always includes every historical brand host, even when the live
-# base happens to be one of them (rewrite is a no-op for the live host).
+# Hosts only (no scheme). Empty under the single-base policy (LEGACY_IRI_BASES=()).
 LEGACY_ONTO_HOSTS = tuple(
     sorted({urlparse(b).netloc for b in LEGACY_IRI_BASES})
 )
@@ -56,9 +52,9 @@ def normalize_sparql(sparql: str) -> str:
         result = re.sub(pattern, lambda m: f"<{uri}{m.group(1)}>", result)
 
     # Fix common URI mistakes from LLMs that use wrong prefix expansion:
-    # <https://graph.onta.sh/Property> → <https://graph.onta.sh/types/Property>
-    # <https://graph.onta.sh/bedrooms> → <https://graph.onta.sh/types/Property/attrs/bedrooms>
-    # Also rewrite the retired omnix.dev namespace (renamed 2026-04-27) onto the
+    # <https://graph.infona.ai/Property> → <https://graph.infona.ai/types/Property>
+    # <https://graph.infona.ai/bedrooms> → <https://graph.infona.ai/types/Property/attrs/bedrooms>
+    # Also rewrite the retired graph.infona.ai namespace (renamed 2026-04-27) onto the
     # live one — the LLM can still echo it back from a stale prompt or example.
     # Correct path shapes (/types/, /onto/, /entities/, /graphs/, …) keep their
     # shape; only the host is normalized.

@@ -29,8 +29,8 @@ can't dismiss Table 1 as "you only compared against weak RAG."
 ## Run command
 
 ```
-set -a && source /Users/moeen/Desktop/omnix/.env && set +a
-PYTHONUNBUFFERED=1 /Users/moeen/Desktop/omnix/.venv/bin/python \
+set -a && source /Users/moeen/Desktop/infona/.env && set +a
+PYTHONUNBUFFERED=1 /Users/moeen/Desktop/infona/.venv/bin/python \
   scripts/run_holdout_v2_rag_rerank_baseline.py \
   --gold-dir eval_holdout_v2/gold \
   --out eval_holdout_v2/baselines/rag_rerank/ \

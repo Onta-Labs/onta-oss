@@ -11,7 +11,7 @@
     {
       "id": "q-001",
       "question": "How many Health Professional Shortage Areas are there?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?hpsa) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE { ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/HealthProfessionalShortageArea> . }",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?hpsa) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE { ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/HealthProfessionalShortageArea> . }",
       "full_expected_items": [
         "724"
       ],
@@ -26,7 +26,7 @@
     {
       "id": "q-002",
       "question": "List all the names of organizations.",
-      "gold_sparql": "SELECT ?organizationName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE { ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/Organization> . ?organization <https://omnix.dev/types/Organization/attrs/name> ?organizationName . }",
+      "gold_sparql": "SELECT ?organizationName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE { ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/Organization> . ?organization <https://graph.infona.ai/types/Organization/attrs/name> ?organizationName . }",
       "full_expected_items": [
         "020670",
         "020730",
@@ -122,7 +122,7 @@
     {
       "id": "q-003",
       "question": "What are the names of all the components?",
-      "gold_sparql": "SELECT ?componentName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE { ?component <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/Component> . ?component <https://omnix.dev/types/Component/attrs/name> ?componentName . }",
+      "gold_sparql": "SELECT ?componentName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE { ?component <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/Component> . ?component <https://graph.infona.ai/types/Component/attrs/name> ?componentName . }",
       "full_expected_items": [
         "1859",
         "9620",
@@ -2136,7 +2136,7 @@
     {
       "id": "q-004",
       "question": "How many unique zip codes are recorded?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?zipCode) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE { ?zipCode <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/ZipCode> . }",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?zipCode) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE { ?zipCode <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/ZipCode> . }",
       "full_expected_items": [
         "423"
       ],
@@ -2151,7 +2151,7 @@
     {
       "id": "q-005",
       "question": "How many Health Professional Shortage Areas have a common state FIPS code of '66'?",
-      "gold_sparql": "SELECT (COUNT(?hpsa) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/HealthProfessionalShortageArea> .\n  ?hpsa <https://omnix.dev/types/HealthProfessionalShortageArea/attrs/common_state_fips_code> ?fipsCode .\n  FILTER(?fipsCode = \"66\")\n}",
+      "gold_sparql": "SELECT (COUNT(?hpsa) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/HealthProfessionalShortageArea> .\n  ?hpsa <https://graph.infona.ai/types/HealthProfessionalShortageArea/attrs/common_state_fips_code> ?fipsCode .\n  FILTER(?fipsCode = \"66\")\n}",
       "full_expected_items": [
         "7"
       ],
@@ -2166,7 +2166,7 @@
     {
       "id": "q-006",
       "question": "What is the average designation population for Health Professional Shortage Areas that are designated as 'Federally Qualified Health Center'?",
-      "gold_sparql": "SELECT (AVG(?population) AS ?averageDesignationPopulation) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/HealthProfessionalShortageArea> .\n  ?hpsa <https://omnix.dev/types/HealthProfessionalShortageArea/attrs/designation_type> ?designationType .\n  ?hpsa <https://omnix.dev/types/HealthProfessionalShortageArea/attrs/hpsa_designation_population> ?population .\n  FILTER(?designationType = \"Federally Qualified Health Center\")\n}",
+      "gold_sparql": "SELECT (AVG(?population) AS ?averageDesignationPopulation) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/HealthProfessionalShortageArea> .\n  ?hpsa <https://graph.infona.ai/types/HealthProfessionalShortageArea/attrs/designation_type> ?designationType .\n  ?hpsa <https://graph.infona.ai/types/HealthProfessionalShortageArea/attrs/hpsa_designation_population> ?population .\n  FILTER(?designationType = \"Federally Qualified Health Center\")\n}",
       "full_expected_items": [
         "128860.07"
       ],
@@ -2181,7 +2181,7 @@
     {
       "id": "q-007",
       "question": "List the names of all HPSA entities where the component type code is 'UNK'.",
-      "gold_sparql": "SELECT ?hpsaName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/Hpsa> .\n  ?hpsa <https://omnix.dev/types/Hpsa/attrs/component_type_code> ?componentTypeCode .\n  ?hpsa <https://omnix.dev/types/Hpsa/attrs/name> ?hpsaName .\n  FILTER(?componentTypeCode = \"UNK\")\n}",
+      "gold_sparql": "SELECT ?hpsaName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/Hpsa> .\n  ?hpsa <https://graph.infona.ai/types/Hpsa/attrs/component_type_code> ?componentTypeCode .\n  ?hpsa <https://graph.infona.ai/types/Hpsa/attrs/name> ?hpsaName .\n  FILTER(?componentTypeCode = \"UNK\")\n}",
       "full_expected_items": [
         "CF-Green Bay Correctional Institution",
         "ST THOMAS EAST END MEDICAL CENTER CORPORATION",
@@ -2500,7 +2500,7 @@
     {
       "id": "q-008",
       "question": "How many HPSA entities have a degree of shortage greater than '3'?",
-      "gold_sparql": "SELECT (COUNT(?hpsa) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/Hpsa> .\n  ?hpsa <https://omnix.dev/types/Hpsa/attrs/degree_of_shortage> ?degreeOfShortage .\n  FILTER(STR(?degreeOfShortage) > \"3\")\n}",
+      "gold_sparql": "SELECT (COUNT(?hpsa) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/Hpsa> .\n  ?hpsa <https://graph.infona.ai/types/Hpsa/attrs/degree_of_shortage> ?degreeOfShortage .\n  FILTER(STR(?degreeOfShortage) > \"3\")\n}",
       "full_expected_items": [
         "424"
       ],
@@ -2515,7 +2515,7 @@
     {
       "id": "q-009",
       "question": "How many Health Professional Shortage Areas are associated with each State, where the HPSA has a 'Primary Care' discipline class?",
-      "gold_sparql": "SELECT ?stateName (COUNT(?hpsa) AS ?hpsaCount)\nFROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa>\nWHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/HealthProfessionalShortageArea> .\n  ?hpsa <https://omnix.dev/onto/state_name> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/State> .\n  ?state <https://omnix.dev/types/State/attrs/name> ?stateName .\n  ?hpsa <https://omnix.dev/types/HealthProfessionalShortageArea/attrs/hpsa_discipline_class> \"Primary Care\" .\n}\nGROUP BY ?stateName\nORDER BY DESC(?hpsaCount)",
+      "gold_sparql": "SELECT ?stateName (COUNT(?hpsa) AS ?hpsaCount)\nFROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa>\nWHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/HealthProfessionalShortageArea> .\n  ?hpsa <https://graph.infona.ai/onto/state_name> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/State> .\n  ?state <https://graph.infona.ai/types/State/attrs/name> ?stateName .\n  ?hpsa <https://graph.infona.ai/types/HealthProfessionalShortageArea/attrs/hpsa_discipline_class> \"Primary Care\" .\n}\nGROUP BY ?stateName\nORDER BY DESC(?hpsaCount)",
       "full_expected_items": [
         "Wisconsin | 389",
         "Puerto Rico | 140",
@@ -2541,7 +2541,7 @@
     {
       "id": "q-010",
       "question": "Count the number of Health Professional Shortage Areas for each County, where the HPSA has a 'Designated' status.",
-      "gold_sparql": "SELECT ?countyName (COUNT(?hpsa) AS ?hpsaCount)\nFROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa>\nWHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/HealthProfessionalShortageArea> .\n  ?hpsa <https://omnix.dev/onto/common_county_name> ?county .\n  ?county <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/County> .\n  ?county <https://omnix.dev/types/County/attrs/name> ?countyName .\n  ?hpsa <https://omnix.dev/types/HealthProfessionalShortageArea/attrs/hpsa_status> \"Designated\" .\n}\nGROUP BY ?countyName\nORDER BY DESC(?hpsaCount)",
+      "gold_sparql": "SELECT ?countyName (COUNT(?hpsa) AS ?hpsaCount)\nFROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa>\nWHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/HealthProfessionalShortageArea> .\n  ?hpsa <https://graph.infona.ai/onto/common_county_name> ?county .\n  ?county <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/County> .\n  ?county <https://graph.infona.ai/types/County/attrs/name> ?countyName .\n  ?hpsa <https://graph.infona.ai/types/HealthProfessionalShortageArea/attrs/hpsa_status> \"Designated\" .\n}\nGROUP BY ?countyName\nORDER BY DESC(?hpsaCount)",
       "full_expected_items": [
         "Milwaukee County | 11",
         "Grant County | 10",
@@ -2748,7 +2748,7 @@
     {
       "id": "q-011",
       "question": "How many Health Professional Shortage Areas are associated with each Organization?",
-      "gold_sparql": "SELECT ?organizationName (COUNT(?hpsa) AS ?hpsaCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/HealthProfessionalShortageArea> .\n  ?hpsa <https://omnix.dev/onto/bhcmis_organization_identification_number> ?organization .\n  ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/Organization> .\n  ?organization <https://omnix.dev/types/Organization/attrs/name> ?organizationName .\n} GROUP BY ?organizationName\nORDER BY DESC(?hpsaCount)\nLIMIT 10",
+      "gold_sparql": "SELECT ?organizationName (COUNT(?hpsa) AS ?hpsaCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/HealthProfessionalShortageArea> .\n  ?hpsa <https://graph.infona.ai/onto/bhcmis_organization_identification_number> ?organization .\n  ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/Organization> .\n  ?organization <https://graph.infona.ai/types/Organization/attrs/name> ?organizationName .\n} GROUP BY ?organizationName\nORDER BY DESC(?hpsaCount)\nLIMIT 10",
       "full_expected_items": [
         "02E01268 | 2",
         "08E01122 | 2",

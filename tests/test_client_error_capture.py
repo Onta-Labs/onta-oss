@@ -89,7 +89,7 @@ async def test_query_error_scrubs_scheme_less_host_port():
             502,
             text=(
                 "upstream connect error to "
-                "omnix-cluster.abc123.us-east-1.neptune.amazonaws.com:8182 "  # boundary-ok: synthetic hostname in a simulated upstream error
+                "infona-cluster.abc123.us-east-1.neptune.amazonaws.com:8182 "  # boundary-ok: synthetic hostname in a simulated upstream error
                 "MalformedQueryException at line 5"
             ),
         )
@@ -161,7 +161,7 @@ async def test_neptune_diagnostic_reaches_retry_feedback():
     with patch.object(pipeline_mod, "get_embedding_service", return_value=None), \
          patch.object(p, "_fetch_ontology", new=AsyncMock(return_value="ONT")), \
          patch.object(p, "_generate_sparql", new=gen):
-        result = await p.ask("list the widgets", "https://graph.onta.sh/graphs/t1")
+        result = await p.ask("list the widgets", "https://graph.infona.ai/graphs/t1")
 
     assert result.timing.get("attempts") == 2
     feedback = gen.call_args_list[1].kwargs.get("error_feedback", "")

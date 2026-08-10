@@ -217,11 +217,11 @@ Execute Query
 
 The query must declare the graphs it reads. Every `FROM` / `FROM NAMED` clause
 has to name a full IRI inside the calling workspace, for example
-`FROM <https://graph.onta.sh/graphs/{tenant}/kg/{kg_name}>`. The store defines its
+`FROM <https://graph.infona.ai/graphs/{tenant}/kg/{kg_name}>`. The store defines its
 default graph as the union of every named graph, so a query with no dataset
 clause would read every workspace.
 
-**Neo4j:** when `COGRAPH_GRAPH_BACKEND=neo4j`, this route returns **410 Gone**
+**Neo4j:** when `INFONA_GRAPH_BACKEND=neo4j`, this route returns **410 Gone**
 (no SPARQL façade). Use `/ask`, `/agent`, explore, or typed write routes instead.
 Unchanged on Neptune (default).
 
@@ -245,7 +245,7 @@ cannot be confined to one workspace by inspecting its text: `DROP ALL` and
 graph-less removals act on everything while naming no graph. Use `/triples`,
 `/kgs` or the ingest routes for workspace-scoped writes.
 
-**Neo4j:** when `COGRAPH_GRAPH_BACKEND=neo4j`, this route returns **410 Gone**.
+**Neo4j:** when `INFONA_GRAPH_BACKEND=neo4j`, this route returns **410 Gone**.
 Unchanged on Neptune (default).
 
 **Request body:** `SPARQLUpdate`

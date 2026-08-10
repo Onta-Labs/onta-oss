@@ -39,7 +39,7 @@ from infona_client.pipeline.stage_trace import (
 
 # StageStatus imported for fail path terminal stamps.
 
-logger = structlog.stdlib.get_logger("cograph.resolver.file_ingest_job")
+logger = structlog.stdlib.get_logger("infona.resolver.file_ingest_job")
 
 # Rails not on the file-ingest write path — skip with explicit Stage Contract reasons.
 _FILE_INGEST_SKIPS: tuple[tuple[StageProjectId, str], ...] = (

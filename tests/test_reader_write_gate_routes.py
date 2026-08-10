@@ -1,6 +1,6 @@
 """A ``reader`` member may not write through ANY route (ONTA-451).
 
-ONTA membership v1 (onta-oss#257) defines the ``reader`` role and enforces it
+ONTA membership v1 (infona-oss#257) defines the ``reader`` role and enforces it
 with ``require_tenant_write``, but four mutating surfaces were never wired to
 that guard and took a plain ``Depends(get_tenant)``, so a read-only member could
 still mutate the workspace:
@@ -56,7 +56,7 @@ _run = asyncio.run
 TENANT = "gate-ws"
 KG = "kg1"
 
-# Neither key is in the static ``OMNIX_API_KEYS`` map (conftest maps only
+# Neither key is in the static ``INFONA_API_KEYS`` map (conftest maps only
 # "test-key"), so both fall through to the fake verifier below and therefore
 # carry a SUBJECT — which is what makes membership-role resolution kick in.
 # A static/subject-less key resolves to ``writer`` by design (back-compat).

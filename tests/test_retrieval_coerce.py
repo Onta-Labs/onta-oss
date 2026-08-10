@@ -151,10 +151,10 @@ _ARRAY_CASES = [
 
 
 def test_web_sources_extract_json_array_is_the_substrate_parser():
-    # The premium discovery helper lives in the parent `cograph` repo, which is
+    # The premium discovery helper lives in the parent `infona` repo, which is
     # absent in a standalone OSS checkout — skip cleanly there. When present (the
     # monorepo), assert it delegates: same output as parse_json_array on every
     # representative input, so a re-fork of the discovery-side helper trips here.
-    _common = pytest.importorskip("cograph.web_sources._common")
+    _common = pytest.importorskip("infona.web_sources._common")
     for text in _ARRAY_CASES:
         assert _common.extract_json_array(text) == parse_json_array(text), text

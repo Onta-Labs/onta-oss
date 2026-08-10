@@ -42,10 +42,10 @@ from infona_client.pipeline.mutations import (
 
 TENANT, KG = "onta277res", "corp"
 INSTANCE_GRAPH = kg_graph_uri(TENANT, KG)
-ACME = "https://graph.onta.sh/entities/Company/acme"
-HAS_CEO = "https://graph.onta.sh/onto/hasCEO"
-PHONE = "https://graph.onta.sh/types/Company/attrs/phone"
-REVENUE = "https://graph.onta.sh/onto/revenue"
+ACME = "https://graph.infona.ai/entities/Company/acme"
+HAS_CEO = "https://graph.infona.ai/onto/hasCEO"
+PHONE = "https://graph.infona.ai/types/Company/attrs/phone"
+REVENUE = "https://graph.infona.ai/onto/revenue"
 REV_10M, REV_12M = "10000000", "12000000"
 
 
@@ -107,7 +107,7 @@ async def _seed_open_fact(n: PyoxiNeptune, subject: str, predicate: str, value: 
         INSTANCE_GRAPH,
         [
             (subject, "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-             "https://graph.onta.sh/types/Company"),
+             "https://graph.infona.ai/types/Company"),
             (subject, predicate, value),
         ],
     )
@@ -188,7 +188,7 @@ async def _seed_conflict_fact(
     await insert_facts(
         n, INSTANCE_GRAPH,
         [(ACME, "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-          "https://graph.onta.sh/types/Company")],
+          "https://graph.infona.ai/types/Company")],
     )
     await write_with_conflict_resolution(
         n, INSTANCE_GRAPH, subject=ACME, predicate=REVENUE, type_name="Company",

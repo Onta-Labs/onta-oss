@@ -100,7 +100,7 @@ router = APIRouter(prefix="/graphs/{tenant}/ontology")
 
 # Verdict cache lives alongside the app data (same path the ingest route uses);
 # for ECS/Fargate this should be on an EFS mount or replaced with DynamoDB.
-_VERDICT_CACHE_PATH = Path("/tmp/omnix-verdict-cache.json")
+_VERDICT_CACHE_PATH = Path("/tmp/infona-verdict-cache.json")
 
 
 async def _workspace_catalog(tenant_id: str):

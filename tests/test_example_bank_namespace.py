@@ -1,20 +1,20 @@
 """Drift guard: the committed example bank must reference the LIVE URI namespace.
 
-The bug this prevents: the URI namespace was renamed ``omnix.dev`` →
-``graph.onta.sh`` on 2026-04-27 (b7069f0; the deployed graph store was migrated
+The bug this prevents: the URI namespace was renamed historical hosts →
+``graph.infona.ai`` on 2026-04-27 (b7069f0; the deployed graph store was migrated
 by a one-shot script in the proprietary parent repo), but the example bank was
 never migrated with it. The bank is injected verbatim into every ``/ask``
 few-shot prompt (``nlp/example_bank.py::format_examples_for_prompt``), so every
 NL→SPARQL generation was being primed with worked examples whose predicates
 resolve to nothing in any graph — while the SYSTEM prompt already taught
-``graph.onta.sh``, making each prompt self-contradictory.
+``graph.infona.ai``, making each prompt self-contradictory.
 
 This file is the bank an OSS checkout or standalone install serves; the hosted
 image ships the parent repo's own copy, guarded separately there. Both drifted.
 
 Nothing evicts a stale entry by *content*. ``eval.rebuild_example_bank`` merges
 ``eval_reports/finetune_pairs.jsonl`` into the bank after every eval run, and
-since onta-oss#280's follow-up a pair does refresh the entry it supersedes — so
+since infona-oss#280's follow-up a pair does refresh the entry it supersedes — so
 a re-evaluated KG heals its own namespace drift. But that only fires for a KG
 someone actually re-evaluates, the pairs file is gitignored and machine-local,
 and until that follow-up the rebuild REPLACED the committed bank with that local
@@ -38,11 +38,11 @@ from infona_client.nlp.validator import LEGACY_ONTO_HOSTS, ONTO_BASE, normalize_
 # produce. A bank URI outside this set means either a new shape landed without
 # updating this guard, or the bank picked up a malformed URI.
 LIVE_PREFIXES = (
-    "graphs/",      # https://graph.onta.sh/graphs/<tenant>[/kg/<kg>]
-    "types/",       # https://graph.onta.sh/types/<Type>[/attrs/<attr>]
-    "onto/",        # https://graph.onta.sh/onto/<leaf>  (relationship instance edge)
-    "entities/",    # https://graph.onta.sh/entities/<Type>/<id>
-    "attr_meta/",   # https://graph.onta.sh/attr_meta/<Type>/<attr>/<suffix>
+    "graphs/",      # https://graph.infona.ai/graphs/<tenant>[/kg/<kg>]
+    "types/",       # https://graph.infona.ai/types/<Type>[/attrs/<attr>]
+    "onto/",        # https://graph.infona.ai/onto/<leaf>  (relationship instance edge)
+    "entities/",    # https://graph.infona.ai/entities/<Type>/<id>
+    "attr_meta/",   # https://graph.infona.ai/attr_meta/<Type>/<attr>/<suffix>
     "functions/",
     "kgs/",
 )

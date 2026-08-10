@@ -9,15 +9,15 @@ hours. Everything in this repo must be OSS-safe.
 **Ships here (OSS):**
 - `infona_client/` — ingest, resolver, **core ER engine** (normalize, block,
   score, merge), REST API surface, embedding service
-- `packages/cograph` (TS SDK + CLI, published as `@infona-ai/cli`) and `packages/cograph-mcp` (MCP server, published as `@infona-ai/mcp`)
+- `packages/cli` (TS SDK + CLI, published as `@infona-ai/cli`) and `packages/mcp` (MCP server, published as `@infona-ai/mcp`)
 - Plugin **protocols**: `register_external_verifier` (auth),
   `register_adapter` (enrichment)
 - Default OSS adapters: Wikidata enrichment, static-keys auth
 - Tests for all of the above
 
-**Does NOT ship here (proprietary — lives in the parent `cograph/` repo):**
+**Does NOT ship here (proprietary — lives in the parent `infona/` repo):**
 - Paid enrichment adapters (Exa, Perplexity, GS1, Anthropic web_search)
-- Production Clerk auth integration (`cograph-auth-clerk`)
+- Production Clerk auth integration (`infona-auth-clerk`)
 - Infona Explorer web app, AWS/SAM infra, deploy workflows
 - Entitlement / billing / rate-limit logic
 - Advanced ER tooling (review-queue UI, embedding matchers, active learning)
@@ -47,7 +47,7 @@ bash scripts/check_npm_bundle.sh    # inspect published tarballs for forbidden p
 
 CI runs `check_boundary.sh` on every PR (`.github/workflows/boundary.yml`), and
 the publish workflow runs `check_npm_bundle.sh` before any `npm publish`. A PR
-that adds `from cograph.<anything>` under `infona_client/` or `packages/` fails.
+that adds `from infona.<anything>` under `infona_client/` or `packages/` fails.
 
 ## Contributor License Agreement (CLA)
 
@@ -107,12 +107,12 @@ infona_client/
   resolver/     Schema inference, type matching, CSV mapping
   models/       Pydantic data models
   functions/    Compute function registry
-  config.py     Settings (OMNIX_ env prefix)
+  config.py     Settings (INFONA_ env prefix)
   eval.py       Eval framework
 
 packages/
-  cograph/      Node SDK + CLI (published as `@infona-ai/cli`)
-  cograph-mcp/  MCP server for AI agents (published as `@infona-ai/mcp`)
+  cli/          Node SDK + CLI (published as `@infona-ai/cli`)
+  mcp/          MCP server for AI agents (published as `@infona-ai/mcp`)
 ```
 
 ## Code Style

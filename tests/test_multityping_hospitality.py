@@ -219,7 +219,7 @@ def resolver(mock_neptune):
     with patch.dict("os.environ", {
         "ANTHROPIC_API_KEY": "test-key",
         "OPENROUTER_API_KEY": "test-or-key",
-        "COGRAPH_ER_ENABLED": "0",  # ER off — we test ER separately below
+        "INFONA_ER_ENABLED": "0",  # ER off — we test ER separately below
     }):
         resolver = SchemaResolver(
             neptune=mock_neptune,
@@ -232,7 +232,7 @@ def resolver(mock_neptune):
 @pytest.mark.asyncio
 async def test_a3_synthesize_ancestors_inserts_missing_parents(resolver, mock_neptune):
     """A3 — _synthesize_ancestors inserts Guest and Person when only HotelGuest exists."""
-    graph_uri = "https://graph.onta.sh/graphs/test-tenant"
+    graph_uri = "https://graph.infona.ai/graphs/test-tenant"
 
     # Ontology starts with only HotelGuest registered.
     existing_types: dict[str, str] = {"HotelGuest": ""}
@@ -263,7 +263,7 @@ async def test_a3_synthesize_ancestors_inserts_missing_parents(resolver, mock_ne
 async def test_a3_synthesize_ancestors_full_chain(resolver, mock_neptune):
     """A3 — synthesizing HotelGuest -> Guest with Guest -> Person already in parent_of
     closes the full chain: both Guest AND Person are synthesized when missing."""
-    graph_uri = "https://graph.onta.sh/graphs/test-tenant"
+    graph_uri = "https://graph.infona.ai/graphs/test-tenant"
 
     existing_types: dict[str, str] = {"HotelGuest": ""}
     existing_attrs: dict = {"HotelGuest": {}}
@@ -293,7 +293,7 @@ async def test_a3_synthesize_ancestors_full_chain(resolver, mock_neptune):
 @pytest.mark.asyncio
 async def test_a3_synthesize_idempotent(resolver, mock_neptune):
     """A3 — synthesize is a no-op for ancestors that already exist in existing_types."""
-    graph_uri = "https://graph.onta.sh/graphs/test-tenant"
+    graph_uri = "https://graph.infona.ai/graphs/test-tenant"
 
     # Both ancestors already present
     existing_types = {"HotelGuest": "", "Guest": "", "Person": ""}
@@ -332,7 +332,7 @@ async def test_a4_er_merges_hotel_guests_via_guest_config():
     # The second call to candidates_with_signals returns a single candidate
     # whose normalized signals match the incoming entity (same email).
     from infona_client.resolver.er.types import NormalizedSignals
-    CANONICAL_URI = "https://graph.onta.sh/entities/HotelGuest/alice_example_com-abc12345"
+    CANONICAL_URI = "https://graph.infona.ai/entities/HotelGuest/alice_example_com-abc12345"
     existing_candidate_signals = NormalizedSignals(
         name="alice smith",
         email="alice@example.com",
@@ -355,8 +355,8 @@ async def test_a4_er_merges_hotel_guests_via_guest_config():
     decision = await pipeline.find_match(
         incoming,
         type_name="HotelGuest",
-        type_uri="https://graph.onta.sh/types/HotelGuest",
-        instance_graph="https://graph.onta.sh/graphs/test-tenant",
+        type_uri="https://graph.infona.ai/types/HotelGuest",
+        instance_graph="https://graph.infona.ai/graphs/test-tenant",
         config=config,
         parent_of=PARENT_OF,
     )
@@ -383,8 +383,8 @@ async def test_a4_er_no_merge_without_hierarchy():
     decision = await pipeline.find_match(
         incoming,
         type_name="HotelGuest",
-        type_uri="https://graph.onta.sh/types/HotelGuest",
-        instance_graph="https://graph.onta.sh/graphs/test-tenant",
+        type_uri="https://graph.infona.ai/types/HotelGuest",
+        instance_graph="https://graph.infona.ai/graphs/test-tenant",
         config=None,    # forces internal config_for_with_hierarchy lookup
         parent_of={},   # empty map → config_for_with_hierarchy returns None
     )
@@ -423,8 +423,8 @@ class TestWithSubclassClosure:
 class TestRewriteTypePredicateToClosureHospitality:
     """B2 — rewrite_type_predicate_to_closure rewrites Person queries to cover subtypes."""
 
-    PERSON_URI = "https://graph.onta.sh/types/Person"
-    HOTEL_GUEST_URI = "https://graph.onta.sh/types/HotelGuest"
+    PERSON_URI = "https://graph.infona.ai/types/Person"
+    HOTEL_GUEST_URI = "https://graph.infona.ai/types/HotelGuest"
 
     def test_form_a_rewritten(self):
         sparql = f"SELECT ?x WHERE {{ ?x a <{self.PERSON_URI}> . }}"
@@ -472,8 +472,8 @@ class TestRewriteTypePredicateToClosureHospitality:
             "All type assertion triples in the query must be rewritten."
         )
 
-    def test_non_cograph_type_uri_not_rewritten(self):
-        """Triples whose object is NOT under https://graph.onta.sh/types/ are left alone."""
+    def test_non_infona_type_uri_not_rewritten(self):
+        """Triples whose object is NOT under https://graph.infona.ai/types/ are left alone."""
         sparql = "SELECT ?x WHERE { ?x a <http://schema.org/Person> . }"
         result = rewrite_type_predicate_to_closure(sparql)
         assert "subClassOf>*" not in result
@@ -493,20 +493,20 @@ class TestParentMapQueryHospitality:
     """B3 — parent_map_query produces correct SPARQL for building the parent_of map."""
 
     def test_contains_subclass_of(self):
-        sparql = parent_map_query("https://graph.onta.sh/graphs/test-tenant")
+        sparql = parent_map_query("https://graph.infona.ai/graphs/test-tenant")
         assert "subClassOf" in sparql
 
     def test_selects_child_parent(self):
-        sparql = parent_map_query("https://graph.onta.sh/graphs/test-tenant")
+        sparql = parent_map_query("https://graph.infona.ai/graphs/test-tenant")
         assert "?child" in sparql
         assert "?parent" in sparql
 
     def test_is_select_query(self):
-        sparql = parent_map_query("https://graph.onta.sh/graphs/test-tenant")
+        sparql = parent_map_query("https://graph.infona.ai/graphs/test-tenant")
         assert sparql.strip().upper().startswith("SELECT")
 
     def test_graph_uri_included(self):
-        graph = "https://graph.onta.sh/graphs/hotel-tenant"
+        graph = "https://graph.infona.ai/graphs/hotel-tenant"
         sparql = parent_map_query(graph)
         assert graph in sparql
 
@@ -531,12 +531,12 @@ async def test_fetch_parent_map_builds_hospitality_map(mock_neptune):
         "results": {
             "bindings": [
                 {
-                    "child": {"type": "uri", "value": "https://graph.onta.sh/types/HotelGuest"},
-                    "parent": {"type": "uri", "value": "https://graph.onta.sh/types/Guest"},
+                    "child": {"type": "uri", "value": "https://graph.infona.ai/types/HotelGuest"},
+                    "parent": {"type": "uri", "value": "https://graph.infona.ai/types/Guest"},
                 },
                 {
-                    "child": {"type": "uri", "value": "https://graph.onta.sh/types/Guest"},
-                    "parent": {"type": "uri", "value": "https://graph.onta.sh/types/Person"},
+                    "child": {"type": "uri", "value": "https://graph.infona.ai/types/Guest"},
+                    "parent": {"type": "uri", "value": "https://graph.infona.ai/types/Person"},
                 },
             ]
         },
@@ -553,7 +553,7 @@ async def test_fetch_parent_map_builds_hospitality_map(mock_neptune):
     }):
         res = SchemaResolver(neptune=mock_neptune, anthropic_key="test-key", verdict_cache=cache)
 
-    parent_of = await res._fetch_parent_map("https://graph.onta.sh/graphs/test-tenant")
+    parent_of = await res._fetch_parent_map("https://graph.infona.ai/graphs/test-tenant")
 
     assert parent_of == {"HotelGuest": "Guest", "Guest": "Person"}, (
         f"_fetch_parent_map must return exactly {{'HotelGuest':'Guest','Guest':'Person'}} "

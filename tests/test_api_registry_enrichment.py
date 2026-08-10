@@ -231,7 +231,7 @@ def test_chain_prefix_survives_a_later_register_tier_override():
 # Authority-precedence E2E through the real executor
 # --------------------------------------------------------------------------- #
 def _physician_neptune():
-    rows = [{"uri": "https://graph.onta.sh/entities/Physician/p1", "label": "Jane Smith", "vals": ""}]
+    rows = [{"uri": "https://graph.infona.ai/entities/Physician/p1", "label": "Jane Smith", "vals": ""}]
     bindings = [{
         "e": {"type": "uri", "value": rows[0]["uri"]},
         "label": {"type": "literal", "value": rows[0]["label"]},
@@ -561,8 +561,8 @@ class _DummyAdapter:
 
 def test_load_binding_attrs_parses_leaves_scoped_to_uris():
     async def run():
-        e1 = "https://graph.onta.sh/entities/ingredient/roma_tomatoes"
-        bls_uri = "https://graph.onta.sh/types/ingredient/attrs/bls_series_id"
+        e1 = "https://graph.infona.ai/entities/ingredient/roma_tomatoes"
+        bls_uri = "https://graph.infona.ai/types/ingredient/attrs/bls_series_id"
         captured = {}
 
         def _query(sparql):
@@ -576,7 +576,7 @@ def test_load_binding_attrs_parses_leaves_scoped_to_uris():
         neptune.query.side_effect = _query
         ex = EnrichmentExecutor(neptune, InMemoryJobStore(), EnrichmentCache(), _DummyAdapter())
         out = await ex._load_binding_attrs(
-            "https://omnix.dev/graphs/test", [e1], "ingredient", {"bls_series_id"})
+            "https://graph.infona.ai/graphs/test", [e1], "ingredient", {"bls_series_id"})
         assert out == {e1: {"bls_series_id": "APU0000712311"}}
         # Scoped to exactly the passed URI + the concrete leaf predicate IRI.
         assert e1 in captured["sparql"]
@@ -591,8 +591,8 @@ def test_load_binding_attrs_is_graceful_on_query_error():
         neptune.query.side_effect = RuntimeError("neptune down")
         ex = EnrichmentExecutor(neptune, InMemoryJobStore(), EnrichmentCache(), _DummyAdapter())
         out = await ex._load_binding_attrs(
-            "https://omnix.dev/graphs/test",
-            ["https://graph.onta.sh/entities/ingredient/x"], "ingredient", {"bls_series_id"})
+            "https://graph.infona.ai/graphs/test",
+            ["https://graph.infona.ai/entities/ingredient/x"], "ingredient", {"bls_series_id"})
         assert out == {}
 
     asyncio.run(run())
@@ -653,8 +653,8 @@ def test_attribute_binding_flows_end_to_end_through_executor():
         register_tier(EnrichmentTier.lite, ["api:fredlike"])
         assert get_chain(EnrichmentTier.lite) == ["api:fredlike"]
 
-        entity_uri = "https://graph.onta.sh/entities/ingredient/roma_tomatoes"
-        bls_uri = "https://graph.onta.sh/types/ingredient/attrs/bls_series_id"
+        entity_uri = "https://graph.infona.ai/entities/ingredient/roma_tomatoes"
+        bls_uri = "https://graph.infona.ai/types/ingredient/attrs/bls_series_id"
 
         def _query(sparql):
             if "bls_series_id" in sparql:

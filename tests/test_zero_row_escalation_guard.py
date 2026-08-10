@@ -1,6 +1,6 @@
 """ONTA-450: the zero-row ontology escalation must not license type substitution.
 
-onta-oss #273 widens a semantic ontology subset to the FULL tenant ontology when a
+infona-oss #273 widens a semantic ontology subset to the FULL tenant ontology when a
 valid SPARQL returns zero rows, then regenerates. That helps a genuine retrieval
 miss (the planner built its query from types/predicates that do not exist in this
 KG). It is unsafe for the OTHER situation that produces the identical signal: the
@@ -29,38 +29,38 @@ from infona_client.nlp.empty_type_guard import (
 )
 from infona_client.nlp.pipeline import NLQueryPipeline
 
-TENANT_GRAPH = "https://graph.onta.sh/graphs/t1"
-KG_GRAPH = "https://graph.onta.sh/graphs/t1/kg/widgets"
+TENANT_GRAPH = "https://graph.infona.ai/graphs/t1"
+KG_GRAPH = "https://graph.infona.ai/graphs/t1/kg/widgets"
 
 # Sprocket is DECLARED but empty in this KG; Widget is populated. This is exactly
 # the shape `_fetch_ontology` emits (ONTA-258 marks the type header).
 FULL_ONTOLOGY = (
-    "Type: Widget — URI: <https://graph.onta.sh/types/Widget>\n"
-    "  Attributes: name (string) — URI: <https://graph.onta.sh/types/Widget/attrs/name>\n"
-    f"Type: Sprocket — URI: <https://graph.onta.sh/types/Sprocket> {NO_INSTANCES_MARK}\n"
-    "  Attributes: name (string) — URI: <https://graph.onta.sh/types/Sprocket/attrs/name>\n"
+    "Type: Widget — URI: <https://graph.infona.ai/types/Widget>\n"
+    "  Attributes: name (string) — URI: <https://graph.infona.ai/types/Widget/attrs/name>\n"
+    f"Type: Sprocket — URI: <https://graph.infona.ai/types/Sprocket> {NO_INSTANCES_MARK}\n"
+    "  Attributes: name (string) — URI: <https://graph.infona.ai/types/Sprocket/attrs/name>\n"
 )
 
 # The reduced subset the semantic retriever hands the planner first. On today's
 # main the semantic path emits no `[no instances]` marks at all (ONTA-411 adds
 # them), so the subset is deliberately unmarked here.
 SEMANTIC_SUBSET = (
-    "Type: Sprocket — URI: <https://graph.onta.sh/types/Sprocket>\n"
-    "  Attributes: name (string) — URI: <https://graph.onta.sh/types/Sprocket/attrs/name>\n"
+    "Type: Sprocket — URI: <https://graph.infona.ai/types/Sprocket>\n"
+    "  Attributes: name (string) — URI: <https://graph.infona.ai/types/Sprocket/attrs/name>\n"
 )
 
 SPROCKET_SPARQL = (
     "SELECT ?name WHERE { "
     "?s <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> "
-    "<https://graph.onta.sh/types/Sprocket> . "
-    "?s <https://graph.onta.sh/types/Sprocket/attrs/name> ?name }"
+    "<https://graph.infona.ai/types/Sprocket> . "
+    "?s <https://graph.infona.ai/types/Sprocket/attrs/name> ?name }"
 )
 # The substitution the escalation invites: a populated type the question never named.
 WIDGET_SPARQL = (
     "SELECT ?name WHERE { "
     "?s <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> "
-    "<https://graph.onta.sh/types/Widget> . "
-    "?s <https://graph.onta.sh/types/Widget/attrs/name> ?name }"
+    "<https://graph.infona.ai/types/Widget> . "
+    "?s <https://graph.infona.ai/types/Widget/attrs/name> ?name }"
 )
 
 EMPTY_RESULT = {"head": {"vars": ["name"]}, "results": {"bindings": []}}
@@ -75,7 +75,7 @@ ACTIVE_TYPE_PROBE = {
     "head": {"vars": ["type"]},
     "results": {
         "bindings": [
-            {"type": {"type": "uri", "value": "https://graph.onta.sh/types/Widget"}}
+            {"type": {"type": "uri", "value": "https://graph.infona.ai/types/Widget"}}
         ]
     },
 }
@@ -111,9 +111,9 @@ def test_attribute_level_mark_is_not_a_type_level_mark():
     """ONTA-248 marks an empty ATTRIBUTE of a POPULATED type. That is not an
     honest-empty target and must not suppress escalation."""
     onto = (
-        "Type: Widget — URI: <https://graph.onta.sh/types/Widget>\n"
+        "Type: Widget — URI: <https://graph.infona.ai/types/Widget>\n"
         "  Attributes: sku (string) — URI: "
-        f"<https://graph.onta.sh/types/Widget/attrs/sku> {NO_INSTANCES_MARK}\n"
+        f"<https://graph.infona.ai/types/Widget/attrs/sku> {NO_INSTANCES_MARK}\n"
     )
     assert empty_declared_types(onto) == set()
 
@@ -121,7 +121,7 @@ def test_attribute_level_mark_is_not_a_type_level_mark():
 def test_types_referenced_covers_bare_attribute_and_layered_uris():
     assert types_referenced(SPROCKET_SPARQL) == {"Sprocket"}
     assert types_referenced(
-        "SELECT ?x WHERE { ?s ?p <https://graph.onta.sh/types/public/Person> }"
+        "SELECT ?x WHERE { ?s ?p <https://graph.infona.ai/types/public/Person> }"
     ) == {"Person"}
     assert types_referenced("SELECT ?x WHERE { ?s ?p ?o }") == set()
 

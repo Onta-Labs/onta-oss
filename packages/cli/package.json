@@ -15,8 +15,7 @@
     }
   },
   "bin": {
-    "infona": "./dist/cli.js",
-    "onta": "./dist/cli.js"
+    "infona": "./dist/cli.js"
   },
   "publishConfig": {
     "access": "public"
@@ -30,7 +29,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "prepack": "node ../../scripts/chmod-bin.js packages/cograph/dist/cli.js"
+    "prepack": "node ../../scripts/chmod-bin.js packages/cli/dist/cli.js"
   },
   "keywords": [
     "knowledge-graph",
@@ -50,7 +49,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/infona-ai/infona-oss.git",
-    "directory": "packages/cograph"
+    "directory": "packages/cli"
   },
   "bugs": {
     "url": "https://github.com/infona-ai/infona-oss/issues"

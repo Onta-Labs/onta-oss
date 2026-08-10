@@ -40,7 +40,7 @@ from infona_client.graph.queries import tenant_graph_uri
 from infona_client.normalization.inference import list_type_schema
 from infona_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
 
-logger = structlog.stdlib.get_logger("cograph.agent.ontology")
+logger = structlog.stdlib.get_logger("infona.agent.ontology")
 
 # Ontology edits never call a paid external source — the cost is always free.
 # Key names match the web plan-step cost contract EXACTLY (``step.cost.paid_calls``

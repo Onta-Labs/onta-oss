@@ -19,7 +19,7 @@ SPARQL it emits against a mocked store:
   use is finding a thing by its displayed name).
 * **snippet capping** — a huge literal yields a bounded window centered on the
   match, so MCP context can't be blown by one row.
-* **gate** — ``COGRAPH_GREP_ENABLED=false`` → 503 naming the gate; default on.
+* **gate** — ``INFONA_GREP_ENABLED=false`` → 503 naming the gate; default on.
 """
 
 from __future__ import annotations
@@ -30,19 +30,19 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi.testclient import TestClient
 
-os.environ["OMNIX_API_KEYS"] = '{"test-key": "test-tenant"}'
-os.environ["OMNIX_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
+os.environ["INFONA_API_KEYS"] = '{"test-key": "test-tenant"}'
+os.environ["INFONA_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
 
 from infona_client.api.app import create_app
 from infona_client.graph.client import NeptuneClient
 
 TENANT = "test-tenant"
 KG = "movies"
-GRAPH = f"https://graph.onta.sh/graphs/{TENANT}/kg/{KG}"
+GRAPH = f"https://graph.infona.ai/graphs/{TENANT}/kg/{KG}"
 
-ENTITIES = "https://graph.onta.sh/entities/"
-ONTO = "https://graph.onta.sh/onto/"
-TYPES = "https://graph.onta.sh/types/"
+ENTITIES = "https://graph.infona.ai/entities/"
+ONTO = "https://graph.infona.ai/onto/"
+TYPES = "https://graph.infona.ai/types/"
 LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 
@@ -119,8 +119,8 @@ def auth_headers():
 
 @pytest.fixture(autouse=True)
 def _gate_on(monkeypatch):
-    monkeypatch.delenv("COGRAPH_GREP_ENABLED", raising=False)
-    monkeypatch.delenv("COGRAPH_GREP_TIMEOUT_S", raising=False)
+    monkeypatch.delenv("INFONA_GREP_ENABLED", raising=False)
+    monkeypatch.delenv("INFONA_GREP_TIMEOUT_S", raising=False)
     # The slowapi limiter is a MODULE-GLOBAL whose counters outlive the per-test
     # app, so without this every request in this file shares one 60/min bucket
     # and the file would start 429ing itself as it grows. Reset per test.
@@ -242,7 +242,7 @@ def test_control_chars_in_needle_do_not_break_the_literal(
 def test_needle_cannot_inject_a_second_graph(store, make_client, auth_headers):
     """A quote-and-brace payload stays INSIDE the literal, no new GRAPH block."""
     client = make_client(store)
-    payload = '") } GRAPH <https://graph.onta.sh/graphs/victim> { ?s ?p ?o FILTER("'
+    payload = '") } GRAPH <https://graph.infona.ai/graphs/victim> { ?s ?p ?o FILTER("'
     res = _post(client, {"q": payload, "kg_name": KG}, auth_headers)
     assert res.status_code == 200
     q = store.scan_query
@@ -367,10 +367,10 @@ def test_internal_predicates_are_filtered_but_label_is_kept(make_client, auth_he
             {"s": E1, "p": ONTO + "batch_id", "o": "matrix-batch"},
             {
                 "s": E1,
-                "p": "https://graph.onta.sh/attr_meta/Movie/title/source_url",
+                "p": "https://graph.infona.ai/attr_meta/Movie/title/source_url",
                 "o": "https://example.test/matrix",
             },
-            {"s": E1, "p": "https://graph.onta.sh/er/blockKey", "o": "matrix"},
+            {"s": E1, "p": "https://graph.infona.ai/er/blockKey", "o": "matrix"},
             {"s": E1, "p": TITLE, "o": "The Matrix"},
         ),
         decorate_rows=_empty(),
@@ -394,9 +394,9 @@ def test_internal_namespaces_are_also_excluded_in_the_scan_query(
     _post(client, {"q": "matrix", "kg_name": KG}, auth_headers)
     q = store.scan_query
     for ns in (
-        "https://graph.onta.sh/er/",
-        "https://graph.onta.sh/attr_meta/",
-        "https://graph.onta.sh/onto/norm/",
+        "https://graph.infona.ai/er/",
+        "https://graph.infona.ai/attr_meta/",
+        "https://graph.infona.ai/onto/norm/",
     ):
         assert f'!STRSTARTS(STR(?p), "{ns}")' in q
 
@@ -454,7 +454,7 @@ def test_type_filter_enumerates_every_layer_namespace(store, make_client, auth_h
     q = store.scan_query
     assert f"<{RDF_TYPE}> ?t" in q
     for ns in ("types/Movie", "types/x/Movie", "types/public/Movie"):
-        assert f"https://graph.onta.sh/{ns}>" in q
+        assert f"https://graph.infona.ai/{ns}>" in q
     # The rdf:type join can bind ?t twice for a cross-layer-typed entity, which
     # would emit the same triple twice and burn the caller's limit.
     assert q.startswith("SELECT DISTINCT ?s ?p ?o")
@@ -540,18 +540,18 @@ def test_scan_uses_the_dedicated_short_timeout(store, make_client, auth_headers)
 
 
 def test_timeout_is_env_tunable(store, make_client, auth_headers, monkeypatch):
-    monkeypatch.setenv("COGRAPH_GREP_TIMEOUT_S", "3")
+    monkeypatch.setenv("INFONA_GREP_TIMEOUT_S", "3")
     client = make_client(store)
     _post(client, {"q": "matrix", "kg_name": KG}, auth_headers)
     assert store.timeouts[0] == 3.0
 
 
 def test_gate_off_is_503_naming_the_env_var(store, make_client, auth_headers, monkeypatch):
-    monkeypatch.setenv("COGRAPH_GREP_ENABLED", "false")
+    monkeypatch.setenv("INFONA_GREP_ENABLED", "false")
     client = make_client(store)
     res = _post(client, {"q": "matrix", "kg_name": KG}, auth_headers)
     assert res.status_code == 503
-    assert "COGRAPH_GREP_ENABLED" in res.json()["detail"]
+    assert "INFONA_GREP_ENABLED" in res.json()["detail"]
     assert store.queries == []
 
 

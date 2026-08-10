@@ -99,7 +99,7 @@ from infona_client.graph.queries import (
     tenant_graph_uri,
 )
 
-logger = structlog.stdlib.get_logger("cograph.normalization.execute")
+logger = structlog.stdlib.get_logger("infona.normalization.execute")
 
 RDF_TYPE = f"{RDF}#type"
 RDFS_LABEL = f"{RDFS}#label"

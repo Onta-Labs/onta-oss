@@ -7,7 +7,7 @@ round-trip and surfaces as a confusing ``no_match``. Helpers here let
 way a missing attribute is handled: omit the binding → empty bindings → graceful
 no-op fall-through.
 
-Pure stdlib — no network, no ``cograph.*``.
+Pure stdlib — no network, no ``infona.*``.
 """
 
 from __future__ import annotations

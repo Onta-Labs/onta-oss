@@ -2,7 +2,7 @@
 #
 # OSS/proprietary boundary guardrail (MOE-21, Layer 1).
 #
-# cograph-oss is published publicly to npm + PyPI, and the repo ITSELF is
+# infona-oss is published publicly to npm + PyPI, and the repo ITSELF is
 # public (so is the sdist, which hatchling builds from VCS-tracked files, i.e.
 # including tests/ and docs/). Public publication is a one-way door. This
 # script mechanically enforces that nothing proprietary has leaked. It is run
@@ -300,7 +300,7 @@ run_repo_check() {
 # actually shows up in pasted terminal output. Neptune and RDS writer endpoints
 # are the same leak class as the ALB host that prompted all this — this is a
 # Neptune/Aurora product, so those hostnames are live infrastructure too.
-PAT_INFRA='omnix-demo-tenant|secretsmanager|\.elb\.amazonaws\.com|dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com|[0-9]{12}\.dkr\.|\.neptune\.amazonaws\.com|\.rds\.amazonaws\.com|(AKIA|ASIA)[0-9A-Z]{16}|arn:aws:[a-z0-9-]*:[a-z0-9-]*:[0-9]{12}:'
+PAT_INFRA='infona-demo-tenant|secretsmanager|\.elb\.amazonaws\.com|dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com|[0-9]{12}\.dkr\.|\.neptune\.amazonaws\.com|\.rds\.amazonaws\.com|(AKIA|ASIA)[0-9A-Z]{16}|arn:aws:[a-z0-9-]*:[a-z0-9-]*:[0-9]{12}:'
 
 # Secret-shaped literals. Case-SENSITIVE: every one of these prefixes is
 # lowercase by the issuer's own format, so -i would only add false positives.
@@ -326,16 +326,16 @@ PAT_CONTACT_OK=':(john|jane|jack|jill|alice|bob|carol|dave|foo|bar|test|example|
 
 # --- Checks -----------------------------------------------------------------
 
-# 1. No imports from the proprietary parent `cograph` namespace.
-#    `cograph\b` matches `import cograph` / `from cograph.x` but NOT
+# 1. No imports from the proprietary parent `infona` namespace.
+#    `infona\b` matches `import infona` / `from infona.x` but NOT
 #    `infona_client` (underscore is a word char, so no boundary after
-#    "cograph"). The OSS package is `infona_client`; the parent is `cograph`.
-run_check "imports the proprietary 'cograph' parent package (use infona_client or a plugin protocol)" \
-  '(^|[[:space:]])(from|import)[[:space:]]+cograph\b'
+#    "infona"). The OSS package is `infona_client`; the parent is `infona`.
+run_check "imports the proprietary 'infona' parent package (use infona_client or a plugin protocol)" \
+  '(^|[[:space:]])(from|import)[[:space:]]+infona\b'
 
 # 2. No references to proprietary-only source paths.
 run_check "references a proprietary-only module path (lives in the parent repo, not OSS)" \
-  'cograph/auth/clerk|cograph/enrichment/(exa|perplexity|gs1)|cograph/billing|cograph/entitlement'
+  'infona/auth/clerk|infona/enrichment/(exa|perplexity|gs1)|infona/billing|infona/entitlement'
 
 # Strings each pattern MUST match. They live only in a temp file, never in the
 # repo, and exist so a null result can be trusted: see verify_pattern. Each one
@@ -361,7 +361,7 @@ run_repo_check "hardcodes a personal email address (use a deployment-configured 
 if [[ "$fail" -ne 0 ]]; then
   echo ""
   echo "Boundary check FAILED. See docs/oss_proprietary_boundary.md (parent repo)"
-  echo "and cograph-oss/CONTRIBUTING.md for what is allowed in the OSS tree."
+  echo "and infona-oss/CONTRIBUTING.md for what is allowed in the OSS tree."
   echo "If a hit is genuinely fine, add '${MARKER} <reason>' to that line."
   exit 1
 fi

@@ -5,7 +5,7 @@ Backs the operator-only browser ``GET /operator/ontology/global``. One batched
 layer graph — no N+1 per-type round trips — assembled into the flat, sorted,
 search-friendly payload the Explorer renders.
 
-Reads exactly what the premium ``GlobalShapeWriter`` writes (``cograph/
+Reads exactly what the premium ``GlobalShapeWriter`` writes (``infona/
 governance/writer.py``, read-only reference — never imported here, OSS
 boundary): a type as ``rdf:type rdfs:Class`` + ``rdfs:label`` + optional
 ``rdfs:comment``, and per slot a property under ``<type>/attrs/<slot>`` with
@@ -88,7 +88,7 @@ from infona_client.models.ontology import (
     WorkspaceOntologyType,
 )
 
-logger = structlog.stdlib.get_logger("cograph.graph.global_ontology")
+logger = structlog.stdlib.get_logger("infona.graph.global_ontology")
 
 #: The two GLOBAL layers, in the order they are reported. Deliberately excludes
 #: ``Layer.TENANT`` — this browser is the cross-tenant canon, not one tenant's

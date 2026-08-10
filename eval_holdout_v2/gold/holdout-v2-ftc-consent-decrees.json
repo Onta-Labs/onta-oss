@@ -11,7 +11,7 @@
     {
       "id": "q-001",
       "question": "How many matters are there in total?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?matter) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE { ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> . }",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?matter) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE { ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> . }",
       "full_expected_items": [
         "599"
       ],
@@ -26,7 +26,7 @@
     {
       "id": "q-002",
       "question": "List all available fiscal years.",
-      "gold_sparql": "SELECT DISTINCT ?fiscalYearLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE { ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> . ?fiscalYear <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> ?fiscalYearLabel . }",
+      "gold_sparql": "SELECT DISTINCT ?fiscalYearLabel FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE { ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> . ?fiscalYear <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> ?fiscalYearLabel . }",
       "full_expected_items": [
         "1996",
         "2016",
@@ -64,7 +64,7 @@
     {
       "id": "q-003",
       "question": "What are the different enforcement types?",
-      "gold_sparql": "SELECT DISTINCT ?enforcementTypeLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE { ?enforcementType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/EnforcementType> . ?enforcementType <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/enforcement_type_label> ?enforcementTypeLabel . }",
+      "gold_sparql": "SELECT DISTINCT ?enforcementTypeLabel FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE { ?enforcementType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/EnforcementType> . ?enforcementType <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/enforcement_type_label> ?enforcementTypeLabel . }",
       "full_expected_items": [
         "Consent Order Accepted for Comment",
         "Preliminary Injunction",
@@ -84,7 +84,7 @@
     {
       "id": "q-004",
       "question": "How many distinct industries are recorded?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?industry) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE { ?industry <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Industry> . }",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?industry) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE { ?industry <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/Industry> . }",
       "full_expected_items": [
         "34"
       ],
@@ -99,7 +99,7 @@
     {
       "id": "q-005",
       "question": "List the labels of all fiscal years after 2010.",
-      "gold_sparql": "SELECT ?fiscalYearLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n  ?fiscalYear <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> ?fyValue .\n  ?fiscalYear <http://www.w3.org/2000/01/rdf-schema#label> ?fiscalYearLabel .\n  FILTER(xsd:integer(?fyValue) > 2010)\n}",
+      "gold_sparql": "SELECT ?fiscalYearLabel FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n  ?fiscalYear <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> ?fyValue .\n  ?fiscalYear <http://www.w3.org/2000/01/rdf-schema#label> ?fiscalYearLabel .\n  FILTER(xsd:integer(?fyValue) > 2010)\n}",
       "full_expected_items": [
         "2017",
         "2016",
@@ -122,7 +122,7 @@
     {
       "id": "q-006",
       "question": "How many matters were filed in fiscal year 2015?",
-      "gold_sparql": "SELECT (COUNT(?matter) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_fy> ?matterFY .\n  FILTER(?matterFY = \"2015\")\n}",
+      "gold_sparql": "SELECT (COUNT(?matter) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_fy> ?matterFY .\n  FILTER(?matterFY = \"2015\")\n}",
       "full_expected_items": [
         "26"
       ],
@@ -137,7 +137,7 @@
     {
       "id": "q-007",
       "question": "Count the number of fiscal years with a value greater than '2010'.",
-      "gold_sparql": "SELECT (COUNT(?fiscalYear) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n  ?fiscalYear <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> ?fyValue .\n  FILTER(?fyValue > \"2010\")\n}",
+      "gold_sparql": "SELECT (COUNT(?fiscalYear) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n  ?fiscalYear <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> ?fyValue .\n  FILTER(?fyValue > \"2010\")\n}",
       "full_expected_items": [
         "9"
       ],
@@ -152,7 +152,7 @@
     {
       "id": "q-008",
       "question": "How many matters have a fiscal year of 2010?",
-      "gold_sparql": "SELECT (COUNT(?matter) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_fy> ?fy .\n  FILTER(?fy = \"2010\")\n}",
+      "gold_sparql": "SELECT (COUNT(?matter) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_fy> ?fy .\n  FILTER(?fy = \"2010\")\n}",
       "full_expected_items": [
         "26"
       ],
@@ -167,7 +167,7 @@
     {
       "id": "q-009",
       "question": "How many matters are associated with each fiscal year?",
-      "gold_sparql": "SELECT ?fiscalYearLabel (COUNT(?matter) AS ?matterCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_in_fy> ?fiscalYear .\n  ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n  ?fiscalYear <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> ?fiscalYearLabel .\n} GROUP BY ?fiscalYearLabel ORDER BY ?fiscalYearLabel",
+      "gold_sparql": "SELECT ?fiscalYearLabel (COUNT(?matter) AS ?matterCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_in_fy> ?fiscalYear .\n  ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n  ?fiscalYear <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> ?fiscalYearLabel .\n} GROUP BY ?fiscalYearLabel ORDER BY ?fiscalYearLabel",
       "full_expected_items": [
         "1996 | 33",
         "1997 | 28",
@@ -205,7 +205,7 @@
     {
       "id": "q-010",
       "question": "List the enforcement types and the number of matters associated with each, for fiscal year 2010.",
-      "gold_sparql": "SELECT ?enforcementTypeLabel (COUNT(?matter) AS ?matterCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_has_enforcement_type> ?enforcementType .\n  ?enforcementType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/EnforcementType> .\n  ?enforcementType <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/enforcement_type_label> ?enforcementTypeLabel .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_fy> \"2010\" .\n} GROUP BY ?enforcementTypeLabel ORDER BY DESC(?matterCount)",
+      "gold_sparql": "SELECT ?enforcementTypeLabel (COUNT(?matter) AS ?matterCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_has_enforcement_type> ?enforcementType .\n  ?enforcementType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/EnforcementType> .\n  ?enforcementType <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/enforcement_type_label> ?enforcementTypeLabel .\n  ?matter <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_fy> \"2010\" .\n} GROUP BY ?enforcementTypeLabel ORDER BY DESC(?matterCount)",
       "full_expected_items": [
         "Consent Order Accepted for Comment | 23",
         "Part III Administrative Complaint | 3"
@@ -221,7 +221,7 @@
     {
       "id": "q-011",
       "question": "Which industries have matters in fiscal year 2015, and how many matters are in each of those industries?",
-      "gold_sparql": "SELECT ?industryLabel (COUNT(?matter) AS ?matterCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_in_industry> ?industry .\n  ?industry <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Industry> .\n  ?industry <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/industry_label> ?industryLabel .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_fy> \"2015\" .\n} GROUP BY ?industryLabel ORDER BY DESC(?matterCount)",
+      "gold_sparql": "SELECT ?industryLabel (COUNT(?matter) AS ?matterCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_in_industry> ?industry .\n  ?industry <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/Industry> .\n  ?industry <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/industry_label> ?industryLabel .\n  ?matter <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_fy> \"2015\" .\n} GROUP BY ?industryLabel ORDER BY DESC(?matterCount)",
       "full_expected_items": [
         "Health Care - Prescription Drugs | 9",
         "Health Care - Medical Equipment/Devices | 3",
@@ -246,7 +246,7 @@
     {
       "id": "q-012",
       "question": "For each industry, how many matters are associated with it, and what is the average fiscal year of those matters?",
-      "gold_sparql": "SELECT ?industryLabel (COUNT(DISTINCT ?matter) AS ?matterCount) (AVG(xsd:integer(?fyValue)) AS ?averageFiscalYear) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?industry <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Industry> .\n  ?industry <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/industry_label> ?industryLabel .\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_in_industry> ?industry .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_in_fy> ?fiscalYear .\n  ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n  ?fiscalYear <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> ?fyValue .\n} GROUP BY ?industryLabel",
+      "gold_sparql": "SELECT ?industryLabel (COUNT(DISTINCT ?matter) AS ?matterCount) (AVG(xsd:integer(?fyValue)) AS ?averageFiscalYear) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?industry <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/Industry> .\n  ?industry <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/industry_label> ?industryLabel .\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_in_industry> ?industry .\n  ?matter <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_in_fy> ?fiscalYear .\n  ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n  ?fiscalYear <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> ?fyValue .\n} GROUP BY ?industryLabel",
       "full_expected_items": [
         "Manufacturing - Consumer Goods (non Food & Bev.) | 22 | 2006.22727272727272727273",
         "Health Care - Medical Equipment/Devices | 27 | 2008.33333333333333333333",
@@ -294,7 +294,7 @@
     {
       "id": "q-013",
       "question": "List the matter names and their enforcement types for matters that occurred in fiscal year 2015.",
-      "gold_sparql": "SELECT ?matterName ?enforcementTypeLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_name> ?matterName .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_in_fy> ?fiscalYear .\n  ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n  ?fiscalYear <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> \"2015\" .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_has_enforcement_type> ?enforcementType .\n  ?enforcementType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/EnforcementType> .\n  ?enforcementType <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/enforcement_type_label> ?enforcementTypeLabel .\n}",
+      "gold_sparql": "SELECT ?matterName ?enforcementTypeLabel FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_name> ?matterName .\n  ?matter <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_in_fy> ?fiscalYear .\n  ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n  ?fiscalYear <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> \"2015\" .\n  ?matter <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_has_enforcement_type> ?enforcementType .\n  ?enforcementType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/EnforcementType> .\n  ?enforcementType <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/enforcement_type_label> ?enforcementTypeLabel .\n}",
       "full_expected_items": [
         "STERIS/Synergy Health | Preliminary Injunction",
         "Sysco/USF Holding | Preliminary Injunction",
@@ -334,7 +334,7 @@
     {
       "id": "q-014",
       "question": "What is the average number of distinct enforcement types associated with matters in each fiscal year?",
-      "gold_sparql": "SELECT ?fiscalYearLabel (AVG(?distinctEnforcementTypes) AS ?averageDistinctEnforcementTypes) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n  ?fiscalYear <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> ?fiscalYearLabel .\n  {\n    SELECT ?fiscalYear (COUNT(DISTINCT ?enforcementType) AS ?distinctEnforcementTypes) WHERE {\n      ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n      ?fiscalYear <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_includes_matter> ?matter .\n      ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n      ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_has_enforcement_type> ?enforcementType .\n      ?enforcementType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/EnforcementType> .\n    } GROUP BY ?fiscalYear\n  }\n} GROUP BY ?fiscalYearLabel\nORDER BY ?fiscalYearLabel",
+      "gold_sparql": "SELECT ?fiscalYearLabel (AVG(?distinctEnforcementTypes) AS ?averageDistinctEnforcementTypes) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n  ?fiscalYear <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> ?fiscalYearLabel .\n  {\n    SELECT ?fiscalYear (COUNT(DISTINCT ?enforcementType) AS ?distinctEnforcementTypes) WHERE {\n      ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n      ?fiscalYear <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_includes_matter> ?matter .\n      ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n      ?matter <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_has_enforcement_type> ?enforcementType .\n      ?enforcementType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/EnforcementType> .\n    } GROUP BY ?fiscalYear\n  }\n} GROUP BY ?fiscalYearLabel\nORDER BY ?fiscalYearLabel",
       "full_expected_items": [
         "1996 | 4",
         "1997 | 6",

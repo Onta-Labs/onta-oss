@@ -3,7 +3,7 @@ import { stdin, stdout } from "node:process";
 import { randomUUID } from "node:crypto";
 import {
   Client,
-  OntaError,
+  InfonaError,
   type TypeCount,
   type EnrichJob,
   type ConflictReview,
@@ -32,8 +32,8 @@ function canRenderBlockArt(): boolean {
   // banner row renders at double width and wraps mid-letter. iTerm,
   // WezTerm, Kitty, VS Code, Cursor, etc. all treat them as 1 cell and
   // render the art correctly. Skip the banner on Apple_Terminal and show
-  // a plain header instead. Force on/off via COGRAPH_BANNER=on|off.
-  const force = process.env.COGRAPH_BANNER;
+  // a plain header instead. Force on/off via INFONA_BANNER=on|off.
+  const force = process.env.INFONA_BANNER;
   if (force === "on") return true;
   if (force === "off") return false;
   if (!process.stdout.isTTY) return false;
@@ -261,7 +261,7 @@ async function cmdIngest(
       );
     } catch (err) {
       sp.stop();
-      if (err instanceof OntaError) printError(err.message);
+      if (err instanceof InfonaError) printError(err.message);
       else printError(err instanceof Error ? err.message : String(err));
     }
   }
@@ -287,7 +287,7 @@ async function cmdAsk(
     stdout.write(`  ${answer}\n`);
     stdout.write("\n");
   } catch (err) {
-    if (err instanceof OntaError) printError(err.message);
+    if (err instanceof InfonaError) printError(err.message);
     else printError(err instanceof Error ? err.message : String(err));
   }
 }
@@ -321,7 +321,7 @@ async function cmdAgent(
     result = await client.agent({ message: msg, ...context });
   } catch (err) {
     sp.stop();
-    if (err instanceof OntaError) printError(err.message);
+    if (err instanceof InfonaError) printError(err.message);
     else printError(err instanceof Error ? err.message : String(err));
     return;
   }
@@ -346,7 +346,7 @@ async function cmdAgent(
       executed = await client.agent({ confirmPlanId: planId, ...context });
     } catch (err) {
       sp2.stop();
-      if (err instanceof OntaError) printError(err.message);
+      if (err instanceof InfonaError) printError(err.message);
       else printError(err instanceof Error ? err.message : String(err));
       return;
     }
@@ -382,7 +382,7 @@ async function cmdStatus(client: Client, kg: string): Promise<void> {
     }
     stdout.write("\n");
   } catch (err) {
-    if (err instanceof OntaError) printError(err.message);
+    if (err instanceof InfonaError) printError(err.message);
     else printError(err instanceof Error ? err.message : String(err));
   }
 }
@@ -406,7 +406,7 @@ async function cmdReset(
     stdout.write(`  ${GREEN}✓${RESET} Graph cleared.\n`);
     return true;
   } catch (err) {
-    if (err instanceof OntaError) printError(err.message);
+    if (err instanceof InfonaError) printError(err.message);
     else printError(err instanceof Error ? err.message : String(err));
     return false;
   }
@@ -425,7 +425,7 @@ async function cmdTypes(
     types = await client.typeCounts(kg);
   } catch (err) {
     sp.stop();
-    if (err instanceof OntaError) printError(err.message);
+    if (err instanceof InfonaError) printError(err.message);
     else printError(err instanceof Error ? err.message : String(err));
     return;
   }
@@ -549,7 +549,7 @@ async function cmdType(
     usage = await client.typeUsage(kg, name, { includeSystem });
   } catch (err) {
     sp.stop();
-    if (err instanceof OntaError) printError(err.message);
+    if (err instanceof InfonaError) printError(err.message);
     else printError(err instanceof Error ? err.message : String(err));
     return;
   }
@@ -821,7 +821,7 @@ async function queueEnrich(
     return created;
   } catch (err) {
     sp.stop();
-    if (err instanceof OntaError) printError(err.message);
+    if (err instanceof InfonaError) printError(err.message);
     else printError(err instanceof Error ? err.message : String(err));
     return null;
   }
@@ -905,7 +905,7 @@ async function watchJob(
       job = await client.enrichJob(jobId);
     } catch (err) {
       stdout.write("\r\x1b[2K");
-      if (err instanceof OntaError) printError(err.message);
+      if (err instanceof InfonaError) printError(err.message);
       else printError(err instanceof Error ? err.message : String(err));
       return null;
     }
@@ -944,7 +944,7 @@ async function cmdEnrichJobs(client: Client): Promise<void> {
     jobs = await client.enrichJobs();
   } catch (err) {
     sp.stop();
-    if (err instanceof OntaError) printError(err.message);
+    if (err instanceof InfonaError) printError(err.message);
     else printError(err instanceof Error ? err.message : String(err));
     return;
   }
@@ -1007,7 +1007,7 @@ async function cmdEnrichReview(
     conflicts = await client.enrichConflicts(jobId);
   } catch (err) {
     sp.stop();
-    if (err instanceof OntaError) printError(err.message);
+    if (err instanceof InfonaError) printError(err.message);
     else printError(err instanceof Error ? err.message : String(err));
     return;
   }
@@ -1096,7 +1096,7 @@ async function cmdEnrichReview(
     );
   } catch (err) {
     sp2.stop();
-    if (err instanceof OntaError) printError(err.message);
+    if (err instanceof InfonaError) printError(err.message);
     else printError(err instanceof Error ? err.message : String(err));
   }
 }
@@ -1160,24 +1160,21 @@ export async function runShell(opts: {
   // the older hosts still work, so any of them counts as "cloud" (not self-hosted).
   const CLOUD_HOSTS = new Set([
     "https://api.infona.ai",
-    "https://api.onta.sh",
-    "https://api.getonta.com",
-    "https://api.cograph.cloud",
+    "https://api.infona.ai",
+    "https://api.infona.ai",
+    "https://api.infona.cloud",
   ]);
-  // Detection precedence: --local > --no-login > INFONA_API_URL → ONTA_API_URL →
-  // COGRAPH_API_URL → OMNIX_API_URL pointing anywhere besides a known cloud host.
+  // Detection precedence: --local > --no-login > INFONA_API_URL → INFONA_API_URL →
+  // INFONA_API_URL → INFONA_API_URL pointing anywhere besides a known cloud host.
   // When self-hosted we never trigger login and tenant defaults to "default"
   // (open-access backend behavior).
   const envUrl =
-    process.env.INFONA_API_URL ||
-    process.env.ONTA_API_URL ||
-    process.env.COGRAPH_API_URL ||
-    process.env.OMNIX_API_URL;
+    process.env.INFONA_API_URL;
   const envIsSelfHosted = !!envUrl && !CLOUD_HOSTS.has(envUrl);
   const selfHostedHint = !!opts.local || !!opts.noLogin || envIsSelfHosted;
 
   // `let` rather than `const` so /login can swap in a fresh Client after
-  // ~/.onta/config.json is rewritten with the new key.
+  // ~/.infona/config.json is rewritten with the new key.
   let client = opts.local
     ? new Client({ baseUrl: "http://localhost:8000", tenant: "default" })
     : selfHostedHint
@@ -1344,7 +1341,7 @@ export async function runShell(opts: {
       } else if (line === "/login") {
         const { runLogin } = await import("./login.js");
         await runLogin();
-        // Pick up the new key from ~/.onta/config.json for subsequent calls.
+        // Pick up the new key from ~/.infona/config.json for subsequent calls.
         client = new Client();
         await refresh();
       } else if (line === "/tenant" || line.startsWith("/tenant ")) {
@@ -1394,7 +1391,7 @@ export async function runShell(opts: {
             }
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            if (err instanceof OntaError && err.status === 501) {
+            if (err instanceof InfonaError && err.status === 501) {
               printError("Tenant management isn't configured on this backend.");
             } else {
               printError(msg);
@@ -1517,7 +1514,7 @@ export async function runShell(opts: {
         await cmdAsk(client, kg, line);
       }
     } catch (err) {
-      if (err instanceof OntaError) printError(err.message);
+      if (err instanceof InfonaError) printError(err.message);
       else printError(err instanceof Error ? err.message : String(err));
     }
   }

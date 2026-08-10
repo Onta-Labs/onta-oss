@@ -48,14 +48,14 @@ terms of them. Sources in `infona_client/`:
 | Concept | Where it lives | Concrete form |
 |---|---|---|
 | Entity type | `resolver/models.py` `ExtractedEntity.type_name` | PascalCase **singular** (`Physician`, `City`, `Organization`) |
-| Type URI | `graph/ontology_queries.py` `type_uri()` | `https://graph.onta.sh/types/{TypeName}` |
-| Entity (instance) URI | `resolver/schema_resolver.py` | `https://graph.onta.sh/entities/{Type}/{safe_id}` |
+| Type URI | `graph/ontology_queries.py` `type_uri()` | `https://graph.infona.ai/types/{TypeName}` |
+| Entity (instance) URI | `resolver/schema_resolver.py` | `https://graph.infona.ai/entities/{Type}/{safe_id}` |
 | Attribute (literal) | `ExtractedAttribute.name` + `.datatype` | snake_case name; datatype ∈ `PRIMITIVE_TYPES` |
 | `PRIMITIVE_TYPES` | `graph/ontology_queries.py:731` | `{string, integer, float, boolean, datetime, uri, geo}` — **note `float`, not `decimal`** |
 | xsd mapping | `graph/ontology_queries.py` `_DATATYPE_TO_XSD` | `integer→xsd:integer`, `float→xsd:float`, `boolean→xsd:boolean`, `string→xsd:string` |
-| Relationship (edge) | `ExtractedRelationship.predicate` | snake_case predicate; URI `https://graph.onta.sh/onto/{predicate}` |
+| Relationship (edge) | `ExtractedRelationship.predicate` | snake_case predicate; URI `https://graph.infona.ai/onto/{predicate}` |
 | Relationship target | `ColumnMapping.target_type` | the node type the edge points at |
-| Subtype | `ExtractedEntity.parent_type` + `parent_chain` | materialized `rdfs:subClassOf https://graph.onta.sh/types/{Parent}` |
+| Subtype | `ExtractedEntity.parent_type` + `parent_chain` | materialized `rdfs:subClassOf https://graph.infona.ai/types/{Parent}` |
 | Type reuse verdict | `resolver/type_matcher.py` `MatchVerdict` | `SAME` / `SUBTYPE` / `DIFFERENT` / `FLAGGED`; `TypeMatch.is_new` bool |
 | Reuse thresholds | `type_matcher.py` | embedding `≥0.92 → SAME`, `<0.55 → DIFFERENT`, `0.55–0.92 → LLM` |
 | Multi-value split (relationship col) | `resolver/csv_resolver.py:1413` | split on `\|`, or on `, ` **iff every part `<30` chars and `≥2` parts** |

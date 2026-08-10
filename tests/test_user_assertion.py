@@ -51,8 +51,8 @@ from infona_client.pipeline.mutations import write_with_conflict_resolution
 
 TENANT, KG = "onta281", "corp"
 INSTANCE_GRAPH = kg_graph_uri(TENANT, KG)
-ACME = "https://graph.onta.sh/entities/Company/acme"
-PHONE = "https://graph.onta.sh/types/Company/attrs/phone"
+ACME = "https://graph.infona.ai/entities/Company/acme"
+PHONE = "https://graph.infona.ai/types/Company/attrs/phone"
 
 P111, P222, P333 = "111", "222", "333"
 
@@ -175,7 +175,7 @@ async def _seed_scraped_fact(
         n,
         INSTANCE_GRAPH,
         [(subject, "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-          "https://graph.onta.sh/types/Company")],
+          "https://graph.infona.ai/types/Company")],
     )
     await write_with_conflict_resolution(
         n, INSTANCE_GRAPH,

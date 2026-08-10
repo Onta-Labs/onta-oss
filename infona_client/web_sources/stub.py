@@ -5,7 +5,7 @@ web-discovery rail locally (plan card → confirm → ingest → rows in the Exp
 without wiring a paid provider. Enable it by pointing the web-source plugin at
 this module's :func:`register`::
 
-    export OMNIX_WEB_SOURCE_PLUGIN=infona_client.web_sources.stub:register
+    export INFONA_WEB_SOURCE_PLUGIN=infona_client.web_sources.stub:register
 
 It returns a small believable table for an "OpenRouter models" style query, and a
 generic synthesized table for anything else, so schema inference + ingest have
@@ -21,7 +21,7 @@ import structlog
 
 from infona_client.web_sources.base import DiscoverResult, register_web_source
 
-logger = structlog.stdlib.get_logger("cograph.web_sources.stub")
+logger = structlog.stdlib.get_logger("infona.web_sources.stub")
 
 # A small, believable OpenRouter-style catalogue (illustrative values, not live).
 _OPENROUTER_MODELS: list[dict[str, str]] = [

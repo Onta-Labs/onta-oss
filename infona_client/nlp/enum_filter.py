@@ -22,7 +22,7 @@ import re
 from typing import NamedTuple
 
 # Ontology line fragment, e.g.:
-#   setting (string) — URI: <https://graph.onta.sh/types/Indication/attrs/setting>
+#   setting (string) — URI: <https://graph.infona.ai/types/Indication/attrs/setting>
 #     [values: "adjuvant", "metastatic", ...]
 _ENUM_ATTR_RE = re.compile(
     rf"URI:\s*<({re.escape(IRI_BASE)}/types/[^>\s]+/attrs/[^>\s]+)>\s*"

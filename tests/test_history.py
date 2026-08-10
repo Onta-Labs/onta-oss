@@ -29,9 +29,9 @@ from infona_client.graph.history import (
 )
 from infona_client.graph.kg_writer import delete_facts
 
-GRAPH = "https://graph.onta.sh/graphs/t/kg/widgets"
-SUBJ = "https://graph.onta.sh/entities/Widget/w1"
-PRED = "https://graph.onta.sh/types/Widget/attrs/weight_kg"
+GRAPH = "https://graph.infona.ai/graphs/t/kg/widgets"
+SUBJ = "https://graph.infona.ai/entities/Widget/w1"
+PRED = "https://graph.infona.ai/types/Widget/attrs/weight_kg"
 
 
 def _objects_response(objects: list[tuple[str, str, str]]) -> dict:
@@ -56,8 +56,8 @@ def _count_response(n: int) -> dict:
 
 def test_lexical_value_strips_typed_and_uri_wrappers():
     assert lexical_value('92^^http://www.w3.org/2001/XMLSchema#integer') == "92"
-    assert lexical_value("<https://graph.onta.sh/entities/City/SF>") == (
-        "https://graph.onta.sh/entities/City/SF"
+    assert lexical_value("<https://graph.infona.ai/entities/City/SF>") == (
+        "https://graph.infona.ai/entities/City/SF"
     )
     assert lexical_value("plain string") == "plain string"
 
@@ -69,12 +69,12 @@ def test_build_value_change_triples_records_dated_transition():
     ts = datetime(2026, 7, 8, 12, 0, tzinfo=timezone.utc)
     triples = build_value_change_triples(SUBJ, PRED, "10.0", "12.5", changed_at=ts)
     by_pred = {p: o for _s, p, o in triples}
-    assert by_pred["https://graph.onta.sh/history/oldValue"] == "10.0"
-    assert by_pred["https://graph.onta.sh/history/newValue"] == "12.5"
-    assert by_pred["https://graph.onta.sh/history/subject"] == SUBJ
-    assert by_pred["https://graph.onta.sh/history/predicate"] == PRED
+    assert by_pred["https://graph.infona.ai/history/oldValue"] == "10.0"
+    assert by_pred["https://graph.infona.ai/history/newValue"] == "12.5"
+    assert by_pred["https://graph.infona.ai/history/subject"] == SUBJ
+    assert by_pred["https://graph.infona.ai/history/predicate"] == PRED
     # changed_at is a TYPED xsd:dateTime so a "since" FILTER matches it.
-    assert by_pred["https://graph.onta.sh/history/changedAt"] == (
+    assert by_pred["https://graph.infona.ai/history/changedAt"] == (
         "2026-07-08T12:00:00+00:00^^http://www.w3.org/2001/XMLSchema#dateTime"
     )
 
@@ -96,7 +96,7 @@ def test_delete_facts_records_change_to_history_graph(monkeypatch):
     the shared batched-insert seam inside delete_facts."""
 
     async def run():
-        monkeypatch.setenv("COGRAPH_VALUE_HISTORY_ENABLED", "1")
+        monkeypatch.setenv("INFONA_VALUE_HISTORY_ENABLED", "1")
         neptune = AsyncMock()
         # Reads: (1) current object for history, (2) COUNT for the delete.
         neptune.query.side_effect = [
@@ -128,7 +128,7 @@ def test_delete_facts_no_history_for_first_insert(monkeypatch):
     recorded (a value appearing for the first time is not a change)."""
 
     async def run():
-        monkeypatch.setenv("COGRAPH_VALUE_HISTORY_ENABLED", "1")
+        monkeypatch.setenv("INFONA_VALUE_HISTORY_ENABLED", "1")
         neptune = AsyncMock()
         neptune.query.side_effect = [
             _objects_response([]),  # nothing there yet
@@ -152,7 +152,7 @@ def test_delete_facts_no_history_for_unchanged_value(monkeypatch):
     """Re-writing the SAME value records nothing (no false positive)."""
 
     async def run():
-        monkeypatch.setenv("COGRAPH_VALUE_HISTORY_ENABLED", "1")
+        monkeypatch.setenv("INFONA_VALUE_HISTORY_ENABLED", "1")
         neptune = AsyncMock()
         neptune.query.side_effect = [
             _objects_response([(SUBJ, PRED, "12.5")]),
@@ -174,7 +174,7 @@ def test_delete_facts_no_history_when_disabled(monkeypatch):
     """Env gate OFF → byte-stable: no history read, no history write."""
 
     async def run():
-        monkeypatch.delenv("COGRAPH_VALUE_HISTORY_ENABLED", raising=False)
+        monkeypatch.delenv("INFONA_VALUE_HISTORY_ENABLED", raising=False)
         neptune = AsyncMock()
         neptune.query.return_value = _count_response(1)
         await delete_facts(
@@ -196,8 +196,8 @@ def test_delete_facts_history_only_for_pairs_with_new_value(monkeypatch):
     is not read and not versioned — only declared replacements are tracked."""
 
     async def run():
-        monkeypatch.setenv("COGRAPH_VALUE_HISTORY_ENABLED", "1")
-        other = "https://graph.onta.sh/types/Widget/attrs/color"
+        monkeypatch.setenv("INFONA_VALUE_HISTORY_ENABLED", "1")
+        other = "https://graph.infona.ai/types/Widget/attrs/color"
         neptune = AsyncMock()
         # Only the tracked pair (SUBJ, PRED) is read for its current value.
         neptune.query.side_effect = [
@@ -225,7 +225,7 @@ def test_delete_facts_history_best_effort(monkeypatch):
     companion). The delete still proceeds."""
 
     async def run():
-        monkeypatch.setenv("COGRAPH_VALUE_HISTORY_ENABLED", "1")
+        monkeypatch.setenv("INFONA_VALUE_HISTORY_ENABLED", "1")
         neptune = AsyncMock()
         neptune.query.side_effect = [
             RuntimeError("history backend down"),
@@ -256,7 +256,7 @@ def test_two_updates_yield_ordered_transitions(monkeypatch):
     fetch_value_history reads them back as ordered old→new transitions, dated."""
 
     async def run():
-        monkeypatch.setenv("COGRAPH_VALUE_HISTORY_ENABLED", "1")
+        monkeypatch.setenv("INFONA_VALUE_HISTORY_ENABLED", "1")
 
         # A stateful fake that stores history triples across the two updates and
         # replays them for the value_history_query read (oldest → newest).
@@ -398,10 +398,10 @@ def test_value_history_query_rejects_iri_breakout_subject():
     builder raises instead of emitting cross-tenant SPARQL (tenant isolation)."""
     import pytest
 
-    victim = "https://graph.onta.sh/graphs/VICTIM/kg/secret/history"
+    victim = "https://graph.infona.ai/graphs/VICTIM/kg/secret/history"
     payload = (
         f"http://x> }} UNION {{ GRAPH <{victim}> {{ ?node "
-        f"<https://graph.onta.sh/history/subject> ?s "
+        f"<https://graph.infona.ai/history/subject> ?s "
     )
     with pytest.raises(ValueError):
         value_history_query(GRAPH, subject=payload)

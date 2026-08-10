@@ -218,7 +218,7 @@ def test_http_sink_applies_secret_ref_as_bearer(monkeypatch):
     )
 
     # Encrypt a token via the OSS cipher seam (local AES key from env).
-    monkeypatch.setenv("OMNIX_SECRETS_KEY", "unit-test-secret-key-please")
+    monkeypatch.setenv("INFONA_SECRETS_KEY", "unit-test-secret-key-please")
     from infona_client.api_registry.crypto import (
         get_secret_cipher,
         reset_secret_cipher,

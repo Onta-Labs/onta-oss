@@ -48,7 +48,7 @@ from infona_client.skills import (
     validate_skill,
 )
 
-logger = structlog.stdlib.get_logger("cograph.skills.routes")
+logger = structlog.stdlib.get_logger("infona.skills.routes")
 
 router = APIRouter(prefix="/graphs/{tenant}/skills")
 

@@ -86,25 +86,25 @@ Majority-vote headline (per-question, n=302): **90.7% [86.9, 93.5]**
 
 **Question:** How many penalties of type 'Fine' does each nursing home have?
 
-**Expected answer:** `https://omnix.dev/holdout-v2/holdout-v2-cms-nursing-home-compare/NursingHome/055866 | 1
-https://omnix.dev/holdout-v2/holdout-v2-cms-nursing-home-compare/NursingHome/055992 | 4
-https://omnix.dev/holdout-v2/holdout-v2-cms-nursing-home-compare/NursingHome/055894 | 5
-https://omnix.dev/holdout-v2/holdout-v2-cms-nursing-home-compare/NursingHome/055916 | 1
-https://omnix.dev/holdout-v2/holdout-v2-cms-nursing-home-compare/NursingHome/055899 | 2
-https://omnix.dev/holdout-v2/holdout-v2-cms-nursing-home-compare/NursingHome/055932 | 4
-https://omnix.dev/holdout-v2/holdout-v2-cms-nursing-home-compare/NursingHome/055952 | 2
-https://omnix.dev/holdout-v2/holdout-v2-cms-nursing-home-compare/NursingHome/055954 | 1
-https://omnix.dev/holdout-v2/holdout-v2-cms-nursing-home-compare/NursingHome/055922 | 1
-https://omnix.dev/holdout-v2/holdout-v2-cms-nursing-home-compare/NursingHome/075192 | 1
+**Expected answer:** `https://graph.infona.ai/holdout-v2/holdout-v2-cms-nursing-home-compare/NursingHome/055866 | 1
+https://graph.infona.ai/holdout-v2/holdout-v2-cms-nursing-home-compare/NursingHome/055992 | 4
+https://graph.infona.ai/holdout-v2/holdout-v2-cms-nursing-home-compare/NursingHome/055894 | 5
+https://graph.infona.ai/holdout-v2/holdout-v2-cms-nursing-home-compare/NursingHome/055916 | 1
+https://graph.infona.ai/holdout-v2/holdout-v2-cms-nursing-home-compare/NursingHome/055899 | 2
+https://graph.infona.ai/holdout-v2/holdout-v2-cms-nursing-home-compare/NursingHome/055932 | 4
+https://graph.infona.ai/holdout-v2/holdout-v2-cms-nursing-home-compare/NursingHome/055952 | 2
+https://graph.infona.ai/holdout-v2/holdout-v2-cms-nursing-home-compare/NursingHome/055954 | 1
+https://graph.infona.ai/holdout-v2/holdout-v2-cms-nursing-home-compare/NursingHome/055922 | 1
+https://graph.infona.ai/holdout-v2/holdout-v2-cms-nursing-home-compare/NursingHome/075192 | 1
 ... (1768 total rows)`
 
 **Gold SPARQL:**
 ```sparql
-SELECT ?nursingHome (COUNT(?penalty) AS ?numberOfFines) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cms-nursing-home-compare> WHERE {
-  ?nursingHome <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cms-nursing-home-compare/type/NursingHome> .
-  ?nursingHome <https://omnix.dev/holdout-v2/holdout-v2-cms-nursing-home-compare/pred/has_penalty> ?penalty .
-  ?penalty <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cms-nursing-home-compare/type/Penalty> .
-  ?penalty <https://omnix.dev/holdout-v2/holdout-v2-cms-nursing-home-compare/pred/penalty_type> "Fine" .
+SELECT ?nursingHome (COUNT(?penalty) AS ?numberOfFines) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cms-nursing-home-compare> WHERE {
+  ?nursingHome <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cms-nursing-home-compare/type/NursingHome> .
+  ?nursingHome <https://graph.infona.ai/holdout-v2/holdout-v2-cms-nursing-home-compare/pred/has_penalty> ?penalty .
+  ?penalty <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cms-nursing-home-compare/type/Penalty> .
+  ?penalty <https://graph.infona.ai/holdout-v2/holdout-v2-cms-nursing-home-compare/pred/penalty_type> "Fine" .
 } GROUP BY ?nursingHome
 ```
 
@@ -116,14 +116,14 @@ nursingHomeName: BERKLEY WEST HEALTHCARE CENTER`
 
 ```sparql
 SELECT ?nursingHomeName (COUNT(DISTINCT ?penalty) AS ?penaltyCount)
-FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cms-nursing-home-compare>
+FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cms-nursing-home-compare>
 WHERE {
-  ?penalty <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cms-nursing-home-compare/type/Penalty> .
-  ?penalty <https://omnix.dev/holdout-v2/holdout-v2-cms-nursing-home-compare/pred/penalty_type> ?penaltyType .
+  ?penalty <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cms-nursing-home-compare/type/Penalty> .
+  ?penalty <https://graph.infona.ai/holdout-v2/holdout-v2-cms-nursing-home-compare/pred/penalty_type> ?penaltyType .
   FILTER(CONTAINS(LCASE(?penaltyType), "fine"))
   
-  ?penalty <https://omnix.dev/holdout-v2/holdout-v2-cms-nursing-home-compare/pred/penalty_against_facility> ?nursingHome .
-  ?nursingHome <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cms-nursing-home-compare/type/NursingHome> .
+  ?penalty <https://graph.infona.ai/holdout-v2/holdout-v2-cms-nursing-home-compare/pred/penalty_against_facility> ?nursingHome .
+  ?nursingHome <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cms-nursing-home-compare/type/NursingHome> .
   ?nursingHome <http://www.w3.org/2000/01/rdf-schema#label> ?nursingHomeName .
 }
 GROUP BY ?nursingHomeName
@@ -137,14 +137,14 @@ nursingHomeName: LONE TREE POST ACUTE, penalty`
 
 ```sparql
 SELECT ?nursingHomeName (COUNT(DISTINCT ?penalty) AS ?penaltyCount)
-FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cms-nursing-home-compare>
+FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cms-nursing-home-compare>
 WHERE {
-  ?penalty <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cms-nursing-home-compare/type/Penalty> .
-  ?penalty <https://omnix.dev/holdout-v2/holdout-v2-cms-nursing-home-compare/pred/penalty_type> ?penaltyType .
+  ?penalty <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cms-nursing-home-compare/type/Penalty> .
+  ?penalty <https://graph.infona.ai/holdout-v2/holdout-v2-cms-nursing-home-compare/pred/penalty_type> ?penaltyType .
   FILTER(CONTAINS(LCASE(?penaltyType), "fine"))
   
-  ?penalty <https://omnix.dev/holdout-v2/holdout-v2-cms-nursing-home-compare/pred/penalty_against_facility> ?nursingHome .
-  ?nursingHome <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cms-nursing-home-compare/type/NursingHome> .
+  ?penalty <https://graph.infona.ai/holdout-v2/holdout-v2-cms-nursing-home-compare/pred/penalty_against_facility> ?nursingHome .
+  ?nursingHome <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cms-nursing-home-compare/type/NursingHome> .
   ?nursingHome <http://www.w3.org/2000/01/rdf-schema#label> ?nursingHomeName .
 }
 GROUP BY ?nursingHomeName
@@ -158,14 +158,14 @@ nursingHomeName: LONG BEACH HEALTHCARE CEN`
 
 ```sparql
 SELECT ?nursingHomeName (COUNT(DISTINCT ?penalty) AS ?penaltyCount)
-FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cms-nursing-home-compare>
+FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cms-nursing-home-compare>
 WHERE {
-  ?penalty <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cms-nursing-home-compare/type/Penalty> .
-  ?penalty <https://omnix.dev/holdout-v2/holdout-v2-cms-nursing-home-compare/pred/penalty_type> ?penaltyType .
+  ?penalty <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cms-nursing-home-compare/type/Penalty> .
+  ?penalty <https://graph.infona.ai/holdout-v2/holdout-v2-cms-nursing-home-compare/pred/penalty_type> ?penaltyType .
   FILTER(CONTAINS(LCASE(?penaltyType), "fine"))
   
-  ?penalty <https://omnix.dev/holdout-v2/holdout-v2-cms-nursing-home-compare/pred/penalty_against_facility> ?nursingHome .
-  ?nursingHome <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cms-nursing-home-compare/type/NursingHome> .
+  ?penalty <https://graph.infona.ai/holdout-v2/holdout-v2-cms-nursing-home-compare/pred/penalty_against_facility> ?nursingHome .
+  ?nursingHome <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cms-nursing-home-compare/type/NursingHome> .
   ?nursingHome <http://www.w3.org/2000/01/rdf-schema#label> ?nursingHomeName .
 }
 GROUP BY ?nursingHomeName
@@ -189,22 +189,22 @@ Controlled Substances / Drugs / Meth Act | 2.26520016E8
 
 **Gold SPARQL:**
 ```sparql
-SELECT ?crimeTypeName (AVG(xsd:float(?totalPayment)) AS ?averageTotalPayment) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE { 
-  ?action <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/type/Action> .
-  ?action <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_by_company> ?company .
-  ?company <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/type/Company> .
-  ?company <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/company_is_us_public_co> "True" .
-  ?action <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_total_payment> ?totalPayment .
-  ?action <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_for_crime> ?crimeType .
-  ?crimeType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/type/CrimeType> .
-  ?crimeType <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/crimetype_name> ?crimeTypeName .
+SELECT ?crimeTypeName (AVG(xsd:float(?totalPayment)) AS ?averageTotalPayment) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE { 
+  ?action <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/type/Action> .
+  ?action <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_by_company> ?company .
+  ?company <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/type/Company> .
+  ?company <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/company_is_us_public_co> "True" .
+  ?action <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_total_payment> ?totalPayment .
+  ?action <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_for_crime> ?crimeType .
+  ?crimeType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/type/CrimeType> .
+  ?crimeType <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/crimetype_name> ?crimeTypeName .
 } GROUP BY ?crimeTypeName
 ```
 
 **Seed 1 (error) — answer:** `No results found.`
 
 ```sparql
-SELECT ?crimeTypeName (AVG(xsd:float(?payment)) AS ?averageTotalPayment) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE { ?action <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/type/Action> . ?action <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_total_payment> ?payment . ?action <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_by_company> ?company . ?company <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/company_is_us_public_co> ?isPublic . FILTER(CONTAINS(LCASE(?isPublic), "yes")) ?action <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_for_crime> ?crimeType . ?crimeType <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/crimetype_name> ?crimeTypeName . } GROUP BY ?crimeTypeName
+SELECT ?crimeTypeName (AVG(xsd:float(?payment)) AS ?averageTotalPayment) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE { ?action <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/type/Action> . ?action <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_total_payment> ?payment . ?action <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_by_company> ?company . ?company <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/company_is_us_public_co> ?isPublic . FILTER(CONTAINS(LCASE(?isPublic), "yes")) ?action <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_for_crime> ?crimeType . ?crimeType <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/crimetype_name> ?crimeTypeName . } GROUP BY ?crimeTypeName
 ```
 
 **Seed 2 (wrong) — answer:** `crimeTypeName: Environmental, averageTotalPayment: 8155653.5
@@ -214,13 +214,13 @@ crimeTypeName: Fraud - Health Care, averageTotalPayment: 2.49031296E8
 crimeTypeName: Antitr`
 
 ```sparql
-SELECT ?crimeTypeName (AVG(xsd:float(?payment)) AS ?averageTotalPayment) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE { ?action <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/type/Action> . ?action <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_total_payment> ?payment . ?action <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_by_company> ?company . ?company <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/company_is_us_public_co> ?isPublic . FILTER(CONTAINS(LCASE(STR(?isPublic)), "yes") || CONTAINS(LCASE(STR(?isPublic)), "true") || CONTAINS(LCASE(STR(?isPublic)), "1")) ?action <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_for_crime> ?crimeType . ?crimeType <http://www.w3.org/2000/01/rdf-schema#label> ?crimeTypeName } GROUP BY ?crimeTypeName
+SELECT ?crimeTypeName (AVG(xsd:float(?payment)) AS ?averageTotalPayment) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE { ?action <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/type/Action> . ?action <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_total_payment> ?payment . ?action <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_by_company> ?company . ?company <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/company_is_us_public_co> ?isPublic . FILTER(CONTAINS(LCASE(STR(?isPublic)), "yes") || CONTAINS(LCASE(STR(?isPublic)), "true") || CONTAINS(LCASE(STR(?isPublic)), "1")) ?action <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_for_crime> ?crimeType . ?crimeType <http://www.w3.org/2000/01/rdf-schema#label> ?crimeTypeName } GROUP BY ?crimeTypeName
 ```
 
 **Seed 3 (error) — answer:** `No results found.`
 
 ```sparql
-SELECT ?crimeTypeName (AVG(xsd:float(?payment)) AS ?averageTotalPayment) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE { ?action <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/type/Action> . ?action <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_total_payment> ?payment . ?action <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_by_company> ?company . ?company <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/company_is_us_public_co> ?isPublic . FILTER(CONTAINS(LCASE(?isPublic), "yes")) ?action <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_for_crime> ?crimeType . ?crimeType <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/crimetype_name> ?crimeTypeName . } GROUP BY ?crimeTypeName
+SELECT ?crimeTypeName (AVG(xsd:float(?payment)) AS ?averageTotalPayment) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE { ?action <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/type/Action> . ?action <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_total_payment> ?payment . ?action <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_by_company> ?company . ?company <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/company_is_us_public_co> ?isPublic . FILTER(CONTAINS(LCASE(?isPublic), "yes")) ?action <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_for_crime> ?crimeType . ?crimeType <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/crimetype_name> ?crimeTypeName . } GROUP BY ?crimeTypeName
 ```
 
 ### 7.3 `holdout-v2-epa-water-quality-portal` — q-010 (T3)
@@ -240,11 +240,11 @@ Lopez Creek 1 | 86`
 
 **Gold SPARQL:**
 ```sparql
-SELECT ?station_name (COUNT(?sample) AS ?sample_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {
-  ?station <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Station> .
-  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_has_sample> ?sample .
-  ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .
-  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_name> ?station_name .
+SELECT ?station_name (COUNT(?sample) AS ?sample_count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {
+  ?station <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Station> .
+  ?station <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_has_sample> ?sample .
+  ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .
+  ?station <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_name> ?station_name .
 } GROUP BY ?station_name ORDER BY DESC(?sample_count) LIMIT 10
 ```
 
@@ -256,7 +256,7 @@ station_name: Redwood Creek at Muir Beach, sample_count: 14
 sta`
 
 ```sparql
-SELECT ?station_name (COUNT(DISTINCT ?sample) AS ?sample_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE { ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> . ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_at_station> ?station . ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_name> ?station_name . } GROUP BY ?station_name
+SELECT ?station_name (COUNT(DISTINCT ?sample) AS ?sample_count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE { ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> . ?sample <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_at_station> ?station . ?station <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_name> ?station_name . } GROUP BY ?station_name
 ```
 
 **Seed 2 (wrong) — answer:** `station_name: Monitoring Location LAVO_WQ36, sample_count: 1
@@ -267,7 +267,7 @@ station_name: Bear Valley Creek, sample_count: 9
 station_na`
 
 ```sparql
-SELECT ?station_name (COUNT(DISTINCT ?sample) AS ?sample_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE { ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> . ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_at_station> ?station . ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_name> ?station_name . } GROUP BY ?station_name
+SELECT ?station_name (COUNT(DISTINCT ?sample) AS ?sample_count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE { ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> . ?sample <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_at_station> ?station . ?station <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_name> ?station_name . } GROUP BY ?station_name
 ```
 
 **Seed 3 (wrong) — answer:** `station_name: West Corner of Big Valley Rancheria Marina, sample_count: 8
@@ -278,10 +278,10 @@ station_name: Klamath River above Tr`
 
 ```sparql
 SELECT ?station_name (COUNT(DISTINCT ?sample) AS ?sample_count)
-FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal>
+FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal>
 WHERE {
-  ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .
-  ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_at_station> ?station .
+  ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .
+  ?sample <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_at_station> ?station .
   ?station <http://www.w3.org/2000/01/rdf-schema#label> ?station_name .
 }
 GROUP BY ?station_name
@@ -297,19 +297,19 @@ Quechan Tribe of the Fort Yuma Indian Reservation, California &amp; Arizona (Tri
 
 **Gold SPARQL:**
 ```sparql
-SELECT ?organization_name (AVG(?sample_count) AS ?average_samples) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE { 
-  ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .
-  ?organization <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/organization_name> ?organization_name .
-  ?station <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Station> .
-  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_operated_by> ?organization .
-  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_in_county> ?county .
-  ?county <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/County> .
-  ?county <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/county_name> "Imperial" .
+SELECT ?organization_name (AVG(?sample_count) AS ?average_samples) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE { 
+  ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .
+  ?organization <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/organization_name> ?organization_name .
+  ?station <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Station> .
+  ?station <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_operated_by> ?organization .
+  ?station <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_in_county> ?county .
+  ?county <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/County> .
+  ?county <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/county_name> "Imperial" .
   { 
     SELECT ?organization (COUNT(?sample) AS ?sample_count) WHERE {
-      ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .
-      ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_by_organization> ?organization .
-      ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .
+      ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .
+      ?sample <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_by_organization> ?organization .
+      ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .
     } GROUP BY ?organization
   }
 } GROUP BY ?organization_name
@@ -318,19 +318,19 @@ SELECT ?organization_name (AVG(?sample_count) AS ?average_samples) FROM <https:/
 **Seed 1 (wrong) — answer:** `90.66666666666666666667`
 
 ```sparql
-SELECT (AVG(?sampleCount) AS ?averageSamples) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE { { SELECT ?org (COUNT(DISTINCT ?sample) AS ?sampleCount) WHERE { ?org <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> . ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_operated_by> ?org . ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_in_county> ?county . ?county <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/county_name> ?countyName . FILTER(CONTAINS(LCASE(?countyName), "imperial")) ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_by_organization> ?org . } GROUP BY ?org } }
+SELECT (AVG(?sampleCount) AS ?averageSamples) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE { { SELECT ?org (COUNT(DISTINCT ?sample) AS ?sampleCount) WHERE { ?org <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> . ?station <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_operated_by> ?org . ?station <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_in_county> ?county . ?county <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/county_name> ?countyName . FILTER(CONTAINS(LCASE(?countyName), "imperial")) ?sample <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_by_organization> ?org . } GROUP BY ?org } }
 ```
 
 **Seed 2 (wrong) — answer:** `90.66666666666666666667`
 
 ```sparql
-SELECT (AVG(?sampleCount) AS ?averageSamples) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE { { SELECT ?org (COUNT(DISTINCT ?sample) AS ?sampleCount) WHERE { ?org <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> . ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_operated_by> ?org . ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_in_county> ?county . ?county <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/county_name> ?countyName . FILTER(CONTAINS(LCASE(?countyName), "imperial")) ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_by_organization> ?org . } GROUP BY ?org } }
+SELECT (AVG(?sampleCount) AS ?averageSamples) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE { { SELECT ?org (COUNT(DISTINCT ?sample) AS ?sampleCount) WHERE { ?org <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> . ?station <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_operated_by> ?org . ?station <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_in_county> ?county . ?county <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/county_name> ?countyName . FILTER(CONTAINS(LCASE(?countyName), "imperial")) ?sample <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_by_organization> ?org . } GROUP BY ?org } }
 ```
 
 **Seed 3 (wrong) — answer:** `90.66666666666666666667`
 
 ```sparql
-SELECT (AVG(?sampleCount) AS ?averageSamples) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE { { SELECT ?org (COUNT(DISTINCT ?sample) AS ?sampleCount) WHERE { ?org <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> . ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_operated_by> ?org . ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_in_county> ?county . ?county <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/county_name> ?countyName . FILTER(CONTAINS(LCASE(?countyName), "imperial")) ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_by_organization> ?org . } GROUP BY ?org } }
+SELECT (AVG(?sampleCount) AS ?averageSamples) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE { { SELECT ?org (COUNT(DISTINCT ?sample) AS ?sampleCount) WHERE { ?org <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> . ?station <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_operated_by> ?org . ?station <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_in_county> ?county . ?county <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/county_name> ?countyName . FILTER(CONTAINS(LCASE(?countyName), "imperial")) ?sample <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_by_organization> ?org . } GROUP BY ?org } }
 ```
 
 ### 7.5 `holdout-v2-fdic-call-reports` — q-005 (T3)
@@ -351,34 +351,34 @@ SELECT (AVG(?sampleCount) AS ?averageSamples) FROM <https://omnix.dev/graphs/dem
 
 **Gold SPARQL:**
 ```sparql
-SELECT ?callReportId (COUNT(?financialMetric) AS ?metricCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports> WHERE {
-  ?callReport <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/type/CallReport> .
-  ?callReport <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_has_metric> ?financialMetric .
-  ?financialMetric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/type/FinancialMetric> .
-  ?callReport <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_repdte> "20240630" .
-  ?callReport <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_id> ?callReportId .
+SELECT ?callReportId (COUNT(?financialMetric) AS ?metricCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports> WHERE {
+  ?callReport <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/type/CallReport> .
+  ?callReport <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_has_metric> ?financialMetric .
+  ?financialMetric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/type/FinancialMetric> .
+  ?callReport <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_repdte> "20240630" .
+  ?callReport <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_id> ?callReportId .
 } GROUP BY ?callReportId
 ```
 
 **Seed 1 (wrong) — answer:** `callReportLabel: 2024-Q2, metricCount: 87450`
 
 ```sparql
-SELECT ?callReportLabel (COUNT(DISTINCT ?metric) AS ?metricCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports> WHERE { ?callReport <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/type/CallReport> . ?callReport <http://www.w3.org/2000/01/rdf-schema#label> ?callReportLabel . ?callReport <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_repdte> ?reportDate . FILTER(CONTAINS(LCASE(STR(?reportDate)), "20240630")) ?callReport <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_has_metric> ?metric . } GROUP BY ?callReportLabel
+SELECT ?callReportLabel (COUNT(DISTINCT ?metric) AS ?metricCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports> WHERE { ?callReport <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/type/CallReport> . ?callReport <http://www.w3.org/2000/01/rdf-schema#label> ?callReportLabel . ?callReport <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_repdte> ?reportDate . FILTER(CONTAINS(LCASE(STR(?reportDate)), "20240630")) ?callReport <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_has_metric> ?metric . } GROUP BY ?callReportLabel
 ```
 
 **Seed 2 (wrong) — answer:** `callReportLabel: 2024-Q2, metricCount: 87409`
 
 ```sparql
 SELECT ?callReportLabel (COUNT(DISTINCT ?metric) AS ?metricCount)
-FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports>
+FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports>
 WHERE {
-  ?callReport <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/type/CallReport> .
+  ?callReport <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/type/CallReport> .
   ?callReport <http://www.w3.org/2000/01/rdf-schema#label> ?callReportLabel .
-  ?callReport <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_repdte> ?reportDate .
+  ?callReport <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_repdte> ?reportDate .
   FILTER(CONTAINS(LCASE(?reportDate), "20240630"))
   
-  ?callReport <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_has_metric> ?metric .
-  ?metric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/type/FinancialMetric> .
+  ?callReport <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_has_metric> ?metric .
+  ?metric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/type/FinancialMetric> .
 }
 GROUP BY ?callReportLabel
 ```
@@ -387,15 +387,15 @@ GROUP BY ?callReportLabel
 
 ```sparql
 SELECT ?callReportLabel (COUNT(DISTINCT ?metric) AS ?metricCount)
-FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports>
+FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports>
 WHERE {
-  ?callReport <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/type/CallReport> .
+  ?callReport <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/type/CallReport> .
   ?callReport <http://www.w3.org/2000/01/rdf-schema#label> ?callReportLabel .
-  ?callReport <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_repdte> ?reportDate .
+  ?callReport <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_repdte> ?reportDate .
   FILTER(CONTAINS(LCASE(?reportDate), "20240630"))
   
-  ?callReport <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_has_metric> ?metric .
-  ?metric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/type/FinancialMetric> .
+  ?callReport <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_has_metric> ?metric .
+  ?metric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/type/FinancialMetric> .
 }
 GROUP BY ?callReportLabel
 ```
@@ -408,7 +408,7 @@ GROUP BY ?callReportLabel
 
 **Gold SPARQL:**
 ```sparql
-SELECT (COUNT(DISTINCT ?incidentType) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations> WHERE { ?declaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/Declaration> . ?declaration <https://omnix.dev/types/Declaration/attrs/type> ?incidentType . }
+SELECT (COUNT(DISTINCT ?incidentType) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations> WHERE { ?declaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/Declaration> . ?declaration <https://graph.infona.ai/types/Declaration/attrs/type> ?incidentType . }
 ```
 
 **Seed 1 (wrong) — answer:** `18`
@@ -416,25 +416,25 @@ SELECT (COUNT(DISTINCT ?incidentType) AS ?count) FROM <https://omnix.dev/graphs/
 ```sparql
 SELECT (COUNT(DISTINCT ?type) AS ?distinct_incident_types_count)
 
-FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations>
+FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations>
 WHERE {
-  ?declaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/FemaDeclaration> .
-  ?declaration <https://omnix.dev/types/FemaDeclaration/attrs/incident_type> ?type .
+  ?declaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/FemaDeclaration> .
+  ?declaration <https://graph.infona.ai/types/FemaDeclaration/attrs/incident_type> ?type .
 }
 ```
 
 **Seed 2 (wrong) — answer:** `18`
 
 ```sparql
-SELECT (COUNT(DISTINCT ?type) AS ?count)  FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations>
-WHERE { ?fema_declaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/FemaDeclaration> . ?fema_declaration <https://omnix.dev/types/FemaDeclaration/attrs/incident_type> ?type . }
+SELECT (COUNT(DISTINCT ?type) AS ?count)  FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations>
+WHERE { ?fema_declaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/FemaDeclaration> . ?fema_declaration <https://graph.infona.ai/types/FemaDeclaration/attrs/incident_type> ?type . }
 ```
 
 **Seed 3 (wrong) — answer:** `18`
 
 ```sparql
-SELECT (COUNT(DISTINCT ?incident_type) AS ?incident_type_count)  FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations>
-WHERE { ?declaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/FemaDeclaration> . ?declaration <https://omnix.dev/types/FemaDeclaration/attrs/incident_type> ?incident_type . }
+SELECT (COUNT(DISTINCT ?incident_type) AS ?incident_type_count)  FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations>
+WHERE { ?declaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/FemaDeclaration> . ?declaration <https://graph.infona.ai/types/FemaDeclaration/attrs/incident_type> ?incident_type . }
 ```
 
 ### 7.7 `holdout-v2-fema-disaster-declarations-multitable` — q-005 (T2)
@@ -445,9 +445,9 @@ WHERE { ?declaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://
 
 **Gold SPARQL:**
 ```sparql
-SELECT (COUNT(?project) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {
-  ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .
-  ?project <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/projectamount> ?amount .
+SELECT (COUNT(?project) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {
+  ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .
+  ?project <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/projectamount> ?amount .
   FILTER (xsd:integer(?amount) > 5000)
 }
 ```
@@ -455,17 +455,17 @@ SELECT (COUNT(?project) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg
 **Seed 1 (wrong) — answer:** `15593`
 
 ```sparql
-SELECT (COUNT(DISTINCT ?project) AS ?projectCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE { ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> . ?project <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/projectamount> ?amount . FILTER(xsd:float(?amount) > 5000) }
+SELECT (COUNT(DISTINCT ?project) AS ?projectCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE { ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> . ?project <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/projectamount> ?amount . FILTER(xsd:float(?amount) > 5000) }
 ```
 
 **Seed 2 (wrong) — answer:** `15593`
 
 ```sparql
 SELECT (COUNT(DISTINCT ?project) AS ?projectCount)
-FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable>
+FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable>
 WHERE {
-  ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .
-  ?project <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/projectamount> ?amount .
+  ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .
+  ?project <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/projectamount> ?amount .
   FILTER(xsd:float(?amount) > 5000)
 }
 ```
@@ -474,10 +474,10 @@ WHERE {
 
 ```sparql
 SELECT (COUNT(DISTINCT ?project) AS ?projectCount)
-FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable>
+FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable>
 WHERE {
-  ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .
-  ?project <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/projectamount> ?amount .
+  ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .
+  ?project <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/projectamount> ?amount .
   FILTER(xsd:float(?amount) > 5000)
 }
 ```
@@ -490,9 +490,9 @@ WHERE {
 
 **Gold SPARQL:**
 ```sparql
-SELECT (SUM(xsd:float(?totalObligated)) AS ?sumTotalObligated) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {
-  ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .
-  ?project <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/totalobligated> ?totalObligated .
+SELECT (SUM(xsd:float(?totalObligated)) AS ?sumTotalObligated) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {
+  ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .
+  ?project <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/totalobligated> ?totalObligated .
   FILTER (xsd:float(?totalObligated) < 1000)
 }
 ```
@@ -513,7 +513,7 @@ totalObligated: 837.25
 tota`
 
 ```sparql
-SELECT ?totalObligated FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE { ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> . ?project <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/totalobligated> ?totalObligated . FILTER(xsd:float(?totalObligated) < "1000"^^<http://www.w3.org/2001/XMLSchema#float>) }
+SELECT ?totalObligated FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE { ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> . ?project <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/totalobligated> ?totalObligated . FILTER(xsd:float(?totalObligated) < "1000"^^<http://www.w3.org/2001/XMLSchema#float>) }
 ```
 
 **Seed 2 (wrong) — answer:** `totalObligated: 946.1
@@ -532,7 +532,7 @@ totalObligated: 996.2
 tota`
 
 ```sparql
-SELECT ?totalObligated FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE { ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> . ?project <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/totalobligated> ?totalObligated . FILTER(xsd:float(?totalObligated) < 1000.0) }
+SELECT ?totalObligated FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE { ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> . ?project <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/totalobligated> ?totalObligated . FILTER(xsd:float(?totalObligated) < 1000.0) }
 ```
 
 **Seed 3 (wrong) — answer:** `totalObligated: 881.75
@@ -551,7 +551,7 @@ totalObligated: 883.97
 to`
 
 ```sparql
-SELECT ?totalObligated FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE { ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> . ?project <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/totalobligated> ?totalObligated . FILTER(xsd:float(?totalObligated) < "1000"^^<http://www.w3.org/2001/XMLSchema#float>) }
+SELECT ?totalObligated FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE { ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> . ?project <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/totalobligated> ?totalObligated . FILTER(xsd:float(?totalObligated) < "1000"^^<http://www.w3.org/2001/XMLSchema#float>) }
 ```
 
 ### 7.9 `holdout-v2-ftc-consent-decrees` — q-014 (T4)
@@ -572,16 +572,16 @@ SELECT ?totalObligated FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-
 
 **Gold SPARQL:**
 ```sparql
-SELECT ?fiscalYearLabel (AVG(?distinctEnforcementTypes) AS ?averageDistinctEnforcementTypes) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {
-  ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .
-  ?fiscalYear <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> ?fiscalYearLabel .
+SELECT ?fiscalYearLabel (AVG(?distinctEnforcementTypes) AS ?averageDistinctEnforcementTypes) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {
+  ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .
+  ?fiscalYear <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> ?fiscalYearLabel .
   {
     SELECT ?fiscalYear (COUNT(DISTINCT ?enforcementType) AS ?distinctEnforcementTypes) WHERE {
-      ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .
-      ?fiscalYear <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_includes_matter> ?matter .
-      ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .
-      ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_has_enforcement_type> ?enforcementType .
-      ?enforcementType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/EnforcementType> .
+      ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .
+      ?fiscalYear <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_includes_matter> ?matter .
+      ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .
+      ?matter <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_has_enforcement_type> ?enforcementType .
+      ?enforcementType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/EnforcementType> .
     } GROUP BY ?fiscalYear
   }
 } GROUP BY ?fiscalYearLabel
@@ -591,19 +591,19 @@ ORDER BY ?fiscalYearLabel
 **Seed 1 (wrong) — answer:** `4.04166666666666666667`
 
 ```sparql
-SELECT (AVG(?enforcementCount) AS ?averageEnforcementTypes) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE { { SELECT ?fy (COUNT(DISTINCT ?enforcementType) AS ?enforcementCount) WHERE { ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> . ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_in_fy> ?fy . ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_has_enforcement_type> ?enforcementType . } GROUP BY ?fy } }
+SELECT (AVG(?enforcementCount) AS ?averageEnforcementTypes) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE { { SELECT ?fy (COUNT(DISTINCT ?enforcementType) AS ?enforcementCount) WHERE { ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> . ?matter <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_in_fy> ?fy . ?matter <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_has_enforcement_type> ?enforcementType . } GROUP BY ?fy } }
 ```
 
 **Seed 2 (wrong) — answer:** `4.04166666666666666667`
 
 ```sparql
-SELECT (AVG(?enforcement_count) AS ?average_enforcement_types) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE { { SELECT ?fy (COUNT(DISTINCT ?enforcement_type) AS ?enforcement_count) WHERE { ?fy <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> . ?fy <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_includes_matter> ?matter . ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_has_enforcement_type> ?enforcement_type . } GROUP BY ?fy } }
+SELECT (AVG(?enforcement_count) AS ?average_enforcement_types) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE { { SELECT ?fy (COUNT(DISTINCT ?enforcement_type) AS ?enforcement_count) WHERE { ?fy <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> . ?fy <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_includes_matter> ?matter . ?matter <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_has_enforcement_type> ?enforcement_type . } GROUP BY ?fy } }
 ```
 
 **Seed 3 (wrong) — answer:** `4.04166666666666666667`
 
 ```sparql
-SELECT (AVG(?enforcementCount) AS ?averageEnforcementTypes) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE { { SELECT ?fy (COUNT(DISTINCT ?enforcementType) AS ?enforcementCount) WHERE { ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> . ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_in_fy> ?fy . ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_has_enforcement_type> ?enforcementType . } GROUP BY ?fy } }
+SELECT (AVG(?enforcementCount) AS ?averageEnforcementTypes) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE { { SELECT ?fy (COUNT(DISTINCT ?enforcementType) AS ?enforcementCount) WHERE { ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> . ?matter <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_in_fy> ?fy . ?matter <https://graph.infona.ai/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_has_enforcement_type> ?enforcementType . } GROUP BY ?fy } }
 ```
 
 ### 7.10 `holdout-v2-hrsa-hpsa` — q-008 (T2)
@@ -614,9 +614,9 @@ SELECT (AVG(?enforcementCount) AS ?averageEnforcementTypes) FROM <https://omnix.
 
 **Gold SPARQL:**
 ```sparql
-SELECT (COUNT(?hpsa) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE {
-  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/Hpsa> .
-  ?hpsa <https://omnix.dev/types/Hpsa/attrs/degree_of_shortage> ?degreeOfShortage .
+SELECT (COUNT(?hpsa) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE {
+  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/Hpsa> .
+  ?hpsa <https://graph.infona.ai/types/Hpsa/attrs/degree_of_shortage> ?degreeOfShortage .
   FILTER(STR(?degreeOfShortage) > "3")
 }
 ```
@@ -626,10 +626,10 @@ SELECT (COUNT(?hpsa) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/ho
 ```sparql
 SELECT (COUNT(DISTINCT ?entity) AS ?count)
 
-FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa>
+FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa>
 WHERE {
-  ?entity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/HealthProfessionalShortageArea> .
-  ?entity <https://omnix.dev/types/HealthProfessionalShortageArea/attrs/hpsa_degree_of_shortage> ?shortage .
+  ?entity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/HealthProfessionalShortageArea> .
+  ?entity <https://graph.infona.ai/types/HealthProfessionalShortageArea/attrs/hpsa_degree_of_shortage> ?shortage .
   FILTER(xsd:float(?shortage) > "3"^^<http://www.w3.org/2001/XMLSchema#integer>)
 }
 ```
@@ -639,10 +639,10 @@ WHERE {
 ```sparql
 SELECT (COUNT(DISTINCT ?hpsa) AS ?count)
 
-FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa>
+FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa>
 WHERE {
-  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/HealthProfessionalShortageArea> .
-  ?hpsa <https://omnix.dev/types/HealthProfessionalShortageArea/attrs/hpsa_degree_of_shortage> ?shortage .
+  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/HealthProfessionalShortageArea> .
+  ?hpsa <https://graph.infona.ai/types/HealthProfessionalShortageArea/attrs/hpsa_degree_of_shortage> ?shortage .
   FILTER(xsd:float(?shortage) > "3"^^<http://www.w3.org/2001/XMLSchema#float>)
 }
 ```
@@ -650,8 +650,8 @@ WHERE {
 **Seed 3 (wrong) — answer:** `16`
 
 ```sparql
-SELECT (COUNT(DISTINCT ?hpsa) AS ?hpsa_count)  FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa>
-WHERE { ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/HealthProfessionalShortageArea> . ?hpsa <https://omnix.dev/types/HealthProfessionalShortageArea/attrs/hpsa_degree_of_shortage> ?shortage . FILTER(xsd:float(?shortage) > "3.0"^^xsd:float) }
+SELECT (COUNT(DISTINCT ?hpsa) AS ?hpsa_count)  FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa>
+WHERE { ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/HealthProfessionalShortageArea> . ?hpsa <https://graph.infona.ai/types/HealthProfessionalShortageArea/attrs/hpsa_degree_of_shortage> ?shortage . FILTER(xsd:float(?shortage) > "3.0"^^xsd:float) }
 ```
 
 ### 7.11 `holdout-v2-medicare-part-d-pricing` — q-013 (T4)
@@ -662,15 +662,15 @@ WHERE { ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.d
 
 **Gold SPARQL:**
 ```sparql
-SELECT DISTINCT ?genericName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {
-  ?drug <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/type/Drug> .
-  ?drug <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/generic_name> ?genericName .
-  ?drug <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/has_spending_record> ?spendingRecord .
-  ?spendingRecord <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/type/SpendingRecord> .
-  ?spendingRecord <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/has_outlier_status> ?outlierFlag .
-  ?outlierFlag <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/type/OutlierFlag> .
-  ?outlierFlag <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/outlier_label> "Outlier" .
-  ?spendingRecord <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/avg_spend_per_claim_2023> ?avgSpendPerClaim .
+SELECT DISTINCT ?genericName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {
+  ?drug <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/type/Drug> .
+  ?drug <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/generic_name> ?genericName .
+  ?drug <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/has_spending_record> ?spendingRecord .
+  ?spendingRecord <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/type/SpendingRecord> .
+  ?spendingRecord <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/has_outlier_status> ?outlierFlag .
+  ?outlierFlag <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/type/OutlierFlag> .
+  ?outlierFlag <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/outlier_label> "Outlier" .
+  ?spendingRecord <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/avg_spend_per_claim_2023> ?avgSpendPerClaim .
   FILTER(xsd:float(?avgSpendPerClaim) > 500) .
 }
 ```
@@ -688,17 +688,17 @@ genericName: Amlodipine Besylate/Valsa`
 
 ```sparql
 SELECT DISTINCT ?genericName
-FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing>
+FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing>
 WHERE {
-  ?drug <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/type/Drug> .
-  ?drug <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/generic_name> ?genericName .
-  ?drug <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/has_spending_record> ?spendingRecord .
+  ?drug <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/type/Drug> .
+  ?drug <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/generic_name> ?genericName .
+  ?drug <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/has_spending_record> ?spendingRecord .
   
-  ?spendingRecord <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/has_outlier_status> ?outlierFlag .
+  ?spendingRecord <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/has_outlier_status> ?outlierFlag .
   ?outlierFlag <http://www.w3.org/2000/01/rdf-schema#label> ?outlierLabel .
   FILTER(CONTAINS(LCASE(STR(?outlierLabel)), "outlier"))
   
-  ?spendingRecord <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/avg_spend_per_claim_2023> ?avgSpend .
+  ?spendingRecord <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/avg_spend_per_claim_2023> ?avgSpend .
   FILTER(xsd:float(?avgSpend) > 500)
 }
 ```
@@ -714,7 +714,7 @@ genericName: Prenatal Vit No.170/Iron/Folic
 genericName: Dextroamphetamine Sulf`
 
 ```sparql
-SELECT DISTINCT ?genericName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE { ?drug <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/type/Drug> . ?drug <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/generic_name> ?genericName . ?drug <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/has_spending_record> ?record . ?record <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/has_outlier_status> ?outlier . ?outlier <http://www.w3.org/2000/01/rdf-schema#label> ?outlierLabel . FILTER(CONTAINS(LCASE(STR(?outlierLabel)), "outlier")) ?record <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/avg_spend_per_claim_2023> ?avgSpendStr . FILTER(xsd:float(?avgSpendStr) > 500) }
+SELECT DISTINCT ?genericName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE { ?drug <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/type/Drug> . ?drug <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/generic_name> ?genericName . ?drug <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/has_spending_record> ?record . ?record <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/has_outlier_status> ?outlier . ?outlier <http://www.w3.org/2000/01/rdf-schema#label> ?outlierLabel . FILTER(CONTAINS(LCASE(STR(?outlierLabel)), "outlier")) ?record <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/avg_spend_per_claim_2023> ?avgSpendStr . FILTER(xsd:float(?avgSpendStr) > 500) }
 ```
 
 **Seed 3 (wrong) — answer:** `genericName: Docetaxel
@@ -731,17 +731,17 @@ genericName: Insulin Detemir
 
 ```sparql
 SELECT DISTINCT ?genericName
-FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing>
+FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing>
 WHERE {
-  ?drug <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/type/Drug> .
-  ?drug <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/generic_name> ?genericName .
-  ?drug <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/has_spending_record> ?spendingRecord .
+  ?drug <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/type/Drug> .
+  ?drug <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/generic_name> ?genericName .
+  ?drug <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/has_spending_record> ?spendingRecord .
   
-  ?spendingRecord <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/has_outlier_status> ?outlierFlag .
+  ?spendingRecord <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/has_outlier_status> ?outlierFlag .
   ?outlierFlag <http://www.w3.org/2000/01/rdf-schema#label> ?outlierLabel .
   FILTER(CONTAINS(LCASE(STR(?outlierLabel)), "outlier"))
   
-  ?spendingRecord <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/avg_spend_per_claim_2023> ?avgSpend .
+  ?spendingRecord <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/avg_spend_per_claim_2023> ?avgSpend .
   FILTER(xsd:float(?avgSpend) > 500)
 }
 ```
@@ -750,23 +750,23 @@ WHERE {
 
 **Question:** How many providers are associated with each practice location?
 
-**Expected answer:** `https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1598934572__loc | 1
-https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1760114839__loc | 1
-https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1366647794__loc | 1
-https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1811596877__loc | 1
-https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1003576810__loc | 1
-https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1295447886__loc | 1
-https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1043451859__loc | 1
-https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1922158385__loc | 1
-https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1669775771__loc | 1
-https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1992830467__loc | 1`
+**Expected answer:** `https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1598934572__loc | 1
+https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1760114839__loc | 1
+https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1366647794__loc | 1
+https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1811596877__loc | 1
+https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1003576810__loc | 1
+https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1295447886__loc | 1
+https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1043451859__loc | 1
+https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1922158385__loc | 1
+https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1669775771__loc | 1
+https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1992830467__loc | 1`
 
 **Gold SPARQL:**
 ```sparql
-SELECT ?practiceLocation (COUNT(DISTINCT ?provider) AS ?providerCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {
-  ?provider <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/Provider> .
-  ?provider <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/provider_has_practice_location> ?practiceLocation .
-  ?practiceLocation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/PracticeLocation> .
+SELECT ?practiceLocation (COUNT(DISTINCT ?provider) AS ?providerCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {
+  ?provider <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/Provider> .
+  ?provider <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/pred/provider_has_practice_location> ?practiceLocation .
+  ?practiceLocation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/PracticeLocation> .
 } GROUP BY ?practiceLocation ORDER BY DESC(?providerCount) LIMIT 10
 ```
 
@@ -779,12 +779,12 @@ location_label: 3870 COLUMBI`
 
 ```sparql
 SELECT ?location_label (COUNT(DISTINCT ?provider) AS ?provider_count)
-FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry>
+FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-npi-registry>
 WHERE {
-  ?location <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/PracticeLocation> .
+  ?location <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/PracticeLocation> .
   ?location <http://www.w3.org/2000/01/rdf-schema#label> ?location_label .
-  ?location <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/practice_location_of_provider> ?provider .
-  ?provider <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/Provider> .
+  ?location <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/pred/practice_location_of_provider> ?provider .
+  ?provider <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/Provider> .
 }
 GROUP BY ?location_label
 ```
@@ -798,12 +798,12 @@ location_label: 980 PARKSIDE VILLA`
 
 ```sparql
 SELECT ?location_label (COUNT(DISTINCT ?provider) AS ?provider_count)
-FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry>
+FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-npi-registry>
 WHERE {
-  ?location <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/PracticeLocation> .
+  ?location <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/PracticeLocation> .
   ?location <http://www.w3.org/2000/01/rdf-schema#label> ?location_label .
-  ?location <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/practice_location_of_provider> ?provider .
-  ?provider <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/Provider> .
+  ?location <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/pred/practice_location_of_provider> ?provider .
+  ?provider <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/Provider> .
 }
 GROUP BY ?location_label
 ```
@@ -817,12 +817,12 @@ location_label: 200 SKILES BLVD, provider_`
 
 ```sparql
 SELECT ?location_label (COUNT(DISTINCT ?provider) AS ?provider_count)
-FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry>
+FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-npi-registry>
 WHERE {
-  ?location <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/PracticeLocation> .
+  ?location <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/PracticeLocation> .
   ?location <http://www.w3.org/2000/01/rdf-schema#label> ?location_label .
-  ?location <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/practice_location_of_provider> ?provider .
-  ?provider <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/Provider> .
+  ?location <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/pred/practice_location_of_provider> ?provider .
+  ?provider <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/Provider> .
 }
 GROUP BY ?location_label
 ```
@@ -831,21 +831,21 @@ GROUP BY ?location_label
 
 **Question:** How many providers are there for each specialty, specifically for specialties with 'Unknown' in their name?
 
-**Expected answer:** `https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/208VP0000X | 29
-https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2086S0129X | 6
-https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2085R0001X | 6
-https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/213ES0131X | 2
-https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/222Z00000X | 1
-https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2084N0600X | 1
-https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2085N0904X | 1`
+**Expected answer:** `https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/Specialty/208VP0000X | 29
+https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/Specialty/2086S0129X | 6
+https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/Specialty/2085R0001X | 6
+https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/Specialty/213ES0131X | 2
+https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/Specialty/222Z00000X | 1
+https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/Specialty/2084N0600X | 1
+https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/Specialty/2085N0904X | 1`
 
 **Gold SPARQL:**
 ```sparql
-SELECT ?specialty (COUNT(DISTINCT ?provider) AS ?providerCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {
-  ?provider <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/Provider> .
-  ?provider <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/provider_has_specialty> ?specialty .
-  ?specialty <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/Specialty> .
-  ?specialty <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/specialty_name> ?specialtyName .
+SELECT ?specialty (COUNT(DISTINCT ?provider) AS ?providerCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {
+  ?provider <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/Provider> .
+  ?provider <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/pred/provider_has_specialty> ?specialty .
+  ?specialty <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/Specialty> .
+  ?specialty <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/pred/specialty_name> ?specialtyName .
   FILTER (CONTAINS(LCASE(?specialtyName), 'unknown'))
 } GROUP BY ?specialty ORDER BY DESC(?providerCount) LIMIT 10
 ```
@@ -853,19 +853,19 @@ SELECT ?specialty (COUNT(DISTINCT ?provider) AS ?providerCount) FROM <https://om
 **Seed 1 (wrong) — answer:** `specialtyName: Unknown, providerCount: 46`
 
 ```sparql
-SELECT ?specialtyName (COUNT(DISTINCT ?provider) AS ?providerCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE { ?specialty <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/Specialty> . ?specialty <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/specialty_name> ?specialtyName . FILTER(CONTAINS(LCASE(?specialtyName), "unknown")) . ?specialty <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/specialty_practiced_by> ?provider . ?provider <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/Provider> . } GROUP BY ?specialtyName
+SELECT ?specialtyName (COUNT(DISTINCT ?provider) AS ?providerCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE { ?specialty <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/Specialty> . ?specialty <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/pred/specialty_name> ?specialtyName . FILTER(CONTAINS(LCASE(?specialtyName), "unknown")) . ?specialty <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/pred/specialty_practiced_by> ?provider . ?provider <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/Provider> . } GROUP BY ?specialtyName
 ```
 
 **Seed 2 (wrong) — answer:** `specialty_name: Unknown, provider_count: 46`
 
 ```sparql
 SELECT ?specialty_name (COUNT(DISTINCT ?provider) AS ?provider_count)
-FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry>
+FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-npi-registry>
 WHERE {
-  ?specialty <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/Specialty> .
-  ?specialty <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/specialty_name> ?specialty_name .
+  ?specialty <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/Specialty> .
+  ?specialty <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/pred/specialty_name> ?specialty_name .
   FILTER(CONTAINS(LCASE(?specialty_name), "unknown"))
-  ?specialty <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/specialty_practiced_by> ?provider .
+  ?specialty <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/pred/specialty_practiced_by> ?provider .
 }
 GROUP BY ?specialty_name
 ```
@@ -874,12 +874,12 @@ GROUP BY ?specialty_name
 
 ```sparql
 SELECT ?specialty_name (COUNT(DISTINCT ?provider) AS ?provider_count)
-FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry>
+FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-npi-registry>
 WHERE {
-  ?specialty <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/Specialty> .
-  ?specialty <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/specialty_name> ?specialty_name .
+  ?specialty <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/Specialty> .
+  ?specialty <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/pred/specialty_name> ?specialty_name .
   FILTER(CONTAINS(LCASE(?specialty_name), "unknown"))
-  ?specialty <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/specialty_practiced_by> ?provider .
+  ?specialty <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/pred/specialty_practiced_by> ?provider .
 }
 GROUP BY ?specialty_name
 ```
@@ -902,17 +902,17 @@ GROUP BY ?specialty_name
 
 **Gold SPARQL:**
 ```sparql
-SELECT ?year (AVG(xsd:float(?readingValue)) AS ?averageReadingValue) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {
-  ?yearEntity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Year> .
-  ?yearEntity <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/year> ?year .
-  ?yearEntity <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/year_contains_month> ?month .
-  ?month <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Month> .
-  ?month <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/month_contains_period> ?period .
-  ?period <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Period> .
-  ?period <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/day_of_week> "Friday" .
-  ?period <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/period_has_reading> ?reading .
-  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .
-  ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/value> ?readingValue .
+SELECT ?year (AVG(xsd:float(?readingValue)) AS ?averageReadingValue) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {
+  ?yearEntity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/Year> .
+  ?yearEntity <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/year> ?year .
+  ?yearEntity <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/year_contains_month> ?month .
+  ?month <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/Month> .
+  ?month <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/month_contains_period> ?period .
+  ?period <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/Period> .
+  ?period <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/day_of_week> "Friday" .
+  ?period <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/period_has_reading> ?reading .
+  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .
+  ?reading <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/value> ?readingValue .
 } GROUP BY ?year
 ORDER BY ?year
 ```
@@ -926,7 +926,7 @@ year_label: 2010, average_value: 0.3793468
 year_label: 2004, average_value: -0.6`
 
 ```sparql
-SELECT ?year_label (AVG(xsd:float(?val)) AS ?average_value) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> . ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/value> ?val . ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_on_period> ?period . ?period <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/day_of_week> ?dow . FILTER(CONTAINS(LCASE(?dow), "friday")) ?period <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/period_in_month> ?month . ?month <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/month_in_year> ?year . ?year <http://www.w3.org/2000/01/rdf-schema#label> ?year_label . } GROUP BY ?year_label
+SELECT ?year_label (AVG(xsd:float(?val)) AS ?average_value) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> . ?reading <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/value> ?val . ?reading <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_on_period> ?period . ?period <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/day_of_week> ?dow . FILTER(CONTAINS(LCASE(?dow), "friday")) ?period <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/period_in_month> ?month . ?month <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/month_in_year> ?year . ?year <http://www.w3.org/2000/01/rdf-schema#label> ?year_label . } GROUP BY ?year_label
 ```
 
 **Seed 2 (wrong) — answer:** `year_label: 2022, average_value: 0.31145057
@@ -938,7 +938,7 @@ year_label: 2016, average_value: -0.064895436
 year_label: 2026, average_value: `
 
 ```sparql
-SELECT ?year_label (AVG(xsd:float(?val)) AS ?average_value) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> . ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/value> ?val . ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_on_period> ?period . ?period <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/day_of_week> ?day . FILTER(CONTAINS(LCASE(?day), "friday")) ?period <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/period_in_month> ?month . ?month <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/month_in_year> ?year . ?year <http://www.w3.org/2000/01/rdf-schema#label> ?year_label . } GROUP BY ?year_label
+SELECT ?year_label (AVG(xsd:float(?val)) AS ?average_value) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> . ?reading <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/value> ?val . ?reading <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_on_period> ?period . ?period <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/day_of_week> ?day . FILTER(CONTAINS(LCASE(?day), "friday")) ?period <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/period_in_month> ?month . ?month <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/month_in_year> ?year . ?year <http://www.w3.org/2000/01/rdf-schema#label> ?year_label . } GROUP BY ?year_label
 ```
 
 **Seed 3 (wrong) — answer:** `year_label: 2000, average_value: 1.04432
@@ -950,7 +950,7 @@ year_label: 2019, average_value: -0.8063396
 year_label: 2001, average_value: 1.25137`
 
 ```sparql
-SELECT ?year_label (AVG(xsd:float(?val)) AS ?average_value) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> . ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/value> ?val . ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_on_period> ?period . ?period <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/day_of_week> ?day . FILTER(CONTAINS(LCASE(?day), "friday")) ?period <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/period_in_month> ?month . ?month <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/month_in_year> ?year . ?year <http://www.w3.org/2000/01/rdf-schema#label> ?year_label . } GROUP BY ?year_label
+SELECT ?year_label (AVG(xsd:float(?val)) AS ?average_value) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> . ?reading <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/value> ?val . ?reading <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_on_period> ?period . ?period <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/day_of_week> ?day . FILTER(CONTAINS(LCASE(?day), "friday")) ?period <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/period_in_month> ?month . ?month <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/month_in_year> ?year . ?year <http://www.w3.org/2000/01/rdf-schema#label> ?year_label . } GROUP BY ?year_label
 ```
 
 ### 7.15 `holdout-v2-pacer-federal-dockets` — q-013 (T4)
@@ -970,14 +970,14 @@ James Wesley Hendrix | 11`
 
 **Gold SPARQL:**
 ```sparql
-SELECT ?judgeName (COUNT(DISTINCT ?docket) AS ?docketCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE { 
-  ?judge <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Judge> .
-  ?judge <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/judge_name> ?judgeName .
-  ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> .
-  ?docket <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_assigned_to_judge> ?judge .
-  ?docket <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_filed_in_court> ?court .
-  ?court <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Court> .
-  ?court <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/court_full_name> ?courtFullName .
+SELECT ?judgeName (COUNT(DISTINCT ?docket) AS ?docketCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE { 
+  ?judge <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Judge> .
+  ?judge <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/judge_name> ?judgeName .
+  ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> .
+  ?docket <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_assigned_to_judge> ?judge .
+  ?docket <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_filed_in_court> ?court .
+  ?court <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Court> .
+  ?court <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/court_full_name> ?courtFullName .
   FILTER(CONTAINS(LCASE(STR(?courtFullName)), "district"))
 } GROUP BY ?judgeName
 ORDER BY DESC(?docketCount)
@@ -993,7 +993,7 @@ judgeName: Dena M. Coggins, docketCount: 2
 judgeName: Jennifer L. Thurston`
 
 ```sparql
-SELECT ?judgeName (COUNT(DISTINCT ?docket) AS ?docketCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE { ?judge <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Judge> . ?judge <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/judge_name> ?judgeName . ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> . ?docket <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_assigned_to_judge> ?judge . ?docket <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_filed_in_court> ?court . ?court <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/court_full_name> ?courtFullName . FILTER(CONTAINS(LCASE(?courtFullName), "district")) } GROUP BY ?judgeName
+SELECT ?judgeName (COUNT(DISTINCT ?docket) AS ?docketCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE { ?judge <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Judge> . ?judge <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/judge_name> ?judgeName . ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> . ?docket <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_assigned_to_judge> ?judge . ?docket <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_filed_in_court> ?court . ?court <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/court_full_name> ?courtFullName . FILTER(CONTAINS(LCASE(?courtFullName), "district")) } GROUP BY ?judgeName
 ```
 
 **Seed 2 (wrong) — answer:** `judgeName: Frances M. Tydingco-Gatewood, docketCount: 5
@@ -1005,7 +1005,7 @@ judgeName: Jeffrey U. Beaverstock, docketCount: 4
 judgeName: Mar`
 
 ```sparql
-SELECT ?judgeName (COUNT(DISTINCT ?docket) AS ?docketCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE { ?judge <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Judge> . ?judge <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/judge_name> ?judgeName . ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> . ?docket <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_assigned_to_judge> ?judge . ?docket <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_filed_in_court> ?court . ?court <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/court_full_name> ?courtFullName . FILTER(CONTAINS(LCASE(?courtFullName), "district")) } GROUP BY ?judgeName
+SELECT ?judgeName (COUNT(DISTINCT ?docket) AS ?docketCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE { ?judge <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Judge> . ?judge <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/judge_name> ?judgeName . ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> . ?docket <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_assigned_to_judge> ?judge . ?docket <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_filed_in_court> ?court . ?court <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/court_full_name> ?courtFullName . FILTER(CONTAINS(LCASE(?courtFullName), "district")) } GROUP BY ?judgeName
 ```
 
 **Seed 3 (wrong) — answer:** `judgeName: Frances M. Tydingco-Gatewood, docketCount: 5
@@ -1017,7 +1017,7 @@ judgeName: Ana C. Reyes, docketCount: 2
 judgeName: Beryl `
 
 ```sparql
-SELECT ?judgeName (COUNT(DISTINCT ?docket) AS ?docketCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE { ?judge <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Judge> . ?judge <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/judge_name> ?judgeName . ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> . ?docket <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_assigned_to_judge> ?judge . ?docket <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_filed_in_court> ?court . ?court <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/court_full_name> ?courtFullName . FILTER(CONTAINS(LCASE(?courtFullName), "district")) } GROUP BY ?judgeName
+SELECT ?judgeName (COUNT(DISTINCT ?docket) AS ?docketCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE { ?judge <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Judge> . ?judge <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/judge_name> ?judgeName . ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> . ?docket <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_assigned_to_judge> ?judge . ?docket <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_filed_in_court> ?court . ?court <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/court_full_name> ?courtFullName . FILTER(CONTAINS(LCASE(?courtFullName), "district")) } GROUP BY ?judgeName
 ```
 
 ### 7.16 `holdout-v2-patentsview` — q-007 (T2)
@@ -1038,7 +1038,7 @@ b815f470-f656-4e72-b06e-71fd2d04f22c | Fu Da Tong Technology Co., Ltd.
 
 **Gold SPARQL:**
 ```sparql
-SELECT ?assigneeId ?orgName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE { ?assignee <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Assignee> . ?assignee <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/assignee_id> ?assigneeId . ?assignee <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/disambig_assignee_organization> ?orgName . FILTER(CONTAINS(?orgName, "Technology")) }
+SELECT ?assigneeId ?orgName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE { ?assignee <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/type/Assignee> . ?assignee <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/assignee_id> ?assigneeId . ?assignee <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/disambig_assignee_organization> ?orgName . FILTER(CONTAINS(?orgName, "Technology")) }
 ```
 
 **Seed 1 (wrong) — answer:** `assignee_label: Ningbo Defeng Power Technology Co., Ltd.
@@ -1049,10 +1049,10 @@ assignee`
 
 ```sparql
 SELECT DISTINCT ?assignee_label
-FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview>
+FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-patentsview>
 WHERE {
-  ?assignee <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Assignee> .
-  ?assignee <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/disambig_assignee_organization> ?org_name .
+  ?assignee <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/type/Assignee> .
+  ?assignee <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/disambig_assignee_organization> ?org_name .
   ?assignee <http://www.w3.org/2000/01/rdf-schema#label> ?assignee_label .
   FILTER(CONTAINS(LCASE(STR(?org_name)), LCASE("Technology")))
 }
@@ -1066,10 +1066,10 @@ assignee_label: THINKON NEW TEC`
 
 ```sparql
 SELECT DISTINCT ?assignee_label
-FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview>
+FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-patentsview>
 WHERE {
-  ?assignee <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Assignee> .
-  ?assignee <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/disambig_assignee_organization> ?org_name .
+  ?assignee <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/type/Assignee> .
+  ?assignee <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/disambig_assignee_organization> ?org_name .
   ?assignee <http://www.w3.org/2000/01/rdf-schema#label> ?assignee_label .
   FILTER(CONTAINS(LCASE(STR(?org_name)), LCASE("Technology")))
 }
@@ -1083,10 +1083,10 @@ assignee_label: GE ENERGY POWER`
 
 ```sparql
 SELECT DISTINCT ?assignee_label
-FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview>
+FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-patentsview>
 WHERE {
-  ?assignee <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Assignee> .
-  ?assignee <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/disambig_assignee_organization> ?org_name .
+  ?assignee <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/type/Assignee> .
+  ?assignee <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/disambig_assignee_organization> ?org_name .
   ?assignee <http://www.w3.org/2000/01/rdf-schema#label> ?assignee_label .
   FILTER(CONTAINS(LCASE(STR(?org_name)), LCASE("Technology")))
 }
@@ -1096,25 +1096,25 @@ WHERE {
 
 **Question:** For each patent, count how many outgoing citations it has, considering only utility patents filed after 2000.
 
-**Expected answer:** `https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10542974 | 4770
-https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10542991 | 1962
-https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10555769 | 1879
-https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10524872 | 1849
-https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10542967 | 1574
-https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10525236 | 800
-https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10556090 | 614
-https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10553241 | 611
-https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10543064 | 602
-https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10591877 | 585`
+**Expected answer:** `https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10542974 | 4770
+https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10542991 | 1962
+https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10555769 | 1879
+https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10524872 | 1849
+https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10542967 | 1574
+https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10525236 | 800
+https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10556090 | 614
+https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10553241 | 611
+https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10543064 | 602
+https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10591877 | 585`
 
 **Gold SPARQL:**
 ```sparql
-SELECT ?patent (COUNT(DISTINCT ?citation) AS ?citationCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE {
-  ?patent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Patent> .
-  ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/has_outgoing_citation> ?citation .
-  ?citation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Citation> .
-  ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/patent_type> "utility" .
-  ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/patent_date> ?date .
+SELECT ?patent (COUNT(DISTINCT ?citation) AS ?citationCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE {
+  ?patent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/type/Patent> .
+  ?patent <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/has_outgoing_citation> ?citation .
+  ?citation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/type/Citation> .
+  ?patent <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/patent_type> "utility" .
+  ?patent <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/patent_date> ?date .
   FILTER(?date > "2000-01-01")
 } GROUP BY ?patent ORDER BY DESC(?citationCount) LIMIT 10
 ```
@@ -1125,18 +1125,18 @@ patent_title: Toner compositions inclu`
 
 ```sparql
 SELECT ?patent_title (COUNT(?citation) AS ?outgoing_citation_count)
-FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview>
+FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-patentsview>
 WHERE {
-  ?patent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Patent> .
-  ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/patent_title> ?patent_title .
-  ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/patent_type> ?type .
-  ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/patent_date> ?date .
+  ?patent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/type/Patent> .
+  ?patent <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/patent_title> ?patent_title .
+  ?patent <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/patent_type> ?type .
+  ?patent <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/patent_date> ?date .
   
   FILTER(CONTAINS(LCASE(?type), "utility"))
   FILTER(?date > "2000-12-31")
   
   OPTIONAL {
-    ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/has_outgoing_citation> ?citation .
+    ?patent <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/has_outgoing_citation> ?citation .
   }
 }
 GROUP BY ?patent_title
@@ -1148,7 +1148,7 @@ patent_title: Home appliance, citation_count: 10
 patent_title: Aerofoil for an aircraft, and an aircraft, citation_count:`
 
 ```sparql
-SELECT ?patent_title (COUNT(?citation) AS ?citation_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE { ?patent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Patent> . ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/patent_title> ?patent_title . ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/patent_type> ?type . ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/patent_date> ?date . FILTER(CONTAINS(LCASE(?type), "utility")) FILTER(?date > "2000-12-31") OPTIONAL { ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/has_outgoing_citation> ?citation . } } GROUP BY ?patent_title
+SELECT ?patent_title (COUNT(?citation) AS ?citation_count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE { ?patent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/type/Patent> . ?patent <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/patent_title> ?patent_title . ?patent <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/patent_type> ?type . ?patent <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/patent_date> ?date . FILTER(CONTAINS(LCASE(?type), "utility")) FILTER(?date > "2000-12-31") OPTIONAL { ?patent <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/has_outgoing_citation> ?citation . } } GROUP BY ?patent_title
 ```
 
 **Seed 3 (wrong) — answer:** `patent_title: Cosmetic spray, outgoing_citation_count: 1
@@ -1158,18 +1158,18 @@ patent_title: Lettuce variety ‘Brentwo`
 
 ```sparql
 SELECT ?patent_title (COUNT(?citation) AS ?outgoing_citation_count)
-FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview>
+FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-patentsview>
 WHERE {
-  ?patent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Patent> .
-  ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/patent_title> ?patent_title .
-  ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/patent_type> ?type .
-  ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/patent_date> ?date .
+  ?patent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/type/Patent> .
+  ?patent <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/patent_title> ?patent_title .
+  ?patent <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/patent_type> ?type .
+  ?patent <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/patent_date> ?date .
   
   FILTER(CONTAINS(LCASE(?type), "utility"))
   FILTER(?date > "2000-12-31")
   
   OPTIONAL {
-    ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/has_outgoing_citation> ?citation .
+    ?patent <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/has_outgoing_citation> ?citation .
   }
 }
 GROUP BY ?patent_title
@@ -1183,15 +1183,15 @@ GROUP BY ?patent_title
 
 **Gold SPARQL:**
 ```sparql
-SELECT DISTINCT ?facility_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE {
-  ?facility <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/type/TreatmentFacility> .
+SELECT DISTINCT ?facility_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE {
+  ?facility <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/type/TreatmentFacility> .
   ?facility <http://www.w3.org/2000/01/rdf-schema#label> ?facility_name .
-  ?facility <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/accepts_payment> ?payment_type .
-  ?payment_type <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/type/PaymentType> .
-  ?payment_type <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/payment_name> "Medicaid" .
-  ?facility <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/serves_client_type> ?client_type .
-  ?client_type <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/type/ClientType> .
-  ?client_type <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/client_type_name> "Adolescents" .
+  ?facility <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/accepts_payment> ?payment_type .
+  ?payment_type <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/type/PaymentType> .
+  ?payment_type <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/payment_name> "Medicaid" .
+  ?facility <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/serves_client_type> ?client_type .
+  ?client_type <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/type/ClientType> .
+  ?client_type <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/client_type_name> "Adolescents" .
 }
 ```
 
@@ -1213,7 +1213,7 @@ facilityName: 11284
 `
 
 ```sparql
-SELECT DISTINCT ?facilityName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE { ?facility <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/type/TreatmentFacility> . ?facility <http://www.w3.org/2000/01/rdf-schema#label> ?facilityName . ?facility <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/accepts_payment> ?payment . ?payment <http://www.w3.org/2000/01/rdf-schema#label> ?paymentLabel . FILTER(CONTAINS(LCASE(?paymentLabel), "medicaid")) ?facility <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/serves_client_type> ?clientType . ?clientType <http://www.w3.org/2000/01/rdf-schema#label> ?clientLabel . FILTER(CONTAINS(LCASE(?clientLabel), "adolescents")) }
+SELECT DISTINCT ?facilityName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE { ?facility <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/type/TreatmentFacility> . ?facility <http://www.w3.org/2000/01/rdf-schema#label> ?facilityName . ?facility <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/accepts_payment> ?payment . ?payment <http://www.w3.org/2000/01/rdf-schema#label> ?paymentLabel . FILTER(CONTAINS(LCASE(?paymentLabel), "medicaid")) ?facility <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/serves_client_type> ?clientType . ?clientType <http://www.w3.org/2000/01/rdf-schema#label> ?clientLabel . FILTER(CONTAINS(LCASE(?clientLabel), "adolescents")) }
 ```
 
 **Seed 2 (wrong) — answer:** `facilityName: 11474
@@ -1234,7 +1234,7 @@ facilityName: 11528
 `
 
 ```sparql
-SELECT DISTINCT ?facilityName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE { ?facility <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/type/TreatmentFacility> . ?facility <http://www.w3.org/2000/01/rdf-schema#label> ?facilityName . ?facility <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/accepts_payment> ?payment . ?payment <http://www.w3.org/2000/01/rdf-schema#label> ?paymentLabel . FILTER(CONTAINS(LCASE(?paymentLabel), "medicaid")) ?facility <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/serves_client_type> ?clientType . ?clientType <http://www.w3.org/2000/01/rdf-schema#label> ?clientLabel . FILTER(CONTAINS(LCASE(?clientLabel), "adolescents")) }
+SELECT DISTINCT ?facilityName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE { ?facility <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/type/TreatmentFacility> . ?facility <http://www.w3.org/2000/01/rdf-schema#label> ?facilityName . ?facility <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/accepts_payment> ?payment . ?payment <http://www.w3.org/2000/01/rdf-schema#label> ?paymentLabel . FILTER(CONTAINS(LCASE(?paymentLabel), "medicaid")) ?facility <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/serves_client_type> ?clientType . ?clientType <http://www.w3.org/2000/01/rdf-schema#label> ?clientLabel . FILTER(CONTAINS(LCASE(?clientLabel), "adolescents")) }
 ```
 
 **Seed 3 (wrong) — answer:** `facilityName: 11553
@@ -1255,7 +1255,7 @@ facilityName: 11541
 `
 
 ```sparql
-SELECT DISTINCT ?facilityName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE { ?facility <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/type/TreatmentFacility> . ?facility <http://www.w3.org/2000/01/rdf-schema#label> ?facilityName . ?facility <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/accepts_payment> ?payment . ?payment <http://www.w3.org/2000/01/rdf-schema#label> ?paymentLabel . FILTER(CONTAINS(LCASE(?paymentLabel), "medicaid")) ?facility <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/serves_client_type> ?clientType . ?clientType <http://www.w3.org/2000/01/rdf-schema#label> ?clientLabel . FILTER(CONTAINS(LCASE(?clientLabel), "adolescents")) }
+SELECT DISTINCT ?facilityName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE { ?facility <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/type/TreatmentFacility> . ?facility <http://www.w3.org/2000/01/rdf-schema#label> ?facilityName . ?facility <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/accepts_payment> ?payment . ?payment <http://www.w3.org/2000/01/rdf-schema#label> ?paymentLabel . FILTER(CONTAINS(LCASE(?paymentLabel), "medicaid")) ?facility <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/serves_client_type> ?clientType . ?clientType <http://www.w3.org/2000/01/rdf-schema#label> ?clientLabel . FILTER(CONTAINS(LCASE(?clientLabel), "adolescents")) }
 ```
 
 ### 7.19 `holdout-v2-uspto-trademarks` — q-007 (T2)
@@ -1266,9 +1266,9 @@ SELECT DISTINCT ?facilityName FROM <https://omnix.dev/graphs/demo-tenant/kg/hold
 
 **Gold SPARQL:**
 ```sparql
-SELECT (COUNT(DISTINCT ?niceClass) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {
-  ?niceClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/NiceClass> .
-  ?niceClass <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/class_code> ?classCode .
+SELECT (COUNT(DISTINCT ?niceClass) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {
+  ?niceClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/NiceClass> .
+  ?niceClass <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/class_code> ?classCode .
   FILTER(xsd:integer(?classCode) > 30)
 }
 ```
@@ -1277,10 +1277,10 @@ SELECT (COUNT(DISTINCT ?niceClass) AS ?count) FROM <https://omnix.dev/graphs/dem
 
 ```sparql
 SELECT (COUNT(DISTINCT ?niceClass) AS ?count)
-FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks>
+FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks>
 WHERE {
-  ?niceClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/NiceClass> .
-  ?niceClass <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/class_code> ?code .
+  ?niceClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/NiceClass> .
+  ?niceClass <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/class_code> ?code .
   FILTER(?code > "030")
 }
 ```
@@ -1288,13 +1288,13 @@ WHERE {
 **Seed 2 (wrong) — answer:** `16`
 
 ```sparql
-SELECT (COUNT(DISTINCT ?niceClass) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { ?niceClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/NiceClass> . ?niceClass <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/class_code> ?code . FILTER(?code > "030") }
+SELECT (COUNT(DISTINCT ?niceClass) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { ?niceClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/NiceClass> . ?niceClass <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/class_code> ?code . FILTER(?code > "030") }
 ```
 
 **Seed 3 (wrong) — answer:** `16`
 
 ```sparql
-SELECT (COUNT(DISTINCT ?niceClass) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { ?niceClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/NiceClass> . ?niceClass <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/class_code> ?code . FILTER(?code > "030") }
+SELECT (COUNT(DISTINCT ?niceClass) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { ?niceClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/NiceClass> . ?niceClass <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/class_code> ?code . FILTER(?code > "030") }
 ```
 
 ### 7.20 `holdout-v2-uspto-trademarks` — q-008 (T2)
@@ -1305,9 +1305,9 @@ SELECT (COUNT(DISTINCT ?niceClass) AS ?count) FROM <https://omnix.dev/graphs/dem
 
 **Gold SPARQL:**
 ```sparql
-SELECT (COUNT(?trademark) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {
-  ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> .
-  ?trademark <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/mark_element> ?markElement .
+SELECT (COUNT(?trademark) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {
+  ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> .
+  ?trademark <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/mark_element> ?markElement .
   FILTER(?markElement = "BETTER SEX")
 }
 ```
@@ -1315,19 +1315,19 @@ SELECT (COUNT(?trademark) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/
 **Seed 1 (wrong) — answer:** `6`
 
 ```sparql
-SELECT (COUNT(DISTINCT ?trademark) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> . ?trademark <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/mark_element> ?mark_element . FILTER(CONTAINS(LCASE(?mark_element), LCASE("BETTER SEX"))) }
+SELECT (COUNT(DISTINCT ?trademark) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> . ?trademark <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/mark_element> ?mark_element . FILTER(CONTAINS(LCASE(?mark_element), LCASE("BETTER SEX"))) }
 ```
 
 **Seed 2 (wrong) — answer:** `6`
 
 ```sparql
-SELECT (COUNT(DISTINCT ?trademark) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> . ?trademark <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/mark_element> ?mark_element . FILTER(CONTAINS(LCASE(?mark_element), LCASE("BETTER SEX"))) }
+SELECT (COUNT(DISTINCT ?trademark) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> . ?trademark <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/mark_element> ?mark_element . FILTER(CONTAINS(LCASE(?mark_element), LCASE("BETTER SEX"))) }
 ```
 
 **Seed 3 (wrong) — answer:** `6`
 
 ```sparql
-SELECT (COUNT(DISTINCT ?trademark) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> . ?trademark <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/mark_element> ?mark_element . FILTER(CONTAINS(LCASE(?mark_element), LCASE("BETTER SEX"))) }
+SELECT (COUNT(DISTINCT ?trademark) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> . ?trademark <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/mark_element> ?mark_element . FILTER(CONTAINS(LCASE(?mark_element), LCASE("BETTER SEX"))) }
 ```
 
 ### 7.21 `holdout-v2-uspto-trademarks` — q-012 (T4)
@@ -1348,15 +1348,15 @@ ByTheZip.com Directory, Inc. | 1
 
 **Gold SPARQL:**
 ```sparql
-SELECT ?ownerName (AVG(?numGoodsServices) AS ?averageGoodsServices) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {
-  ?owner <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Owner> .
-  ?owner <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_name> ?ownerName .
+SELECT ?ownerName (AVG(?numGoodsServices) AS ?averageGoodsServices) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {
+  ?owner <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Owner> .
+  ?owner <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_name> ?ownerName .
   {
     SELECT ?owner (COUNT(DISTINCT ?goodsServices) AS ?numGoodsServices) WHERE {
-      ?owner <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_owns_trademark> ?trademark .
-      ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> .
-      ?trademark <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/trademark_covers_goods> ?goodsServices .
-      ?goodsServices <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/GoodsServices> .
+      ?owner <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_owns_trademark> ?trademark .
+      ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> .
+      ?trademark <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/trademark_covers_goods> ?goodsServices .
+      ?goodsServices <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/GoodsServices> .
     } GROUP BY ?owner
   }
 } GROUP BY ?ownerName
@@ -1365,17 +1365,17 @@ SELECT ?ownerName (AVG(?numGoodsServices) AS ?averageGoodsServices) FROM <https:
 **Seed 1 (wrong) — answer:** `1.64769647696476964770`
 
 ```sparql
-SELECT (AVG(?goodsCount) AS ?averageGoodsPerOwner) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { { SELECT ?owner (COUNT(DISTINCT ?goods) AS ?goodsCount) WHERE { ?owner <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Owner> . ?owner <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_owns_trademark> ?trademark . ?trademark <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/trademark_covers_goods> ?goods . } GROUP BY ?owner } }
+SELECT (AVG(?goodsCount) AS ?averageGoodsPerOwner) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { { SELECT ?owner (COUNT(DISTINCT ?goods) AS ?goodsCount) WHERE { ?owner <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Owner> . ?owner <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_owns_trademark> ?trademark . ?trademark <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/trademark_covers_goods> ?goods . } GROUP BY ?owner } }
 ```
 
 **Seed 2 (wrong) — answer:** `1.64769647696476964770`
 
 ```sparql
-SELECT (AVG(?goodsCount) AS ?averageGoodsPerOwner) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { { SELECT ?owner (COUNT(DISTINCT ?goods) AS ?goodsCount) WHERE { ?owner <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Owner> . ?owner <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_owns_trademark> ?trademark . ?trademark <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/trademark_covers_goods> ?goods . } GROUP BY ?owner } }
+SELECT (AVG(?goodsCount) AS ?averageGoodsPerOwner) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { { SELECT ?owner (COUNT(DISTINCT ?goods) AS ?goodsCount) WHERE { ?owner <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Owner> . ?owner <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_owns_trademark> ?trademark . ?trademark <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/trademark_covers_goods> ?goods . } GROUP BY ?owner } }
 ```
 
 **Seed 3 (wrong) — answer:** `1.64769647696476964770`
 
 ```sparql
-SELECT (AVG(?goodsCount) AS ?averageGoodsPerOwner) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { { SELECT ?owner (COUNT(DISTINCT ?goods) AS ?goodsCount) WHERE { ?owner <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Owner> . ?owner <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_owns_trademark> ?trademark . ?trademark <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/trademark_covers_goods> ?goods . } GROUP BY ?owner } }
+SELECT (AVG(?goodsCount) AS ?averageGoodsPerOwner) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { { SELECT ?owner (COUNT(DISTINCT ?goods) AS ?goodsCount) WHERE { ?owner <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Owner> . ?owner <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_owns_trademark> ?trademark . ?trademark <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/trademark_covers_goods> ?goods . } GROUP BY ?owner } }
 ```

@@ -27,7 +27,7 @@ diffing snapshots.
 For a value change on ``(subject, predicate)`` from ``old`` to ``new`` at
 ``changed_at`` the history graph holds::
 
-    <https://graph.onta.sh/history/ver/{sha1(s|p|old|new|ts)}>
+    <https://graph.infona.ai/history/ver/{sha1(s|p|old|new|ts)}>
         hist:subject    <s> ;
         hist:predicate  <p> ;
         hist:oldValue   old ;                       # literal or URI, as written

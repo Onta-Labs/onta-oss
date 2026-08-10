@@ -38,7 +38,7 @@ Justification for that ordering:
   is total. (Two claims that tie on value are the SAME fact, i.e. not a conflict.)
 
 Boundary: OSS. Imports only stdlib / ``infona_client.*`` (``api_registry.spec``
-for the shared authority scale). No ``from cograph.*``.
+for the shared authority scale). No ``from infona.*``.
 """
 
 from __future__ import annotations

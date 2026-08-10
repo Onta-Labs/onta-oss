@@ -77,7 +77,7 @@ class PostgresJobStore:
     cloud-provider ARNs, account IDs, or hostnames live here.
     """
 
-    _TABLE = "cograph_jobs"
+    _TABLE = "infona_jobs"
 
     def __init__(self, dsn: Optional[str] = None) -> None:
         self._dsn = dsn if dsn is not None else settings.database_url

@@ -1,7 +1,7 @@
-"""Operator-only routes (ONTA staff / ``@onta.team``).
+"""Operator-only routes (Infona staff / ``@infona.ai``).
 
 Visibility is gated on :attr:`TenantContext.is_operator`, which the auth
-provider sets from a *verified* ``@onta.team`` email (or allowlist /
+provider sets from a *verified* ``@infona.ai`` email (or allowlist /
 ``public_metadata.is_operator``) — never from a client-supplied flag
 (ONTA-234). Non-operators receive 403; missing jobs 404.
 

@@ -63,7 +63,7 @@ def _skill(slug="notes", type_name="Person", layer=Layer.TENANT, **kw):
 def _stack(entitled=False):
     from infona_client.graph.layers import LayerStack
 
-    return LayerStack(tenant_graph_uri="https://graph.onta.sh/graphs/t1", entitled=entitled)
+    return LayerStack(tenant_graph_uri="https://graph.infona.ai/graphs/t1", entitled=entitled)
 
 
 # --------------------------------------------------------------------------- #
@@ -653,11 +653,11 @@ def test_routes_require_authentication(client):
 # --------------------------------------------------------------------------- #
 # Boundary
 # --------------------------------------------------------------------------- #
-#: An actual import STATEMENT of the proprietary `cograph.` package — anchored
+#: An actual import STATEMENT of the proprietary `infona.` package — anchored
 #: at line start so a prose mention of the rule inside a docstring (which every
 #: module in this package carries) is not a false positive, and `infona_client`
 #: is excluded by the required dot.
-_PROPRIETARY_IMPORT = re.compile(r"^\s*(?:from|import)\s+cograph\.", re.MULTILINE)
+_PROPRIETARY_IMPORT = re.compile(r"^\s*(?:from|import)\s+infona\.", re.MULTILINE)
 
 
 def test_skills_package_never_imports_the_proprietary_tree():
@@ -676,7 +676,7 @@ def test_skills_package_never_imports_the_proprietary_tree():
 
 def test_the_proprietary_import_guard_can_actually_fail():
     """Keep the guard above honest — a planted violation must trip it."""
-    assert _PROPRIETARY_IMPORT.search("from cograph.enrichment import x")
-    assert _PROPRIETARY_IMPORT.search("import cograph.qc")
+    assert _PROPRIETARY_IMPORT.search("from infona.enrichment import x")
+    assert _PROPRIETARY_IMPORT.search("import infona.qc")
     assert not _PROPRIETARY_IMPORT.search("from infona_client.config import settings")
-    assert not _PROPRIETARY_IMPORT.search("Boundary: OSS — no ``from cograph.*``.")
+    assert not _PROPRIETARY_IMPORT.search("Boundary: OSS — no ``from infona.*``.")

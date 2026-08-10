@@ -50,7 +50,7 @@ from infona_client.normalization.clean import (
 from infona_client.resolver.models import RejectedValue, ValidatedTriple
 from infona_client.resolver.validator import validate_triple
 
-SUBJ = "https://graph.onta.sh/entities/Event/e1"
+SUBJ = "https://graph.infona.ai/entities/Event/e1"
 
 
 # --------------------------------------------------------------------------- #
@@ -230,7 +230,7 @@ class PyoxiNeptune:
 @pytest.fixture(autouse=True)
 def _er_disabled(monkeypatch):
     """Deterministic URIs (no signal-hash suffixes) — ER off, restored at teardown."""
-    monkeypatch.setenv("COGRAPH_ER_ENABLED", "0")
+    monkeypatch.setenv("INFONA_ER_ENABLED", "0")
 
 
 def _make_resolver(neptune) -> SchemaResolver:

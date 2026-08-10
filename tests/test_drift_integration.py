@@ -3,7 +3,7 @@
 The FOUNDATION (``infona_client/resolver/drift_control.py``) is the pure
 decision logic; these tests cover the INTEGRATION — the support floor reaching
 the Explorer's overview edges and the recompute drift report. Everything is
-gated behind ``OMNIX_DRIFT_CONTROL``: with the flag OFF the endpoints behave
+gated behind ``INFONA_DRIFT_CONTROL``: with the flag OFF the endpoints behave
 byte-identically to before (a 6%-coverage drift edge is still drawn, recompute
 returns no ``drift`` key); with it ON the drift edge is excluded while a 100%
 edge and a core-slot edge survive.
@@ -23,8 +23,8 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi.testclient import TestClient
 
-os.environ["OMNIX_API_KEYS"] = '{"test-key": "test-tenant"}'
-os.environ["OMNIX_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
+os.environ["INFONA_API_KEYS"] = '{"test-key": "test-tenant"}'
+os.environ["INFONA_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
 
 from infona_client.api.app import create_app
 from infona_client.api.routes import explore
@@ -32,8 +32,8 @@ from infona_client.graph.client import NeptuneClient
 
 TENANT = "test-tenant"
 KG = "test"
-TYPES = "https://graph.onta.sh/types/"
-ENTITIES = "https://graph.onta.sh/entities/"
+TYPES = "https://graph.infona.ai/types/"
+ENTITIES = "https://graph.infona.ai/entities/"
 RDF_TYPE = explore.RDF_TYPE
 CORE_SLOT = explore._CORE_SLOT_PRED
 
@@ -120,7 +120,7 @@ def test_flag_off_keeps_low_coverage_edge(client, mock_neptune, auth_headers, mo
     The 6%-coverage MPN->Retailer drift edge must still be present (today's
     behavior is preserved exactly when the flag is unset).
     """
-    monkeypatch.delenv("OMNIX_DRIFT_CONTROL", raising=False)
+    monkeypatch.delenv("INFONA_DRIFT_CONTROL", raising=False)
     mock_neptune.query.side_effect = _edges_router()
 
     resp = client.get(f"/graphs/{TENANT}/explore/kgs/{KG}/type-edges", headers=auth_headers)
@@ -139,7 +139,7 @@ def test_flag_on_excludes_low_coverage_edge(client, mock_neptune, auth_headers, 
     (604/604) clears it. SKU.issued_by has 0 support but is a core slot, so it
     is exempt and stays drawn.
     """
-    monkeypatch.setenv("OMNIX_DRIFT_CONTROL", "1")
+    monkeypatch.setenv("INFONA_DRIFT_CONTROL", "1")
     mock_neptune.query.side_effect = _edges_router(core_slots=(SKU_ISSUED_BY,))
 
     resp = client.get(f"/graphs/{TENANT}/explore/kgs/{KG}/type-edges", headers=auth_headers)
@@ -159,8 +159,8 @@ def test_observe_only_does_not_filter_overview(client, mock_neptune, auth_header
     still be drawn, exactly as when the feature is off. This is the de-risking
     mode: measure before you filter.
     """
-    monkeypatch.setenv("OMNIX_DRIFT_CONTROL", "1")
-    monkeypatch.setenv("OMNIX_DRIFT_OBSERVE_ONLY", "1")
+    monkeypatch.setenv("INFONA_DRIFT_CONTROL", "1")
+    monkeypatch.setenv("INFONA_DRIFT_OBSERVE_ONLY", "1")
     mock_neptune.query.side_effect = _edges_router(core_slots=(SKU_ISSUED_BY,))
 
     resp = client.get(f"/graphs/{TENANT}/explore/kgs/{KG}/type-edges", headers=auth_headers)
@@ -178,7 +178,7 @@ def test_flag_on_without_core_marker_excludes_zero_support(client, mock_neptune,
     Confirms the core-slot exemption is what saves the SKU edge, not some
     accidental pass-through — without the marker a 0-support edge quarantines.
     """
-    monkeypatch.setenv("OMNIX_DRIFT_CONTROL", "1")
+    monkeypatch.setenv("INFONA_DRIFT_CONTROL", "1")
     mock_neptune.query.side_effect = _edges_router(core_slots=())  # nothing marked core
 
     resp = client.get(f"/graphs/{TENANT}/explore/kgs/{KG}/type-edges", headers=auth_headers)
@@ -196,7 +196,7 @@ def test_flag_on_without_core_marker_excludes_zero_support(client, mock_neptune,
 # back to the live instance scan, which must apply the SAME floor when the flag
 # is ON. Instance predicates are minted as `…/onto/<predName>`; the matching
 # core-slot marker lives at `…/types/<srcLeaf>/attrs/<predName>`.
-ONTO = "https://graph.onta.sh/onto/"
+ONTO = "https://graph.infona.ai/onto/"
 MPN_ISSUEDBY_ONTO = ONTO + "issuedby"          # MPN instances: 41/685 -> 6%
 RSKU_ISSUEDBY_ONTO = ONTO + "issuedby"          # RetailerSKU: 600/600 -> 100%
 SKU_ISSUED_BY_ONTO = ONTO + "issued_by"         # SKU core slot, 0/604 -> exempt
@@ -252,7 +252,7 @@ def test_flag_on_live_scan_excludes_low_coverage_edge(client, mock_neptune, auth
     — the production gap this fixes — while the 100% RetailerSKU edge (600/600)
     is kept.
     """
-    monkeypatch.setenv("OMNIX_DRIFT_CONTROL", "1")
+    monkeypatch.setenv("INFONA_DRIFT_CONTROL", "1")
     mock_neptune.query.side_effect = _live_scan_router()
 
     resp = client.get(f"/graphs/{TENANT}/explore/kgs/{KG}/type-edges", headers=auth_headers)
@@ -270,7 +270,7 @@ def test_flag_on_live_scan_core_slot_exempt(client, mock_neptune, auth_headers, 
     declared even on the live scan. Confirms the live scan reads the ontology
     core-slot marker (keyed by attr_uri) the same way the stats path does.
     """
-    monkeypatch.setenv("OMNIX_DRIFT_CONTROL", "1")
+    monkeypatch.setenv("INFONA_DRIFT_CONTROL", "1")
     mock_neptune.query.side_effect = _live_scan_router(core_slots=(SKU_ISSUED_BY_ATTR,))
 
     resp = client.get(f"/graphs/{TENANT}/explore/kgs/{KG}/type-edges", headers=auth_headers)
@@ -290,7 +290,7 @@ def test_flag_off_live_scan_keeps_low_coverage_edge(client, mock_neptune, auth_h
     still drawn. Routed via the plain instance scan (``?e ?p ?o`` over the KG,
     no aggregation), which the OFF path uses when stats are absent.
     """
-    monkeypatch.delenv("OMNIX_DRIFT_CONTROL", raising=False)
+    monkeypatch.delenv("INFONA_DRIFT_CONTROL", raising=False)
 
     def route(sparql, *a, **k):
         # Plain stats read (forType + targetType, no forPred) — empty so the
@@ -344,7 +344,7 @@ def _recompute_router(*, core_slots=()):
 @pytest.mark.asyncio
 async def test_recompute_no_drift_key_when_flag_off(mock_neptune, monkeypatch):
     """Flag OFF: ``recompute_kg_stats`` returns the unchanged dict (no ``drift``)."""
-    monkeypatch.delenv("OMNIX_DRIFT_CONTROL", raising=False)
+    monkeypatch.delenv("INFONA_DRIFT_CONTROL", raising=False)
     mock_neptune.query.side_effect = _recompute_router()
 
     out = await explore.recompute_kg_stats(mock_neptune, TENANT, KG)
@@ -359,7 +359,7 @@ async def test_recompute_drift_report_when_flag_on(mock_neptune, monkeypatch):
     MPN.issuedby (41/685, 6%) quarantines; RetailerSKU.issuedby (604/604)
     declares. The report shape matches ``drift_control.drift_report``.
     """
-    monkeypatch.setenv("OMNIX_DRIFT_CONTROL", "1")
+    monkeypatch.setenv("INFONA_DRIFT_CONTROL", "1")
     mock_neptune.query.side_effect = _recompute_router()
 
     out = await explore.recompute_kg_stats(mock_neptune, TENANT, KG)
@@ -385,8 +385,8 @@ async def test_recompute_drift_report_in_observe_only(mock_neptune, monkeypatch)
     relationship (kept + quarantined), the histogram source for setting the floor
     from real data.
     """
-    monkeypatch.setenv("OMNIX_DRIFT_CONTROL", "1")
-    monkeypatch.setenv("OMNIX_DRIFT_OBSERVE_ONLY", "1")
+    monkeypatch.setenv("INFONA_DRIFT_CONTROL", "1")
+    monkeypatch.setenv("INFONA_DRIFT_OBSERVE_ONLY", "1")
     mock_neptune.query.side_effect = _recompute_router()
 
     out = await explore.recompute_kg_stats(mock_neptune, TENANT, KG)
@@ -444,7 +444,7 @@ def test_flag_on_stats_sparse_core_slot_kept_via_attr_uri(client, mock_neptune, 
     instance URI (…/onto/issuedby), so this only passes with the attr_uri join —
     the old ``pred in core_slots`` comparison would wrongly drop it.
     """
-    monkeypatch.setenv("OMNIX_DRIFT_CONTROL", "1")
+    monkeypatch.setenv("INFONA_DRIFT_CONTROL", "1")
     mock_neptune.query.side_effect = _edges_drift_core_router(core_slots=(MPNCORE_ISSUEDBY_ATTR,))
 
     resp = client.get(f"/graphs/{TENANT}/explore/kgs/{KG}/type-edges", headers=auth_headers)
@@ -460,7 +460,7 @@ def test_flag_on_stats_sparse_non_core_slot_excluded(client, mock_neptune, auth_
     The companion to the test above — confirms 6% coverage is genuinely below the
     floor, so the core-slot exemption (not some pass-through) is what saved it.
     """
-    monkeypatch.setenv("OMNIX_DRIFT_CONTROL", "1")
+    monkeypatch.setenv("INFONA_DRIFT_CONTROL", "1")
     mock_neptune.query.side_effect = _edges_drift_core_router(core_slots=())  # nothing marked core
 
     resp = client.get(f"/graphs/{TENANT}/explore/kgs/{KG}/type-edges", headers=auth_headers)
@@ -502,7 +502,7 @@ async def test_recompute_sparse_core_slot_kept_not_quarantined(mock_neptune, mon
     instance URI, so this passes only with the attr_uri join in
     _build_drift_report — the old ``pred_uri in core_slots`` would quarantine it.
     """
-    monkeypatch.setenv("OMNIX_DRIFT_CONTROL", "1")
+    monkeypatch.setenv("INFONA_DRIFT_CONTROL", "1")
     mock_neptune.query.side_effect = _recompute_core_router(core_slots=(MPNCORE_ISSUEDBY_ATTR,))
 
     out = await explore.recompute_kg_stats(mock_neptune, TENANT, KG)
@@ -520,7 +520,7 @@ async def test_recompute_sparse_non_core_slot_quarantined(mock_neptune, monkeypa
     without the core marker it is held for review — proving the exemption (not a
     pass-through) is what kept the core case.
     """
-    monkeypatch.setenv("OMNIX_DRIFT_CONTROL", "1")
+    monkeypatch.setenv("INFONA_DRIFT_CONTROL", "1")
     mock_neptune.query.side_effect = _recompute_core_router(core_slots=())  # nothing marked core
 
     out = await explore.recompute_kg_stats(mock_neptune, TENANT, KG)
@@ -554,7 +554,7 @@ def _history_inserts(mock_neptune):
 @pytest.mark.asyncio
 async def test_recompute_persists_drift_history_when_flag_on(mock_neptune, monkeypatch):
     """Flag ON: the recompute appends a snapshot + per-relationship points to the history graph."""
-    monkeypatch.setenv("OMNIX_DRIFT_CONTROL", "1")
+    monkeypatch.setenv("INFONA_DRIFT_CONTROL", "1")
     mock_neptune.query.side_effect = _recompute_router()
 
     await explore.recompute_kg_stats(mock_neptune, TENANT, KG)
@@ -564,8 +564,8 @@ async def test_recompute_persists_drift_history_when_flag_on(mock_neptune, monke
     body = inserts[0]
     assert body.startswith("INSERT DATA")          # APPEND, never DROP+rewrite
     assert "DROP" not in body
-    assert "https://graph.onta.sh/drift/recordedAt" in body   # snapshot node
-    assert "https://graph.onta.sh/drift/pointOf" in body      # at least one point
+    assert "https://graph.infona.ai/drift/recordedAt" in body   # snapshot node
+    assert "https://graph.infona.ai/drift/pointOf" in body      # at least one point
     # Both relationships from the distribution are persisted (kept + quarantined).
     assert "MPN.issuedby" in body
     assert "RetailerSKU.issuedby" in body
@@ -579,8 +579,8 @@ async def test_recompute_persists_drift_history_in_observe_only(mock_neptune, mo
     overview, so the durable write must happen here too (it previously only
     landed in 30-day logs).
     """
-    monkeypatch.setenv("OMNIX_DRIFT_CONTROL", "1")
-    monkeypatch.setenv("OMNIX_DRIFT_OBSERVE_ONLY", "1")
+    monkeypatch.setenv("INFONA_DRIFT_CONTROL", "1")
+    monkeypatch.setenv("INFONA_DRIFT_OBSERVE_ONLY", "1")
     mock_neptune.query.side_effect = _recompute_router()
 
     await explore.recompute_kg_stats(mock_neptune, TENANT, KG)
@@ -594,7 +594,7 @@ async def test_recompute_persists_drift_history_in_observe_only(mock_neptune, mo
 @pytest.mark.asyncio
 async def test_recompute_no_drift_history_when_flag_off(mock_neptune, monkeypatch):
     """Flag OFF: no drift report is built, so nothing is written to the history graph."""
-    monkeypatch.delenv("OMNIX_DRIFT_CONTROL", raising=False)
+    monkeypatch.delenv("INFONA_DRIFT_CONTROL", raising=False)
     mock_neptune.query.side_effect = _recompute_router()
 
     await explore.recompute_kg_stats(mock_neptune, TENANT, KG)
@@ -609,7 +609,7 @@ async def test_drift_history_persist_failure_does_not_break_recompute(mock_neptu
     Persistence is observability, not correctness; a Neptune hiccup on the
     drift-history INSERT must never fail an ingest/recompute.
     """
-    monkeypatch.setenv("OMNIX_DRIFT_CONTROL", "1")
+    monkeypatch.setenv("INFONA_DRIFT_CONTROL", "1")
     mock_neptune.query.side_effect = _recompute_router()
 
     def update_router(sparql, *a, **k):
@@ -635,7 +635,7 @@ async def test_drop_kg_stats_drops_drift_history_graph(mock_neptune):
 
 def test_get_drift_history_reassembles_snapshots(client, mock_neptune, auth_headers):
     """The read endpoint groups flat (snapshot × point) rows back into nested snapshots."""
-    snap = "https://graph.onta.sh/drift/snap/abc"
+    snap = "https://graph.infona.ai/drift/snap/abc"
 
     def route(sparql, *a, **k):
         if HIST_GRAPH in sparql:

@@ -253,7 +253,7 @@ async def test_store_save_is_idempotent_no_stale_fields():
 
     await store.save(TENANT, replace(policy, mode=MODE_OFF))
 
-    graph = neptune.quads["https://graph.onta.sh/graphs/t1"]
+    graph = neptune.quads["https://graph.infona.ai/graphs/t1"]
     mode_triples = [t for t in graph if t[0] == policy.uri and t[1].endswith("/mode")]
     assert len(mode_triples) == 1 and mode_triples[0][2] == MODE_OFF
 
@@ -266,8 +266,8 @@ async def test_store_lists_only_policy_typed_subjects():
     """The list query is typed on <CleanPolicy>, so an unrelated subject sharing
     the ontology graph is never mistaken for a policy."""
     neptune = _FakeNeptune()
-    neptune.quads.setdefault("https://graph.onta.sh/graphs/t1", set()).add(
-        ("https://graph.onta.sh/entities/Person/1", RDF_TYPE, "https://graph.onta.sh/types/Person")
+    neptune.quads.setdefault("https://graph.infona.ai/graphs/t1", set()).add(
+        ("https://graph.infona.ai/entities/Person/1", RDF_TYPE, "https://graph.infona.ai/types/Person")
     )
     store = CleanPolicyStore(neptune)
     await store.save(TENANT, CleanPolicy(kg_name=KG, type_name="Person"))

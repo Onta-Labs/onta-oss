@@ -6,7 +6,7 @@ router-readable description plus a *declarative call recipe* that the generic
 as versioned JSON data files (OSS ``data/`` seed + premium overlay); this module
 owns the in-memory shape, (de)serialization, and validation.
 
-Everything here is pure data + stdlib — no network, no ``cograph.*`` import — so
+Everything here is pure data + stdlib — no network, no ``infona.*`` import — so
 the OSS package stays importable on its own and the boundary guard is happy.
 
 Design notes

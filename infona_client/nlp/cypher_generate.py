@@ -11,7 +11,7 @@ Provides:
 3. Ontology text formatting from :func:`ontology_catalog.schema_types_for_kg`
    summaries (when a store is present).
 
-When ``COGRAPH_GRAPH_BACKEND=neo4j``, the pipeline tries fixtures first, then
+When ``INFONA_GRAPH_BACKEND=neo4j``, the pipeline tries fixtures first, then
 falls back to the LLM Cypher prompt path if API keys exist. Fixtures prefer
 allowlisted semantic templates so Memory and Neo4j both execute without
 free-form Cypher. Neptune SPARQL remains the default when backend != neo4j.
@@ -613,7 +613,7 @@ def neo4j_ask_enabled(*, explicit: bool | None = None) -> bool:
     """True when the NL path should generate Cypher instead of SPARQL.
 
     ``explicit`` overrides the env switch when the caller passes a flag.
-    Default follows ``COGRAPH_GRAPH_BACKEND=neo4j``.
+    Default follows ``INFONA_GRAPH_BACKEND=neo4j``.
     """
     if explicit is not None:
         return bool(explicit)
@@ -624,7 +624,7 @@ def neo4j_ask_enabled(*, explicit: bool | None = None) -> bool:
     except Exception:
         import os
 
-        return (os.environ.get("COGRAPH_GRAPH_BACKEND") or "neptune").strip().lower() == "neo4j"
+        return (os.environ.get("INFONA_GRAPH_BACKEND") or "neptune").strip().lower() == "neo4j"
 
 
 __all__ = [

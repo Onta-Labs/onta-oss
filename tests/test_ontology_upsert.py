@@ -14,7 +14,7 @@ from infona_client.graph.ontology_queries import (
     XSD,
 )
 
-GRAPH = "https://graph.onta.sh/graphs/test"
+GRAPH = "https://graph.infona.ai/graphs/test"
 
 
 def test_upsert_type_description_replaces_not_appends():

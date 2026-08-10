@@ -2,9 +2,9 @@
 ``create_knowledge_graph``, ``delete_knowledge_graph``, ``list_jobs`` and
 ``get_job``.
 
-Like ``test_mcp_agent_route.py``, the OSS MCP server (``packages/cograph-mcp``)
+Like ``test_mcp_agent_route.py``, the OSS MCP server (``packages/mcp``)
 is a thin TypeScript client over the HTTP API — each tool calls a canonical
-route via the ``cograph`` SDK. The tool itself is exercised by the npm
+route via the ``infona`` SDK. The tool itself is exercised by the npm
 typecheck + build in CI; here we lock the request/response *contract* each tool
 depends on, through the FastAPI ``TestClient`` (the same path the SDK hits), with
 Neptune mocked so the suite is deterministic and offline.
@@ -23,8 +23,8 @@ import os
 import re
 from pathlib import Path
 
-os.environ.setdefault("OMNIX_API_KEYS", '{"test-key": "test-tenant"}')
-os.environ.setdefault("OMNIX_NEPTUNE_ENDPOINT", "http://fake:8182")
+os.environ.setdefault("INFONA_API_KEYS", '{"test-key": "test-tenant"}')
+os.environ.setdefault("INFONA_NEPTUNE_ENDPOINT", "http://fake:8182")
 
 HEADERS = {"X-API-Key": "test-key"}
 TENANT = "test-tenant"
@@ -32,7 +32,7 @@ TENANT = "test-tenant"
 _MCP_INDEX = (
     Path(__file__).resolve().parent.parent
     / "packages"
-    / "cograph-mcp"
+    / "mcp"
     / "src"
     / "index.ts"
 )
@@ -96,7 +96,7 @@ def test_search_tool_target_contract(monkeypatch, client, auth_headers):
         reset_semantic_index,
     )
 
-    monkeypatch.setenv("COGRAPH_SEMANTIC_INDEX_ENABLED", "true")
+    monkeypatch.setenv("INFONA_SEMANTIC_INDEX_ENABLED", "true")
     reset_semantic_index()
     index = InMemorySemanticIndex()
     register_semantic_index(index)
@@ -144,7 +144,7 @@ def test_search_tool_disabled_deployment_degrades_not_503(monkeypatch, client, a
     search (200 + degraded=true) instead of 503 — so the MCP `search` tool
     still returns a usable, honestly-badged result instead of a hard failure.
     The response keeps the canonical envelope the tool renders."""
-    monkeypatch.delenv("COGRAPH_SEMANTIC_INDEX_ENABLED", raising=False)
+    monkeypatch.delenv("INFONA_SEMANTIC_INDEX_ENABLED", raising=False)
     resp = client.post(
         f"/graphs/{TENANT}/search", json={"query": "anything"}, headers=auth_headers
     )

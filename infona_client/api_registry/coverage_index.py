@@ -27,7 +27,7 @@ Design:
 Process-local for v1 (an in-memory dict is plenty at hundreds of entries); a
 disk/pgvector store can follow under ONTA-341 without changing this interface.
 
-Pure ``infona_client.*`` + stdlib + numpy — no ``from cograph.*``.
+Pure ``infona_client.*`` + stdlib + numpy — no ``from infona.*``.
 """
 
 from __future__ import annotations

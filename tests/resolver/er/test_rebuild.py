@@ -132,7 +132,7 @@ def _sig_rows(entity: str, **signals) -> list[dict]:
     for name, value in signals.items():
         rows.append({
             "entity": {"value": entity},
-            "p": {"value": f"https://graph.onta.sh/er/erSignal_{name}"},
+            "p": {"value": f"https://graph.infona.ai/er/erSignal_{name}"},
             "o": {"value": value},
         })
     return rows
@@ -151,7 +151,7 @@ async def test_rebuild_type_merges_and_reports() -> None:
     client = _FakeNeptune(rows)
     report = await rebuild_type(
         client, "graph:hotel", "Person",
-        "https://graph.onta.sh/types/Person", DEFAULT_GUEST_CONFIG,
+        "https://graph.infona.ai/types/Person", DEFAULT_GUEST_CONFIG,
     )
     assert report["entities_before"] == 3
     assert report["entities_after"] == 2          # johnA + johnB collapse; other stays
@@ -171,7 +171,7 @@ async def test_rebuild_type_idempotent_on_distinct_population() -> None:
     client = _FakeNeptune(rows)
     report = await rebuild_type(
         client, "graph:hotel", "Person",
-        "https://graph.onta.sh/types/Person", DEFAULT_GUEST_CONFIG,
+        "https://graph.infona.ai/types/Person", DEFAULT_GUEST_CONFIG,
     )
     assert report["fragments_absorbed"] == 0
     assert report["entities_after"] == 2

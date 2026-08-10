@@ -17,7 +17,7 @@ from infona_client.resolver.models import (
     ValidationOutcome,
 )
 
-logger = structlog.stdlib.get_logger("cograph.resolver.validator")
+logger = structlog.stdlib.get_logger("infona.resolver.validator")
 
 
 def coerce_value(value: str, target_datatype: str) -> str | None:

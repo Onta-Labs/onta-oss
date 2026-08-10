@@ -5,20 +5,11 @@ import { spawn } from "node:child_process";
 import { stdout } from "node:process";
 import { writeConfig, configPathForDisplay, isClerkUserId } from "./config.js";
 
-// Precedence: INFONA_ → ONTA_ → COGRAPH_ (legacy) → the live app at infona.ai.
-const WEB_URL =
-  process.env.INFONA_WEB_URL ||
-  process.env.ONTA_WEB_URL ||
-  process.env.COGRAPH_WEB_URL ||
-  "https://infona.ai";
+const WEB_URL = process.env.INFONA_WEB_URL || "https://infona.ai";
 
 // Same default as Client — used when resolving the first workspace after login.
 const DEFAULT_API_URL =
-  process.env.INFONA_API_URL ||
-  process.env.ONTA_API_URL ||
-  process.env.COGRAPH_API_URL ||
-  process.env.OMNIX_API_URL ||
-  "https://api.infona.ai";
+  process.env.INFONA_API_URL || "https://api.infona.ai";
 
 interface CallbackPayload {
   state?: string;
@@ -67,7 +58,7 @@ async function resolveWorkspaceId(apiKey: string): Promise<string | undefined> {
 /**
  * Browser-redirect login flow. Starts a one-shot local HTTP server, opens
  * the user's browser to /cli-login on the web app, and waits for the page
- * to POST back the API key. Saves the result to ~/.onta/config.json.
+ * to POST back the API key. Saves the result to ~/.infona/config.json.
  */
 export async function runLogin(): Promise<void> {
   const state = randomBytes(24).toString("hex");
@@ -133,7 +124,7 @@ export async function runLogin(): Promise<void> {
     stdout.write(
       `  ✓ Logged in${result.email ? ` as ${result.email}` : ""}. Key saved to ${configPathForDisplay()}\n` +
         `    Default workspace: ${workspaceId}\n` +
-        `    (override with INFONA_TENANT or \`onta use\`)\n\n`,
+        `    (override with INFONA_TENANT or \`infona use\`)\n\n`,
     );
   } else {
     stdout.write(

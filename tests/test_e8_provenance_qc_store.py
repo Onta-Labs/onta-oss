@@ -2,7 +2,7 @@
 
 Covers:
 * ProvEvent assert / tombstone / rewrite with fact_hash + ABOUT subject_id
-* COGRAPH_PROVENANCE_ENABLED and COGRAPH_PROVENANCE_STORE_ALWAYS gates
+* INFONA_PROVENANCE_ENABLED and INFONA_PROVENANCE_STORE_ALWAYS gates
 * AttrCitation write helper (enrichment source_url style) + attr_meta parse
 * Store-path check_invariants (missing primary_type, orphan rel, unscoped rel)
 * ADR 0013 dual-write skew (INSTANCE_OF without type Assertion)
@@ -51,21 +51,21 @@ def _graph(tenant: str = "demo-tenant", kg: str = "bookstore") -> str:
 
 
 def test_provenance_gate_store_always(monkeypatch):
-    monkeypatch.delenv("COGRAPH_PROVENANCE_ENABLED", raising=False)
-    monkeypatch.delenv("COGRAPH_PROVENANCE_STORE_ALWAYS", raising=False)
+    monkeypatch.delenv("INFONA_PROVENANCE_ENABLED", raising=False)
+    monkeypatch.delenv("INFONA_PROVENANCE_STORE_ALWAYS", raising=False)
     assert _provenance_enabled() is False
     assert _provenance_enabled(store_path=True) is False
 
-    monkeypatch.setenv("COGRAPH_PROVENANCE_STORE_ALWAYS", "1")
+    monkeypatch.setenv("INFONA_PROVENANCE_STORE_ALWAYS", "1")
     assert _provenance_enabled() is False
     assert _provenance_enabled(store_path=True) is True
 
-    monkeypatch.setenv("COGRAPH_PROVENANCE_ENABLED", "1")
+    monkeypatch.setenv("INFONA_PROVENANCE_ENABLED", "1")
     assert _provenance_enabled(store_path=False) is True
 
 
 def test_assert_tombstone_rewrite_prov_events(store, monkeypatch):
-    monkeypatch.setenv("COGRAPH_PROVENANCE_ENABLED", "1")
+    monkeypatch.setenv("INFONA_PROVENANCE_ENABLED", "1")
 
     async def run():
         sid = entity_uri("Person", "e8-alice")
@@ -129,8 +129,8 @@ def test_assert_tombstone_rewrite_prov_events(store, monkeypatch):
 
 
 def test_store_always_writes_assert_without_global_flag(store, monkeypatch):
-    monkeypatch.delenv("COGRAPH_PROVENANCE_ENABLED", raising=False)
-    monkeypatch.setenv("COGRAPH_PROVENANCE_STORE_ALWAYS", "1")
+    monkeypatch.delenv("INFONA_PROVENANCE_ENABLED", raising=False)
+    monkeypatch.setenv("INFONA_PROVENANCE_STORE_ALWAYS", "1")
 
     async def run():
         sid = entity_uri("Person", "always-on")

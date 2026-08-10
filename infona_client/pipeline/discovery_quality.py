@@ -15,7 +15,7 @@ cannot:
      (or the full path collapsed). Prefer the catalog-path surface as survivor;
      never merge two distinct catalog paths.
 
-Pure OSS: stdlib only, no I/O, no ``from cograph.*``. Unit-testable in isolation.
+Pure OSS: stdlib only, no I/O, no ``from infona.*``. Unit-testable in isolation.
 Called from ``web_ingest_cap`` AFTER A1 validators and BEFORE the SourceBundle so
 garbage never reaches structured write or the soft reifier.
 

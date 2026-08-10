@@ -132,7 +132,7 @@ class TestSaaSTypeHierarchyPure:
 # ---------------------------------------------------------------------------
 
 
-TYPES_NS = "https://graph.onta.sh/types/"
+TYPES_NS = "https://graph.infona.ai/types/"
 RDF_TYPE_FULL = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_SUBCLASS = "http://www.w3.org/2000/01/rdf-schema#subClassOf"
 
@@ -194,7 +194,7 @@ class TestSubclassClosureRewrite:
         assert f"{RDFS_SUBCLASS}>*" in out
 
     def test_non_type_uri_not_rewritten(self):
-        """Only objects under the graph.onta.sh/types/ namespace trigger rewriting.
+        """Only objects under the graph.infona.ai/types/ namespace trigger rewriting.
         Other rdf:type usages (e.g., rdfs:Class, owl:Thing) must be left alone.
         """
         from infona_client.graph.ontology_queries import rewrite_type_predicate_to_closure
@@ -266,9 +266,9 @@ class TestERMergeViaHierarchy:
         entity2 = _make_subscriber(SHARED_EMAIL, "Alice K.")
 
         type_name = "TrialSubscriber"
-        type_uri_str = f"https://graph.onta.sh/types/{type_name}"
-        instance_graph = "https://graph.onta.sh/graphs/test-tenant"
-        entity1_uri = f"https://graph.onta.sh/entities/{type_name}/alice_startup_io"
+        type_uri_str = f"https://graph.infona.ai/types/{type_name}"
+        instance_graph = "https://graph.infona.ai/graphs/test-tenant"
+        entity1_uri = f"https://graph.infona.ai/entities/{type_name}/alice_startup_io"
 
         # Verify the config is reachable via hierarchy.
         cfg = config_for_with_hierarchy(type_name, self.SAAS_PARENT_OF)
@@ -394,7 +394,7 @@ class TestAncestorSynthesis:
         await resolver._synthesize_ancestors(
             child_type="TrialSubscriber",
             parent_type="Subscriber",
-            graph_uri="https://graph.onta.sh/graphs/test-tenant",
+            graph_uri="https://graph.infona.ai/graphs/test-tenant",
             existing_types=existing_types,
             existing_attrs=existing_attrs,
             result=result,
@@ -440,7 +440,7 @@ class TestAncestorSynthesis:
         await resolver._synthesize_ancestors(
             child_type="TrialSubscriber",
             parent_type="Subscriber",
-            graph_uri="https://graph.onta.sh/graphs/test-tenant",
+            graph_uri="https://graph.infona.ai/graphs/test-tenant",
             existing_types=existing_types,
             existing_attrs=existing_attrs,
             result=result,

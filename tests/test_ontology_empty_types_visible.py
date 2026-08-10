@@ -28,14 +28,14 @@ from infona_client.nlp.pipeline import (
 )
 
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-TYPES = "https://graph.onta.sh/types/"
-ONTO = "https://graph.onta.sh/onto/"
+TYPES = "https://graph.infona.ai/types/"
+ONTO = "https://graph.infona.ai/onto/"
 STR = "http://www.w3.org/2001/XMLSchema#string"
 INT = "http://www.w3.org/2001/XMLSchema#integer"
 FLOAT = "http://www.w3.org/2001/XMLSchema#float"
 
-GRAPH = "https://graph.onta.sh/graphs/inv-tenant"
-KG = "https://graph.onta.sh/graphs/inv-tenant/kg/InventedKG"
+GRAPH = "https://graph.infona.ai/graphs/inv-tenant"
+KG = "https://graph.infona.ai/graphs/inv-tenant/kg/InventedKG"
 
 
 def _row(**cells):

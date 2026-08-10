@@ -29,7 +29,7 @@ instead of consulting all N:
 3. **Caching.** The ``(entity_type, attribute, constraints) → ordered slugs``
    decision is memoized so enrichment is not embedding-searching on every entity.
 
-Boundary: OSS. Pure ``infona_client.*`` + stdlib — no ``from cograph.*``. The
+Boundary: OSS. Pure ``infona_client.*`` + stdlib — no ``from infona.*``. The
 decision layer is shared; premium adapters only feed the catalog (via the layer
 seam) and the success-rate provider (via the registerable hook), never a separate
 selection path.
@@ -63,9 +63,9 @@ SuccessRateFn = Callable[[str], float]
 # Feature flag: when OFF (default) the enrichment wiring's ``apply_registry_selection``
 # is an identity function, so the chain is byte-identical to today's full-prefix
 # self-gating scan. Turned ON, the scan is replaced by retrieve-top-K → gate →
-# arbitrate. Mirrors COGRAPH_PROVENANCE_ENABLED's default-OFF, opt-in shape.
-_FLAG_ENV = "COGRAPH_REGISTRY_SELECTION"
-_TOP_K_ENV = "COGRAPH_REGISTRY_SELECTION_TOP_K"
+# arbitrate. Mirrors INFONA_PROVENANCE_ENABLED's default-OFF, opt-in shape.
+_FLAG_ENV = "INFONA_REGISTRY_SELECTION"
+_TOP_K_ENV = "INFONA_REGISTRY_SELECTION_TOP_K"
 _DEFAULT_TOP_K = 8
 # Neutral success-rate when no telemetry provider is registered — so an
 # unmeasured catalog arbitrates by authority/cost/freshness alone (this axis

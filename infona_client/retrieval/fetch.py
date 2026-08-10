@@ -46,7 +46,7 @@ from infona_client.retrieval.safety import (
 )
 from infona_client.retrieval.types import FetchedPage
 
-logger = structlog.stdlib.get_logger("cograph.retrieval.fetch")
+logger = structlog.stdlib.get_logger("infona.retrieval.fetch")
 
 # Cap on bytes read off the wire and chars kept from a page — bounds memory,
 # cost, and prompt size. A leaderboard/table answer lives well within this.
@@ -57,7 +57,7 @@ _DEFAULT_TIMEOUT = 20.0
 # re-validated against the SSRF guard — httpx's own follow_redirects would chase
 # a 302 → http://127.0.0.1 past the guard. Bounded to stop redirect loops.
 _MAX_REDIRECTS = 5
-_UA = "Mozilla/5.0 (compatible; OntaResearchBot/1.0; +https://onta.sh/bot)"
+_UA = "Mozilla/5.0 (compatible; InfonaResearchBot/1.0; +https://infona.ai/bot)"
 
 
 @runtime_checkable
@@ -129,7 +129,7 @@ def default_ladder() -> list[PageFetcher]:
     capability's availability gate -- which is precisely the behaviour ONTA-293
     removes. A test that wants a fetcher now registers one explicitly.
 
-    When the record-and-replay fetch cache is enabled (``COGRAPH_FETCH_CACHE`` is
+    When the record-and-replay fetch cache is enabled (``INFONA_FETCH_CACHE`` is
     ``record`` / ``replay`` / ``auto``), each rung is transparently wrapped in a
     :class:`~infona_client.retrieval.cache.CachingPageFetcher` so repeat scrapes
     replay from disk. With caching ``off`` (the default) the ladder is returned
@@ -168,7 +168,7 @@ class StaticHttpFetcher:
         self._timeout = timeout
 
     async def fetch(self, url: str, *, want: str = "") -> FetchedPage:
-        # Offline mode (OMNIX_OFFLINE=1) fails closed on non-allowlisted hosts
+        # Offline mode (INFONA_OFFLINE=1) fails closed on non-allowlisted hosts
         # before the SSRF string/DNS guards run — private dogfood must not hit
         # arbitrary web. OfflineModeError propagates so callers see a clear
         # message; is_fetchable_url still applies when offline is off.

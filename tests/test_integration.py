@@ -2,7 +2,7 @@
 
 OBSOLETE in this form — skipped by default. These tests drove ingest/ask/clear
 through the Python CLI (``python -m infona_client.cli``), which no longer exists:
-the CLI was migrated to the TypeScript ``packages/cograph`` npm package. They also
+the CLI was migrated to the TypeScript ``packages/cli`` npm package. They also
 require a live SPARQL endpoint (Fuseki/Neptune) and an LLM API key, so they were
 never part of the unit-test CI job.
 
@@ -11,10 +11,10 @@ To re-enable, port the helpers below to drive the REST API directly
 ``/graphs/{tenant}/ask`` for queries, ``/graphs/{tenant}/update`` with
 ``DROP GRAPH`` for clear) or invoke the TypeScript CLI, then drop the module-level
 skip. Run against a live deployment with:
-    ONTA_TEST_ALLOW_LIVE_LLM=1 OPENROUTER_API_KEY=sk-or-... OMNIX_API_URL=... \
-        OMNIX_API_KEY=... pytest tests/test_integration.py -v -s
+    INFONA_TEST_ALLOW_LIVE_LLM=1 OPENROUTER_API_KEY=sk-or-... INFONA_API_URL=... \
+        INFONA_API_KEY=... pytest tests/test_integration.py -v -s
 
-``ONTA_TEST_ALLOW_LIVE_LLM=1`` is required: tests/conftest.py clears the provider
+``INFONA_TEST_ALLOW_LIVE_LLM=1`` is required: tests/conftest.py clears the provider
 credentials by default so the unit suite can never egress to a live LLM, and
 without that opt-in the OPENROUTER_API_KEY above is stripped before use.
 """
@@ -27,7 +27,7 @@ import time
 import pytest
 
 # The Python CLI these tests drive was removed (moved to the TypeScript
-# packages/cograph). Skip the whole module until they're ported to the REST API
+# packages/cli). Skip the whole module until they're ported to the REST API
 # or the TS CLI. This replaces the old --run-integration opt-in, whose
 # pytest_addoption/pytest_collection_modifyitems hooks never fired: pytest only
 # honors those hooks from conftest.py or plugins, not from a test module, so the
@@ -37,8 +37,8 @@ pytestmark = pytest.mark.skip(
     "needs porting to the REST API / TS CLI + a live server. See module docstring."
 )
 
-API_URL = os.environ.get("OMNIX_API_URL", "http://localhost:8000")
-API_KEY = os.environ.get("OMNIX_API_KEY", "")
+API_URL = os.environ.get("INFONA_API_URL", "http://localhost:8000")
+API_KEY = os.environ.get("INFONA_API_KEY", "")
 KG_NAME = "test-bookstore"
 CSV_PATH = os.path.join(os.path.dirname(__file__), "..", "examples", "bookstore.csv")
 
@@ -52,9 +52,9 @@ def _headers():
 
 def _run_cli(*args) -> subprocess.CompletedProcess:
     env = os.environ.copy()
-    env["OMNIX_API_URL"] = API_URL
+    env["INFONA_API_URL"] = API_URL
     if API_KEY:
-        env["OMNIX_API_KEY"] = API_KEY
+        env["INFONA_API_KEY"] = API_KEY
     return subprocess.run(
         [sys.executable, "-m", "infona_client.cli", *args],
         capture_output=True,

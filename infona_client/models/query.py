@@ -72,7 +72,7 @@ class NLResult(BaseModel):
     # ONTA-280 (P7 answer layer): per-cited-fact verdict/confidence/recency, and a
     # coverage caveat ("answered from N of M sources; K facts stale"). Both default
     # empty so every existing caller / test is back-compatible; populated only when
-    # COGRAPH_ANSWER_CITATIONS_ENABLED is set (see nlp/pipeline.py).
+    # INFONA_ANSWER_CITATIONS_ENABLED is set (see nlp/pipeline.py).
     citations: list[FactCitation] = Field(default_factory=list, description="Per-fact verdict/confidence/recency for the facts the answer relies on")
     coverage_caveat: str = Field(default="", description="Honest coverage caveat: 'answered from N of M sources; K facts stale'")
     # ONTA-389: trackable answer run id (= EnrichJob id, category=answer). Empty

@@ -10,14 +10,14 @@ from tests._hermetic import (
     live_llm_opted_in,
 )
 
-os.environ["OMNIX_API_KEYS"] = '{"test-key": "test-tenant"}'
-os.environ["OMNIX_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
+os.environ["INFONA_API_KEYS"] = '{"test-key": "test-tenant"}'
+os.environ["INFONA_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
 
 # Hermetic-by-default LLM credentials.
 #
 # The SPARQL-gen and schema-inference paths reach a LIVE provider whenever a key
 # happens to sit in the ambient environment. `nlp/pipeline.py`'s dispatch takes the
-# Cerebras branch first (OMNIX_QUERY_PROVIDER defaults to "cerebras") and then ends
+# Cerebras branch first (INFONA_QUERY_PROVIDER defaults to "cerebras") and then ends
 # with a bare `if self._openrouter_key: return await
 # self._generate_via_openrouter(...)`, while `resolver/schema_resolver.py`,
 # `resolver/csv_resolver.py` and `resolver/llm_router.py` read OPENROUTER_API_KEY /
@@ -40,7 +40,7 @@ os.environ["OMNIX_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
 # test_multityping_saas.py, test_llm_router.py) — that still works, since
 # monkeypatch applies after this and undoes itself afterwards.
 #
-# Escape hatch: export ONTA_TEST_ALLOW_LIVE_LLM=1 for a deliberate live-provider
+# Escape hatch: export INFONA_TEST_ALLOW_LIVE_LLM=1 for a deliberate live-provider
 # run — the opt-in live tests in test_csv_resolver.py need it.
 #
 # tests/test_hermetic_llm_env.py asserts the outcome, so this stays honest. It

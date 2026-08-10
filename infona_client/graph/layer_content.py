@@ -117,7 +117,7 @@ def assert_permits(layer: Layer, kind: ContentKind, *, what: str = "") -> None:
 def is_public_type_uri(uri_or_name: str) -> bool:
     """True iff ``uri_or_name`` is (or would resolve to) a Public-namespace type.
 
-    Accepts a full type URI (``https://graph.onta.sh/types/public/Person``), a
+    Accepts a full type URI (``https://graph.infona.ai/types/public/Person``), a
     path-shaped entity_type (``public/Person`` → minted under the tenant
     namespace prefix as ``types/public/Person``), or a bare name (``Person`` →
     tenant namespace — not public). Used by function writers so a smuggled

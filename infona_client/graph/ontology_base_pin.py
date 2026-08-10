@@ -11,13 +11,13 @@ Storage (RDF only — no Postgres)
 --------------------------------
 Companion named graph per tenant::
 
-    https://graph.onta.sh/graphs/{tenant}/base-pin
+    https://graph.infona.ai/graphs/{tenant}/base-pin
 
 Single subject::
 
-    https://graph.onta.sh/meta/WorkspaceBasePin
+    https://graph.infona.ai/meta/WorkspaceBasePin
 
-Predicates (under ``https://graph.onta.sh/onto/``)::
+Predicates (under ``https://graph.infona.ai/onto/``)::
 
     baseLayer        "public" | "enhanced"   (from entitlement, not user-chosen)
     baseVersion      xsd:integer             (omitted when None = live)
@@ -63,7 +63,7 @@ from infona_client.graph.ontology_commit import (
     release_graph_uri,
 )
 from infona_client.graph.ontology_compat import classify_diff
-from infona_client.graph.ontology_queries import OMNIX_ONTO, XSD
+from infona_client.graph.ontology_queries import INFONA_ONTO, XSD
 from infona_client.graph.ontology_snapshots import (
     diff_shapes,
     list_snapshots,
@@ -72,7 +72,7 @@ from infona_client.graph.parser import parse_sparql_results
 from infona_client.graph.queries import insert_triples, tenant_graph_uri
 from infona_client.models.ontology import ChangeKind, ChangeRecord
 
-logger = structlog.stdlib.get_logger("cograph.graph.ontology_base_pin")
+logger = structlog.stdlib.get_logger("infona.graph.ontology_base_pin")
 
 # ---------------------------------------------------------------------------
 # Vocabulary
@@ -80,11 +80,11 @@ logger = structlog.stdlib.get_logger("cograph.graph.ontology_base_pin")
 
 PIN_SUBJECT = f"{IRI_BASE}/meta/WorkspaceBasePin"
 
-_PIN_BASE_LAYER = f"{OMNIX_ONTO}/baseLayer"
-_PIN_BASE_VERSION = f"{OMNIX_ONTO}/baseVersion"
-_PIN_AUTO_UPGRADE = f"{OMNIX_ONTO}/autoUpgrade"
-_PIN_PREVIOUS_VERSION = f"{OMNIX_ONTO}/previousVersion"
-_PIN_UPDATED_AT = f"{OMNIX_ONTO}/updatedAt"
+_PIN_BASE_LAYER = f"{INFONA_ONTO}/baseLayer"
+_PIN_BASE_VERSION = f"{INFONA_ONTO}/baseVersion"
+_PIN_AUTO_UPGRADE = f"{INFONA_ONTO}/autoUpgrade"
+_PIN_PREVIOUS_VERSION = f"{INFONA_ONTO}/previousVersion"
+_PIN_UPDATED_AT = f"{INFONA_ONTO}/updatedAt"
 
 BaseLayerName = Literal["public", "enhanced"]
 

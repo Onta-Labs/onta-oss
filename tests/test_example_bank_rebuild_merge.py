@@ -1,12 +1,12 @@
 """The post-eval example-bank rebuild MERGES; it must never replace.
 
-Follow-up to onta-oss#280, from an independent review of it.
+Follow-up to infona-oss#280, from an independent review of it.
 
 ``eval_reports/example_bank.jsonl`` is committed, shared state: it is the file in
 git, and the file an OSS checkout / local dev / CI feeds into every ``/ask``
 few-shot prompt. (Two things it is NOT: the copy the parent's Dockerfile bakes
 into the image is the PARENT's own 507-entry file, which this rebuild writes
-package-relative and so never reaches; and since onta-oss#261 the examples are
+package-relative and so never reaches; and since infona-oss#261 the examples are
 not injected verbatim -- ``format_examples_for_prompt`` rewrites each one's
 ``FROM`` to the caller's own target graph.) The rebuild that runs
 after each eval used to build an ``ExampleBank``, never ``load()`` it, and
@@ -15,7 +15,7 @@ bank was REPLACED by whatever ``eval_reports/finetune_pairs.jsonl`` held on the
 machine that ran the eval -- a gitignored, machine-local file. A dev who
 evaluated one KG and committed the result silently shrank the bank to their own
 subset. That is the most plausible origin of the 148 Spider4SPARQL entries
-(ONTA-449 / onta-oss#280), whose fix -- skip ``save()`` when ``add_batch``
+(ONTA-449 / infona-oss#280), whose fix -- skip ``save()`` when ``add_batch``
 accepted nothing -- stopped the truncate-to-zero case only: a run that accepted
 12 pairs still overwrote 114 with 12.
 
@@ -29,8 +29,8 @@ Merge needs three things to hold, and each has a test below:
    the rebuild permanently no-ops after its first run, because
    ``finetune_pairs.jsonl`` is append-only and re-offers every past pair.
 3. Within one batch, LAST wins. ``finetune_pairs.jsonl`` is keyed on
-   ``(question, graph_uri)``, so a namespace rename (``omnix.dev`` ->
-   ``graph.onta.sh``, 2026-04-27) appends a SECOND pair for the same question
+   ``(question, graph_uri)``, so a namespace rename (``graph.infona.ai`` ->
+   ``graph.infona.ai``, 2026-04-27) appends a SECOND pair for the same question
    instead of replacing the first. First-wins kept the stale one. That was the
    first of the three reasons ``ARCHITECTURE.md`` gave for why this loop could
    not heal a stale entry; the other two (the rebuild cannot reach the shipped
@@ -47,8 +47,9 @@ from infona_client.eval import rebuild_example_bank
 from infona_client.nlp import example_bank as bank_mod
 from infona_client.nlp.example_bank import ExampleBank
 
-GRAPH = "https://graph.onta.sh/graphs/demo-tenant/kg/{kg}"
-LEGACY_GRAPH = "https://omnix.dev/graphs/demo-tenant/kg/{kg}"
+GRAPH = "https://graph.infona.ai/graphs/demo-tenant/kg/{kg}"
+# Retired brand host used only as a *stale* graph_uri in rename-healing tests.
+LEGACY_GRAPH = "https://cograph.tech/graphs/demo-tenant/kg/{kg}"
 
 
 def _row(kg: str, question: str, sparql: str = "") -> dict:
@@ -238,8 +239,8 @@ async def test_rebuild_prefers_the_later_pair_when_the_graph_iri_changed(tmp_pat
     _write_jsonl(
         ft,
         [
-            _pair("imdb-movies", "how many films", sparql="SELECT ?x WHERE { ?x <https://omnix.dev/onto/a> ?y }", graph=LEGACY_GRAPH),
-            _pair("imdb-movies", "how many films", sparql="SELECT ?x WHERE { ?x <https://graph.onta.sh/onto/a> ?y }"),
+            _pair("imdb-movies", "how many films", sparql="SELECT ?x WHERE { ?x <https://cograph.tech/onto/a> ?y }", graph=LEGACY_GRAPH),
+            _pair("imdb-movies", "how many films", sparql="SELECT ?x WHERE { ?x <https://graph.infona.ai/onto/a> ?y }"),
         ],
     )
 
@@ -247,8 +248,8 @@ async def test_rebuild_prefers_the_later_pair_when_the_graph_iri_changed(tmp_pat
 
     saved = _read_bank(bank._bank_path)
     assert len(saved) == 1
-    assert "graph.onta.sh" in saved[0]["sparql"]
-    assert "omnix.dev" not in saved[0]["sparql"]
+    assert "graph.infona.ai" in saved[0]["sparql"]
+    assert "cograph.tech" not in saved[0]["sparql"]
     # One embedding call: the pair was collapsed before embedding, not after.
     assert bank.embedded == ["how many films"]
 
@@ -257,7 +258,7 @@ async def test_rebuild_prefers_the_later_pair_when_the_graph_iri_changed(tmp_pat
 
 
 async def test_rebuild_leaves_the_bank_untouched_when_nothing_is_accepted(tmp_path, make_bank):
-    """onta-oss#280's guarantee, re-asserted behaviourally.
+    """infona-oss#280's guarantee, re-asserted behaviourally.
 
     It was previously pinned by a source-level ``"if rebuilt:" in block``
     assertion because ``run_full_eval`` needs a live API and graph store. The

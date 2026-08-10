@@ -36,7 +36,7 @@ class SourceAdapter(Protocol):
     OPTIONAL: ``lookup_timeout_s`` — per-adapter ceiling (seconds) for the
     executor's ``asyncio.wait_for`` around ``lookup``. Slow agentic providers
     (e.g. Parallel Task API base p95 ~100s) declare a higher budget so the
-    global default (``COGRAPH_ADAPTER_LOOKUP_TIMEOUT_S``, 30s) does not kill
+    global default (``INFONA_ADAPTER_LOOKUP_TIMEOUT_S``, 30s) does not kill
     them mid-flight and silently fall through to the next chain adapter.
     Absent → executor uses the global default.
     """

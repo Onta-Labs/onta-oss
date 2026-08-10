@@ -40,7 +40,7 @@ from infona_client.enrichment.models import JobCategory
 from infona_client.scheduling.models import Schedule
 from infona_client.scheduling.next_run import compute_next_run
 
-logger = structlog.stdlib.get_logger("cograph.agent.subscribe")
+logger = structlog.stdlib.get_logger("infona.agent.subscribe")
 
 # Cadence → interval in seconds. Interval is the v1 recurrence (no croniter
 # dependency); a cron string could be threaded later without changing this seam.

@@ -20,7 +20,7 @@ function stubClient(ingestImpl: (...args: unknown[]) => unknown) {
 
 let dir: string;
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "cograph-mcp-ingest-"));
+  dir = mkdtempSync(join(tmpdir(), "infona-mcp-ingest-"));
 });
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
@@ -117,7 +117,7 @@ describe("ingest_csv handler: did-you-mean hint (ONTA-415)", () => {
   });
 
   it("does not leak paths from outside the configured root", async () => {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), "cograph-mcp-root-")));
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "infona-mcp-root-")));
     const outsideFile = join(realpathSync(dir), "secret.csv");
     writeFileSync(outsideFile, "a,b\n1,2\n", "utf-8");
     const { client } = stubClient(() => {

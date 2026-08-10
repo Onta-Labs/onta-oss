@@ -4,7 +4,7 @@ Covers the judge panel (N independent mocked LLM judges, majority vote,
 parse-error votes count as rejections), the GovernanceEngine decision +
 tagged reversible Public-layer writes (type, provenance record, append-only
 changelog), revoke reversibility, and the resolver wiring:
-COGRAPH_GOVERNANCE_ENABLED off (the default) must be byte-identical to
+INFONA_GOVERNANCE_ENABLED off (the default) must be byte-identical to
 today's new-type behavior; on, a majority-approved type ALSO lands in the
 Public layer while a rejected one stays tenant-only — and governance
 failures never block ingest.
@@ -461,10 +461,10 @@ def _make_resolver(mock_neptune, governance: bool) -> SchemaResolver:
     env = {
         "ANTHROPIC_API_KEY": "test-key",
         "OPENROUTER_API_KEY": "test-or-key",
-        "COGRAPH_ER_ENABLED": "0",
+        "INFONA_ER_ENABLED": "0",
     }
     if governance:
-        env["COGRAPH_GOVERNANCE_ENABLED"] = "1"
+        env["INFONA_GOVERNANCE_ENABLED"] = "1"
     with patch.dict("os.environ", env):
         return SchemaResolver(
             neptune=mock_neptune,
@@ -479,7 +479,7 @@ def _new_entity() -> ExtractedEntity:
     return ExtractedEntity(type_name="LoyaltyTier", id="gold")
 
 
-TENANT_GRAPH = "https://graph.onta.sh/graphs/acme"
+TENANT_GRAPH = "https://graph.infona.ai/graphs/acme"
 
 
 @pytest.mark.asyncio

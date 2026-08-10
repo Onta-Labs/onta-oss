@@ -6,7 +6,7 @@
       "id": "q-001",
       "tier": "T1",
       "question": "How many filers are there?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?filer) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE { ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> . }",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?filer) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE { ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> . }",
       "expected_answer": "488",
       "full_expected_items": [
         "488"
@@ -48,7 +48,7 @@
       "id": "q-002",
       "tier": "T1",
       "question": "List all available SIC codes.",
-      "gold_sparql": "SELECT ?sicCode ?sicDescription FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE { ?sic <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/SICCode> . ?sic <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/sic_code> ?sicCode . ?sic <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/sic_description> ?sicDescription . }",
+      "gold_sparql": "SELECT ?sicCode ?sicDescription FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE { ?sic <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/SICCode> . ?sic <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/sic_code> ?sicCode . ?sic <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/sic_description> ?sicDescription . }",
       "expected_answer": "2800 | Chemicals & Allied Products\n2080 | Beverages\n3480 | Ordnance & Accessories, (No Vehicles/Guided Missiles)\n5200 | Retail-Building Materials, Hardware, Garden Supply\n5122 | Wholesale-Drugs, Proprietaries & Druggists' Sundries\n3430 | Heating Equip, Except Elec & Warm Air; & Plumbing Fixtures\n4400 | Water Transportation\n6531 | Real Estate Agents & Managers (For Others)\n1700 | Construction - Special Trade Contractors\n6519 | Lessors of  Real Property, NEC\n... (175 total rows)",
       "full_expected_items": [
         "2800 | Chemicals & Allied Products",
@@ -264,7 +264,7 @@
       "id": "q-003",
       "tier": "T1",
       "question": "How many filings are recorded in the system?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?filing) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE { ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> . }",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?filing) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE { ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> . }",
       "expected_answer": "511",
       "full_expected_items": [
         "511"
@@ -306,7 +306,7 @@
       "id": "q-004",
       "tier": "T1",
       "question": "What are the names of all states of incorporation?",
-      "gold_sparql": "SELECT ?stateName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE { ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/StateOfIncorporation> . ?state <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/state_name> ?stateName . }",
+      "gold_sparql": "SELECT ?stateName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE { ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/StateOfIncorporation> . ?state <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/state_name> ?stateName . }",
       "expected_answer": "SC, FL, DE, RI, UT, OR, LA, NC, Bermuda, WY ... (46 total)",
       "full_expected_items": [
         "SC",
@@ -393,7 +393,7 @@
       "id": "q-005",
       "tier": "T2",
       "question": "How many filings have 'FORM 10-K' in their primary document description?",
-      "gold_sparql": "SELECT (COUNT(?filing) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> .\n  ?filing <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/filing_primary_doc_desc> ?desc .\n  FILTER(CONTAINS(LCASE(STR(?desc)), \"form 10-k\"))\n}",
+      "gold_sparql": "SELECT (COUNT(?filing) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> .\n  ?filing <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/filing_primary_doc_desc> ?desc .\n  FILTER(CONTAINS(LCASE(STR(?desc)), \"form 10-k\"))\n}",
       "expected_answer": "100",
       "full_expected_items": [
         "100"
@@ -435,7 +435,7 @@
       "id": "q-006",
       "tier": "T2",
       "question": "What is the total number of filers whose fiscal year ends in January?",
-      "gold_sparql": "SELECT (COUNT(?filer) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_fiscal_year_end> ?fiscalYearEnd .\n  FILTER(STRSTARTS(?fiscalYearEnd, \"01\"))\n}",
+      "gold_sparql": "SELECT (COUNT(?filer) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_fiscal_year_end> ?fiscalYearEnd .\n  FILTER(STRSTARTS(?fiscalYearEnd, \"01\"))\n}",
       "expected_answer": "22",
       "full_expected_items": [
         "22"
@@ -477,7 +477,7 @@
       "id": "q-007",
       "tier": "T3",
       "question": "How many filings are associated with each filer whose entity type is 'operating'?",
-      "gold_sparql": "SELECT ?filer_name (COUNT(?filing) AS ?filing_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_entity_type> \"operating\" .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/has_filing> ?filing .\n  ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_name> ?filer_name .\n} GROUP BY ?filer_name\nORDER BY DESC(?filing_count)",
+      "gold_sparql": "SELECT ?filer_name (COUNT(?filing) AS ?filing_count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_entity_type> \"operating\" .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/has_filing> ?filing .\n  ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_name> ?filer_name .\n} GROUP BY ?filer_name\nORDER BY DESC(?filing_count)",
       "expected_answer": "CitroTech Inc. | 11\nFEDERAL HOME LOAN MORTGAGE CORP | 3\nSOUTHERN CO | 3\nXerox Holdings Corp | 2\nEPR PROPERTIES | 2\nENBRIDGE INC | 2\nPublic Storage | 2\nSolarWindow Technologies, Inc. | 2\nVALLEY NATIONAL BANCORP | 2\nFIFTH THIRD BANCORP | 2\n... (488 total rows)",
       "full_expected_items": [
         "CitroTech Inc. | 11",
@@ -1006,7 +1006,7 @@
       "id": "q-008",
       "tier": "T3",
       "question": "How many filings are associated with each filer?",
-      "gold_sparql": "SELECT ?filer_name (COUNT(?filing) AS ?filing_count)\nFROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k>\nWHERE {\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/has_filing> ?filing .\n  ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_name> ?filer_name .\n}\nGROUP BY ?filer_name\nORDER BY DESC(?filing_count)\nLIMIT 10",
+      "gold_sparql": "SELECT ?filer_name (COUNT(?filing) AS ?filing_count)\nFROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k>\nWHERE {\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/has_filing> ?filing .\n  ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_name> ?filer_name .\n}\nGROUP BY ?filer_name\nORDER BY DESC(?filing_count)\nLIMIT 10",
       "expected_answer": "CitroTech Inc. | 11\nSOUTHERN CO | 3\nFEDERAL HOME LOAN MORTGAGE CORP | 3\nFIFTH THIRD BANCORP | 2\nSoluna Holdings, Inc | 2\nFEDERAL AGRICULTURAL MORTGAGE CORP | 2\nEPR PROPERTIES | 2\nENBRIDGE INC | 2\nVALLEY NATIONAL BANCORP | 2\nXerox Holdings Corp | 2",
       "full_expected_items": [
         "CitroTech Inc. | 11",
@@ -1057,7 +1057,7 @@
       "id": "q-009",
       "tier": "T3",
       "question": "Which filers have filed the most 10-K filings?",
-      "gold_sparql": "SELECT ?filerName (COUNT(?filing) AS ?filingCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_name> ?filerName .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/has_filing> ?filing .\n  ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> .\n  ?filing <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/filing_form_type> \"10-K\" .\n} GROUP BY ?filerName ORDER BY DESC(?filingCount) LIMIT 10",
+      "gold_sparql": "SELECT ?filerName (COUNT(?filing) AS ?filingCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_name> ?filerName .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/has_filing> ?filing .\n  ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> .\n  ?filing <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/filing_form_type> \"10-K\" .\n} GROUP BY ?filerName ORDER BY DESC(?filingCount) LIMIT 10",
       "expected_answer": "CitroTech Inc. | 11\nFEDERAL HOME LOAN MORTGAGE CORP | 3\nSOUTHERN CO | 3\nPublic Storage | 2\nXerox Holdings Corp | 2\nSolarWindow Technologies, Inc. | 2\nSoluna Holdings, Inc | 2\nFIFTH THIRD BANCORP | 2\nFEDERAL AGRICULTURAL MORTGAGE CORP | 2\nEPR PROPERTIES | 2",
       "full_expected_items": [
         "CitroTech Inc. | 11",
@@ -1108,7 +1108,7 @@
       "id": "q-010",
       "tier": "T4",
       "question": "Which filers have filed exhibits and what is the total number of filings associated with each of these filers?",
-      "gold_sparql": "SELECT ?filer_name (COUNT(DISTINCT ?filing) AS ?total_filings) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?exhibit <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Exhibit> .\n  ?exhibit <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/exhibit_filed_by> ?filer .\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_name> ?filer_name .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/has_filing> ?filing .\n  ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> .\n} GROUP BY ?filer_name\nORDER BY DESC(?total_filings)\nLIMIT 10",
+      "gold_sparql": "SELECT ?filer_name (COUNT(DISTINCT ?filing) AS ?total_filings) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?exhibit <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Exhibit> .\n  ?exhibit <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/exhibit_filed_by> ?filer .\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_name> ?filer_name .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/has_filing> ?filing .\n  ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> .\n} GROUP BY ?filer_name\nORDER BY DESC(?total_filings)\nLIMIT 10",
       "expected_answer": "Xerox Holdings Corp | 2\nNSTAR ELECTRIC CO | 1\nEmbrace Change Acquisition Corp. | 1\nHUNT J B TRANSPORT SERVICES INC | 1\nXBiotech Inc. | 1\nAYTU BIOPHARMA, INC | 1\nHENNESSY ADVISORS INC | 1\nIIOT-OXYS, Inc. | 1\nRush Street Interactive, Inc. | 1\nGRANITE CONSTRUCTION INC | 1",
       "full_expected_items": [
         "Xerox Holdings Corp | 2",
@@ -1159,7 +1159,7 @@
       "id": "q-011",
       "tier": "T4",
       "question": "Find the names of filers who have filed at least one '10-K' form and are incorporated in a state with 'A' in its name, along with the count of such filings.",
-      "gold_sparql": "SELECT ?filer_name (COUNT(DISTINCT ?filing) AS ?num_10k_filings) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_name> ?filer_name .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/has_filing> ?filing .\n  ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> .\n  ?filing <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/filing_form_type> \"10-K\" .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_incorporated_in> ?state_of_incorporation .\n  ?state_of_incorporation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/StateOfIncorporation> .\n  ?state_of_incorporation <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/state_name> ?state_name .\n  FILTER (CONTAINS(LCASE(STR(?state_name)), \"a\"))\n} GROUP BY ?filer_name\nHAVING (COUNT(DISTINCT ?filing) > 0)\nORDER BY DESC(?num_10k_filings)\nLIMIT 10",
+      "gold_sparql": "SELECT ?filer_name (COUNT(DISTINCT ?filing) AS ?num_10k_filings) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_name> ?filer_name .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/has_filing> ?filing .\n  ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> .\n  ?filing <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/filing_form_type> \"10-K\" .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_incorporated_in> ?state_of_incorporation .\n  ?state_of_incorporation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/StateOfIncorporation> .\n  ?state_of_incorporation <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/state_name> ?state_name .\n  FILTER (CONTAINS(LCASE(STR(?state_name)), \"a\"))\n} GROUP BY ?filer_name\nHAVING (COUNT(DISTINCT ?filing) > 0)\nORDER BY DESC(?num_10k_filings)\nLIMIT 10",
       "expected_answer": "ENBRIDGE INC | 2\nPROG Holdings, Inc. | 1\nHERBALIFE LTD. | 1\nNOVAGOLD RESOURCES INC | 1\nHERITAGE COMMERCE CORP | 1\nCommunity West Bancshares | 1\nTriton International Ltd | 1\nSOUTHERN CALIFORNIA GAS CO | 1\nNSTAR ELECTRIC CO | 1\nDYNEX CAPITAL INC | 1",
       "full_expected_items": [
         "ENBRIDGE INC | 2",
@@ -1210,7 +1210,7 @@
       "id": "q-012",
       "tier": "T4",
       "question": "List the SIC codes and their descriptions for filers that have a fiscal year ending in 'December'.",
-      "gold_sparql": "SELECT DISTINCT ?sic_code ?sic_description FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_has_fiscal_year> ?fiscal_year .\n  ?fiscal_year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/FiscalYear> .\n  ?fiscal_year <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/fiscal_year_end_month> \"December\" .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_in_sic> ?sic_code_entity .\n  ?sic_code_entity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/SICCode> .\n  ?sic_code_entity <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/sic_code> ?sic_code .\n  ?sic_code_entity <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/sic_description> ?sic_description .\n}",
+      "gold_sparql": "SELECT DISTINCT ?sic_code ?sic_description FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_has_fiscal_year> ?fiscal_year .\n  ?fiscal_year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/FiscalYear> .\n  ?fiscal_year <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/fiscal_year_end_month> \"December\" .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_in_sic> ?sic_code_entity .\n  ?sic_code_entity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/SICCode> .\n  ?sic_code_entity <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/sic_code> ?sic_code .\n  ?sic_code_entity <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/sic_description> ?sic_description .\n}",
       "expected_answer": "3690 | Miscellaneous Electrical Machinery, Equipment & Supplies\n6513 | Operators of  Apartment Buildings\n0700 | Agricultural Services\n3845 | Electromedical & Electrotherapeutic Apparatus\n4911 | Electric Services\n4011 | Railroads, Line-Haul Operating\n1040 | Gold and Silver Ores\n6500 | Real Estate\n7822 | Services-Motion Picture & Video Tape Distribution\n7990 | Services-Miscellaneous Amusement & Recreation\n... (145 total rows)",
       "full_expected_items": [
         "3690 | Miscellaneous Electrical Machinery, Equipment & Supplies",
@@ -1396,49 +1396,49 @@
   "tables": [
     {
       "table": "Exchange",
-      "source": "/Users/moeen/Desktop/omnix-holdout-v2/eval_holdout_v2/multitable_csv/sec-edgar-10k/Exchange.csv",
+      "source": "/Users/moeen/Desktop/infona-holdout-v2/eval_holdout_v2/multitable_csv/sec-edgar-10k/Exchange.csv",
       "n_rows_used": 3,
       "n_cols": 1
     },
     {
       "table": "Exhibit",
-      "source": "/Users/moeen/Desktop/omnix-holdout-v2/eval_holdout_v2/multitable_csv/sec-edgar-10k/Exhibit.csv",
+      "source": "/Users/moeen/Desktop/infona-holdout-v2/eval_holdout_v2/multitable_csv/sec-edgar-10k/Exhibit.csv",
       "n_rows_used": 250,
       "n_cols": 6
     },
     {
       "table": "Filer",
-      "source": "/Users/moeen/Desktop/omnix-holdout-v2/eval_holdout_v2/multitable_csv/sec-edgar-10k/Filer.csv",
+      "source": "/Users/moeen/Desktop/infona-holdout-v2/eval_holdout_v2/multitable_csv/sec-edgar-10k/Filer.csv",
       "n_rows_used": 250,
       "n_cols": 11
     },
     {
       "table": "FilerCategory",
-      "source": "/Users/moeen/Desktop/omnix-holdout-v2/eval_holdout_v2/multitable_csv/sec-edgar-10k/FilerCategory.csv",
+      "source": "/Users/moeen/Desktop/infona-holdout-v2/eval_holdout_v2/multitable_csv/sec-edgar-10k/FilerCategory.csv",
       "n_rows_used": 10,
       "n_cols": 1
     },
     {
       "table": "Filing",
-      "source": "/Users/moeen/Desktop/omnix-holdout-v2/eval_holdout_v2/multitable_csv/sec-edgar-10k/Filing.csv",
+      "source": "/Users/moeen/Desktop/infona-holdout-v2/eval_holdout_v2/multitable_csv/sec-edgar-10k/Filing.csv",
       "n_rows_used": 250,
       "n_cols": 8
     },
     {
       "table": "FiscalYear",
-      "source": "/Users/moeen/Desktop/omnix-holdout-v2/eval_holdout_v2/multitable_csv/sec-edgar-10k/FiscalYear.csv",
+      "source": "/Users/moeen/Desktop/infona-holdout-v2/eval_holdout_v2/multitable_csv/sec-edgar-10k/FiscalYear.csv",
       "n_rows_used": 28,
       "n_cols": 2
     },
     {
       "table": "SICCode",
-      "source": "/Users/moeen/Desktop/omnix-holdout-v2/eval_holdout_v2/multitable_csv/sec-edgar-10k/SICCode.csv",
+      "source": "/Users/moeen/Desktop/infona-holdout-v2/eval_holdout_v2/multitable_csv/sec-edgar-10k/SICCode.csv",
       "n_rows_used": 175,
       "n_cols": 3
     },
     {
       "table": "StateOfIncorporation",
-      "source": "/Users/moeen/Desktop/omnix-holdout-v2/eval_holdout_v2/multitable_csv/sec-edgar-10k/StateOfIncorporation.csv",
+      "source": "/Users/moeen/Desktop/infona-holdout-v2/eval_holdout_v2/multitable_csv/sec-edgar-10k/StateOfIncorporation.csv",
       "n_rows_used": 46,
       "n_cols": 2
     }

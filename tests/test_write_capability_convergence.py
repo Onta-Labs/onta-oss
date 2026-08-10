@@ -1,6 +1,6 @@
 """Drift guard: every MUTATING surface enforces the workspace WRITE capability.
 
-ONTA-451 (onta-oss#288) fixed the four routes that were unguarded when it was
+ONTA-451 (infona-oss#288) fixed the four routes that were unguarded when it was
 written, and ``tests/test_reader_write_gate_routes.py`` pins those four by name.
 This file exists because naming them is exactly how the gap happened:
 ``require_tenant_write`` was wired into a *list* of route modules, so every

@@ -40,7 +40,7 @@ from infona_client.scheduling.store import (
     make_schedule_store,
 )
 
-logger = structlog.stdlib.get_logger("cograph.scheduler")
+logger = structlog.stdlib.get_logger("infona.scheduler")
 
 # How often the loop wakes to look for due schedules. A schedule fires at most
 # one poll-interval late, which is fine for hour/day-scale recurrences.
@@ -54,7 +54,7 @@ def _now() -> datetime:
 
 
 def _poll_seconds() -> float:
-    raw = os.environ.get("COGRAPH_SCHEDULER_POLL_SECONDS", "").strip()
+    raw = os.environ.get("INFONA_SCHEDULER_POLL_SECONDS", "").strip()
     if not raw:
         return _DEFAULT_POLL_SECONDS
     try:
@@ -261,15 +261,15 @@ def make_schedule_runner(app_state: Any) -> Optional[ScheduleRunner]:
     Mirrors ``make_schedule_store()``: gating is configuration-driven.
 
     Enablement: the runner is enabled when a database_url is configured (the
-    durable, shared backend) OR ``COGRAPH_SCHEDULER_ENABLED`` is explicitly
-    truthy. It is disabled when ``COGRAPH_SCHEDULER_ENABLED`` is explicitly
+    durable, shared backend) OR ``INFONA_SCHEDULER_ENABLED`` is explicitly
+    truthy. It is disabled when ``INFONA_SCHEDULER_ENABLED`` is explicitly
     falsy. Returns ``None`` when disabled, so startup constructs no loop.
 
     Pulls the schedule store / neptune client / job store / executor off
     ``app_state`` if already attached, falling back to the same factories the
     deps use so this is safe to call before the first request populates them.
     """
-    enabled_raw = os.environ.get("COGRAPH_SCHEDULER_ENABLED", "").strip().lower()
+    enabled_raw = os.environ.get("INFONA_SCHEDULER_ENABLED", "").strip().lower()
     from infona_client.config import settings
 
     if enabled_raw in ("0", "false", "no", "off"):

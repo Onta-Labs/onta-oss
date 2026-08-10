@@ -69,7 +69,7 @@ class PyoxiNeptune:
 def _resolver(n: PyoxiNeptune) -> SchemaResolver:
     # ER off so nothing but the key-join decides merges; keys are fake (no LLM
     # call — every type is pre-seeded so _resolve_type short-circuits).
-    os.environ["COGRAPH_ER_ENABLED"] = "0"
+    os.environ["INFONA_ER_ENABLED"] = "0"
     r = SchemaResolver(
         n, "fake-key", JsonVerdictCache(pathlib.Path("/tmp/keyjoin-verdict-cache.json")),
     )
@@ -290,7 +290,7 @@ async def test_key_join_strict_preserves_relationship_targets():
     # The relationship edge lands (union across graphs — _ingest_mapped writes
     # rel triples to the base graph, an existing quirk unrelated to key-join).
     edges = await _bindings(
-        n, 'SELECT ?w ?m WHERE { ?w <https://graph.onta.sh/onto/maker> ?m }'
+        n, 'SELECT ?w ?m WHERE { ?w <https://graph.infona.ai/onto/maker> ?m }'
     )
     assert len(edges) == 1  # relationship edge landed, keyed off the MERGED Widget
 

@@ -2,14 +2,14 @@
 
 Wraps an embedded pyoxigraph Store behind the three HTTP paths the
 `fuseki` backend of NeptuneClient expects (/ds/query, /ds/update,
-/$/ping), so the cograph API server runs against it unchanged:
+/$/ping), so the infona API server runs against it unchanged:
 
     python scripts/local_sparql.py                 # in-memory
     python scripts/local_sparql.py --data ./graph  # persisted to disk
 
 then start the API with:
 
-    OMNIX_GRAPH_BACKEND=fuseki OMNIX_NEPTUNE_ENDPOINT=http://localhost:3030 \
+    INFONA_GRAPH_BACKEND=fuseki INFONA_NEPTUNE_ENDPOINT=http://localhost:3030 \
         uvicorn infona_client.api.app:app --port 8000
 
 Dataset semantics:
@@ -30,7 +30,7 @@ import uvicorn
 from fastapi import FastAPI, Form, Response
 from pyoxigraph import NamedNode, QueryBoolean, QueryResultsFormat, RdfFormat, Store
 
-app = FastAPI(title="cograph local SPARQL store")
+app = FastAPI(title="infona local SPARQL store")
 store: Store
 
 # SPARQL dataset clauses. FROM NAMED must be stripped before matching bare FROM.

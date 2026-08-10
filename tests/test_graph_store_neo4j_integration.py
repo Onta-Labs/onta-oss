@@ -8,7 +8,7 @@ Run::
     docker compose up -d neo4j
     export NEO4J_URI=bolt://localhost:7687
     export NEO4J_USER=neo4j
-    export NEO4J_PASSWORD=onta-dev-password
+    export NEO4J_PASSWORD=infona-dev-password
     pytest -m neo4j -q
 """
 
@@ -76,7 +76,7 @@ async def test_bootstrap_create_entity_read_back(neo4j_store):
     # Unique per run so re-runs on a dirty volume still pass.
     tenant = f"itest-{uuid.uuid4().hex[:10]}"
     kg = "smoke"
-    entity_id = f"https://cograph.tech/entities/Person/smoke-{uuid.uuid4().hex[:8]}"
+    entity_id = f"https://graph.infona.ai/entities/Person/smoke-{uuid.uuid4().hex[:8]}"
     scope = GraphScope.for_instance(tenant, kg)
     session = neo4j_store.session(scope)
     ts = datetime.now(timezone.utc).isoformat()
@@ -124,7 +124,7 @@ async def test_live_cross_tenant_isolation(neo4j_store):
     """F4: live Neo4j — tenant A must not read tenant B's entity with same id."""
     await neo4j_store.bootstrap_schema()
     shared_kg = "iso-kg"
-    entity_id = f"https://cograph.tech/entities/Thing/iso-{uuid.uuid4().hex[:8]}"
+    entity_id = f"https://graph.infona.ai/entities/Thing/iso-{uuid.uuid4().hex[:8]}"
     tenant_a = f"iso-a-{uuid.uuid4().hex[:8]}"
     tenant_b = f"iso-b-{uuid.uuid4().hex[:8]}"
     ts = datetime.now(timezone.utc).isoformat()

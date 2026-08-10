@@ -28,7 +28,7 @@ _BASE = "/graphs/test-tenant/api-sources"
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch):
     # Fresh stores + a configured cipher so secret storage is enabled.
-    monkeypatch.setenv("OMNIX_SECRETS_KEY", "cGFzc3BocmFzZS1mb3ItdGVzdHM=")
+    monkeypatch.setenv("INFONA_SECRETS_KEY", "cGFzc3BocmFzZS1mb3ItdGVzdHM=")
     reset_api_source_catalog()
     reset_tenant_api_source_store()
     reset_tenant_secret_store()
@@ -383,7 +383,7 @@ def test_test_call_never_echoes_the_secret(client, monkeypatch):
 
 
 def test_create_with_secret_but_no_cipher_is_503(client, monkeypatch):
-    monkeypatch.delenv("OMNIX_SECRETS_KEY", raising=False)
+    monkeypatch.delenv("INFONA_SECRETS_KEY", raising=False)
     reset_secret_cipher()
     body = {"spec": _spec_body(secret_ref="api_key"), "secrets": {"api_key": _SECRET}}
     resp = client.post(_BASE, json=body, headers=_HDR)

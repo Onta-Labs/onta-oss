@@ -183,7 +183,7 @@ def _stub_history_aware_classifier(monkeypatch):
 def test_result_summary_prefers_narrative_over_raw_answer():
     """The stored assistant turn is what clients re-render on thread reload, so
     an answer turn must persist the human ``narrative``, not the raw bindings
-    dump in ``answer`` (the onta-web #72 bug class, backend side)."""
+    dump in ``answer`` (the infona-web #72 bug class, backend side)."""
     text, intent = planner_mod._result_summary(
         {
             "kind": "answer",

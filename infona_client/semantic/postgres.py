@@ -40,7 +40,7 @@ locales/installations), which keeps ``tsv`` reproducible for the same
 ``websearch_to_tsquery`` quoting (a quoted phrase matches the literal tokens —
 no stemmer surprises). Multi-tenant KGs hold mixed-language free text, so a
 per-language stemmer would be wrong as often as right. The config is an env
-knob (``OMNIX_SEMANTIC_TS_CONFIG``) — **applied at table-creation time only**
+knob (``INFONA_SEMANTIC_TS_CONFIG``) — **applied at table-creation time only**
 (it is baked into the GENERATED column): changing it after the table exists
 does NOT re-parse existing rows; you must drop/recreate the table (the
 reconciler backfill, ONTA-181, repopulates it). The same knob value is used at
@@ -90,7 +90,7 @@ the test containers ship **pgvector 0.6.0**, which lacks the GUC. So the ANN
 leg picks one of three modes per query — logged every time, **never silent**:
 
 * ``ann_exact`` — when the (tenant, kg, type)-scoped embedded-row count is at
-  or below ``OMNIX_SEMANTIC_EXACT_SCAN_THRESHOLD`` (default 10 000; counted
+  or below ``INFONA_SEMANTIC_EXACT_SCAN_THRESHOLD`` (default 10 000; counted
   with a ``LIMIT threshold+1`` bounded probe, so the gate itself stays cheap).
   The leg selects the filtered rows into a ``MATERIALIZED`` CTE and orders that
   by distance: a materialized CTE is an optimization fence, so the sort can
@@ -154,15 +154,15 @@ from infona_client.semantic.protocol import (
     SemanticSearchResult,
 )
 
-logger = structlog.stdlib.get_logger("cograph.semantic.postgres")
+logger = structlog.stdlib.get_logger("infona.semantic.postgres")
 
 #: Env knobs (read at instance construction; constructor args override).
 #: They deliberately live here rather than in ``config.Settings`` — they are
 #: adapter-internal tuning, not deployment wiring, and the settings object is
 #: shared surface owned by other subsystems.
-TS_CONFIG_ENV = "OMNIX_SEMANTIC_TS_CONFIG"
-EMBED_DIM_ENV = "OMNIX_SEMANTIC_EMBED_DIM"
-EXACT_SCAN_THRESHOLD_ENV = "OMNIX_SEMANTIC_EXACT_SCAN_THRESHOLD"
+TS_CONFIG_ENV = "INFONA_SEMANTIC_TS_CONFIG"
+EMBED_DIM_ENV = "INFONA_SEMANTIC_EMBED_DIM"
+EXACT_SCAN_THRESHOLD_ENV = "INFONA_SEMANTIC_EXACT_SCAN_THRESHOLD"
 
 DEFAULT_TS_CONFIG = "simple"
 DEFAULT_EXACT_SCAN_THRESHOLD = 10_000

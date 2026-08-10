@@ -47,7 +47,7 @@ from infona_client.resolver.er.types import (
     config_for,
 )
 
-logger = structlog.stdlib.get_logger("cograph.resolver.er.rebuild")
+logger = structlog.stdlib.get_logger("infona.resolver.er.rebuild")
 
 
 
@@ -231,7 +231,7 @@ async def rebuild_type(
 
 
 async def _types_in_graph(client, instance_graph: str) -> list[str]:
-    """Distinct rdf:type URIs present in the instance graph (cograph types only)."""
+    """Distinct rdf:type URIs present in the instance graph (infona types only)."""
     sparql = f"""
 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 SELECT DISTINCT ?t

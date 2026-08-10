@@ -18,7 +18,7 @@ means different things on the two rails.
 * :func:`rank_top_k` — the composed prefilter: embed-rank (fallback lexical),
   keep the top-k specs in descending relevance.
 
-Pure data + stdlib + numpy — no ``cograph.*`` import; the embeddings call is the
+Pure data + stdlib + numpy — no ``infona.*`` import; the embeddings call is the
 one shared ``nlp.embed_client`` seam every embedding consumer already uses.
 """
 

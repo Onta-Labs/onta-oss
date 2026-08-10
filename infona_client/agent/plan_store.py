@@ -252,7 +252,7 @@ class PostgresPlanStore:
     cloud-provider ARNs, account IDs, or hostnames live here.
     """
 
-    _TABLE = "cograph_plans"
+    _TABLE = "infona_plans"
 
     def __init__(self, dsn: Optional[str] = None) -> None:
         self._dsn = dsn if dsn is not None else settings.database_url

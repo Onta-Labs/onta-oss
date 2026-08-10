@@ -4,7 +4,7 @@
     "id": "q-001",
     "tier": "T1",
     "question": "How many storm events are recorded?",
-    "gold_sparql": "SELECT (COUNT(DISTINCT ?stormEvent) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n}",
+    "gold_sparql": "SELECT (COUNT(DISTINCT ?stormEvent) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n}",
     "expected_answer": "10000",
     "full_expected_items": [
       "10000"
@@ -49,7 +49,7 @@
     "id": "q-002",
     "tier": "T1",
     "question": "List all available event types.",
-    "gold_sparql": "SELECT DISTINCT ?eventTypeLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?eventType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/EventType> .\n  ?eventType <http://www.w3.org/2000/01/rdf-schema#label> ?eventTypeLabel .\n}",
+    "gold_sparql": "SELECT DISTINCT ?eventTypeLabel FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?eventType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/EventType> .\n  ?eventType <http://www.w3.org/2000/01/rdf-schema#label> ?eventTypeLabel .\n}",
     "expected_answer": "Heavy Rain, Winter Storm, Tropical Storm, Flash Flood, Thunderstorm Wind, Heavy Snow, High Wind, Marine Thunderstorm Wind, Frost/Freeze, Rip Current ... (45 total)",
     "full_expected_items": [
       "Heavy Rain",
@@ -138,7 +138,7 @@
     "id": "q-003",
     "tier": "T1",
     "question": "How many distinct states are mentioned in the dataset?",
-    "gold_sparql": "SELECT (COUNT(DISTINCT ?state) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/State> .\n}",
+    "gold_sparql": "SELECT (COUNT(DISTINCT ?state) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/State> .\n}",
     "expected_answer": "64",
     "full_expected_items": [
       "64"
@@ -183,7 +183,7 @@
     "id": "q-004",
     "tier": "T1",
     "question": "What are the names of all the months recorded?",
-    "gold_sparql": "SELECT DISTINCT ?monthName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?month <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/Month> .\n  ?month <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/month_name> ?monthName .\n}",
+    "gold_sparql": "SELECT DISTINCT ?monthName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?month <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/Month> .\n  ?month <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/month_name> ?monthName .\n}",
     "expected_answer": "March, August, January, April, September, February, November, July, October, December ... (12 total)",
     "full_expected_items": [
       "March",
@@ -239,7 +239,7 @@
     "id": "q-005",
     "tier": "T2",
     "question": "How many storm events had direct deaths greater than 5?",
-    "gold_sparql": "SELECT (COUNT(?event) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?event <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?event <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/deaths_direct> ?deaths_direct .\n  FILTER (xsd:integer(?deaths_direct) > 5)\n}",
+    "gold_sparql": "SELECT (COUNT(?event) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?event <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?event <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/deaths_direct> ?deaths_direct .\n  FILTER (xsd:integer(?deaths_direct) > 5)\n}",
     "expected_answer": "7",
     "full_expected_items": [
       "7"
@@ -284,7 +284,7 @@
     "id": "q-006",
     "tier": "T2",
     "question": "How many storm events had crop damage greater than 100000?",
-    "gold_sparql": "SELECT (COUNT(?event) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?event <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?event <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/damage_crops> ?damage_crops .\n  FILTER (xsd:integer(?damage_crops) > 100000)\n}",
+    "gold_sparql": "SELECT (COUNT(?event) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?event <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?event <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/damage_crops> ?damage_crops .\n  FILTER (xsd:integer(?damage_crops) > 100000)\n}",
     "expected_answer": "33",
     "full_expected_items": [
       "33"
@@ -329,7 +329,7 @@
     "id": "q-007",
     "tier": "T2",
     "question": "How many storm events had more than 5 direct deaths?",
-    "gold_sparql": "SELECT (COUNT(?stormEvent) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?stormEvent <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/deaths_direct> ?deaths_direct .\n  FILTER (xsd:integer(?deaths_direct) > 5)\n}",
+    "gold_sparql": "SELECT (COUNT(?stormEvent) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?stormEvent <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/deaths_direct> ?deaths_direct .\n  FILTER (xsd:integer(?deaths_direct) > 5)\n}",
     "expected_answer": "7",
     "full_expected_items": [
       "7"
@@ -374,7 +374,7 @@
     "id": "q-008",
     "tier": "T2",
     "question": "What is the total property damage from storm events where the source is 'Newspaper'?",
-    "gold_sparql": "SELECT (SUM(xsd:integer(?damage_property)) AS ?total_damage) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?stormEvent <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/source> ?source .\n  ?stormEvent <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/damage_property> ?damage_property .\n  FILTER (?source = \"Newspaper\")\n}",
+    "gold_sparql": "SELECT (SUM(xsd:integer(?damage_property)) AS ?total_damage) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?stormEvent <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/source> ?source .\n  ?stormEvent <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/damage_property> ?damage_property .\n  FILTER (?source = \"Newspaper\")\n}",
     "expected_answer": "3590010",
     "full_expected_items": [
       "3590010"
@@ -419,7 +419,7 @@
     "id": "q-009",
     "tier": "T3",
     "question": "How many storm events occurred in each state?",
-    "gold_sparql": "SELECT ?stateName (COUNT(?stormEvent) AS ?numberOfStormEvents) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?stormEvent <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/event_in_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/state_name> ?stateName .\n} GROUP BY ?stateName ORDER BY DESC(?numberOfStormEvents)",
+    "gold_sparql": "SELECT ?stateName (COUNT(?stormEvent) AS ?numberOfStormEvents) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?stormEvent <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/event_in_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/State> .\n  ?state <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/state_name> ?stateName .\n} GROUP BY ?stateName ORDER BY DESC(?numberOfStormEvents)",
     "expected_answer": "Texas | 1005\nOklahoma | 523\nCalifornia | 425\nKansas | 358\nIllinois | 340\nGeorgia | 335\nNebraska | 323\nLouisiana | 299\nMissouri | 297\nSouth Dakota | 285\n... (64 total rows)",
     "full_expected_items": [
       "Texas | 1005",
@@ -527,7 +527,7 @@
     "id": "q-010",
     "tier": "T3",
     "question": "What are the names of event types that caused direct deaths greater than 0?",
-    "gold_sparql": "SELECT DISTINCT ?eventTypeLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?stormEvent <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/event_of_type> ?eventType .\n  ?eventType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/EventType> .\n  ?eventType <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/event_type> ?eventTypeLabel .\n  ?stormEvent <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/deaths_direct> ?deathsDirect .\n  FILTER (xsd:integer(?deathsDirect) > 0)\n}",
+    "gold_sparql": "SELECT DISTINCT ?eventTypeLabel FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?stormEvent <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/event_of_type> ?eventType .\n  ?eventType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/EventType> .\n  ?eventType <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/event_type> ?eventTypeLabel .\n  ?stormEvent <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/deaths_direct> ?deathsDirect .\n  FILTER (xsd:integer(?deathsDirect) > 0)\n}",
     "expected_answer": "Heat, Thunderstorm Wind, Flash Flood, Excessive Heat, Winter Weather, Wildfire, Cold/Wind Chill, Heavy Rain, Winter Storm, Flood ... (14 total)",
     "full_expected_items": [
       "Heat",
@@ -585,7 +585,7 @@
     "id": "q-011",
     "tier": "T3",
     "question": "List the months and the total number of storm events that caused property damage greater than 1000.",
-    "gold_sparql": "SELECT ?monthName (COUNT(?stormEvent) AS ?totalStormEvents) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?stormEvent <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/event_in_month> ?month .\n  ?month <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/Month> .\n  ?month <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/month_name> ?monthName .\n  ?stormEvent <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/damage_property> ?damageProperty .\n  FILTER (xsd:integer(?damageProperty) > 1000)\n} GROUP BY ?monthName ORDER BY DESC(?totalStormEvents)",
+    "gold_sparql": "SELECT ?monthName (COUNT(?stormEvent) AS ?totalStormEvents) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?stormEvent <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/event_in_month> ?month .\n  ?month <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/Month> .\n  ?month <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/month_name> ?monthName .\n  ?stormEvent <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/damage_property> ?damageProperty .\n  FILTER (xsd:integer(?damageProperty) > 1000)\n} GROUP BY ?monthName ORDER BY DESC(?totalStormEvents)",
     "expected_answer": "July | 319\nJune | 203\nAugust | 195\nMarch | 136\nApril | 127\nSeptember | 86\nMay | 76\nJanuary | 43\nDecember | 41\nFebruary | 41\n... (12 total rows)",
     "full_expected_items": [
       "July | 319",

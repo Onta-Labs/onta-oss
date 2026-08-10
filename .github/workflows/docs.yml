@@ -4,8 +4,8 @@ on:
   push:
     branches: [main]
     paths:
-      - 'omnix/api/**'
-      - 'omnix/models/**'
+      - 'infona/api/**'
+      - 'infona/models/**'
 
 jobs:
   docs:
@@ -30,7 +30,7 @@ jobs:
           source .venv/bin/activate
           python scripts/generate_api_docs.py
         env:
-          OMNIX_NEPTUNE_ENDPOINT: "http://fake:8182"
+          INFONA_NEPTUNE_ENDPOINT: "http://fake:8182"
 
       - name: Commit docs if changed
         run: |

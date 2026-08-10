@@ -11,7 +11,7 @@
         "488"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?filer) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE { ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> . }",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?filer) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE { ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> . }",
       "per_seed": [
         {
           "seed": 1,
@@ -237,7 +237,7 @@
         "6513 | Operators of  Apartment Buildings"
       ],
       "full_result_count": 175,
-      "gold_sparql": "SELECT ?sicCode ?sicDescription FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE { ?sic <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/SICCode> . ?sic <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/sic_code> ?sicCode . ?sic <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/sic_description> ?sicDescription . }",
+      "gold_sparql": "SELECT ?sicCode ?sicDescription FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE { ?sic <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/SICCode> . ?sic <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/sic_code> ?sicCode . ?sic <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/sic_description> ?sicDescription . }",
       "per_seed": [
         {
           "seed": 1,
@@ -289,7 +289,7 @@
         "511"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?filing) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE { ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> . }",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?filing) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE { ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> . }",
       "per_seed": [
         {
           "seed": 1,
@@ -386,7 +386,7 @@
         "Cayman Islands"
       ],
       "full_result_count": 46,
-      "gold_sparql": "SELECT ?stateName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE { ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/StateOfIncorporation> . ?state <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/state_name> ?stateName . }",
+      "gold_sparql": "SELECT ?stateName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE { ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/StateOfIncorporation> . ?state <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/state_name> ?stateName . }",
       "per_seed": [
         {
           "seed": 1,
@@ -438,7 +438,7 @@
         "100"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(?filing) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> .\n  ?filing <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/filing_primary_doc_desc> ?desc .\n  FILTER(CONTAINS(LCASE(STR(?desc)), \"form 10-k\"))\n}",
+      "gold_sparql": "SELECT (COUNT(?filing) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> .\n  ?filing <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/filing_primary_doc_desc> ?desc .\n  FILTER(CONTAINS(LCASE(STR(?desc)), \"form 10-k\"))\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -490,7 +490,7 @@
         "22"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(?filer) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_fiscal_year_end> ?fiscalYearEnd .\n  FILTER(STRSTARTS(?fiscalYearEnd, \"01\"))\n}",
+      "gold_sparql": "SELECT (COUNT(?filer) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_fiscal_year_end> ?fiscalYearEnd .\n  FILTER(STRSTARTS(?fiscalYearEnd, \"01\"))\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -1029,7 +1029,7 @@
         "CareDx, Inc. | 1"
       ],
       "full_result_count": 488,
-      "gold_sparql": "SELECT ?filer_name (COUNT(?filing) AS ?filing_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_entity_type> \"operating\" .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/has_filing> ?filing .\n  ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_name> ?filer_name .\n} GROUP BY ?filer_name\nORDER BY DESC(?filing_count)",
+      "gold_sparql": "SELECT ?filer_name (COUNT(?filing) AS ?filing_count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_entity_type> \"operating\" .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/has_filing> ?filing .\n  ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_name> ?filer_name .\n} GROUP BY ?filer_name\nORDER BY DESC(?filing_count)",
       "per_seed": [
         {
           "seed": 1,
@@ -1090,7 +1090,7 @@
         "Xerox Holdings Corp | 2"
       ],
       "full_result_count": 10,
-      "gold_sparql": "SELECT ?filer_name (COUNT(?filing) AS ?filing_count)\nFROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k>\nWHERE {\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/has_filing> ?filing .\n  ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_name> ?filer_name .\n}\nGROUP BY ?filer_name\nORDER BY DESC(?filing_count)\nLIMIT 10",
+      "gold_sparql": "SELECT ?filer_name (COUNT(?filing) AS ?filing_count)\nFROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k>\nWHERE {\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/has_filing> ?filing .\n  ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_name> ?filer_name .\n}\nGROUP BY ?filer_name\nORDER BY DESC(?filing_count)\nLIMIT 10",
       "per_seed": [
         {
           "seed": 1,
@@ -1151,7 +1151,7 @@
         "EPR PROPERTIES | 2"
       ],
       "full_result_count": 10,
-      "gold_sparql": "SELECT ?filerName (COUNT(?filing) AS ?filingCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_name> ?filerName .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/has_filing> ?filing .\n  ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> .\n  ?filing <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/filing_form_type> \"10-K\" .\n} GROUP BY ?filerName ORDER BY DESC(?filingCount) LIMIT 10",
+      "gold_sparql": "SELECT ?filerName (COUNT(?filing) AS ?filingCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_name> ?filerName .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/has_filing> ?filing .\n  ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> .\n  ?filing <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/filing_form_type> \"10-K\" .\n} GROUP BY ?filerName ORDER BY DESC(?filingCount) LIMIT 10",
       "per_seed": [
         {
           "seed": 1,
@@ -1212,7 +1212,7 @@
         "GRANITE CONSTRUCTION INC | 1"
       ],
       "full_result_count": 10,
-      "gold_sparql": "SELECT ?filer_name (COUNT(DISTINCT ?filing) AS ?total_filings) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?exhibit <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Exhibit> .\n  ?exhibit <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/exhibit_filed_by> ?filer .\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_name> ?filer_name .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/has_filing> ?filing .\n  ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> .\n} GROUP BY ?filer_name\nORDER BY DESC(?total_filings)\nLIMIT 10",
+      "gold_sparql": "SELECT ?filer_name (COUNT(DISTINCT ?filing) AS ?total_filings) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?exhibit <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Exhibit> .\n  ?exhibit <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/exhibit_filed_by> ?filer .\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_name> ?filer_name .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/has_filing> ?filing .\n  ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> .\n} GROUP BY ?filer_name\nORDER BY DESC(?total_filings)\nLIMIT 10",
       "per_seed": [
         {
           "seed": 1,
@@ -1273,7 +1273,7 @@
         "DYNEX CAPITAL INC | 1"
       ],
       "full_result_count": 10,
-      "gold_sparql": "SELECT ?filer_name (COUNT(DISTINCT ?filing) AS ?num_10k_filings) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_name> ?filer_name .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/has_filing> ?filing .\n  ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> .\n  ?filing <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/filing_form_type> \"10-K\" .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_incorporated_in> ?state_of_incorporation .\n  ?state_of_incorporation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/StateOfIncorporation> .\n  ?state_of_incorporation <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/state_name> ?state_name .\n  FILTER (CONTAINS(LCASE(STR(?state_name)), \"a\"))\n} GROUP BY ?filer_name\nHAVING (COUNT(DISTINCT ?filing) > 0)\nORDER BY DESC(?num_10k_filings)\nLIMIT 10",
+      "gold_sparql": "SELECT ?filer_name (COUNT(DISTINCT ?filing) AS ?num_10k_filings) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_name> ?filer_name .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/has_filing> ?filing .\n  ?filing <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filing> .\n  ?filing <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/filing_form_type> \"10-K\" .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_incorporated_in> ?state_of_incorporation .\n  ?state_of_incorporation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/StateOfIncorporation> .\n  ?state_of_incorporation <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/state_name> ?state_name .\n  FILTER (CONTAINS(LCASE(STR(?state_name)), \"a\"))\n} GROUP BY ?filer_name\nHAVING (COUNT(DISTINCT ?filing) > 0)\nORDER BY DESC(?num_10k_filings)\nLIMIT 10",
       "per_seed": [
         {
           "seed": 1,
@@ -1469,7 +1469,7 @@
         "7363 | Services-Help Supply Services"
       ],
       "full_result_count": 145,
-      "gold_sparql": "SELECT DISTINCT ?sic_code ?sic_description FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_has_fiscal_year> ?fiscal_year .\n  ?fiscal_year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/FiscalYear> .\n  ?fiscal_year <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/fiscal_year_end_month> \"December\" .\n  ?filer <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_in_sic> ?sic_code_entity .\n  ?sic_code_entity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/type/SICCode> .\n  ?sic_code_entity <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/sic_code> ?sic_code .\n  ?sic_code_entity <https://omnix.dev/holdout-v2/holdout-v2-sec-edgar-10k/pred/sic_description> ?sic_description .\n}",
+      "gold_sparql": "SELECT DISTINCT ?sic_code ?sic_description FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-sec-edgar-10k> WHERE {\n  ?filer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/Filer> .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_has_fiscal_year> ?fiscal_year .\n  ?fiscal_year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/FiscalYear> .\n  ?fiscal_year <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/fiscal_year_end_month> \"December\" .\n  ?filer <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/filer_in_sic> ?sic_code_entity .\n  ?sic_code_entity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/type/SICCode> .\n  ?sic_code_entity <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/sic_code> ?sic_code .\n  ?sic_code_entity <https://graph.infona.ai/holdout-v2/holdout-v2-sec-edgar-10k/pred/sic_description> ?sic_description .\n}",
       "per_seed": [
         {
           "seed": 1,

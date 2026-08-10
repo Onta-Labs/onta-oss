@@ -20,7 +20,7 @@ const distEntry = join(here, "..", "dist", "index.js");
 
 let dir: string;
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "cograph-mcp-entry-"));
+  dir = mkdtempSync(join(tmpdir(), "infona-mcp-entry-"));
 });
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
@@ -36,9 +36,9 @@ function handshake(entry: string): Promise<Record<string, unknown>> {
       // env so nothing in module init throws on a missing var.
       env: {
         ...process.env,
-        COGRAPH_API_URL: "http://localhost:1",
-        COGRAPH_API_KEY: "test",
-        COGRAPH_TENANT: "test",
+        INFONA_API_URL: "http://localhost:1",
+        INFONA_API_KEY: "test",
+        INFONA_TENANT: "test",
       },
     });
     let out = "";
@@ -88,7 +88,7 @@ describe("stdio entrypoint auto-start", () => {
     if (!existsSync(distEntry)) {
       throw new Error(`built entry missing at ${distEntry} — run \`npm run build\` first`);
     }
-    const link = join(dir, "onta-mcp");
+    const link = join(dir, "infona-mcp");
     symlinkSync(distEntry, link);
 
     const res = await handshake(link);

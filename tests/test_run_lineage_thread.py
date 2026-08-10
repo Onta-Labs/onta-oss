@@ -110,7 +110,7 @@ class PyoxiNeptune:
 def _er_disabled(monkeypatch):
     """Deterministic URIs (no signal-hash suffixes) via a scoped env set that is
     restored at teardown — never a global mutation."""
-    monkeypatch.setenv("COGRAPH_ER_ENABLED", "0")
+    monkeypatch.setenv("INFONA_ER_ENABLED", "0")
 
 
 def _make_resolver(neptune) -> SchemaResolver:

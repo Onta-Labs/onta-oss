@@ -23,8 +23,8 @@ from infona_client.graph.sparql_scope import (
 )
 
 TENANT = "test-tenant"
-OWN_GRAPH = f"https://graph.onta.sh/graphs/{TENANT}"
-VICTIM_GRAPH = "https://graph.onta.sh/graphs/victim-tenant"
+OWN_GRAPH = f"https://graph.infona.ai/graphs/{TENANT}"
+VICTIM_GRAPH = "https://graph.infona.ai/graphs/victim-tenant"
 
 
 def _post_query(client, auth_headers, query: str):
@@ -80,7 +80,7 @@ def test_unscoped_query_is_rejected(client, auth_headers, mock_neptune):
         # test_prefixed_name_dataset_clauses_are_rejected_not_skipped below is
         # what actually pins that, including the escaped-slash spelling that
         # keeps the namespace out of the raw text entirely.
-        "PREFIX g: <https://graph.onta.sh/graphs/> "
+        "PREFIX g: <https://graph.infona.ai/graphs/> "
         "SELECT ?s FROM g:victim-tenant WHERE { ?s ?p ?o }",
         # A neighbouring tenant id that merely shares our prefix.
         f"SELECT ?s FROM <{OWN_GRAPH}-evil> WHERE {{ ?s ?p ?o }}",
@@ -239,7 +239,7 @@ def test_keyword_lookalike_tokens_cannot_fake_a_dataset_clause(
         # store expands the second clause and reads the victim.
         (
             "prefixed name alongside an owned clause",
-            "PREFIX g: <https://graph.onta.sh/graphs/> "
+            "PREFIX g: <https://graph.infona.ai/graphs/> "
             f"SELECT * FROM <{OWN_GRAPH}> FROM g:victim-tenant "
             "WHERE { ?s ?p ?o }",
         ),
@@ -249,18 +249,18 @@ def test_keyword_lookalike_tokens_cannot_fake_a_dataset_clause(
         # must be REJECTED rather than skipped.
         (
             "prefixed name with an escaped slash",
-            "PREFIX g: <https://graph.onta.sh/gr> "
+            "PREFIX g: <https://graph.infona.ai/gr> "
             f"SELECT * FROM <{OWN_GRAPH}> FROM g:aphs\\/victim-tenant "
             "WHERE { ?s ?p ?o }",
         ),
         (
             "prefixed name as the only clause",
-            "PREFIX g: <https://graph.onta.sh/graphs/> "
+            "PREFIX g: <https://graph.infona.ai/graphs/> "
             "SELECT * FROM g:victim-tenant WHERE { ?s ?p ?o }",
         ),
         (
             "namespace-only prefixed name",
-            "PREFIX g: <https://graph.onta.sh/graphs/victim-tenant> "
+            "PREFIX g: <https://graph.infona.ai/graphs/victim-tenant> "
             "SELECT * FROM g: WHERE { ?s ?p ?o }",
         ),
     ],
@@ -336,7 +336,7 @@ def test_same_tenant_query_still_works(client, auth_headers, mock_neptune):
 
 
 def test_published_cli_clear_loop_still_works(client, auth_headers, mock_neptune):
-    """The exact query shape ``cograph clear`` sends (packages/cograph/src/cli.ts).
+    """The exact query shape ``infona clear`` sends (packages/cli/src/cli.ts).
 
     It is the only first-party client of this route, and it already scoped
     itself, so the guard must not break already-published CLI versions.
@@ -359,7 +359,7 @@ def test_eval_diagnosis_probe_shapes_still_work(client, auth_headers, mock_neptu
         f"SELECT (COUNT(?v) AS ?cnt) FROM <{kg_graph}> "
         'WHERE { ?s ?p ?v . FILTER(CONTAINS(STR(?v), "|")) } LIMIT 1',
         f"ASK FROM <{OWN_GRAPH}> WHERE "
-        "{ <https://graph.onta.sh/onto/directedBy> ?p ?o }",
+        "{ <https://graph.infona.ai/onto/directedBy> ?p ?o }",
     ):
         mock_neptune.query.reset_mock()
         assert _post_query(client, auth_headers, query).status_code == 200, query
@@ -411,7 +411,7 @@ def test_tenant_owns_graph_does_not_leak_across_a_shared_prefix():
     assert not tenant_owns_graph(f"{OWN_GRAPH}-evil", TENANT)
     assert not tenant_owns_graph(f"{OWN_GRAPH}evil", TENANT)
     assert not tenant_owns_graph(VICTIM_GRAPH, TENANT)
-    assert not tenant_owns_graph("https://graph.onta.sh/graphs/", TENANT)
+    assert not tenant_owns_graph("https://graph.infona.ai/graphs/", TENANT)
 
 
 def test_tenant_owns_graph_rejects_paths_that_escape_the_owned_prefix():
@@ -484,7 +484,7 @@ ACCEPTED_QUERIES = [
     f"SELECT ?s ?p ?o FROM <{OWN_GRAPH}> WHERE {{ ?s ?p ?o }} LIMIT 1000",
     f"SELECT (COUNT(?v) AS ?cnt) FROM <{OWN_GRAPH}/kg/imdb> "
     'WHERE { ?s ?p ?v . FILTER(CONTAINS(STR(?v), "|")) } LIMIT 1',
-    f"ASK FROM <{OWN_GRAPH}> WHERE {{ <https://graph.onta.sh/onto/x> ?p ?o }}",
+    f"ASK FROM <{OWN_GRAPH}> WHERE {{ <https://graph.infona.ai/onto/x> ?p ?o }}",
     f"SELECT ?s FROM <{OWN_GRAPH}/kg/imdb/provenance> WHERE {{ ?s ?p ?o }}",
     f"SELECT ?g ?s FROM <{OWN_GRAPH}> FROM NAMED <{OWN_GRAPH}/kg/imdb> "
     "WHERE { GRAPH ?g { ?s ?p ?o } }",
@@ -547,7 +547,7 @@ def test_dataset_graphs_refuses_rather_than_drops_an_unresolvable_clause():
     from infona_client.graph.sparql_scope import dataset_graphs
 
     query = (
-        "PREFIX g: <https://graph.onta.sh/gr> "
+        "PREFIX g: <https://graph.infona.ai/gr> "
         f"SELECT * FROM <{OWN_GRAPH}> FROM g:aphs\\/victim-tenant "
         "WHERE { ?s ?p ?o }"
     )

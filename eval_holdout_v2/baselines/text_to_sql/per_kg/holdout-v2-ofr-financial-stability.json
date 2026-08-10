@@ -11,7 +11,7 @@
         "3"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?indicatorCategory) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?indicatorCategory <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorCategory> . }",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?indicatorCategory) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?indicatorCategory <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorCategory> . }",
       "per_seed": [
         {
           "seed": 1,
@@ -71,7 +71,7 @@
         "Emerging Markets"
       ],
       "full_result_count": 9,
-      "gold_sparql": "SELECT DISTINCT ?indicatorName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> . ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_name> ?indicatorName . }",
+      "gold_sparql": "SELECT DISTINCT ?indicatorName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> . ?indicator <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_name> ?indicatorName . }",
       "per_seed": [
         {
           "seed": 1,
@@ -126,7 +126,7 @@
         "Elevated"
       ],
       "full_result_count": 4,
-      "gold_sparql": "SELECT DISTINCT ?stressLevelLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> . ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/stress_level_label> ?stressLevelLabel . }",
+      "gold_sparql": "SELECT DISTINCT ?stressLevelLabel FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> . ?stressLevel <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/stress_level_label> ?stressLevelLabel . }",
       "per_seed": [
         {
           "seed": 1,
@@ -178,7 +178,7 @@
         "27"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?yearValue) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Year> . ?year <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/year> ?yearValue . }",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?yearValue) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/Year> . ?year <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/year> ?yearValue . }",
       "per_seed": [
         {
           "seed": 1,
@@ -230,7 +230,7 @@
         "4666"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (SUM(xsd:integer(?stressLevelReadingCount)) AS ?totalReadingCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> . ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/lower_bound> ?lowerBound . ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_count> ?stressLevelReadingCount . FILTER (xsd:integer(?lowerBound) > 0) }",
+      "gold_sparql": "SELECT (SUM(xsd:integer(?stressLevelReadingCount)) AS ?totalReadingCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> . ?stressLevel <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/lower_bound> ?lowerBound . ?stressLevel <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_count> ?stressLevelReadingCount . FILTER (xsd:integer(?lowerBound) > 0) }",
       "per_seed": [
         {
           "seed": 1,
@@ -282,7 +282,7 @@
         "United States"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT DISTINCT ?indicatorName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> . ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_name> ?indicatorName . ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/source_column> ?sourceColumn . FILTER (CONTAINS(LCASE(STR(?sourceColumn)), \"united states\")) }",
+      "gold_sparql": "SELECT DISTINCT ?indicatorName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> . ?indicator <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_name> ?indicatorName . ?indicator <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/source_column> ?sourceColumn . FILTER (CONTAINS(LCASE(STR(?sourceColumn)), \"united states\")) }",
       "per_seed": [
         {
           "seed": 1,
@@ -334,7 +334,7 @@
         "4666"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (SUM(xsd:integer(?stressLevelReadingCount)) AS ?totalReadingCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> .\n  ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/lower_bound> ?lowerBound .\n  ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_count> ?stressLevelReadingCount .\n  FILTER (xsd:integer(?lowerBound) > 0)\n}",
+      "gold_sparql": "SELECT (SUM(xsd:integer(?stressLevelReadingCount)) AS ?totalReadingCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> .\n  ?stressLevel <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/lower_bound> ?lowerBound .\n  ?stressLevel <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_count> ?stressLevelReadingCount .\n  FILTER (xsd:integer(?lowerBound) > 0)\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -386,7 +386,7 @@
         "12343"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(?reading) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/value> ?value .\n  FILTER(xsd:float(?value) > 0.5)\n}",
+      "gold_sparql": "SELECT (COUNT(?reading) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/value> ?value .\n  FILTER(xsd:float(?value) > 0.5)\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -441,7 +441,7 @@
         "High | 1113"
       ],
       "full_result_count": 4,
-      "gold_sparql": "SELECT ?stressLevelLabel (COUNT(?reading) AS ?readingCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_has_stress_level> ?stressLevel .\n  ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> .\n  ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/stress_level_label> ?stressLevelLabel .\n} GROUP BY ?stressLevelLabel ORDER BY DESC(?readingCount)",
+      "gold_sparql": "SELECT ?stressLevelLabel (COUNT(?reading) AS ?readingCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_has_stress_level> ?stressLevel .\n  ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> .\n  ?stressLevel <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/stress_level_label> ?stressLevelLabel .\n} GROUP BY ?stressLevelLabel ORDER BY DESC(?readingCount)",
       "per_seed": [
         {
           "seed": 1,
@@ -495,7 +495,7 @@
         "Composite | 1"
       ],
       "full_result_count": 3,
-      "gold_sparql": "SELECT ?categoryName (COUNT(?indicator) AS ?indicatorCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?category <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorCategory> .\n  ?category <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/category_includes_indicator> ?indicator .\n  ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> .\n  ?category <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/category_name> ?categoryName .\n} GROUP BY ?categoryName ORDER BY DESC(?indicatorCount)",
+      "gold_sparql": "SELECT ?categoryName (COUNT(?indicator) AS ?indicatorCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?category <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorCategory> .\n  ?category <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/category_includes_indicator> ?indicator .\n  ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> .\n  ?category <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/category_name> ?categoryName .\n} GROUP BY ?categoryName ORDER BY DESC(?indicatorCount)",
       "per_seed": [
         {
           "seed": 1,
@@ -555,7 +555,7 @@
         "OFR Financial Stress Index | 968"
       ],
       "full_result_count": 9,
-      "gold_sparql": "SELECT ?indicatorName (COUNT(?reading) AS ?readingCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> .\n  ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_name> ?indicatorName .\n  ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_has_reading> ?reading .\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_has_stress_level> ?stressLevel .\n  ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> .\n  ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/stress_level_label> \"Low\" .\n} GROUP BY ?indicatorName\nORDER BY DESC(?readingCount)\nLIMIT 10",
+      "gold_sparql": "SELECT ?indicatorName (COUNT(?reading) AS ?readingCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> .\n  ?indicator <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_name> ?indicatorName .\n  ?indicator <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_has_reading> ?reading .\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_has_stress_level> ?stressLevel .\n  ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> .\n  ?stressLevel <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/stress_level_label> \"Low\" .\n} GROUP BY ?indicatorName\nORDER BY DESC(?readingCount)\nLIMIT 10",
       "per_seed": [
         {
           "seed": 1,
@@ -633,7 +633,7 @@
         "2026 | -0.6092963"
       ],
       "full_result_count": 27,
-      "gold_sparql": "SELECT ?year (AVG(xsd:float(?readingValue)) AS ?averageReadingValue) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?yearEntity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Year> .\n  ?yearEntity <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/year> ?year .\n  ?yearEntity <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/year_contains_month> ?month .\n  ?month <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Month> .\n  ?month <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/month_contains_period> ?period .\n  ?period <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Period> .\n  ?period <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/day_of_week> \"Friday\" .\n  ?period <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/period_has_reading> ?reading .\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/value> ?readingValue .\n} GROUP BY ?year\nORDER BY ?year",
+      "gold_sparql": "SELECT ?year (AVG(xsd:float(?readingValue)) AS ?averageReadingValue) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?yearEntity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/Year> .\n  ?yearEntity <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/year> ?year .\n  ?yearEntity <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/year_contains_month> ?month .\n  ?month <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/Month> .\n  ?month <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/month_contains_period> ?period .\n  ?period <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/Period> .\n  ?period <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/day_of_week> \"Friday\" .\n  ?period <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/period_has_reading> ?reading .\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/value> ?readingValue .\n} GROUP BY ?year\nORDER BY ?year",
       "per_seed": [
         {
           "seed": 1,
@@ -687,7 +687,7 @@
         "Composite | 1"
       ],
       "full_result_count": 3,
-      "gold_sparql": "SELECT ?categoryName (COUNT(DISTINCT ?indicator) AS ?indicatorCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?category <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorCategory> .\n  ?category <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/category_name> ?categoryName .\n  ?category <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/category_includes_indicator> ?indicator .\n  ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> .\n  ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_has_reading> ?reading .\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_on_period> ?period .\n  ?period <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Period> .\n  ?period <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/period_in_month> ?month .\n  ?month <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Month> .\n  ?month <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/month_in_year> ?year .\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Year> .\n  ?year <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/decade> \"2010\" .\n} GROUP BY ?categoryName\nORDER BY DESC(?indicatorCount)",
+      "gold_sparql": "SELECT ?categoryName (COUNT(DISTINCT ?indicator) AS ?indicatorCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?category <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorCategory> .\n  ?category <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/category_name> ?categoryName .\n  ?category <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/category_includes_indicator> ?indicator .\n  ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> .\n  ?indicator <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_has_reading> ?reading .\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_on_period> ?period .\n  ?period <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/Period> .\n  ?period <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/period_in_month> ?month .\n  ?month <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/Month> .\n  ?month <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/month_in_year> ?year .\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/type/Year> .\n  ?year <https://graph.infona.ai/holdout-v2/holdout-v2-ofr-financial-stability/pred/decade> \"2010\" .\n} GROUP BY ?categoryName\nORDER BY DESC(?indicatorCount)",
       "per_seed": [
         {
           "seed": 1,

@@ -21,8 +21,8 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi.testclient import TestClient
 
-os.environ["OMNIX_API_KEYS"] = '{"test-key": "test-tenant"}'
-os.environ["OMNIX_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
+os.environ["INFONA_API_KEYS"] = '{"test-key": "test-tenant"}'
+os.environ["INFONA_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
 
 from infona_client.api.app import create_app
 from infona_client.api.routes.explore import (
@@ -39,8 +39,8 @@ from infona_client.spatiotemporal.extract import GEO_WKT
 TENANT = "test-tenant"
 KG = "web"
 
-TYPES = "https://graph.onta.sh/types/"
-ONTO = "https://graph.onta.sh/onto/"
+TYPES = "https://graph.infona.ai/types/"
+ONTO = "https://graph.infona.ai/onto/"
 XSD_DATE = "http://www.w3.org/2001/XMLSchema#date"
 
 

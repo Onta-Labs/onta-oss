@@ -13,11 +13,11 @@ is swappable:
 - :class:`InMemoryUsageStore` — the zero-config default; non-durable,
   per-process.
 - :class:`PostgresUsageStore` — durable, shared across tasks, over a generic
-  Postgres DSN (``settings.database_url`` / ``OMNIX_DATABASE_URL``). Vendor
+  Postgres DSN (``settings.database_url`` / ``INFONA_DATABASE_URL``). Vendor
   neutral: a plain DSN, no cloud-provider identifiers.
 
 Costs are deliberately NOT stored here — per-run cost already lives on the
-job store (``cograph_jobs.cost``); the ``/usage`` endpoint composes the two
+job store (``infona_jobs.cost``); the ``/usage`` endpoint composes the two
 at read time so there is never a second source of truth for spend.
 """
 
@@ -99,7 +99,7 @@ class PostgresUsageStore:
     table are created lazily on first use; the DDL is idempotent.
     """
 
-    _TABLE = "cograph_usage_daily"
+    _TABLE = "infona_usage_daily"
 
     def __init__(self, dsn: Optional[str] = None) -> None:
         self._dsn = dsn if dsn is not None else settings.database_url

@@ -38,7 +38,7 @@ path with no hand-rolled SPARQL insert/delete. The shared base fields
 predicate URIs and the SAME ``make_policy_id`` / ``tenant_graph_uri`` conventions as
 :class:`CleanPolicyStore`.
 
-Boundary: OSS. Imports only stdlib / ``infona_client.*``. No ``from cograph.*``.
+Boundary: OSS. Imports only stdlib / ``infona_client.*``. No ``from infona.*``.
 """
 
 

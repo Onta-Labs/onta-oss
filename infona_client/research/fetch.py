@@ -10,7 +10,7 @@ rail — discovery, enrichment, research — consults the web through.
 
 This module re-exports the substrate's names unchanged so any existing importer
 of ``infona_client.research.fetch`` (including the published npm/OSS package and
-the premium ``cograph.web_sources.plugin`` render-tier registration) keeps
+the premium ``infona.web_sources.plugin`` render-tier registration) keeps
 working with no code change — the ADR-0007 "converge with a shim, never
 rename-and-delete" pattern. Internal OSS callers should import from
 :mod:`infona_client.retrieval` directly.

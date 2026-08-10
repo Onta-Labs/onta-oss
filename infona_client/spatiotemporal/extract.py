@@ -38,7 +38,7 @@ import structlog
 
 from infona_client.spatiotemporal.protocol import SpatioTemporalFact
 
-logger = structlog.stdlib.get_logger("cograph.spatiotemporal.extract")
+logger = structlog.stdlib.get_logger("infona.spatiotemporal.extract")
 
 Triple = tuple[str, str, str]
 

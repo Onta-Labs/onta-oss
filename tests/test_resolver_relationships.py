@@ -224,7 +224,7 @@ class TestRelationshipRegistration:
         update_calls = [str(c) for c in mock_neptune.update.call_args_list]
         insert_calls = " ".join(update_calls)
         assert "Person/attrs/lives_in" in insert_calls
-        assert "graph.onta.sh/types/City" in insert_calls
+        assert "graph.infona.ai/types/City" in insert_calls
 
     @pytest.mark.asyncio
     async def test_relationship_not_duplicated(self, mock_neptune, mock_cache):
@@ -295,7 +295,7 @@ class TestRelationshipRegistration:
         # The range was re-pointed at the City type (delete-then-insert).
         assert "DELETE" in update_calls and "INSERT" in update_calls
         assert "Person/attrs/lives_in" in update_calls
-        assert "graph.onta.sh/types/City" in update_calls
+        assert "graph.infona.ai/types/City" in update_calls
 
     @pytest.mark.asyncio
     async def test_instance_triple_always_inserted(self, mock_neptune, mock_cache):

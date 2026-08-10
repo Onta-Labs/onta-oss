@@ -39,7 +39,7 @@ from typing import Any, Awaitable, Callable, Iterable, Protocol, runtime_checkab
 
 import structlog
 
-logger = structlog.stdlib.get_logger("cograph.resolver.ingest_runner")
+logger = structlog.stdlib.get_logger("infona.resolver.ingest_runner")
 
 #: A batch is a list of CSV rows; ``post_batch(batch, index)`` ships it.
 Batch = list[dict[str, Any]]
@@ -68,14 +68,14 @@ class FileCheckpointStore:
 
     Writes are atomic (temp file + ``os.replace``) so a crash mid-checkpoint
     can't corrupt the offset. Directory defaults to
-    ``$OMNIX_INGEST_CHECKPOINT_DIR`` or ``~/.cograph/ingest-jobs``.
+    ``$INFONA_INGEST_CHECKPOINT_DIR`` or ``~/.infona/ingest-jobs``.
     """
 
     def __init__(self, directory: str | os.PathLike[str] | None = None):
         self._dir = Path(
             directory
-            or os.environ.get("OMNIX_INGEST_CHECKPOINT_DIR")
-            or (Path.home() / ".cograph" / "ingest-jobs")
+            or os.environ.get("INFONA_INGEST_CHECKPOINT_DIR")
+            or (Path.home() / ".infona" / "ingest-jobs")
         )
 
     def _path(self, job_id: str) -> Path:

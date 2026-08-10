@@ -210,10 +210,10 @@ def test_postgres_store_create_runs_ddl_and_insert(monkeypatch):
 
     sqls = [r[1] for r in rec]
     # DDL (table + index) ran on first use.
-    assert any("CREATE TABLE IF NOT EXISTS cograph_jobs" in s for s in sqls)
+    assert any("CREATE TABLE IF NOT EXISTS infona_jobs" in s for s in sqls)
     assert any("CREATE INDEX IF NOT EXISTS" in s and "tenant_id" in s for s in sqls)
     # INSERT (upsert) with the queryable columns mirrored.
-    insert = next(r for r in rec if r[0] == "execute" and "INSERT INTO cograph_jobs" in r[1])
+    insert = next(r for r in rec if r[0] == "execute" and "INSERT INTO infona_jobs" in r[1])
     assert "ON CONFLICT (id) DO UPDATE" in insert[1]
     params = insert[2]
     assert params[0] == "job-1"           # id
@@ -287,17 +287,17 @@ def test_postgres_store_update_and_delete(monkeypatch):
 
     asyncio.run(run())
 
-    assert any(r[0] == "execute" and "INSERT INTO cograph_jobs" in r[1] for r in rec)
-    delete = next(r for r in rec if r[0] == "execute" and "DELETE FROM cograph_jobs" in r[1])
+    assert any(r[0] == "execute" and "INSERT INTO infona_jobs" in r[1] for r in rec)
+    delete = next(r for r in rec if r[0] == "execute" and "DELETE FROM infona_jobs" in r[1])
     assert delete[2] == ("job-1",)
 
 
 @pytest.mark.integration
 def test_postgres_store_real_db():
-    """Optional real-DB smoke test; skipped unless OMNIX_DATABASE_URL is set."""
-    dsn = os.environ.get("OMNIX_DATABASE_URL")
+    """Optional real-DB smoke test; skipped unless INFONA_DATABASE_URL is set."""
+    dsn = os.environ.get("INFONA_DATABASE_URL")
     if not dsn:
-        pytest.skip("OMNIX_DATABASE_URL not set")
+        pytest.skip("INFONA_DATABASE_URL not set")
 
     async def run():
         store = PostgresJobStore(dsn=dsn)

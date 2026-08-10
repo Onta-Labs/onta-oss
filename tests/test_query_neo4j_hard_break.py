@@ -1,6 +1,6 @@
 """E9 partial: public SPARQL surfaces hard-break under neo4j backend.
 
-When ``COGRAPH_GRAPH_BACKEND=neo4j``, ``POST /graphs/{tenant}/query`` and
+When ``INFONA_GRAPH_BACKEND=neo4j``, ``POST /graphs/{tenant}/query`` and
 ``/update`` return 410 Gone (ADR 0012 L2). Default / Neptune backend keeps the
 existing scoped SPARQL behaviour (mocked Neptune client).
 """
@@ -8,14 +8,14 @@ existing scoped SPARQL behaviour (mocked Neptune client).
 from infona_client.auth.api_keys import TenantContext, get_tenant
 
 TENANT = "test-tenant"
-TENANT_GRAPH = f"https://graph.onta.sh/graphs/{TENANT}"
+TENANT_GRAPH = f"https://graph.infona.ai/graphs/{TENANT}"
 SCOPED_SELECT = f"SELECT ?s FROM <{TENANT_GRAPH}> WHERE {{ ?s ?p ?o }}"
 
 
 def test_query_returns_410_when_neo4j_backend(
     client, auth_headers, mock_neptune, monkeypatch
 ):
-    monkeypatch.setenv("COGRAPH_GRAPH_BACKEND", "neo4j")
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neo4j")
     res = client.post(
         f"/graphs/{TENANT}/query",
         headers=auth_headers,
@@ -31,7 +31,7 @@ def test_query_returns_410_when_neo4j_backend(
 def test_update_returns_410_when_neo4j_backend(
     app, client, auth_headers, mock_neptune, monkeypatch
 ):
-    monkeypatch.setenv("COGRAPH_GRAPH_BACKEND", "neo4j")
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neo4j")
     app.dependency_overrides[get_tenant] = lambda: TenantContext(
         tenant_id=TENANT, api_key="k", is_operator=True
     )
@@ -51,7 +51,7 @@ def test_update_returns_410_when_neo4j_backend(
 def test_query_still_accepts_when_backend_default(
     client, auth_headers, mock_neptune, monkeypatch
 ):
-    monkeypatch.delenv("COGRAPH_GRAPH_BACKEND", raising=False)
+    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
     mock_neptune.query.return_value = {
         "head": {"vars": ["s"]},
         "results": {"bindings": []},
@@ -68,7 +68,7 @@ def test_query_still_accepts_when_backend_default(
 def test_query_still_accepts_when_backend_neptune(
     client, auth_headers, mock_neptune, monkeypatch
 ):
-    monkeypatch.setenv("COGRAPH_GRAPH_BACKEND", "neptune")
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
     mock_neptune.query.return_value = {
         "head": {"vars": ["s"]},
         "results": {"bindings": []},
@@ -85,7 +85,7 @@ def test_query_still_accepts_when_backend_neptune(
 def test_update_still_accepts_operator_when_backend_default(
     app, client, auth_headers, mock_neptune, monkeypatch
 ):
-    monkeypatch.delenv("COGRAPH_GRAPH_BACKEND", raising=False)
+    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
     app.dependency_overrides[get_tenant] = lambda: TenantContext(
         tenant_id=TENANT, api_key="k", is_operator=True
     )

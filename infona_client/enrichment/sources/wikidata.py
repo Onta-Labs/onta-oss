@@ -22,7 +22,7 @@ import structlog
 from infona_client.enrichment.models import Verdict
 from infona_client.offline import assert_online_url
 
-logger = structlog.stdlib.get_logger("cograph.enrichment")
+logger = structlog.stdlib.get_logger("infona.enrichment")
 
 
 WIKIDATA_API = "https://www.wikidata.org/w/api.php"
@@ -38,10 +38,10 @@ WIKIDATA_ENTITY_BASE = "https://www.wikidata.org/wiki/"
 # executor additionally wraps every adapter lookup in ``asyncio.wait_for`` as a
 # total-operation backstop. All four are overridable via env so ops can tune
 # them without a code change.
-CONNECT_TIMEOUT_S = float(os.environ.get("COGRAPH_WIKIDATA_CONNECT_TIMEOUT_S", "5"))
-READ_TIMEOUT_S = float(os.environ.get("COGRAPH_WIKIDATA_READ_TIMEOUT_S", "10"))
-WRITE_TIMEOUT_S = float(os.environ.get("COGRAPH_WIKIDATA_WRITE_TIMEOUT_S", "10"))
-POOL_TIMEOUT_S = float(os.environ.get("COGRAPH_WIKIDATA_POOL_TIMEOUT_S", "5"))
+CONNECT_TIMEOUT_S = float(os.environ.get("INFONA_WIKIDATA_CONNECT_TIMEOUT_S", "5"))
+READ_TIMEOUT_S = float(os.environ.get("INFONA_WIKIDATA_READ_TIMEOUT_S", "10"))
+WRITE_TIMEOUT_S = float(os.environ.get("INFONA_WIKIDATA_WRITE_TIMEOUT_S", "10"))
+POOL_TIMEOUT_S = float(os.environ.get("INFONA_WIKIDATA_POOL_TIMEOUT_S", "5"))
 TIMEOUT = httpx.Timeout(
     connect=CONNECT_TIMEOUT_S,
     read=READ_TIMEOUT_S,
@@ -176,8 +176,8 @@ class WikidataAdapter:
                 timeout=TIMEOUT,
                 headers={
                     "User-Agent": (
-                        "cograph-enrichment/0.1 "
-                        "(+https://github.com/git-moeen/cograph-oss; ops@cograph.tech)"
+                        "infona-enrichment/0.1 "
+                        "(+https://github.com/git-moeen/infona-oss; ops@graph.infona.ai)"
                     ),
                     "Accept": "application/json",
                 },
@@ -193,7 +193,7 @@ class WikidataAdapter:
         if not entity_label:
             return []
 
-        # Fail closed under OMNIX_OFFLINE=1 — Wikidata is an external host and
+        # Fail closed under INFONA_OFFLINE=1 — Wikidata is an external host and
         # is not on the default localhost allowlist. Raise (don't silently [])
         # so the operator sees why enrichment produced no verdicts.
         assert_online_url(WIKIDATA_API, purpose="Wikidata enrichment lookup")

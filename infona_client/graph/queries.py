@@ -70,13 +70,13 @@ def is_valid_tenant_id(tenant_id: object) -> bool:
     open-access mode picks its own workspace id with nothing to validate it, and
     ids predating the slug rule keep working. Enforcing the slug shape here would
     make an existing workspace's data unreachable to fix a problem it does not
-    have — the ONTA-414 → onta-oss#274 mistake, where a stricter-than-necessary
+    have — the ONTA-414 → infona-oss#274 mistake, where a stricter-than-necessary
     read-side pattern 422'd a whole listing over one pre-existing name.
 
     So the rule is exactly "cannot break out of, or repoint, the IRI":
 
     * no IRIREF-illegal character (see :func:`is_iri_safe_segment`) — a ``>``
-      closes ``<https://graph.onta.sh/graphs/{tenant}>`` early and the remainder
+      closes ``<https://graph.infona.ai/graphs/{tenant}>`` early and the remainder
       becomes SPARQL. On the ontology/ingest WRITE paths that remainder lands in
       a ``client.update``, where ``;`` starts a second operation: ``DROP ALL``
       needs no IRI of its own and destroys every graph in the store;
@@ -181,7 +181,7 @@ def is_valid_type_name(name: object) -> bool:
     not chosen from a keyboard-safe alphabet, so any pattern narrower than
     "cannot break the IRI" risks rejecting names that exist and work. Checked
     against the live registry rather than by grepping this repo (the ONTA-414
-    verification mistake that produced onta-oss#274): of 158 type names and 714
+    verification mistake that produced infona-oss#274): of 158 type names and 714
     attribute names in the two live workspaces, ZERO carry an IRIREF-illegal
     character, while TWO attribute names contain ``/`` (``city/town``,
     ``county/parish``). A ``[A-Za-z0-9_-]+`` rule of the kind ``kg_name`` uses
@@ -217,7 +217,7 @@ def skip_invalid_type_name(name: object, op: str) -> bool:
     ontology embedding chunks. All of them fan out over every declared name, so
     letting :func:`require_valid_type_name` raise on ONE corrupt row would take
     the whole answer down for every healthy type — the all-or-nothing failure
-    onta-oss#274 had to fix after ONTA-414 (a single pre-existing malformed
+    infona-oss#274 had to fix after ONTA-414 (a single pre-existing malformed
     ``kg_name`` 422'd an entire workspace's KG listing).
 
     Shared rather than copied per module BECAUSE of that history: the enumeration
@@ -241,7 +241,7 @@ def skip_invalid_type_name(name: object, op: str) -> bool:
     # no longer intercept it. Not hot — the valid-name fast path returns above.
     import structlog
 
-    structlog.get_logger("cograph.graph").warning(
+    structlog.get_logger("infona.graph").warning(
         "type_name_invalid_skipped", type_name=name, op=op
     )
     return True

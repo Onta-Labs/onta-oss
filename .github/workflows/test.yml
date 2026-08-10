@@ -48,8 +48,8 @@ jobs:
           source .venv/bin/activate
           pytest tests/ -v --tb=short
         env:
-          OMNIX_API_KEYS: '{"test-key": "test-tenant"}'
-          OMNIX_NEPTUNE_ENDPOINT: "http://fake-neptune:8182"
+          INFONA_API_KEYS: '{"test-key": "test-tenant"}'
+          INFONA_NEPTUNE_ENDPOINT: "http://fake-neptune:8182"
           PYTHONPATH: ${{ github.workspace }}
 
       # DSN-gated pgvector integration tests (ONTA-176): re-run the semantic
@@ -61,12 +61,12 @@ jobs:
           source .venv/bin/activate
           pytest tests/test_semantic_postgres.py tests/test_semantic_parity.py tests/test_semantic_relevance_golden.py -v --tb=short
         env:
-          OMNIX_API_KEYS: '{"test-key": "test-tenant"}'
-          OMNIX_NEPTUNE_ENDPOINT: "http://fake-neptune:8182"
-          OMNIX_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/postgres"
+          INFONA_API_KEYS: '{"test-key": "test-tenant"}'
+          INFONA_NEPTUNE_ENDPOINT: "http://fake-neptune:8182"
+          INFONA_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/postgres"
           PYTHONPATH: ${{ github.workspace }}
 
-  # TS SDK (packages/cograph) — typecheck, build, and unit tests (vitest).
+  # TS SDK (packages/cli) — typecheck, build, and unit tests (vitest).
   ts:
     runs-on: ubuntu-latest
 
@@ -81,19 +81,19 @@ jobs:
         run: npm ci
 
       - name: Typecheck
-        run: npm run typecheck --workspace packages/cograph
+        run: npm run typecheck --workspace packages/cli
 
       - name: Build all packages
         run: npm run build --workspaces
 
-      # Typecheck the MCP package AFTER the build so its `cograph` dependency's
+      # Typecheck the MCP package AFTER the build so its `infona` dependency's
       # emitted .d.ts (which exports `JobCategory`) is present. This is what makes
       # the compile-time `JOB_CATEGORIES` exhaustiveness guard in
-      # packages/cograph-mcp/src/index.ts actually GUARD: tsup/esbuild strips types
+      # packages/mcp/src/index.ts actually GUARD: tsup/esbuild strips types
       # without checking them, so before this step nothing ran `tsc` on the MCP
       # package and a dropped/added backend category would compile silently.
       - name: Typecheck MCP package
-        run: npm run typecheck --workspace packages/cograph-mcp
+        run: npm run typecheck --workspace packages/mcp
 
       - name: Run TS tests
         run: npm test --workspaces --if-present

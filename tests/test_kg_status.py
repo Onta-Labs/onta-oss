@@ -188,7 +188,7 @@ async def test_base_probe_looks_for_instances_not_any_triple():
     await kg_data_status(n, TENANT, "fresh")
     base_ask = next(q for q in n.asks if "rdf-syntax-ns#type" in q)
     assert "FILTER" in base_ask
-    assert "https://graph.onta.sh/types/" in base_ask
+    assert "https://graph.infona.ai/types/" in base_ask
     assert "?s ?p ?o" not in base_ask
 
 
@@ -252,7 +252,7 @@ async def test_invalid_kg_name_raises_before_any_query():
 
     n = ProbeNeptune(registered=True, has_data=True)
     with pytest.raises(InvalidKGName):
-        await kg_data_status(n, TENANT, "kg> FROM <https://graph.onta.sh/graphs/victim")
+        await kg_data_status(n, TENANT, "kg> FROM <https://graph.infona.ai/graphs/victim")
     assert n.asks == []
 
 

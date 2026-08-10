@@ -5,7 +5,7 @@ The bank is scoped per PROCESS: ``DEFAULT_BANK_PATH`` is a single JSONL file and
 ``Example`` carries a ``kg_name`` but no tenant. The shipped bank is 262
 examples across 12 KGs, all ``demo-tenant``. Before this change
 ``format_examples_for_prompt`` did nothing but collapse whitespace, so those
-``FROM <https://graph.onta.sh/graphs/demo-tenant/kg/...>`` clauses went verbatim
+``FROM <https://graph.infona.ai/graphs/demo-tenant/kg/...>`` clauses went verbatim
 into every self-hosted and third-party tenant's prompt. The only defense was a
 prose line in the system prompt.
 
@@ -34,14 +34,14 @@ from infona_client.nlp.example_bank import (
     sanitize_example_sparql,
 )
 
-FOREIGN_GRAPH = "https://graph.onta.sh/graphs/demo-tenant/kg/imdb-movies"
-TARGET_GRAPH = "https://graph.onta.sh/graphs/acme-corp/kg/vendor-catalog"
+FOREIGN_GRAPH = "https://graph.infona.ai/graphs/demo-tenant/kg/imdb-movies"
+TARGET_GRAPH = "https://graph.infona.ai/graphs/acme-corp/kg/vendor-catalog"
 
 _SAMPLE_SPARQL = (
     f"SELECT ?title FROM <{FOREIGN_GRAPH}> WHERE {{ "
-    "?m <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.onta.sh/types/Movie> . "
-    "?m <https://graph.onta.sh/types/Movie/attrs/title> ?title . "
-    "?m <https://graph.onta.sh/onto/directedBy> ?d }"
+    "?m <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/Movie> . "
+    "?m <https://graph.infona.ai/types/Movie/attrs/title> ?title . "
+    "?m <https://graph.infona.ai/onto/directedBy> ?d }"
 )
 
 
@@ -80,9 +80,9 @@ def test_type_and_attribute_uris_are_preserved():
     schema names, not tenant identity or customer data.
     """
     out = sanitize_example_sparql(_SAMPLE_SPARQL, TARGET_GRAPH)
-    assert "<https://graph.onta.sh/types/Movie>" in out
-    assert "<https://graph.onta.sh/types/Movie/attrs/title>" in out
-    assert "<https://graph.onta.sh/onto/directedBy>" in out
+    assert "<https://graph.infona.ai/types/Movie>" in out
+    assert "<https://graph.infona.ai/types/Movie/attrs/title>" in out
+    assert "<https://graph.infona.ai/onto/directedBy>" in out
 
 
 @pytest.mark.parametrize("keyword", ["FROM", "from", "From", "FROM NAMED", "from named"])
@@ -95,7 +95,7 @@ def test_keyword_casing_and_from_named_are_handled(keyword):
 def test_every_from_clause_is_rewritten_not_just_the_first():
     sparql = (
         f"SELECT ?x FROM <{FOREIGN_GRAPH}> "
-        "FROM <https://graph.onta.sh/graphs/demo-tenant> WHERE { ?x ?p ?o }"
+        "FROM <https://graph.infona.ai/graphs/demo-tenant> WHERE { ?x ?p ?o }"
     )
     out = sanitize_example_sparql(sparql, TARGET_GRAPH)
     assert "demo-tenant" not in out
@@ -103,7 +103,7 @@ def test_every_from_clause_is_rewritten_not_just_the_first():
 
 
 def test_query_without_a_from_clause_is_untouched():
-    sparql = "SELECT ?x WHERE { ?x <https://graph.onta.sh/types/City/attrs/name> ?n }"
+    sparql = "SELECT ?x WHERE { ?x <https://graph.infona.ai/types/City/attrs/name> ?n }"
     assert sanitize_example_sparql(sparql, TARGET_GRAPH) == sparql
 
 
@@ -119,10 +119,10 @@ def test_a_token_merely_ENDING_in_from_does_not_eat_the_next_iri(subject):
     """
     sparql = (
         f"SELECT ?m FROM <{FOREIGN_GRAPH}> WHERE {{ "
-        f"{subject} <https://graph.onta.sh/onto/actedIn> ?m }}"
+        f"{subject} <https://graph.infona.ai/onto/actedIn> ?m }}"
     )
     out = sanitize_example_sparql(sparql, TARGET_GRAPH)
-    assert f"{subject} <https://graph.onta.sh/onto/actedIn> ?m" in out
+    assert f"{subject} <https://graph.infona.ai/onto/actedIn> ?m" in out
     assert f"FROM <{TARGET_GRAPH}>" in out
 
 
@@ -150,7 +150,7 @@ def test_a_less_than_operator_is_not_mistaken_for_the_start_of_an_iri():
     """
     sparql = (
         f"SELECT ?x FROM <{FOREIGN_GRAPH}> WHERE {{ "
-        "?x <https://graph.onta.sh/types/M/attrs/year> ?y . FILTER(?y < 2000) } "
+        "?x <https://graph.infona.ai/types/M/attrs/year> ?y . FILTER(?y < 2000) } "
         f"GRAPH <{FOREIGN_GRAPH}> {{ ?a ?b ?c }}"
     )
     out = sanitize_example_sparql(sparql, TARGET_GRAPH)
@@ -190,8 +190,8 @@ def test_sanitizing_twice_changes_nothing_the_second_time():
 def test_the_graph_backstop_does_not_touch_type_or_entity_iris():
     """It keys on the `/graphs/` path segment, not on the host."""
     sparql = (
-        "SELECT ?x WHERE { ?x <https://graph.onta.sh/types/City/attrs/name> ?n . "
-        "?x <https://graph.onta.sh/onto/locatedIn> <https://graph.onta.sh/entities/City/san-jose> }"
+        "SELECT ?x WHERE { ?x <https://graph.infona.ai/types/City/attrs/name> ?n . "
+        "?x <https://graph.infona.ai/onto/locatedIn> <https://graph.infona.ai/entities/City/san-jose> }"
     )
     assert sanitize_example_sparql(sparql, TARGET_GRAPH) == sparql
 
@@ -239,7 +239,7 @@ def test_question_tags_and_sparql_body_survive_formatting():
     text = format_examples_for_prompt([_example()], TARGET_GRAPH)
     assert "Q: Which movies did she direct?" in text
     assert "Example 1 (join):" in text
-    assert "<https://graph.onta.sh/types/Movie/attrs/title>" in text
+    assert "<https://graph.infona.ai/types/Movie/attrs/title>" in text
 
 
 # ── the real shipped bank ────────────────────────────────────────────────
@@ -272,7 +272,7 @@ def test_no_shipped_example_leaks_its_origin_graph_into_a_foreign_prompt():
     # The graph IRI is the only tenant-bearing token, so nothing else should
     # survive that names a graph other than the caller's.
     other_graphs = {
-        g for g in re.findall(r"https://graph\.onta\.sh/graphs/[^\s>]+", text) if g != TARGET_GRAPH
+        g for g in re.findall(r"https://graph\.infona\.ai/graphs/[^\s>]+", text) if g != TARGET_GRAPH
     }
     assert not other_graphs, f"foreign graph IRIs survived formatting: {sorted(other_graphs)[:5]}"
 
@@ -361,7 +361,7 @@ async def test_ask_prompt_for_another_tenant_contains_no_demo_tenant_graph():
         create.return_value = message
         await pipeline.ask(
             "Which movies did she direct?",
-            "https://graph.onta.sh/graphs/acme-corp",
+            "https://graph.infona.ai/graphs/acme-corp",
             TARGET_GRAPH,
         )
 

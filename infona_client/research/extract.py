@@ -21,7 +21,7 @@ call) and output-capped at ``max_rows``, with a light case-insensitive dedupe
 that merges the citations of duplicate rows.
 
 Boundary: OSS file. Imports only stdlib / ``infona_client.*`` / ``httpx``.
-No ``from cograph.*`` and no proprietary identifiers.
+No ``from infona.*`` and no proprietary identifiers.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ from infona_client.resolver.llm_router import openrouter_chat
 
 __all__ = ["extract_rows"]
 
-logger = structlog.stdlib.get_logger("cograph.research.extract")
+logger = structlog.stdlib.get_logger("infona.research.extract")
 
 # Fast, cheap default: the per-page strict-JSON lift is mechanical, not
 # reasoning-heavy, so it does not need the frontier model. Env-overridable.
@@ -61,7 +61,7 @@ _EXTRACT_SYSTEM = (
 
 
 def _extract_model() -> str:
-    return os.environ.get("OMNIX_RESEARCH_EXTRACT_MODEL", EXTRACT_MODEL_DEFAULT)
+    return os.environ.get("INFONA_RESEARCH_EXTRACT_MODEL", EXTRACT_MODEL_DEFAULT)
 
 
 def _build_prompt(text: str, schema: TargetSchema, question: str) -> str:
@@ -169,7 +169,7 @@ async def extract_rows(
         question: Optional question, added to the prompt for disambiguation.
         openrouter_key: OpenRouter API key. Empty → ``[]``.
         model: Optional model override; defaults to a fast model
-            (``OMNIX_RESEARCH_EXTRACT_MODEL`` or ``google/gemini-2.5-flash``).
+            (``INFONA_RESEARCH_EXTRACT_MODEL`` or ``google/gemini-2.5-flash``).
         max_rows: Hard cap on the total rows returned.
         budget: Optional per-run :class:`~infona_client.research.types.Budget`.
 

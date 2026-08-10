@@ -26,7 +26,7 @@ to the graph is meant to flow out downstream as an A10 Correction (ONTA-363, own
 elsewhere) — this module never calls it and never writes. Write-path convergence is
 trivially satisfied by writing nothing.
 
-Boundary: OSS. Imports only stdlib + ``infona_client.*`` — never ``from cograph.*``.
+Boundary: OSS. Imports only stdlib + ``infona_client.*`` — never ``from infona.*``.
 No network anywhere in this module.
 """
 
@@ -64,7 +64,7 @@ _CONDITIONAL_REASON = (
 )
 
 # `owl:sameAs` and this repof's instance-edge equivalent (pipeline/mutations.SAME_AS
-# == f"https://graph.onta.sh/onto/sameAs"). A merge writes `(canonical, sameAs, merged)`
+# == f"https://graph.infona.ai/onto/sameAs"). A merge writes `(canonical, sameAs, merged)`
 # on the instance graph, so its object resolves to its subject. Detected by value here
 # (not imported from pipeline/mutations) to keep this module's import graph minimal and
 # free of the write layer it must never touch.

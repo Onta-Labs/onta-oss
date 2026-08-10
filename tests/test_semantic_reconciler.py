@@ -48,7 +48,7 @@ from infona_client.semantic.registry import reset_semantic_index
 TENANT = "t1"
 KG = "kg1"
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-DOC_TYPE = "https://graph.onta.sh/types/Doc"
+DOC_TYPE = "https://graph.infona.ai/types/Doc"
 DESC_PRED = attr_uri("Doc", "description")
 SUMMARY_PRED = attr_uri("Doc", "summary")
 SKU_PRED = attr_uri("Doc", "sku")
@@ -62,7 +62,7 @@ PROSE = (
 
 
 def _entity(n: int) -> str:
-    return f"https://graph.onta.sh/entities/Doc/e{n}"
+    return f"https://graph.infona.ai/entities/Doc/e{n}"
 
 
 # ---------------------------------------------------------------------------
@@ -157,8 +157,8 @@ class FakeNeptune:
     async def update(self, sparql: str) -> None:
         self.updates.append(sparql)
         m = re.search(
-            r"<https://graph\.onta\.sh/types/([^/]+)/attrs/([^>]+)> "
-            r"<https://graph\.onta\.sh/onto/textKind> \"([^\"]+)\"",
+            r"<https://graph\.infona\.ai/types/([^/]+)/attrs/([^>]+)> "
+            r"<https://graph\.infona\.ai/onto/textKind> \"([^\"]+)\"",
             sparql,
         )
         if m:
@@ -206,7 +206,7 @@ def _clean_state(monkeypatch):
     tm.reset_for_tests()
     rec.reset_for_tests()
     reset_schedule_store()
-    monkeypatch.setenv("COGRAPH_SEMANTIC_INDEX_ENABLED", "true")
+    monkeypatch.setenv("INFONA_SEMANTIC_INDEX_ENABLED", "true")
     yield
     reset_semantic_index()
     tm.reset_for_tests()
@@ -340,7 +340,7 @@ def test_reconcile_ghosts_identity_docs_of_merged_entities():
 def test_reconcile_skips_the_scan_entirely_when_the_identity_arm_is_off(monkeypatch):
     """The kill switch restores the pre-ONTA-421 cost profile exactly: a KG
     with no marked attribute pays ZERO scan pages."""
-    monkeypatch.setenv("COGRAPH_SEMANTIC_IDENTITY_INDEX", "0")
+    monkeypatch.setenv("INFONA_SEMANTIC_IDENTITY_INDEX", "0")
     neptune = _kg(_named_entities(2))
     index = InMemorySemanticIndex()
 
@@ -636,7 +636,7 @@ def test_reconcile_reports_doc_listing_supported_on_plain_inmemory():
 
 
 def test_reconcile_disabled_is_a_noop(monkeypatch):
-    monkeypatch.delenv("COGRAPH_SEMANTIC_INDEX_ENABLED", raising=False)
+    monkeypatch.delenv("INFONA_SEMANTIC_INDEX_ENABLED", raising=False)
     neptune = _kg(_doc_entities(1), {("Doc", "description"): "free_text"})
     index = InMemorySemanticIndex()
 
@@ -682,7 +682,7 @@ def test_reconcile_scan_pages_through_large_kgs(monkeypatch):
     """The scan pages with keyset pagination (ORDER BY ?e ?p ?o + a
     strictly-after-entity FILTER, never OFFSET — the FakeNeptune handler
     asserts that) — a KG larger than one page is still fully indexed."""
-    monkeypatch.setenv("COGRAPH_SEMANTIC_SCAN_PAGE_SIZE", "3")
+    monkeypatch.setenv("INFONA_SEMANTIC_SCAN_PAGE_SIZE", "3")
     neptune = _kg(_doc_entities(4), {("Doc", "description"): "free_text"})
     index = InMemorySemanticIndex()
 
@@ -700,7 +700,7 @@ def test_scan_keyset_keeps_straddling_entity_group_whole(monkeypatch):
     multi-value canonicalization assume whole-entity groups."""
     from infona_client.semantic.extract import canonicalize_values, content_hash
 
-    monkeypatch.setenv("COGRAPH_SEMANTIC_SCAN_PAGE_SIZE", "4")
+    monkeypatch.setenv("INFONA_SEMANTIC_SCAN_PAGE_SIZE", "4")
     v_a = f"{PROSE} Straddle part alpha."
     v_b = f"{PROSE} Straddle part beta."
     entities = {
@@ -767,7 +767,7 @@ def test_reconcile_truncated_scan_skips_ghost_deletion(monkeypatch):
     ghost deletion with it would mass-delete every healthy doc past the
     cutoff. Truncation must skip ghost deletion entirely (0 deletes, loud
     warning), while upserts of what WAS scanned still land."""
-    monkeypatch.setenv("COGRAPH_SEMANTIC_SCAN_PAGE_SIZE", "1")
+    monkeypatch.setenv("INFONA_SEMANTIC_SCAN_PAGE_SIZE", "1")
     monkeypatch.setattr(rec, "_MAX_SCAN_PAGES", 1)
     neptune = _kg(_doc_entities(3), {("Doc", "description"): "free_text"})
     index = InMemorySemanticIndex()
@@ -992,7 +992,7 @@ def test_embed_fill_without_api_key_leaves_queue_intact(monkeypatch):
 
 
 def test_embed_fill_disabled_is_a_noop(monkeypatch):
-    monkeypatch.delenv("COGRAPH_SEMANTIC_INDEX_ENABLED", raising=False)
+    monkeypatch.delenv("INFONA_SEMANTIC_INDEX_ENABLED", raising=False)
     index = InMemorySemanticIndex()
 
     async def run():
@@ -1210,7 +1210,7 @@ def test_semantic_row_flows_through_for_update_skip_locked(monkeypatch):
 
 def test_dispatch_skips_semantic_rows_when_disabled(monkeypatch):
     """Stale schedule rows left behind after a disable are cheap no-ops."""
-    monkeypatch.delenv("COGRAPH_SEMANTIC_INDEX_ENABLED", raising=False)
+    monkeypatch.delenv("INFONA_SEMANTIC_INDEX_ENABLED", raising=False)
     fired: list[str] = []
 
     async def fake_sweep(**kw):  # noqa: ANN001

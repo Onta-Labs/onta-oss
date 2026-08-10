@@ -474,12 +474,12 @@ def test_postgres_store_save_runs_ddl_and_upsert(monkeypatch):
 
     sqls = [r[1] for r in rec]
     # DDL (table + indexes) ran lazily on first use.
-    assert any("CREATE TABLE IF NOT EXISTS cograph_plans" in s for s in sqls)
+    assert any("CREATE TABLE IF NOT EXISTS infona_plans" in s for s in sqls)
     assert any("CREATE INDEX IF NOT EXISTS" in s and "tenant_id" in s for s in sqls)
     assert any("CREATE INDEX IF NOT EXISTS" in s and "session_id" in s for s in sqls)
     # INSERT upsert with the mirrored queryable columns.
     insert = next(
-        r for r in rec if r[0] == "execute" and "INSERT INTO cograph_plans" in r[1]
+        r for r in rec if r[0] == "execute" and "INSERT INTO infona_plans" in r[1]
     )
     assert "ON CONFLICT (plan_id) DO UPDATE" in insert[1]
     params = insert[2]
@@ -559,7 +559,7 @@ def test_postgres_claim_locks_row_and_flips_status(monkeypatch):
     assert "FOR UPDATE" in fetch[1]
     assert fetch[2] == ("plan-1", "test-tenant")
     update = next(
-        r for r in rec if r[0] == "execute" and "UPDATE cograph_plans" in r[1]
+        r for r in rec if r[0] == "execute" and "UPDATE infona_plans" in r[1]
     )
     assert update[2][2] == "executing"  # mirrored status column
     assert '"status":"executing"' in update[2][4].replace(" ", "")  # payload
@@ -589,7 +589,7 @@ def test_postgres_claim_loser_backs_off_without_update(monkeypatch):
     asyncio.run(run())
 
     assert not [
-        r for r in rec if r[0] == "execute" and "UPDATE cograph_plans" in r[1]
+        r for r in rec if r[0] == "execute" and "UPDATE infona_plans" in r[1]
     ]
 
 
@@ -605,7 +605,7 @@ def test_postgres_store_delete(monkeypatch):
     asyncio.run(run())
 
     delete = next(
-        r for r in rec if r[0] == "execute" and "DELETE FROM cograph_plans" in r[1]
+        r for r in rec if r[0] == "execute" and "DELETE FROM infona_plans" in r[1]
     )
     assert "WHERE plan_id = $1 AND tenant_id = $2" in delete[1]
     assert delete[2] == ("plan-1", "test-tenant")
@@ -613,12 +613,12 @@ def test_postgres_store_delete(monkeypatch):
 
 @pytest.mark.integration
 def test_postgres_store_real_db():
-    """Optional real-DB smoke test; skipped unless OMNIX_DATABASE_URL is set."""
+    """Optional real-DB smoke test; skipped unless INFONA_DATABASE_URL is set."""
     import os
 
-    dsn = os.environ.get("OMNIX_DATABASE_URL")
+    dsn = os.environ.get("INFONA_DATABASE_URL")
     if not dsn:
-        pytest.skip("OMNIX_DATABASE_URL not set")
+        pytest.skip("INFONA_DATABASE_URL not set")
 
     async def run():
         store = PostgresPlanStore(dsn=dsn)

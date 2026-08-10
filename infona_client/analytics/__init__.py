@@ -2,8 +2,8 @@
 
 The emit/registration seam lives in :mod:`infona_client.analytics.sink`. OSS
 defines only the protocol + a no-op default; the real hosted-analytics sink is
-proprietary and registers over this seam via ``OMNIX_ANALYTICS_PLUGIN`` at app
-boot (mirroring ``OMNIX_AUTH_PLUGIN`` / ``OMNIX_ENRICHMENT_PLUGIN`` / …).
+proprietary and registers over this seam via ``INFONA_ANALYTICS_PLUGIN`` at app
+boot (mirroring ``INFONA_AUTH_PLUGIN`` / ``INFONA_ENRICHMENT_PLUGIN`` / …).
 
 Boundary note: per-tenant usage *metering* is OSS ("table-stakes observability",
 :mod:`infona_client.usage`); *analytics that phones home to a SaaS with our

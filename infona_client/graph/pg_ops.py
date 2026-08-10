@@ -386,7 +386,7 @@ def parse_attr_meta_citations(
         if not s or not p or o is None:
             continue
         # Accept any host's attr_meta/ path, not only the live ATTR_META_NS base
-        # (legacy cograph.tech / omnix.dev companions still map).
+        # (legacy graph.infona.ai / graph.infona.ai companions still map).
         marker = "/attr_meta/"
         idx = p.find(marker)
         if idx < 0:

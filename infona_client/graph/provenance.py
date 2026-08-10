@@ -24,7 +24,7 @@ Keying:
 
 For a fact (s, p, o) asserted by ``source`` the provenance graph holds::
 
-    <https://graph.onta.sh/prov/stmt/{sha1(s|p|o|source)}>
+    <https://graph.infona.ai/prov/stmt/{sha1(s|p|o|source)}>
         prov:subject    <s> ;
         prov:predicate  <p> ;
         prov:object     o ;                       # literal or URI, as written
@@ -117,7 +117,7 @@ PROV_AUTHORITY = f"{PROV_NS}authority"
 # (``rewrite``), so governance/undo sees the full lifecycle — not just inserts.
 # They live in the same companion provenance graph as assertions and are written
 # by the ``delete_facts`` / ``rewrite_subject`` primitives (kg_writer.py), gated
-# by ``COGRAPH_PROVENANCE_ENABLED`` exactly like assertion provenance.
+# by ``INFONA_PROVENANCE_ENABLED`` exactly like assertion provenance.
 PROV_EVENT = f"{PROV_NS}event"  # "tombstone" | "rewrite" | "supersede" | "retract" | "lost_conflict"
 PROV_REASON = f"{PROV_NS}reason"
 PROV_REWRITTEN_TO = f"{PROV_NS}rewrittenTo"  # rewrite event: old subject → new URI
@@ -146,7 +146,7 @@ EVENT_CONFLICT_LOSS = "lost_conflict"
 # event, so the ``rewrite`` event above is ALSO written by that primitive) and, on
 # top of that, records a REVERSIBLE lineage snapshot here so a later ``split`` can
 # restore the two nodes' independent identities. Unlike the other governance events
-# (gated by ``COGRAPH_PROVENANCE_ENABLED``), the merge lineage snapshot is ALWAYS
+# (gated by ``INFONA_PROVENANCE_ENABLED``), the merge lineage snapshot is ALWAYS
 # written — it is load-bearing for split reversibility, exactly as the valid-time
 # interval (graph/validity.py) is always written regardless of the gate.
 EVENT_MERGE = "merge"
@@ -593,7 +593,7 @@ def build_supersession_triples(
     The superseded fact is NOT deleted (supersession closes an interval); this
     event simply witnesses the closure. ``prov:supersededBy`` carries the
     replacement fact's ``statement_id``. Returned triples target the companion
-    provenance graph; gated by ``COGRAPH_PROVENANCE_ENABLED`` at the call site.
+    provenance graph; gated by ``INFONA_PROVENANCE_ENABLED`` at the call site.
     """
     ts = timestamp.isoformat() if isinstance(timestamp, datetime) else timestamp
     node = _event_uri(EVENT_SUPERSEDE, subject, f"{predicate}|{old_obj}|{new_obj}", ts)
@@ -634,7 +634,7 @@ def build_conflict_loss_triples(
     the deciding axis; the loser's ``source`` / ``confidence`` / ``authority`` are
     recorded too so the losing claim's provenance is self-contained. Returned
     triples target the companion provenance graph; gated by
-    ``COGRAPH_PROVENANCE_ENABLED`` at the call site.
+    ``INFONA_PROVENANCE_ENABLED`` at the call site.
     """
     ts = timestamp.isoformat() if isinstance(timestamp, datetime) else timestamp
     node = _event_uri(EVENT_CONFLICT_LOSS, subject, f"{predicate}|{loser_obj}|{winner_obj}", ts)
@@ -674,7 +674,7 @@ def build_retraction_triples(
     currency; when a caller genuinely hard-deletes the triple, the removal also
     goes through ``delete_facts`` (which writes its own tombstone). Returned
     triples target the companion provenance graph; gated by
-    ``COGRAPH_PROVENANCE_ENABLED`` at the call site.
+    ``INFONA_PROVENANCE_ENABLED`` at the call site.
     """
     ts = timestamp.isoformat() if isinstance(timestamp, datetime) else timestamp
     node = _event_uri(EVENT_RETRACT, subject, f"{predicate}|{'' if obj is None else obj}", ts)
@@ -768,7 +768,7 @@ def build_split_triples(
     """Build the governance event for a first-class SPLIT (ONTA-274).
 
     Records that ``merged`` was separated back OUT of ``canonical`` (the reverse of a
-    merge), with the driving reason. Written gated by ``COGRAPH_PROVENANCE_ENABLED``
+    merge), with the driving reason. Written gated by ``INFONA_PROVENANCE_ENABLED``
     at the call site (like the other governance events) — the merge lineage snapshot
     it consumes is left in place, so history shows the full merge→split story.
     """

@@ -35,7 +35,7 @@ its provenance. A SUPPORTED / UNVERIFIABLE / IDENTITY_CONDITIONAL verdict, or a
 REFUTED verdict with no distinct corrected value, writes NOTHING — the verdict is
 an annotation only.
 
-Boundary: OSS. Imports only stdlib / ``infona_client.*`` — never ``from cograph.*``.
+Boundary: OSS. Imports only stdlib / ``infona_client.*`` — never ``from infona.*``.
 No network anywhere in this module (the verdict is produced upstream by a
 ``FactVerifier``; this only routes the resulting correction onto the write path).
 """
@@ -65,7 +65,7 @@ from infona_client.pipeline.mutations import (
 )
 from infona_client.verification.types import TruthVerdict, VerifierResult
 
-logger = structlog.stdlib.get_logger("cograph.verification.reverify")
+logger = structlog.stdlib.get_logger("infona.verification.reverify")
 
 Triple = tuple[str, str, str]
 

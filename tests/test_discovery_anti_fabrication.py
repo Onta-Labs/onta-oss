@@ -197,7 +197,7 @@ async def _drive(resolver, entity, entity_id, *, drop):
         resolved_type="Gadget",
         entity_uri=entity_uri("Gadget", entity_id),
         is_duplicate=False,
-        graph_uri="https://omnix.dev/graphs/test",
+        graph_uri="https://graph.infona.ai/graphs/test",
         existing_types=dict(_GADGET_TYPES),
         existing_attrs={k: dict(v) for k, v in _GADGET_ATTRS.items()},
         source="test",

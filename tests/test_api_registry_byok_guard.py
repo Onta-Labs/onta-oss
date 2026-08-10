@@ -8,7 +8,7 @@ be **dormant until that user-supplied credential is present** — never a
 platform/shared key baked into (or implied by) the public seed, never an
 un-authenticated fallback. "Managed keys" (the platform provisions, holds,
 meters, and bills the credential) are a *premium* value-add and live only in the
-proprietary overlay (`cograph/api_registry/`), never here.
+proprietary overlay (`infona/api_registry/`), never here.
 
 Deny-by-default, modelled on ``test_write_path_convergence.py`` /
 ``test_retrieval_path_convergence.py`` / ``test_api_registry_secret_leak_guard.py``:
@@ -244,7 +244,7 @@ _CODE_HARDCODED_SECRET = re.compile(
 )
 # The local secrets-encryption key is the user's OWN cipher key, not a provider
 # credential — it is the one sanctioned literal env read in api_registry code.
-_ENV_ALLOW = {"OMNIX_SECRETS_KEY"}
+_ENV_ALLOW = {"INFONA_SECRETS_KEY"}
 
 
 def _api_registry_py() -> list[pathlib.Path]:
@@ -429,4 +429,4 @@ def test_code_credential_scanners_fire_on_planted_code():
     reads = _ENV_LITERAL_READ.findall('os.environ.get("EXA_API_KEY")')
     assert any(_CRED_ENV_NAME.search(a or b) for a, b in reads)
     # The cipher key is allowlisted (user's own encryption key, not a credential).
-    assert "OMNIX_SECRETS_KEY" in _ENV_ALLOW
+    assert "INFONA_SECRETS_KEY" in _ENV_ALLOW

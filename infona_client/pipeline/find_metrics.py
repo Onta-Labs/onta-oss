@@ -5,7 +5,7 @@ coverage (recall) / precision quality metrics and the three anti-gaming counters
 then decide pass/fail against a threshold bundle. This is the metric contract the
 P1 "Find" fixture-eval asserts (``tests/test_p1_find_eval.py``).
 
-The module is deliberately **pure** — no I/O, no network, and **no cograph
+The module is deliberately **pure** — no I/O, no network, and **no infona
 imports** — so it stays dependency-free and OSS-standalone. The one piece of
 domain knowledge it needs, the fabrication backstop, is INJECTED by the caller
 (``is_fabricated=...``), so this scorer never has to reach into the resolver.

@@ -169,7 +169,7 @@ async def test_openrouter_chat_finish_reason_none_when_absent(monkeypatch):
 
 
 # --------------------------------------------------------------------------- #
-# Provider selection (OMNIX_LLM_PROVIDER): openrouter (default) vs cerebras.
+# Provider selection (INFONA_LLM_PROVIDER): openrouter (default) vs cerebras.
 # All HTTP is mocked — no real network. Test data uses only invented tokens.
 # --------------------------------------------------------------------------- #
 
@@ -178,7 +178,7 @@ async def test_openrouter_chat_finish_reason_none_when_absent(monkeypatch):
 async def test_provider_unset_defaults_to_openrouter(monkeypatch):
     """Env unset → OpenRouter base + the caller's OpenRouter key/model, EXACTLY
     as before. This guards the byte-identical-default requirement."""
-    monkeypatch.delenv("OMNIX_LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("INFONA_LLM_PROVIDER", raising=False)
     monkeypatch.setattr(llm_router, "FALLBACK_MODEL", "widgetco/sprocket-fallback")
     cap: dict = {}
     _capturing_client(
@@ -199,8 +199,8 @@ async def test_provider_unset_defaults_to_openrouter(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_provider_openrouter_explicit_matches_default(monkeypatch):
-    """OMNIX_LLM_PROVIDER=openrouter behaves identically to unset."""
-    monkeypatch.setenv("OMNIX_LLM_PROVIDER", "openrouter")
+    """INFONA_LLM_PROVIDER=openrouter behaves identically to unset."""
+    monkeypatch.setenv("INFONA_LLM_PROVIDER", "openrouter")
     cap: dict = {}
     _capturing_client(
         monkeypatch, {"choices": [{"message": {"content": "Gadget"}}]}, cap
@@ -216,10 +216,10 @@ async def test_provider_openrouter_explicit_matches_default(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_provider_cerebras_uses_cerebras_base_key_and_bare_slug(monkeypatch):
-    """OMNIX_LLM_PROVIDER=cerebras (+ CEREBRAS_API_KEY) → Cerebras base URL, the
+    """INFONA_LLM_PROVIDER=cerebras (+ CEREBRAS_API_KEY) → Cerebras base URL, the
     Cerebras key, the BARE model slug, and NO `models` fallback array. The caller's
     OpenRouter key is NOT sent."""
-    monkeypatch.setenv("OMNIX_LLM_PROVIDER", "cerebras")
+    monkeypatch.setenv("INFONA_LLM_PROVIDER", "cerebras")
     monkeypatch.setenv("CEREBRAS_API_KEY", "cerebras-secret")
     cap: dict = {}
     _capturing_client(
@@ -245,9 +245,9 @@ async def test_provider_cerebras_uses_cerebras_base_key_and_bare_slug(monkeypatc
 
 @pytest.mark.asyncio
 async def test_provider_cerebras_uses_primary_model_when_caller_omits(monkeypatch):
-    """In cerebras mode with no per-role model, the bare OMNIX_LLM_MODEL
+    """In cerebras mode with no per-role model, the bare INFONA_LLM_MODEL
     (PRIMARY_MODEL) slug is sent."""
-    monkeypatch.setenv("OMNIX_LLM_PROVIDER", "cerebras")
+    monkeypatch.setenv("INFONA_LLM_PROVIDER", "cerebras")
     monkeypatch.setenv("CEREBRAS_API_KEY", "cerebras-secret")
     monkeypatch.setattr(llm_router, "PRIMARY_MODEL", "sprocket-oss-120b")
     cap: dict = {}
@@ -265,7 +265,7 @@ async def test_provider_cerebras_uses_primary_model_when_caller_omits(monkeypatc
 async def test_provider_cerebras_return_contract_matches_openrouter(monkeypatch):
     """The (content, finish_reason, usage) contract is parsed IDENTICALLY for
     Cerebras — same OpenAI-shaped choices/finish_reason/usage mapping."""
-    monkeypatch.setenv("OMNIX_LLM_PROVIDER", "cerebras")
+    monkeypatch.setenv("INFONA_LLM_PROVIDER", "cerebras")
     monkeypatch.setenv("CEREBRAS_API_KEY", "cerebras-secret")
     cap: dict = {}
     _capturing_client(
@@ -294,12 +294,12 @@ async def test_provider_cerebras_return_contract_matches_openrouter(monkeypatch)
 
 @pytest.mark.asyncio
 async def test_provider_cerebras_slash_model_stays_on_openrouter(monkeypatch):
-    """Under OMNIX_LLM_PROVIDER=cerebras, a per-role model with an OpenRouter
+    """Under INFONA_LLM_PROVIDER=cerebras, a per-role model with an OpenRouter
     ``vendor/model`` slug (which Cerebras cannot serve) keeps routing to
     OpenRouter with the caller's key and the ``models`` fallback array. This is
     the production regression: the global flip sent CSV schema inference's
     ``google/gemini-2.5-flash`` to api.cerebras.ai → 404 → every ingest 500d."""
-    monkeypatch.setenv("OMNIX_LLM_PROVIDER", "cerebras")
+    monkeypatch.setenv("INFONA_LLM_PROVIDER", "cerebras")
     monkeypatch.setenv("CEREBRAS_API_KEY", "cerebras-secret")
     monkeypatch.setattr(llm_router, "PRIMARY_MODEL", "sprocket-oss-120b")
     monkeypatch.setattr(llm_router, "FALLBACK_MODEL", "acme/fallback-1")
@@ -322,8 +322,8 @@ async def test_provider_cerebras_slash_model_stays_on_openrouter(monkeypatch):
 @pytest.mark.asyncio
 async def test_provider_cerebras_slash_primary_model_stays_on_openrouter(monkeypatch):
     """Same slug-shape guard when the caller omits ``model`` and PRIMARY_MODEL
-    itself is an OpenRouter slug (OMNIX_LLM_MODEL left at a vendor/model id)."""
-    monkeypatch.setenv("OMNIX_LLM_PROVIDER", "cerebras")
+    itself is an OpenRouter slug (INFONA_LLM_MODEL left at a vendor/model id)."""
+    monkeypatch.setenv("INFONA_LLM_PROVIDER", "cerebras")
     monkeypatch.setenv("CEREBRAS_API_KEY", "cerebras-secret")
     monkeypatch.setattr(llm_router, "PRIMARY_MODEL", "anthropic/claude-opus-4.8")
     cap: dict = {}
@@ -343,7 +343,7 @@ async def test_provider_cerebras_slash_model_needs_no_cerebras_key(monkeypatch):
     """A slash-slug call under cerebras mode routes to OpenRouter, so a missing
     CEREBRAS_API_KEY must not fail it — the fail-loud guard is only for calls
     Cerebras would actually serve (bare slugs)."""
-    monkeypatch.setenv("OMNIX_LLM_PROVIDER", "cerebras")
+    monkeypatch.setenv("INFONA_LLM_PROVIDER", "cerebras")
     monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
     cap: dict = {}
     _capturing_client(
@@ -360,9 +360,9 @@ async def test_provider_cerebras_slash_model_needs_no_cerebras_key(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_provider_cerebras_missing_key_raises_clear_error(monkeypatch):
-    """OMNIX_LLM_PROVIDER=cerebras with NO CEREBRAS_API_KEY → a clear error, NOT a
+    """INFONA_LLM_PROVIDER=cerebras with NO CEREBRAS_API_KEY → a clear error, NOT a
     silent fall-back to OpenRouter (we want the misconfiguration to be loud)."""
-    monkeypatch.setenv("OMNIX_LLM_PROVIDER", "cerebras")
+    monkeypatch.setenv("INFONA_LLM_PROVIDER", "cerebras")
     monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
 
     # No HTTP client patched — if it tried to POST, it would blow up differently.
@@ -429,7 +429,7 @@ async def test_openrouter_chat_missing_content_degrades_to_clean_error(
     """Every malformed / empty response shape raises the SAME clean ``ValueError``
     (NOT a raw KeyError/IndexError/TypeError), and the message names the provider.
     This is the mechanism the production ``KeyError('content')`` violated."""
-    monkeypatch.delenv("OMNIX_LLM_PROVIDER", raising=False)  # default = openrouter
+    monkeypatch.delenv("INFONA_LLM_PROVIDER", raising=False)  # default = openrouter
     _stub_client(monkeypatch, payload)
 
     with pytest.raises(ValueError) as excinfo:
@@ -447,7 +447,7 @@ async def test_openrouter_chat_missing_content_names_cerebras_provider(monkeypat
     """When the ACTIVE provider is Cerebras (bare slug), the clean empty-response
     error names Cerebras — reusing this function's post-#165 provider derivation,
     not a hardcoded backend."""
-    monkeypatch.setenv("OMNIX_LLM_PROVIDER", "cerebras")
+    monkeypatch.setenv("INFONA_LLM_PROVIDER", "cerebras")
     monkeypatch.setenv("CEREBRAS_API_KEY", "cerebras-secret")
     monkeypatch.setattr(llm_router, "PRIMARY_MODEL", "gadget-oss-120b")
     # finish_reason=length + content key absent = the exact production shape.
@@ -475,7 +475,7 @@ async def test_openrouter_chat_missing_content_guard_holds_for_return_variants(
     ``return_finish_reason`` / ``return_usage`` variants also raise the clean
     error (never a KeyError) on a missing content — the guard covers ALL exit
     paths, not just the bare-string one."""
-    monkeypatch.delenv("OMNIX_LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("INFONA_LLM_PROVIDER", raising=False)
     _stub_client(
         monkeypatch,
         {"choices": [{"message": {"role": "assistant"}, "finish_reason": "length"}]},
@@ -496,7 +496,7 @@ async def test_openrouter_chat_missing_content_guard_holds_for_return_variants(
 async def test_openrouter_chat_happy_path_returns_content_verbatim(monkeypatch):
     """Regression guard: a normal non-empty content string is returned BYTE-FOR-BYTE
     unchanged — the guard only touches the missing/empty/malformed branches."""
-    monkeypatch.delenv("OMNIX_LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("INFONA_LLM_PROVIDER", raising=False)
     _stub_client(
         monkeypatch,
         {"choices": [{"message": {"content": "  Sprocket-42 verbatim  "}}]},
@@ -522,14 +522,14 @@ async def test_openrouter_chat_happy_path_returns_content_verbatim(monkeypatch):
 
 def _cerebras_env(monkeypatch):
     """Route through the Cerebras request branch (bare-slug PRIMARY_MODEL)."""
-    monkeypatch.setenv("OMNIX_LLM_PROVIDER", "cerebras")
+    monkeypatch.setenv("INFONA_LLM_PROVIDER", "cerebras")
     monkeypatch.setenv("CEREBRAS_API_KEY", "cerebras-secret")
     monkeypatch.setattr(llm_router, "PRIMARY_MODEL", "gadget-oss-120b")
 
 
 def _openrouter_env(monkeypatch):
     """Route through the OpenRouter request branch (vendor/model slug)."""
-    monkeypatch.delenv("OMNIX_LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("INFONA_LLM_PROVIDER", raising=False)
     monkeypatch.setattr(llm_router, "PRIMARY_MODEL", "widgetco/sprocket-2")
 
 

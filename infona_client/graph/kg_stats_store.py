@@ -19,7 +19,7 @@ Backends mirror the ``JobStore`` pattern so the deployment is swappable:
 - :class:`InMemoryKgStatsStore` — the zero-config default; non-durable,
   per-process.
 - :class:`PostgresKgStatsStore` — durable, shared across tasks, over a generic
-  Postgres DSN (``settings.database_url`` / ``OMNIX_DATABASE_URL``). Vendor
+  Postgres DSN (``settings.database_url`` / ``INFONA_DATABASE_URL``). Vendor
   neutral: a plain DSN, no cloud-provider identifiers, works against any
   Postgres (local, Aurora, Neon, Supabase, ...).
 
@@ -110,7 +110,7 @@ class PostgresKgStatsStore:
     the only configuration is a plain DSN.
     """
 
-    _TABLE = "cograph_kg_stats"
+    _TABLE = "infona_kg_stats"
 
     def __init__(self, dsn: Optional[str] = None) -> None:
         self._dsn = dsn if dsn is not None else settings.database_url

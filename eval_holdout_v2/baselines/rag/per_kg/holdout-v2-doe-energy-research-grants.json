@@ -6,7 +6,7 @@
       "id": "q-001",
       "tier": "T1",
       "question": "How many grants are there in total?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?grant) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doe-energy-research-grants> WHERE {\n  ?grant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/type/Grant> .\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?grant) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doe-energy-research-grants> WHERE {\n  ?grant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/type/Grant> .\n}",
       "expected_answer": "5000",
       "full_expected_items": [
         "5000"
@@ -48,7 +48,7 @@
       "id": "q-002",
       "tier": "T1",
       "question": "List all the names of the authors.",
-      "gold_sparql": "SELECT DISTINCT ?author_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doe-energy-research-grants> WHERE {\n  ?author <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/type/Author> .\n  ?author <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/pred/author_name> ?author_name .\n}",
+      "gold_sparql": "SELECT DISTINCT ?author_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doe-energy-research-grants> WHERE {\n  ?author <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/type/Author> .\n  ?author <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/pred/author_name> ?author_name .\n}",
       "expected_answer": "Delgado, Hernan [Argonne National Laboratory (ANL), Argonne, IL (United States)], Diaz, Jasey [Energetics, Inc., Columbia, MD (United States)], Forrest, David [Nexight, Silver Spring, MD (United States)], Guy, Logan [Energetics, Inc., Columbia, MD (United States)], Hasanbeigi, Ali [Global Efficiency Intelligence, LLC, St Petersburg, FL (United States)], Kamath, Dipti [Oak Ridge National Laboratory (ORNL), Oak Ridge, TN (United States)] (ORCID:0000000278739994), Liddell, Heather [Energetics, Inc., Columbia, MD (United States)], Lim, Tae [Lawrence Berkeley National Laboratory (LBNL), Berkeley, CA (United States)], Ma, Seungwook [Energetics, Inc., Columbia, MD (United States)], Okeke, Ikenna J. [Oak Ridge National Laboratory (ORNL), Oak Ridge, TN (United States)] ... (16924 total)",
       "full_expected_items": [
         "Delgado, Hernan [Argonne National Laboratory (ANL), Argonne, IL (United States)]",
@@ -2089,7 +2089,7 @@
       "id": "q-003",
       "tier": "T1",
       "question": "How many distinct research organizations are mentioned?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?research_org) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doe-energy-research-grants> WHERE {\n  ?research_org <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/type/ResearchOrg> .\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?research_org) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doe-energy-research-grants> WHERE {\n  ?research_org <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/type/ResearchOrg> .\n}",
       "expected_answer": "1454",
       "full_expected_items": [
         "1454"
@@ -2131,7 +2131,7 @@
       "id": "q-004",
       "tier": "T1",
       "question": "What are the different years in which grants were made?",
-      "gold_sparql": "SELECT DISTINCT ?year_value FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doe-energy-research-grants> WHERE {\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/type/Year> .\n  ?year <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/pred/year> ?year_value .\n}",
+      "gold_sparql": "SELECT DISTINCT ?year_value FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doe-energy-research-grants> WHERE {\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/type/Year> .\n  ?year <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/pred/year> ?year_value .\n}",
       "expected_answer": "2024, 2016, 2013, 2015, 2018, 2020, 2017, 2014, 2019, 2021 ... (14 total)",
       "full_expected_items": [
         "2024",
@@ -2186,7 +2186,7 @@
       "id": "q-005",
       "tier": "T2",
       "question": "List the titles of grants published in the year 2018.",
-      "gold_sparql": "SELECT ?title FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doe-energy-research-grants> WHERE {\n  ?grant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/type/Grant> .\n  ?grant <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/pred/publication_date> ?date .\n  ?grant <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/pred/title> ?title .\n  FILTER(CONTAINS(STR(?date), \"2018\"))\n}",
+      "gold_sparql": "SELECT ?title FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doe-energy-research-grants> WHERE {\n  ?grant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/type/Grant> .\n  ?grant <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/pred/publication_date> ?date .\n  ?grant <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/pred/title> ?title .\n  FILTER(CONTAINS(STR(?date), \"2018\"))\n}",
       "expected_answer": "Nevada National Security Site Radiological Control Manual, Approaches and Recommendations to Address Regulatory Gaps Identified in INL/EXT-15-36945, Evaluation of Buildings 23-531, -532, -535, and -536 in Block 17, Mercury, Area 23, Nevada National Security Site, Nye County, Nevada, Evaluation of Dell Frenzi Park, Mercury, Area 23, Nevada National Security Site, Nye County, Nevada (Cultural Resources Inventory Report), Evaluation of 1950s-Era Architectural Resources in Blocks 10, 11, and 17, Mercury, Area 23, Nevada National Security Site, Nye County, Nevada, LLNL Livermore Site Spill Prevention, Control, and Countermeasure (SPCC) Plan June 2018, Determining Unabated Airborne Radionuclide Emissions Monitoring Requirements Using Inventory-Based Methods, GALE 3.1 Verification Report, Lawrence Livermore National Laboratory Site 300 Spill Prevention, Control, and Countermeasures Plan, Control of Interface- and Mesoscopic Structure in High Performance Organic Solar Cells: Towards a Predictive Device Paradigm [and earlier project titles]. Final Technical Report for DE-FG02-98ER45737 ... (15 total)",
       "full_expected_items": [
         "Nevada National Security Site Radiological Control Manual",
@@ -2242,7 +2242,7 @@
       "id": "q-006",
       "tier": "T2",
       "question": "How many authors have names containing 'Smith'?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?author) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doe-energy-research-grants> WHERE {\n  ?author <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/type/Author> .\n  ?author <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/pred/author_name> ?name .\n  FILTER(CONTAINS(LCASE(STR(?name)), \"smith\"))\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?author) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doe-energy-research-grants> WHERE {\n  ?author <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/type/Author> .\n  ?author <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/pred/author_name> ?name .\n  FILTER(CONTAINS(LCASE(STR(?name)), \"smith\"))\n}",
       "expected_answer": "91",
       "full_expected_items": [
         "91"
@@ -2284,7 +2284,7 @@
       "id": "q-007",
       "tier": "T2",
       "question": "Find the report numbers of grants whose titles include the word 'energy'.",
-      "gold_sparql": "SELECT ?reportNumber FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doe-energy-research-grants> WHERE {\n  ?grant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/type/Grant> .\n  ?grant <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/pred/title> ?title .\n  ?grant <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/pred/report_number> ?reportNumber .\n  FILTER(CONTAINS(LCASE(STR(?title)), \"energy\"))\n}",
+      "gold_sparql": "SELECT ?reportNumber FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doe-energy-research-grants> WHERE {\n  ?grant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/type/Grant> .\n  ?grant <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/pred/title> ?title .\n  ?grant <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/pred/report_number> ?reportNumber .\n  FILTER(CONTAINS(LCASE(STR(?title)), \"energy\"))\n}",
       "expected_answer": "DOE-OSU-AR0000794-1, DOE-MTU--0008800, DE--IE0000119, DOE-Shawnee--10782, LLNL--TR-2012039, ORNL/TM-2025/4030, LLNL--TR-2012382, None, NREL/TP--6A20-94426, NREL/TP-6A20-92819 ... (576 total)",
       "full_expected_items": [
         "DOE-OSU-AR0000794-1",
@@ -2901,7 +2901,7 @@
       "id": "q-008",
       "tier": "T3",
       "question": "How many grants were sponsored by each sponsor organization?",
-      "gold_sparql": "SELECT ?sponsor_name (COUNT(DISTINCT ?grant) AS ?grant_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doe-energy-research-grants> WHERE {\n  ?grant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/type/Grant> .\n  ?grant <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/pred/grant_sponsored_by> ?sponsor_org .\n  ?sponsor_org <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/type/SponsorOrg> .\n  ?sponsor_org <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/pred/sponsor_name> ?sponsor_name .\n} GROUP BY ?sponsor_name ORDER BY DESC(?grant_count) LIMIT 10",
+      "gold_sparql": "SELECT ?sponsor_name (COUNT(DISTINCT ?grant) AS ?grant_count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doe-energy-research-grants> WHERE {\n  ?grant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/type/Grant> .\n  ?grant <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/pred/grant_sponsored_by> ?sponsor_org .\n  ?sponsor_org <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/type/SponsorOrg> .\n  ?sponsor_org <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/pred/sponsor_name> ?sponsor_name .\n} GROUP BY ?sponsor_name ORDER BY DESC(?grant_count) LIMIT 10",
       "expected_answer": "USDOE National Nuclear Security Administration (NNSA) | 934\nUSDOE | 519\nUSDOE Office of Nuclear Energy (NE) | 267\nUSDOE Office of Science (SC) | 224\nUSDOE Office of Energy Efficiency and Renewable Energy (EERE), Energy Efficiency Office. Building Technologies Office | 219\nUSDOE Laboratory Directed Research and Development (LDRD) Program | 199\nUSDOE Office of Energy Efficiency and Renewable Energy (EERE) | 197\nUSDOE Office of Energy Efficiency and Renewable Energy (EERE), Renewable Power Office. Solar Energy Technologies Office | 185\nUSDOE Office of Environmental Management (EM) | 177\nUSDOE Office of Science (SC), Basic Energy Sciences (BES) | 160",
       "full_expected_items": [
         "USDOE National Nuclear Security Administration (NNSA) | 934",
@@ -2952,7 +2952,7 @@
       "id": "q-009",
       "tier": "T3",
       "question": "List the authors and the number of grants they are associated with for grants that are 'Technical Report' product type.",
-      "gold_sparql": "SELECT ?author_name (COUNT(DISTINCT ?grant) AS ?grant_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doe-energy-research-grants> WHERE {\n  ?grant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/type/Grant> .\n  ?grant <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/pred/grant_has_author> ?author .\n  ?author <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/type/Author> .\n  ?author <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/pred/author_name> ?author_name .\n  ?grant <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/pred/product_type> \"Technical Report\" .\n} GROUP BY ?author_name ORDER BY DESC(?grant_count) LIMIT 10",
+      "gold_sparql": "SELECT ?author_name (COUNT(DISTINCT ?grant) AS ?grant_count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doe-energy-research-grants> WHERE {\n  ?grant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/type/Grant> .\n  ?grant <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/pred/grant_has_author> ?author .\n  ?author <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/type/Author> .\n  ?author <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/pred/author_name> ?author_name .\n  ?grant <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/pred/product_type> \"Technical Report\" .\n} GROUP BY ?author_name ORDER BY DESC(?grant_count) LIMIT 10",
       "expected_answer": "Horsey, Ry [National Renewable Energy Laboratory (NREL), Golden, CO (United States)] (ORCID:0000000286674385) | 150\nAdams, Lauren [National Renewable Energy Laboratory (NREL), Golden, CO (United States)] | 149\nPraprost, Marlena [National Renewable Energy Laboratory (NREL), Golden, CO (United States)] (ORCID:0000000174638427) | 81\nParker, Andrew [National Renewable Energy Laboratory (NREL), Golden, CO (United States)] (ORCID:0000000254905134) | 79\nFontanini, Anthony [National Renewable Energy Laboratory (NREL), Golden, CO (United States)] (ORCID:0000000259219635) | 77\nCaraDonna, Chris [National Renewable Energy Laboratory (NREL), Golden, CO (United States)] | 77\nVan Sant, Amy [National Renewable Energy Laboratory (NREL), Golden, CO (United States)] (ORCID:0000000224973056) | 77\nKlun, Lauren [National Renewable Energy Laboratory (NREL), Golden, CO (United States)] | 76\nDahlhausen, Matthew [National Renewable Energy Laboratory (NREL), Golden, CO (United States)] (ORCID:0000000313362003) | 76\nKuang, Wenyi [National Renewable Energy Laboratory (NREL), Golden, CO (United States)] | 76",
       "full_expected_items": [
         "Horsey, Ry [National Renewable Energy Laboratory (NREL), Golden, CO (United States)] (ORCID:0000000286674385) | 150",
@@ -3003,7 +3003,7 @@
       "id": "q-010",
       "tier": "T4",
       "question": "What are the titles of grants that were published in 2016 and have at least two authors?",
-      "gold_sparql": "SELECT ?grantTitle FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doe-energy-research-grants> WHERE {\n  ?grant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/type/Grant> .\n  ?grant <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/pred/title> ?grantTitle .\n  ?grant <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/pred/grant_in_year> ?year .\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/type/Year> .\n  ?year <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/pred/year> \"2016\" .\n  {\n    SELECT ?grant (COUNT(DISTINCT ?author) AS ?authorCount) WHERE {\n      ?grant <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/pred/grant_has_author> ?author .\n      ?author <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/type/Author> .\n    } GROUP BY ?grant\n    HAVING (?authorCount >= 2)\n  }\n}",
+      "gold_sparql": "SELECT ?grantTitle FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doe-energy-research-grants> WHERE {\n  ?grant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/type/Grant> .\n  ?grant <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/pred/title> ?grantTitle .\n  ?grant <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/pred/grant_in_year> ?year .\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/type/Year> .\n  ?year <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/pred/year> \"2016\" .\n  {\n    SELECT ?grant (COUNT(DISTINCT ?author) AS ?authorCount) WHERE {\n      ?grant <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/pred/grant_has_author> ?author .\n      ?author <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/type/Author> .\n    } GROUP BY ?grant\n    HAVING (?authorCount >= 2)\n  }\n}",
       "expected_answer": "Girls In STEM White Coat Ceremony 2017, Technology Assessments of High Performance Envelope with Optimized Lighting, Solar Control, and Daylighting, Data Validation Package, July 2016 Groundwater Sampling at the Shirley Basin South, Wyoming, Disposal Site November 2016",
       "full_expected_items": [
         "Girls In STEM White Coat Ceremony 2017",
@@ -3047,7 +3047,7 @@
       "id": "q-011",
       "tier": "T4",
       "question": "Find the names of research organizations that performed grants sponsored by 'DOE' and published in 2018.",
-      "gold_sparql": "SELECT DISTINCT ?researchOrgName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doe-energy-research-grants> WHERE {\n  ?grant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/type/Grant> .\n  ?grant <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/pred/grant_performed_by> ?researchOrg .\n  ?researchOrg <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/type/ResearchOrg> .\n  ?researchOrg <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/pred/research_org_name> ?researchOrgName .\n  ?grant <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/pred/grant_sponsored_by> ?sponsorOrg .\n  ?sponsorOrg <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/type/SponsorOrg> .\n  ?sponsorOrg <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/pred/sponsor_name> ?sponsorName .\n  FILTER (CONTAINS(LCASE(STR(?sponsorName)), \"doe\")) .\n  ?grant <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/pred/grant_in_year> ?year .\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/type/Year> .\n  ?year <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/pred/year> \"2018\" .\n}",
+      "gold_sparql": "SELECT DISTINCT ?researchOrgName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doe-energy-research-grants> WHERE {\n  ?grant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/type/Grant> .\n  ?grant <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/pred/grant_performed_by> ?researchOrg .\n  ?researchOrg <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/type/ResearchOrg> .\n  ?researchOrg <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/pred/research_org_name> ?researchOrgName .\n  ?grant <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/pred/grant_sponsored_by> ?sponsorOrg .\n  ?sponsorOrg <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/type/SponsorOrg> .\n  ?sponsorOrg <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/pred/sponsor_name> ?sponsorName .\n  FILTER (CONTAINS(LCASE(STR(?sponsorName)), \"doe\")) .\n  ?grant <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/pred/grant_in_year> ?year .\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/type/Year> .\n  ?year <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/pred/year> \"2018\" .\n}",
       "expected_answer": "Oak Ridge National Laboratory (ORNL), Oak Ridge, TN (United States), Lawrence Livermore National Laboratory (LLNL), Livermore, CA (United States), Pacific Northwest National Laboratory (PNNL), Richland, WA (United States), Idaho National Laboratory (INL), Idaho Falls, ID (United States), Univ. of Nevada, Reno, NV (United States), Desert Research Inst. (DRI), Las Vegas, NV (United States), Michigan State Univ., East Lansing, MI (United States), Desert Research Institute, Nevada University, Reno, NV (United States), Desert Research Institute, Reno, NV (United States), Nevada National Security Site (NNSS), Mercury, NV (United States) ... (13 total)",
       "full_expected_items": [
         "Oak Ridge National Laboratory (ORNL), Oak Ridge, TN (United States)",
@@ -3101,7 +3101,7 @@
       "id": "q-012",
       "tier": "T4",
       "question": "What are the average number of subjects per grant for grants published in 2020?",
-      "gold_sparql": "SELECT (AVG(?subjectCount) AS ?averageSubjectsPerGrant) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doe-energy-research-grants> WHERE {\n  ?grant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/type/Grant> .\n  ?grant <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/pred/grant_in_year> ?year .\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/type/Year> .\n  ?year <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/pred/year> \"2020\" .\n  {\n    SELECT ?grant (COUNT(DISTINCT ?subject) AS ?subjectCount) WHERE {\n      ?grant <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/pred/grant_has_subject> ?subject .\n      ?subject <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doe-energy-research-grants/type/Subject> .\n    } GROUP BY ?grant\n  }\n}",
+      "gold_sparql": "SELECT (AVG(?subjectCount) AS ?averageSubjectsPerGrant) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doe-energy-research-grants> WHERE {\n  ?grant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/type/Grant> .\n  ?grant <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/pred/grant_in_year> ?year .\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/type/Year> .\n  ?year <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/pred/year> \"2020\" .\n  {\n    SELECT ?grant (COUNT(DISTINCT ?subject) AS ?subjectCount) WHERE {\n      ?grant <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/pred/grant_has_subject> ?subject .\n      ?subject <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doe-energy-research-grants/type/Subject> .\n    } GROUP BY ?grant\n  }\n}",
       "expected_answer": "3",
       "full_expected_items": [
         "3"
@@ -3143,61 +3143,61 @@
   "tables": [
     {
       "table": "Author",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-doe-energy-research-grants/Author.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_prepped/holdout-v2-doe-energy-research-grants/Author.csv",
       "n_rows_used": 200,
       "n_cols": 2
     },
     {
       "table": "Grant",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-doe-energy-research-grants/Grant.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_prepped/holdout-v2-doe-energy-research-grants/Grant.csv",
       "n_rows_used": 200,
       "n_cols": 9
     },
     {
       "table": "GrantAuthor",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-doe-energy-research-grants/GrantAuthor.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_prepped/holdout-v2-doe-energy-research-grants/GrantAuthor.csv",
       "n_rows_used": 200,
       "n_cols": 2
     },
     {
       "table": "GrantResearch",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-doe-energy-research-grants/GrantResearch.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_prepped/holdout-v2-doe-energy-research-grants/GrantResearch.csv",
       "n_rows_used": 200,
       "n_cols": 2
     },
     {
       "table": "GrantSponsor",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-doe-energy-research-grants/GrantSponsor.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_prepped/holdout-v2-doe-energy-research-grants/GrantSponsor.csv",
       "n_rows_used": 200,
       "n_cols": 2
     },
     {
       "table": "GrantSubject",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-doe-energy-research-grants/GrantSubject.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_prepped/holdout-v2-doe-energy-research-grants/GrantSubject.csv",
       "n_rows_used": 200,
       "n_cols": 2
     },
     {
       "table": "ResearchOrg",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-doe-energy-research-grants/ResearchOrg.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_prepped/holdout-v2-doe-energy-research-grants/ResearchOrg.csv",
       "n_rows_used": 200,
       "n_cols": 2
     },
     {
       "table": "SponsorOrg",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-doe-energy-research-grants/SponsorOrg.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_prepped/holdout-v2-doe-energy-research-grants/SponsorOrg.csv",
       "n_rows_used": 200,
       "n_cols": 2
     },
     {
       "table": "Subject",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-doe-energy-research-grants/Subject.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_prepped/holdout-v2-doe-energy-research-grants/Subject.csv",
       "n_rows_used": 200,
       "n_cols": 2
     },
     {
       "table": "Year",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-doe-energy-research-grants/Year.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_prepped/holdout-v2-doe-energy-research-grants/Year.csv",
       "n_rows_used": 14,
       "n_cols": 2
     }

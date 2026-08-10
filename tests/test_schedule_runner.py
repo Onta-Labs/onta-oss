@@ -403,13 +403,13 @@ def test_postgres_claim_uses_for_update_skip_locked(monkeypatch):
     select = next(r for r in rec if r[0] == "fetch")
     sql = select[1]
     assert "FOR UPDATE SKIP LOCKED" in sql
-    assert "cograph_schedules" in sql
+    assert "infona_schedules" in sql
     assert "enabled = true" in sql
     assert "next_run <= $1" in sql
     assert "ORDER BY next_run" in sql
     assert "LIMIT $2" in sql
     # An UPDATE advancing next_run ran inside the transaction.
-    update = next(r for r in rec if r[0] == "execute" and "UPDATE cograph_schedules" in r[1])
+    update = next(r for r in rec if r[0] == "execute" and "UPDATE infona_schedules" in r[1])
     assert "SET next_run = $2" in update[1]
     # And the due schedule was dispatched AFTER claim (one fire).
     assert [s.id for s in captured] == ["due"]
@@ -430,7 +430,7 @@ def test_make_runner_disabled_when_no_dsn(monkeypatch):
     from infona_client.config import settings
 
     monkeypatch.setattr(settings, "database_url", "")
-    monkeypatch.delenv("COGRAPH_SCHEDULER_ENABLED", raising=False)
+    monkeypatch.delenv("INFONA_SCHEDULER_ENABLED", raising=False)
     assert make_schedule_runner(_State()) is None
 
 
@@ -439,7 +439,7 @@ def test_make_runner_enabled_when_dsn_set(monkeypatch):
     from unittest.mock import AsyncMock
 
     monkeypatch.setattr(settings, "database_url", "postgresql://x/y")
-    monkeypatch.delenv("COGRAPH_SCHEDULER_ENABLED", raising=False)
+    monkeypatch.delenv("INFONA_SCHEDULER_ENABLED", raising=False)
 
     state = _State()
     state.neptune_client = AsyncMock()
@@ -453,7 +453,7 @@ def test_make_runner_explicit_disable_overrides_dsn(monkeypatch):
     from infona_client.config import settings
 
     monkeypatch.setattr(settings, "database_url", "postgresql://x/y")
-    monkeypatch.setenv("COGRAPH_SCHEDULER_ENABLED", "false")
+    monkeypatch.setenv("INFONA_SCHEDULER_ENABLED", "false")
     assert make_schedule_runner(_State()) is None
 
 
@@ -462,7 +462,7 @@ def test_make_runner_explicit_enable_without_dsn(monkeypatch):
     from unittest.mock import AsyncMock
 
     monkeypatch.setattr(settings, "database_url", "")
-    monkeypatch.setenv("COGRAPH_SCHEDULER_ENABLED", "true")
+    monkeypatch.setenv("INFONA_SCHEDULER_ENABLED", "true")
 
     state = _State()
     state.neptune_client = AsyncMock()

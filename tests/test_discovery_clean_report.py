@@ -102,7 +102,7 @@ class PyoxiNeptune:
 @pytest.fixture(autouse=True)
 def _er_disabled(monkeypatch):
     """Deterministic URIs (no signal-hash suffixes) via a scoped env set."""
-    monkeypatch.setenv("COGRAPH_ER_ENABLED", "0")
+    monkeypatch.setenv("INFONA_ER_ENABLED", "0")
 
 
 def _make_resolver(neptune) -> SchemaResolver:
