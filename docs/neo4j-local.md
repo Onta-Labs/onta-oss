@@ -45,7 +45,6 @@ Statement list: `cograph_client.graph.schema_bootstrap.SCHEMA_STATEMENTS`.
 
 ```python
 from cograph_client.graph.scope import GraphScope
-from cograph_client.graph.schema_bootstrap import ENTITY_MERGE_CYPHER, ENTITY_GET_CYPHER
 from cograph_client.graph.store import get_graph_store
 from cograph_client.graph.ontology_queries import entity_uri
 import asyncio
@@ -58,8 +57,9 @@ async def smoke():
     session = store.session(scope)
     eid = entity_uri("Book", "lotr")
     ts = datetime.now(timezone.utc).isoformat()
-    await session.execute_write(
-        ENTITY_MERGE_CYPHER,
+    # Prefer allowlisted templates for application writers:
+    await session.execute_template(
+        "entity_merge",
         {
             "id": eid,
             "primary_type": "Book",
@@ -71,19 +71,63 @@ async def smoke():
             "kg": "other-kg",
         },
     )
-    rows = await session.execute_read(ENTITY_GET_CYPHER, {"id": eid})
+    rows = await session.execute_template("entity_get", {"id": eid})
     print(rows[0].to_dict())
     await store.close()
 
 asyncio.run(smoke())
 ```
 
-Rules enforced by every session:
+### What the session enforces
 
-1. Cypher must reference `$tenant_id` and `$kg` or the call is rejected.
-2. Session **overwrites** caller-supplied `tenant_id` / `kg` parameters.
-3. Writes with `tenant_id=__global__` require `GraphScope(..., privileged=True)`.
-4. Parameterized Cypher only at this layer.
+1. **Parameter tokens (always):** Cypher must reference `$tenant_id` and `$kg`
+   as **whole** parameter names (word-boundary). `$kg_name` does **not**
+   satisfy `$kg`.
+2. **Session overwrites** caller-supplied `tenant_id` / `kg` parameters
+   (never trust client- or model-supplied scope).
+3. **Non-privileged heuristic:** free-form Cypher containing `MATCH` /
+   `MERGE` / `CREATE` must also include map-style property keys `tenant_id:`
+   and `kg:` in the query text. A red-team pattern that only *mentions*
+   `$tenant_id` / `$kg` in `WHERE` without those property keys is rejected.
+4. **Global catalog writes** require `GraphScope(..., privileged=True)`.
+5. **Entity MERGE/CREATE** that bind `$id` fail closed if `id` is missing or
+   blank (`require_entity_write_identity`) before the driver round-trip.
+6. Parameterized Cypher only at this layer (no user values concatenated into
+   query structure except allowlisted domain labels — see below).
+
+### Isolation is NOT complete for arbitrary Cypher (read this)
+
+Wave 1 does **not** rewrite free-form Cypher. The session gates above are
+defense-in-depth heuristics:
+
+| Path | Safety |
+|------|--------|
+| **`session.execute_template(name, params)`** | **Safe for app code.** Only Cypher from `schema_bootstrap.TEMPLATES` runs; entity-write templates enforce identity. |
+| **Future `kg_writer` Neo4j port** | **Safe for app code** (same allowlisted / structured writers). |
+| **`execute_read` / `execute_write` free-form** | **Admin / bootstrap / tests only.** Residual risk: a query can include `tenant_id:` / `kg:` tokens and still not bind session params into every pattern; a true Cypher AST rewriter is out of scope for Wave 1. |
+| **`privileged=True` scope** | Free-form still requires `$tenant_id` / `$kg` tokens but **skips** the property-key heuristic so break-glass admin queries can run. Treat as highly trusted. |
+
+**Application writers MUST use templates (or kg_writer) only.** Do not paste
+ad-hoc Cypher into product paths and assume multi-tenant isolation.
+
+Remaining work for a true rewriter: parse Cypher, inject
+`{tenant_id: $tenant_id, kg: $kg}` (or equivalent predicates) on every node/rel
+pattern, reject or rewrite label/rel-type injection, and drop free-form from
+the non-privileged app surface entirely.
+
+### Domain type labels (model B1)
+
+Static `ENTITY_MERGE` does not set dynamic domain labels (Neo4j cannot
+parameterize labels). After merge, call:
+
+```python
+from cograph_client.graph.labels import set_entity_type_labels
+
+await set_entity_type_labels(session, eid, ["Book"])  # sanitized, reserved-safe
+```
+
+Leaves are sanitized (`[^A-Za-z0-9_]` → `_`, digit prefix → `T_`) and rejected
+if they collide with reserved system labels (`Entity`, `OntoType`, …).
 
 ## Tests
 

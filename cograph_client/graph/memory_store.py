@@ -6,6 +6,7 @@ subset sufficient for smoke helpers in ``schema_bootstrap``:
 
 * Entity MERGE / MATCH by ``(tenant_id, kg, id)``
 * Entity list filtered by ``primary_type``
+* Domain-label SET via :func:`cograph_client.graph.labels.set_entity_type_labels`
 
 Anything outside that subset raises :class:`GraphQueryError` — tests that need
 richer behavior should either extend this deliberately or use the Neo4j
@@ -24,6 +25,7 @@ from cograph_client.graph.schema_bootstrap import (
     ENTITY_LIST_BY_TYPE_CYPHER,
     ENTITY_MERGE_CYPHER,
     bootstrap_schema_statements,
+    get_template,
 )
 from cograph_client.graph.scope import GraphScope, GraphScopeError
 from cograph_client.graph.store import (
@@ -31,7 +33,9 @@ from cograph_client.graph.store import (
     GraphRecord,
     GraphSession,
     assert_cypher_is_scoped,
+    maybe_require_entity_write_identity,
     merge_scope_params,
+    require_entity_write_identity,
 )
 
 
@@ -52,6 +56,7 @@ class _EntityRow:
     primary_type: str | None = None
     name: str | None = None
     source: str | None = None
+    labels: list[str] = field(default_factory=lambda: ["Entity"])
     props: dict[str, Any] = field(default_factory=dict)
 
     def as_record(self) -> GraphRecord:
@@ -81,7 +86,7 @@ class MemoryGraphSession:
         cypher: str,
         params: Mapping[str, Any] | None = None,
     ) -> list[GraphRecord]:
-        assert_cypher_is_scoped(cypher)
+        assert_cypher_is_scoped(cypher, privileged=self._scope.privileged)
         bound = merge_scope_params(self._scope, params, for_write=False)
         return self._store._execute(cypher, bound, writing=False)
 
@@ -90,9 +95,46 @@ class MemoryGraphSession:
         cypher: str,
         params: Mapping[str, Any] | None = None,
     ) -> list[GraphRecord]:
-        assert_cypher_is_scoped(cypher)
+        assert_cypher_is_scoped(cypher, privileged=self._scope.privileged)
         bound = merge_scope_params(self._scope, params, for_write=True)
+        maybe_require_entity_write_identity(cypher, bound)
         return self._store._execute(cypher, bound, writing=True)
+
+    async def execute_template(
+        self,
+        name: str,
+        params: Mapping[str, Any] | None = None,
+    ) -> list[GraphRecord]:
+        try:
+            tmpl = get_template(name)
+        except KeyError as exc:
+            raise GraphScopeError(str(exc)) from exc
+        assert_cypher_is_scoped(tmpl.cypher, privileged=self._scope.privileged)
+        bound = merge_scope_params(
+            self._scope, params, for_write=tmpl.writing
+        )
+        if tmpl.require_entity_id:
+            require_entity_write_identity(bound)
+        elif tmpl.writing:
+            maybe_require_entity_write_identity(tmpl.cypher, bound)
+        return self._store._execute(tmpl.cypher, bound, writing=tmpl.writing)
+
+    async def apply_entity_domain_labels(
+        self,
+        entity_id: str,
+        safe_labels: Sequence[str],
+    ) -> list[GraphRecord]:
+        """Native path for :func:`cograph_client.graph.labels.set_entity_type_labels`."""
+        require_entity_write_identity({"id": entity_id})
+        bound = merge_scope_params(
+            self._scope, {"id": entity_id}, for_write=True
+        )
+        return self._store._apply_domain_labels(
+            str(bound["tenant_id"]),
+            str(bound["kg"]),
+            str(entity_id),
+            list(safe_labels),
+        )
 
 
 class MemoryGraphStore:
@@ -136,6 +178,32 @@ class MemoryGraphStore:
     def snapshot_entities(self) -> list[dict[str, Any]]:
         return [copy.deepcopy(row.as_record().to_dict()) for row in self._entities.values()]
 
+    def _apply_domain_labels(
+        self,
+        tenant_id: str,
+        kg: str,
+        entity_id: str,
+        safe_labels: Sequence[str],
+    ) -> list[GraphRecord]:
+        row = self._entities.get((tenant_id, kg, entity_id))
+        if row is None:
+            return []
+        labels = ["Entity"]
+        for lab in safe_labels:
+            if lab not in labels:
+                labels.append(lab)
+        row.labels = labels
+        return [
+            GraphRecord(
+                data={
+                    "id": row.id,
+                    "tenant_id": row.tenant_id,
+                    "kg": row.kg,
+                    "labels": list(row.labels),
+                }
+            )
+        ]
+
     def _execute(
         self,
         cypher: str,
@@ -150,12 +218,10 @@ class MemoryGraphStore:
         if norm == _MERGE_NORM:
             if not writing:
                 raise GraphQueryError("MERGE entity template requires execute_write")
+            # Identity already enforced by session for free-form/template paths;
+            # keep a local fail-closed for direct _execute callers in tests.
+            require_entity_write_identity(params)
             entity_id = params.get("id")
-            if entity_id is None or (isinstance(entity_id, str) and not str(entity_id).strip()):
-                raise GraphScopeError(
-                    "Entity writes require a non-empty id parameter "
-                    "(stable entity_uri string from entity_uri())"
-                )
             key = (tenant_id, kg, str(entity_id))
             existing = self._entities.get(key)
             if existing is None:
@@ -193,6 +259,20 @@ class MemoryGraphStore:
                 if t == tenant_id and k == kg and r.primary_type == primary_type
             ]
             return rows
+
+        # SET e:Label1:Label2 after MATCH Entity map (from entity_set_labels_cypher).
+        set_labels_m = re.search(
+            r"MATCH\s+\(e:Entity\s*\{[^}]*\}\)\s*SET\s+e:([A-Za-z][A-Za-z0-9_]*(?::[A-Za-z][A-Za-z0-9_]*)*)",
+            norm,
+            re.IGNORECASE,
+        )
+        if set_labels_m:
+            if not writing:
+                raise GraphQueryError("SET entity labels requires execute_write")
+            require_entity_write_identity(params)
+            entity_id = str(params["id"])
+            raw_labels = [p for p in set_labels_m.group(1).split(":") if p]
+            return self._apply_domain_labels(tenant_id, kg, entity_id, raw_labels)
 
         # Allow a few diagnostic patterns used by unit tests of enforcement.
         if "RETURN $tenant_id" in cypher and "RETURN $kg" in cypher.replace(" ", ""):

@@ -6,9 +6,12 @@ BYOK: credentials come only from constructor args / ``NEO4J_*`` env via
 Scope enforcement (model §3):
 
 * every read/write merges session ``tenant_id`` / ``kg`` over caller params
-* Cypher must reference ``$tenant_id`` and ``$kg`` or the session rejects
+* Cypher must reference ``$tenant_id`` and ``$kg`` (word-boundary) or reject
+* non-privileged sessions also require ``tenant_id:`` / ``kg:`` property keys
+  on MATCH/MERGE/CREATE (heuristic — not a rewriter)
 * global-catalog writes require a privileged scope
-* parameterized Cypher only (no string concat of user values into labels here)
+* application writers should use :meth:`execute_template` (allowlisted Cypher)
+* free-form execute_read/write remains for admin/bootstrap/tests only
 
 Transient transport failures on the **read** path are retried with bounded
 backoff (spirit of :class:`NeptuneClient`); writes stay single-shot for
@@ -23,7 +26,7 @@ from typing import Any, Mapping, Sequence
 
 import structlog
 
-from cograph_client.graph.schema_bootstrap import SCHEMA_STATEMENTS
+from cograph_client.graph.schema_bootstrap import SCHEMA_STATEMENTS, get_template
 from cograph_client.graph.scope import GraphScope, GraphScopeError
 from cograph_client.graph.store import (
     GraphConfigError,
@@ -31,7 +34,9 @@ from cograph_client.graph.store import (
     GraphRecord,
     GraphSession,
     assert_cypher_is_scoped,
+    maybe_require_entity_write_identity,
     merge_scope_params,
+    require_entity_write_identity,
     scrub_store_detail,
 )
 
@@ -122,7 +127,7 @@ class Neo4jGraphSession:
         cypher: str,
         params: Mapping[str, Any] | None = None,
     ) -> list[GraphRecord]:
-        assert_cypher_is_scoped(cypher)
+        assert_cypher_is_scoped(cypher, privileged=self._scope.privileged)
         bound = merge_scope_params(self._scope, params, for_write=False)
         return await self._store._run(
             cypher,
@@ -136,12 +141,39 @@ class Neo4jGraphSession:
         cypher: str,
         params: Mapping[str, Any] | None = None,
     ) -> list[GraphRecord]:
-        assert_cypher_is_scoped(cypher)
+        assert_cypher_is_scoped(cypher, privileged=self._scope.privileged)
         bound = merge_scope_params(self._scope, params, for_write=True)
+        maybe_require_entity_write_identity(cypher, bound)
         return await self._store._run(
             cypher,
             bound,
             writing=True,
+            database=self._scope.database,
+        )
+
+    async def execute_template(
+        self,
+        name: str,
+        params: Mapping[str, Any] | None = None,
+    ) -> list[GraphRecord]:
+        try:
+            tmpl = get_template(name)
+        except KeyError as exc:
+            raise GraphScopeError(str(exc)) from exc
+        # Templates are allowlisted and already scope-correct; still pass the
+        # gate so a bad registry entry fails loudly.
+        assert_cypher_is_scoped(tmpl.cypher, privileged=self._scope.privileged)
+        bound = merge_scope_params(
+            self._scope, params, for_write=tmpl.writing
+        )
+        if tmpl.require_entity_id:
+            require_entity_write_identity(bound)
+        elif tmpl.writing:
+            maybe_require_entity_write_identity(tmpl.cypher, bound)
+        return await self._store._run(
+            tmpl.cypher,
+            bound,
+            writing=tmpl.writing,
             database=self._scope.database,
         )
 

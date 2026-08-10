@@ -25,7 +25,7 @@ from cograph_client.graph.schema_bootstrap import (
     ENTITY_MERGE_CYPHER,
 )
 from cograph_client.graph.scope import GraphScope, GraphScopeError
-from cograph_client.graph.store import env_neo4j_configured
+from cograph_client.graph.store import env_neo4j_configured, require_entity_write_identity
 
 pytestmark = pytest.mark.neo4j
 
@@ -116,3 +116,76 @@ async def test_live_rejects_unscoped_cypher(neo4j_store):
     session = neo4j_store.session(GraphScope.for_instance("t", "k"))
     with pytest.raises(GraphScopeError):
         await session.execute_read("MATCH (n) RETURN count(n) AS c")
+
+
+@requires_neo4j
+@pytest.mark.asyncio
+async def test_live_cross_tenant_isolation(neo4j_store):
+    """F4: live Neo4j — tenant A must not read tenant B's entity with same id."""
+    await neo4j_store.bootstrap_schema()
+    shared_kg = "iso-kg"
+    entity_id = f"https://cograph.tech/entities/Thing/iso-{uuid.uuid4().hex[:8]}"
+    tenant_a = f"iso-a-{uuid.uuid4().hex[:8]}"
+    tenant_b = f"iso-b-{uuid.uuid4().hex[:8]}"
+    ts = datetime.now(timezone.utc).isoformat()
+
+    sess_a = neo4j_store.session(GraphScope.for_instance(tenant_a, shared_kg))
+    sess_b = neo4j_store.session(GraphScope.for_instance(tenant_b, shared_kg))
+
+    await sess_a.execute_template(
+        "entity_merge",
+        {
+            "id": entity_id,
+            "primary_type": "Thing",
+            "name": "tenant-a-only",
+            "source": "iso-test",
+            "ts": ts,
+        },
+    )
+    leak = await sess_b.execute_template("entity_get", {"id": entity_id})
+    assert leak == []
+
+    await sess_b.execute_template(
+        "entity_merge",
+        {
+            "id": entity_id,
+            "primary_type": "Thing",
+            "name": "tenant-b-only",
+            "source": "iso-test",
+            "ts": ts,
+        },
+    )
+    a_rows = await sess_a.execute_template("entity_get", {"id": entity_id})
+    b_rows = await sess_b.execute_template("entity_get", {"id": entity_id})
+    assert a_rows[0]["name"] == "tenant-a-only"
+    assert b_rows[0]["name"] == "tenant-b-only"
+    assert a_rows[0]["tenant_id"] == tenant_a
+    assert b_rows[0]["tenant_id"] == tenant_b
+
+
+@requires_neo4j
+@pytest.mark.asyncio
+async def test_live_red_team_param_only_bypass_rejected(neo4j_store):
+    session = neo4j_store.session(GraphScope.for_instance("t", "k"))
+    bypass = "MATCH (n) WHERE $tenant_id = $tenant_id AND $kg = $kg RETURN n"
+    with pytest.raises(GraphScopeError, match="property keys|execute_template"):
+        await session.execute_read(bypass)
+
+
+@requires_neo4j
+@pytest.mark.asyncio
+async def test_live_entity_merge_missing_id_fail_closed(neo4j_store):
+    session = neo4j_store.session(GraphScope.for_instance("t", "k"))
+    with pytest.raises(GraphScopeError, match="non-empty id"):
+        await session.execute_template(
+            "entity_merge",
+            {
+                "primary_type": "T",
+                "name": "n",
+                "source": "s",
+                "ts": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+    # Helper itself is the contract (also covered hermetically).
+    with pytest.raises(GraphScopeError, match="non-empty id"):
+        require_entity_write_identity({})
