@@ -9,6 +9,38 @@ SoT). This OSS package owns the **GraphStore protocol**, the official Python
 driver adapter, schema bootstrap, Assertion write path, RDFS helpers, and Docker
 Compose service.
 
+## SIDE-BY-SIDE mode (production Neptune + optional Neo4j)
+
+**This branch does not replace Neptune.** Infona production on `main` continues
+to use **Amazon Neptune + SPARQL** as the default graph backend. The `neo4j`
+branch is a **side-by-side optional backend** for local development, CI, and
+migration work:
+
+| Track | Branch / deploy | Backend | Query language |
+|-------|-----------------|---------|----------------|
+| **Production** | `main` (and shipped images) | Neptune (default) | SPARQL |
+| **Optional Neo4j** | `neo4j` branch (this doc) | Neo4j when opted in | Cypher / GraphStore |
+
+Hard rules for this track:
+
+1. **Never remove Neptune** — SPARQL client, `sparql_scope`, Neptune readers,
+   and public SPARQL routes remain for Neptune deployments.
+2. **Default backend remains `neptune`** — unset `INFONA_GRAPH_BACKEND` (or set
+   it to `neptune`) keeps every dual-backend helper on the SPARQL path; no
+   Neo4j credentials are required.
+3. **Opt in only** — set `INFONA_GRAPH_BACKEND=neo4j` plus `NEO4J_URI` /
+   `NEO4J_USER` / `NEO4J_PASSWORD` (BYOK) to exercise GraphStore writers,
+   explore reads, and NL→Cypher `/ask`.
+4. **Do not merge `main` into this experiment casually** — keep the branch
+   focused; ship Neo4j work as deliberate PRs into `neo4j` (and only later
+   promote deliberate slices to `main` when product-ready).
+
+CI: `.github/workflows/neo4j.yml` runs on the **`neo4j` branch only** (plus
+`workflow_dispatch`). Hermetic MemoryGraphStore / golden / isolation tests always
+run; live `@pytest.mark.neo4j` runs against an optional Neo4j service container.
+Main-branch CI (`.github/workflows/test.yml`) is unchanged and does not require
+Neo4j.
+
 ### ADR 0013 model (short)
 
 * **Labels:** `Entity`, `Class`, `Property`, `Assertion` (plus legacy
@@ -265,17 +297,24 @@ recovery, eval rebaseline against golden suite CI, richer NL coverage.
 ## Tests
 
 ```bash
-# Hermetic (default CI) — in-memory store + scope unit tests + ADR 0013
+# Hermetic (default CI / neo4j branch workflow) — no Neo4j process required
 pytest tests/test_graph_store.py tests/test_explore_store.py \
   tests/test_kg_writer_store.py tests/test_rails_graph_store_write.py \
-  tests/test_rdf_semantic_model.py \
+  tests/test_rdf_semantic_model.py tests/test_golden_rdf_semantics.py \
+  tests/test_neo4j_isolation_suite.py \
   tests/test_cypher_scope.py tests/test_cypher_prompts.py \
-  tests/test_example_bank_cypher.py tests/test_ask_cypher_pipeline.py -q
+  tests/test_example_bank_cypher.py tests/test_ask_cypher_pipeline.py \
+  tests/test_query_neo4j_hard_break.py -q
 
-# Live Neo4j smoke (compose up first)
+# Live Neo4j smoke (compose up first; optional service in neo4j.yml)
 NEO4J_URI=bolt://localhost:7687 NEO4J_USER=neo4j NEO4J_PASSWORD=infona-dev-password \
   pytest -m neo4j -q
 ```
+
+Isolation suite (`tests/test_neo4j_isolation_suite.py`) seeds two tenants and
+two kgs via Assertion writes on `MemoryGraphStore` and pins: no cross-tenant
+leak, wrong-kg empty, session overwrites of caller `tenant_id`/`kg`, and explore
+list/count via `INSTANCE_OF` → Class (not denorm `primary_type` alone).
 
 ## Env vars (BYOK)
 
