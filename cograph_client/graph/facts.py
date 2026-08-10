@@ -68,7 +68,16 @@ class Fact:
         Literal / list / target entity id for rel; ignored for ``type`` when the
         type leaf is in ``key``.
     source:
-        Optional ingest source stamp (maps to Entity ``source`` when present).
+        Alias for ``source_url`` (ingest source stamp / citation URL). Prefer
+        ``source_url`` for new callers; both map onto Assertion provenance.
+    source_url:
+        Optional citation / source URL (ADR 0013 Assertion SoT field).
+    verified_at:
+        Optional ISO-8601 verification timestamp on the Assertion.
+    run_id:
+        Optional ingest / enrichment run id on the Assertion.
+    confidence:
+        Optional confidence score on the Assertion.
     """
 
     subject_id: str
@@ -76,6 +85,10 @@ class Fact:
     key: str
     value: Any = None
     source: str | None = None
+    source_url: str | None = None
+    verified_at: str | None = None
+    run_id: str | None = None
+    confidence: float | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.subject_id, str) or not self.subject_id.strip():
@@ -84,6 +97,11 @@ class Fact:
             raise GraphScopeError(f"Fact.kind must be literal|rel|type, got {self.kind!r}")
         if not isinstance(self.key, str) or not self.key.strip():
             raise GraphScopeError("Fact.key must be a non-empty string")
+        # ``source`` is a historical alias for ``source_url`` — keep both in sync.
+        if self.source_url is None and self.source is not None:
+            object.__setattr__(self, "source_url", self.source)
+        elif self.source is None and self.source_url is not None:
+            object.__setattr__(self, "source", self.source_url)
 
 
 def sanitize_prop_key(leaf: str) -> str:

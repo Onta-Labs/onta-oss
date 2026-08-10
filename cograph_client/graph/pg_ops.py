@@ -33,7 +33,6 @@ from cograph_client.graph.facts import (
     sanitize_rel_type,
 )
 from cograph_client.graph.iri import ATTR_META_NS
-from cograph_client.graph.labels import sanitize_domain_labels, set_entity_type_labels
 from cograph_client.graph.scope import GraphScopeError
 from cograph_client.graph.store import require_entity_write_identity
 
@@ -166,8 +165,9 @@ async def delete_literals(
 ) -> int:
     """Remove named literal properties from an Entity (predicate-scoped clear).
 
-    Also removes matching datatype Assertions (ADR 0013 SoT) when the session
-    implements assertion deletes.
+    Also removes matching datatype Assertions (ADR 0013 SoT). Assertion deletes
+    are required on the store path — failures are logged and re-raised (not
+    swallowed).
     """
     require_entity_write_identity({"id": entity_id})
     keys: list[str] = []
@@ -184,21 +184,26 @@ async def delete_literals(
             "GraphSession does not implement write_delete_literals"
         )
     n = int(await native(entity_id, keys))
-    # Best-effort Assertion SoT cleanup by property IRI.
-    try:
-        from cograph_client.graph.assertion_model import property_uri
-        from cograph_client.graph.rdf_model import delete_assertions_for_subject
+    # Assertion SoT cleanup by property IRI — must not be silently skipped.
+    from cograph_client.graph.assertion_model import property_uri
+    from cograph_client.graph.rdf_model import delete_assertions_for_subject
 
-        for leaf in original_leaves:
-            if leaf in ("name", "source", "primary_type"):
-                prop_id = property_uri(leaf)
-            else:
-                prop_id = property_uri(leaf)
+    for leaf in original_leaves:
+        prop_id = property_uri(leaf)
+        try:
             n += await delete_assertions_for_subject(
                 session, entity_id, property_id=prop_id
             )
-    except Exception:  # noqa: BLE001 — cache delete must not fail on assertion gap
-        pass
+        except Exception:
+            import structlog
+
+            structlog.get_logger(__name__).exception(
+                "assertion_delete_literals_failed",
+                entity_id=entity_id,
+                property_id=prop_id,
+                leaf=leaf,
+            )
+            raise
     return n
 
 
@@ -214,7 +219,8 @@ async def delete_rels(
 
     ``end_id_exact`` is the object endpoint when deleting a concrete edge;
     ``end_id`` is kept as an alias for the same filter. Also removes matching
-    object Assertions (ADR 0013) when the session supports it.
+    object Assertions (ADR 0013 SoT). Assertion delete failures are logged and
+    re-raised — never swallowed.
     """
     end = end_id_exact if end_id_exact is not None else end_id
     rel_type = sanitize_rel_type(attr_leaf) if attr_leaf else None
@@ -230,18 +236,28 @@ async def delete_rels(
         )
     )
     if start_id and attr_leaf:
-        try:
-            from cograph_client.graph.assertion_model import property_uri
-            from cograph_client.graph.rdf_model import delete_assertions_for_subject
+        from cograph_client.graph.assertion_model import property_uri
+        from cograph_client.graph.rdf_model import delete_assertions_for_subject
 
+        prop_id = property_uri(attr_leaf)
+        try:
             n += await delete_assertions_for_subject(
                 session,
                 start_id,
-                property_id=property_uri(attr_leaf),
+                property_id=prop_id,
                 object_key=end,
             )
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception:
+            import structlog
+
+            structlog.get_logger(__name__).exception(
+                "assertion_delete_rels_failed",
+                start_id=start_id,
+                property_id=prop_id,
+                object_key=end,
+                attr_leaf=attr_leaf,
+            )
+            raise
     return n
 
 
@@ -440,15 +456,30 @@ async def apply_facts(
 ) -> int:
     """Apply a batch of Facts via Assertion SoT + derived Entity cache (ADR 0013).
 
-    1. MERGE Entities + domain labels + property cache + shortcut rels
-       (derived projections for Explorer / hot paths).
-    2. Write :Assertion nodes (unit of truth) for each Fact, with
-       ``INSTANCE_OF`` dual-written for type membership.
+    **Order (locked):**
 
-    Returns the number of Facts applied. Ensures target entities exist for rels.
+    1. MERGE Entity shells for subjects + rel targets (identity only).
+    2. Write :Assertion nodes as unit of truth for every Fact — **required**.
+       Fails closed if the session lacks ``write_assertion`` (Memory/Neo4j).
+    3. Dual-write derived projections (Entity property cache, shortcut rels,
+       ``INSTANCE_OF``, domain labels) **after** each Assertion succeeds
+       (via :func:`assert_fact` with ``dual_write_cache=True``).
+
+    Returns the number of Facts applied.
     """
     if not facts:
         return 0
+
+    write_assertion = getattr(session, "write_assertion", None)
+    if not callable(write_assertion):
+        raise GraphScopeError(
+            "GraphSession does not implement write_assertion; Assertion is "
+            "required source-of-truth on the store path (ADR 0013). Use "
+            "MemoryGraphStore or Neo4jGraphStore."
+        )
+
+    from cograph_client.graph.rdf_model import assert_fact, fact_to_assertion_fact
+
     grouped = group_facts_by_subject(facts)
     applied = 0
 
@@ -470,80 +501,47 @@ async def apply_facts(
                 source = f.value
             if f.source:
                 source = f.source
+            if f.source_url:
+                source = f.source_url
         await merge_entity(
             session, sid, primary_type=primary, name=name, source=source
         )
 
-    # Second pass: types (labels), literals, rels per subject — derived cache.
-    for sid, sub_facts in grouped.items():
-        type_leaves = [f.key for f in sub_facts if f.kind == "type"]
-        if type_leaves:
-            safe = sanitize_domain_labels(type_leaves)
-            await set_entity_type_labels(session, sid, safe)
-            applied += len(type_leaves)
-
-        for f in sub_facts:
-            if f.kind == "literal":
-                if f.key == "name":
-                    await merge_entity(session, sid, name=f.value)
-                elif f.key == "source":
-                    await merge_entity(session, sid, source=f.value)
-                else:
-                    await set_literal(session, sid, f.key, f.value, multi_union=True)
-                applied += 1
-                if provenance_enabled:
-                    obj_repr = str(f.value) if f.value is not None else None
-                    await create_prov_event(
-                        session,
-                        event_type="assert",
-                        subject_id=sid,
-                        attr=f.key,
-                        object_repr=obj_repr,
-                        source=f.source,
-                        fact_hash=prov_fact_hash(sid, f.key, obj_repr, f.source),
-                    )
-            elif f.kind == "rel":
-                if not isinstance(f.value, str) or not f.value:
-                    raise GraphScopeError(
-                        f"rel Fact requires target entity id string, got {f.value!r}"
-                    )
-                await merge_rel(session, sid, f.value, f.key)
-                applied += 1
-                if provenance_enabled:
-                    await create_prov_event(
-                        session,
-                        event_type="assert",
-                        subject_id=sid,
-                        attr=f.key,
-                        object_repr=f.value,
-                        source=f.source,
-                        fact_hash=prov_fact_hash(sid, f.key, f.value, f.source),
-                    )
-            # type facts already counted above
-
-    # Third pass: Assertion SoT (ADR 0013). Dual-write cache already done above;
-    # still dual-write INSTANCE_OF for type Assertions via assert_fact.
-    if getattr(session, "write_assertion", None) is not None:
-        from cograph_client.graph.rdf_model import assert_fact, fact_to_assertion_fact
-
-        for f in facts:
-            try:
-                af = fact_to_assertion_fact(
-                    subject_id=f.subject_id,
-                    kind=f.kind,
-                    key=f.key,
-                    value=f.value,
-                    source=f.source,
-                )
-            except GraphScopeError:
-                continue
-            # dual_write_cache=False: Entity props/rels already applied; type
-            # path still needs INSTANCE_OF which assert_fact writes when True
-            # for kind=type only.
-            await assert_fact(
+    # Second pass: Assertion SoT first; dual-write Entity cache after each.
+    for f in facts:
+        af = fact_to_assertion_fact(
+            subject_id=f.subject_id,
+            kind=f.kind,
+            key=f.key,
+            value=f.value,
+            source=f.source,
+            source_url=f.source_url,
+            verified_at=f.verified_at,
+            run_id=f.run_id,
+            confidence=f.confidence,
+        )
+        await assert_fact(session, af, dual_write_cache=True)
+        applied += 1
+        if provenance_enabled and f.kind in ("literal", "rel"):
+            obj_repr = (
+                str(f.value)
+                if f.kind == "literal" and f.value is not None
+                else (f.value if f.kind == "rel" else None)
+            )
+            src = f.source_url or f.source
+            await create_prov_event(
                 session,
-                af,
-                dual_write_cache=(f.kind == "type"),
+                event_type="assert",
+                subject_id=f.subject_id,
+                attr=f.key,
+                object_repr=obj_repr if isinstance(obj_repr, str) or obj_repr is None else str(obj_repr),
+                source=src,
+                fact_hash=prov_fact_hash(
+                    f.subject_id,
+                    f.key,
+                    obj_repr if isinstance(obj_repr, str) or obj_repr is None else str(obj_repr),
+                    src,
+                ),
             )
 
     return applied

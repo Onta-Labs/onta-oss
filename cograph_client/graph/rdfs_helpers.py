@@ -49,42 +49,72 @@ TEMPLATE_SUBCLASS_OF_CLOSURE = "subclass_of_closure"
 # without pulling AssertionMemoryStore (breaks import cycles).
 # Parameter names match MemoryGraphStore native implementations.
 
+# Semantic membership via INSTANCE_OF → Class (ADR 0013). ``$type_names`` is the
+# subclass-expanded list of Class **names** (leaves) and/or Class IRIs; callers
+# (NL fixtures) expand via type_names_with_subclasses / Class SUBCLASS_OF.
+# ``primary_type`` is a denorm cache only — never the sole type filter.
 ENTITIES_OF_TYPE_CYPHER = """
-MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})
-WHERE e.primary_type IN $type_names
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
+  tenant_id: $tenant_id, kg: $kg
+})
+WHERE (c.name IN $type_names OR c.id IN $type_names)
   AND ($after_id IS NULL OR e.id > $after_id)
-RETURN e.id AS id, e.tenant_id AS tenant_id, e.kg AS kg,
+RETURN DISTINCT e.id AS id, e.tenant_id AS tenant_id, e.kg AS kg,
        e.primary_type AS primary_type, e.name AS name, e.source AS source
 ORDER BY e.id
 LIMIT $limit
 """.strip()
 
 ENTITIES_OF_TYPE_COUNT_CYPHER = """
-MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})
-WHERE e.primary_type IN $type_names
-RETURN count(*) AS n
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
+  tenant_id: $tenant_id, kg: $kg
+})
+WHERE c.name IN $type_names OR c.id IN $type_names
+RETURN count(DISTINCT e) AS n
 """.strip()
 
+# Prefer Assertion literal SoT; Entity property cache is secondary (dual-written
+# after Assertion by apply_facts / assert_fact).
 LITERAL_VALUES_CYPHER = """
-MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})
-WHERE e.primary_type IN $type_names
-  AND e[$prop_key] = $prop_value
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
+  tenant_id: $tenant_id, kg: $kg
+})
+WHERE c.name IN $type_names OR c.id IN $type_names
+OPTIONAL MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg, subject_id: e.id})
+  -[:PREDICATE]->(p:Property {tenant_id: $tenant_id, kg: $kg})
+WHERE p.name = $prop_key AND a.literal_value = $prop_value
+WITH DISTINCT e, a
+WHERE a IS NOT NULL OR e[$prop_key] = $prop_value
 RETURN e.id AS id, e.name AS name, e.primary_type AS primary_type,
-       e[$prop_key] AS literal_value
+       coalesce(a.literal_value, e[$prop_key]) AS literal_value
 ORDER BY e.id
 LIMIT $limit
 """.strip()
 
+# Object Assertions are SoT (SUBJECT → PREDICATE → OBJECT). Typed shortcut
+# relationships are a **derived** dual-write from assert_fact / apply_facts
+# (not independent truth); this template reads Assertions, not arbitrary rels.
 RELATED_ENTITIES_CYPHER = """
-MATCH (a:Entity {tenant_id: $tenant_id, kg: $kg})-[r]->(b:Entity {tenant_id: $tenant_id, kg: $kg})
-WHERE a.primary_type IN $from_types
-  AND r.tenant_id = $tenant_id AND r.kg = $kg
-  AND ($to_types IS NULL OR b.primary_type IN $to_types)
-  AND ($rel_attr IS NULL OR r.attr = $rel_attr OR type(r) = $rel_attr)
-RETURN a.id AS from_id, a.name AS from_name, a.primary_type AS from_type,
-       b.id AS to_id, b.name AS to_name, b.primary_type AS to_type,
-       type(r) AS rel_type, coalesce(r.attr, type(r)) AS attr
-ORDER BY a.id, b.id
+MATCH (from_e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(fc:Class {
+  tenant_id: $tenant_id, kg: $kg
+})
+WHERE fc.name IN $from_types OR fc.id IN $from_types
+MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg})-[:SUBJECT]->(from_e)
+MATCH (a)-[:OBJECT]->(to_e:Entity {tenant_id: $tenant_id, kg: $kg})
+MATCH (a)-[:PREDICATE]->(p:Property {tenant_id: $tenant_id, kg: $kg})
+WHERE ($rel_attr IS NULL OR p.name = $rel_attr)
+OPTIONAL MATCH (to_e)-[:INSTANCE_OF]->(tc:Class {tenant_id: $tenant_id, kg: $kg})
+WITH DISTINCT from_e, to_e, p,
+     collect(DISTINCT tc.name) AS tc_names,
+     collect(DISTINCT tc.id) AS tc_ids
+WHERE $to_types IS NULL
+   OR any(n IN tc_names WHERE n IN $to_types)
+   OR any(i IN tc_ids WHERE i IN $to_types)
+   OR to_e.primary_type IN $to_types
+RETURN from_e.id AS from_id, from_e.name AS from_name, from_e.primary_type AS from_type,
+       to_e.id AS to_id, to_e.name AS to_name, to_e.primary_type AS to_type,
+       p.name AS rel_type, p.name AS attr
+ORDER BY from_id, to_id
 LIMIT $limit
 """.strip()
 
