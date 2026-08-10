@@ -1,6 +1,8 @@
 # Hermetic ETL sample (N-Triples) — entity IRIs use graph.onta.sh default base shape.
 # Pin ONTA_IRI_BASE if classify_triple host-sensitive paths are under test; mapper
-# uses package prefixes but attrs/onto detection is path-based for most cases.
+# uses package prefixes but attrs/onto/types detection is path-based for most cases.
+# ADR 0013: instance → Assertions; rdf:type → type Assertions + Class; subClassOf
+# → SUBCLASS_OF (original Class IRIs kept as ids).
 
 <https://graph.onta.sh/entities/Person/alice> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.onta.sh/types/Person> .
 <https://graph.onta.sh/entities/Person/alice> <http://www.w3.org/2000/01/rdf-schema#label> "Alice" .
@@ -12,5 +14,7 @@
 <https://graph.onta.sh/entities/Organization/acme> <http://www.w3.org/2000/01/rdf-schema#label> "Acme" .
 <https://graph.onta.sh/entities/Person/alice> <https://graph.onta.sh/onto/works_at> <https://graph.onta.sh/entities/Organization/acme> .
 <https://graph.onta.sh/entities/Person/alice> <https://graph.onta.sh/onto/source> "csv" .
+# Catalog hierarchy (ontology dump) — not instance Facts
+<https://graph.onta.sh/types/Employee> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://graph.onta.sh/types/Person> .
 # Skipped companion-style multi-segment attrs tail
 <https://graph.onta.sh/entities/Person/alice> <https://graph.onta.sh/attr_meta/Person/email/source_url> <https://example.com/src> .

@@ -1,9 +1,18 @@
 #!/usr/bin/env python3
 """One-shot Neptune → Neo4j offline ETL (migration tooling, not product surface).
 
-Maps RDF-era instance triples to property-graph :class:`Fact` rows using the
-shared B1–B5 sanitizers / ``classify_triple`` mapper in ``cograph_client.graph.facts``,
-then writes via :func:`insert_facts` + GraphStore when ``NEO4J_*`` is set.
+Maps RDF-era triples to the **ADR 0013 Assertion model** (unit of truth), not
+Entity-properties-only SoT. Instance triples become :class:`Fact` rows via the
+shared B1–B5 sanitizers / ``classify_triple`` mapper, then
+:func:`fact_to_assertion_fact` + the store path of :func:`insert_facts` (which
+dual-writes :Assertion nodes, Class/Property catalog, and derived cache).
+
+Ontology / catalog triples in the same dump (``rdfs:subClassOf``,
+``rdfs:subPropertyOf``) become ``SUBCLASS_OF`` / ``SUBPROPERTY_OF`` edges on
+Class / Property nodes with **original RDF IRIs kept as node ids**.
+
+**Validation after cutover is golden answers (result sets), not SPARQL→Cypher
+string translation.** See ``docs/plans/neo4j-golden-queries.md`` and ADR 0013.
 
 Hermetic usage (no live DBs)::
 
@@ -20,7 +29,8 @@ Commit to Neo4j::
     export NEO4J_URI=bolt://… NEO4J_USER=neo4j NEO4J_PASSWORD=…
     python scripts/neptune_to_neo4j_etl.py --tenant demo-tenant --kg bookstore
 
-See parent ``docs/runbooks/neo4j-cutover.md``.
+See parent ``docs/runbooks/neo4j-cutover.md`` and
+``docs/plans/neo4j-rdf-semantic-model.md`` §13 (ETL cheat sheet).
 """
 
 from __future__ import annotations
@@ -34,7 +44,7 @@ import sys
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Literal, Sequence
 from urllib.parse import unquote
 
 # Allow ``python scripts/neptune_to_neo4j_etl.py`` from a checkout without install.
@@ -42,6 +52,11 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from cograph_client.graph.assertion_model import (  # noqa: E402
+    AssertionFact,
+    property_uri,
+    type_membership_property_id,
+)
 from cograph_client.graph.facts import (  # noqa: E402
     Fact,
     classify_triple,
@@ -51,11 +66,20 @@ from cograph_client.graph.facts import (  # noqa: E402
     triples_to_facts,
 )
 from cograph_client.graph.labels import sanitize_domain_label  # noqa: E402
-from cograph_client.graph.queries import kg_graph_uri  # noqa: E402
+from cograph_client.graph.predicates import RDFS_NS  # noqa: E402
+from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri  # noqa: E402
+from cograph_client.graph.rdf_model import (  # noqa: E402
+    class_iri,
+    fact_to_assertion_fact,
+)
+from cograph_client.graph.scope import GraphScopeError  # noqa: E402
 
 # ---------------------------------------------------------------------------
-# Pure helpers (unit-tested)
+# Catalog predicates (ontology triples → Class/Property hierarchy)
 # ---------------------------------------------------------------------------
+
+RDFS_SUBCLASS_OF = f"{RDFS_NS}subClassOf"
+RDFS_SUBPROPERTY_OF = f"{RDFS_NS}subPropertyOf"
 
 # N-Triples: <iri> <iri> <iri> .  |  <iri> <iri> "literal" .  |  typed/lang tags
 _NT_LINE = re.compile(
@@ -65,31 +89,69 @@ _NT_LINE = re.compile(
 _KG_GRAPH_ANY_HOST = re.compile(
     r"^https?://[^/]+/graphs/(?P<tenant>[^/]+)/kg/(?P<kg>[^/]+)/?$"
 )
+_ONTOLOGY_GRAPH_ANY_HOST = re.compile(
+    r"^https?://[^/]+/graphs/(?P<tenant>[^/]+)/?$"
+)
+
+
+# ---------------------------------------------------------------------------
+# Pure helpers (unit-tested)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class CatalogEdge:
+    """One catalog hierarchy edge (original IRIs preserved as node ids)."""
+
+    kind: Literal["subclass_of", "subproperty_of"]
+    child_id: str
+    parent_id: str
 
 
 @dataclass(frozen=True, slots=True)
 class EtlStats:
-    """Aggregate counts printed in dry-run and write modes."""
+    """Aggregate counts printed in dry-run and write modes (ADR 0013).
+
+    Instance SoT counts are **assertions** (not Entity-props-only). Catalog
+    counts cover Class / Property nodes implied by type Assertions, property
+    leaves, and explicit ``rdfs:subClassOf`` / ``rdfs:subPropertyOf`` edges.
+    """
 
     triples_in: int = 0
-    facts_out: int = 0
+    facts_out: int = 0  # bridge Fact rows (legacy key; == assertions when mapped)
+    assertions: int = 0
+    classes: int = 0
+    properties: int = 0
+    entities: int = 0
+    subclass_of: int = 0
+    subproperty_of: int = 0
     skipped: int = 0
     kind_counts: dict[str, int] = field(default_factory=dict)
     b3_literal_conflicts: int = 0
     subjects: int = 0
     graphs: int = 0
     written_facts: int = 0
+    written_assertions: int = 0
+    written_catalog_edges: int = 0
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "triples_in": self.triples_in,
             "facts_out": self.facts_out,
+            "assertions": self.assertions,
+            "classes": self.classes,
+            "properties": self.properties,
+            "entities": self.entities,
+            "subclass_of": self.subclass_of,
+            "subproperty_of": self.subproperty_of,
             "skipped": self.skipped,
             "kind_counts": dict(self.kind_counts),
             "b3_literal_conflicts": self.b3_literal_conflicts,
             "subjects": self.subjects,
             "graphs": self.graphs,
             "written_facts": self.written_facts,
+            "written_assertions": self.written_assertions,
+            "written_catalog_edges": self.written_catalog_edges,
         }
 
 
@@ -186,6 +248,49 @@ def parse_instance_graph_uri(graph_uri: str) -> tuple[str, str] | None:
     return m.group("tenant"), m.group("kg")
 
 
+def parse_ontology_graph_uri(graph_uri: str) -> str | None:
+    """``…/graphs/{tenant}`` (no ``/kg/``) → tenant id, or None."""
+    if not isinstance(graph_uri, str):
+        return None
+    raw = graph_uri.strip().rstrip("/")
+    # Reject instance graphs.
+    if parse_instance_graph_uri(raw) is not None:
+        return None
+    if "/kg/" in raw:
+        return None
+    m = _ONTOLOGY_GRAPH_ANY_HOST.match(raw + "/") or _ONTOLOGY_GRAPH_ANY_HOST.match(
+        raw
+    )
+    if not m:
+        # Try without trailing slash pattern
+        m2 = re.match(r"^https?://[^/]+/graphs/(?P<tenant>[^/]+)$", raw)
+        if not m2:
+            return None
+        return m2.group("tenant")
+    return m.group("tenant")
+
+
+def _is_http_iri(value: str) -> bool:
+    return isinstance(value, str) and (
+        value.startswith("http://") or value.startswith("https://")
+    )
+
+
+def classify_catalog_triple(
+    s: str, p: str, o: str
+) -> CatalogEdge | None:
+    """Map ontology hierarchy triples; keep child/parent IRIs verbatim."""
+    if not s or not p or not o:
+        return None
+    if not _is_http_iri(s) or not _is_http_iri(o):
+        return None
+    if p == RDFS_SUBCLASS_OF:
+        return CatalogEdge(kind="subclass_of", child_id=s, parent_id=o)
+    if p == RDFS_SUBPROPERTY_OF:
+        return CatalogEdge(kind="subproperty_of", child_id=s, parent_id=o)
+    return None
+
+
 def count_b3_literal_conflicts(facts: Sequence[Fact]) -> int:
     """Count entity-scoped literal leaf collisions (model B3 last-write-wins).
 
@@ -210,36 +315,114 @@ def count_b3_literal_conflicts(facts: Sequence[Fact]) -> int:
     return conflicts
 
 
+def fact_to_assertion_or_none(fact: Fact) -> AssertionFact | None:
+    """Bridge Fact → AssertionFact; skip rows that cannot become Assertions."""
+    try:
+        return fact_to_assertion_fact(
+            subject_id=fact.subject_id,
+            kind=fact.kind,
+            key=fact.key,
+            value=fact.value,
+            source=fact.source,
+        )
+    except GraphScopeError:
+        return None
+
+
+def class_id_from_type_fact(fact: Fact) -> str:
+    """Resolve Class node id from a type Fact (prefer original RDF Class IRI)."""
+    if isinstance(fact.value, str) and fact.value.startswith("http"):
+        return fact.value
+    return class_iri(fact.key)
+
+
 def map_triples(
     triples: Iterable[tuple[str, str, str]],
-) -> tuple[list[Fact], EtlStats]:
-    """Map RDF triples → Facts with dry-run stats (pure; no I/O)."""
+) -> tuple[list[Fact], list[AssertionFact], list[CatalogEdge], EtlStats]:
+    """Map RDF triples → Facts + AssertionFacts + catalog edges (pure; no I/O).
+
+    * Instance: ``classify_triple`` → Fact → AssertionFact (ADR 0013 SoT).
+    * Catalog: ``rdfs:subClassOf`` / ``rdfs:subPropertyOf`` → CatalogEdge.
+    * Entity / Class / Property **ids stay the RDF IRIs** from the dump
+      (no reminting to opaque Neo4j keys).
+    """
     triple_list = list(triples)
     facts: list[Fact] = []
+    catalog: list[CatalogEdge] = []
     skipped = 0
     for t in triple_list:
         if not t or len(t) < 3:
             skipped += 1
             continue
         s, p, o = t[0], t[1], t[2]
+        edge = classify_catalog_triple(s, p, o if o is not None else "")
+        if edge is not None:
+            catalog.append(edge)
+            continue
         fact = classify_triple(s, p, o if o is not None else "")
         if fact is None:
             skipped += 1
         else:
             facts.append(fact)
-    kinds = Counter(f.kind for f in facts)
+
+    assertion_facts: list[AssertionFact] = []
+    for f in facts:
+        af = fact_to_assertion_or_none(f)
+        if af is not None:
+            assertion_facts.append(af)
+
+    # --- Dry-run identity sets (ADR 0013 counts) ---------------------------
+    entity_ids: set[str] = set()
+    class_ids: set[str] = set()
+    property_ids: set[str] = set()
+    # Always include the well-known type-membership Property when any type
+    # Assertion exists (assert_fact MERGEs it on write).
+    for f in facts:
+        entity_ids.add(f.subject_id)
+        if f.kind == "type":
+            class_ids.add(class_id_from_type_fact(f))
+            property_ids.add(type_membership_property_id())
+        elif f.kind == "rel":
+            property_ids.add(property_uri(f.key))
+            if isinstance(f.value, str) and f.value:
+                entity_ids.add(f.value)
+        elif f.kind == "literal":
+            property_ids.add(property_uri(f.key))
+
+    subclass_n = 0
+    subprop_n = 0
+    for edge in catalog:
+        if edge.kind == "subclass_of":
+            subclass_n += 1
+            class_ids.add(edge.child_id)
+            class_ids.add(edge.parent_id)
+        else:
+            subprop_n += 1
+            property_ids.add(edge.child_id)
+            property_ids.add(edge.parent_id)
+
+    # Assertion kind_counts use AssertionFact.kind (literal|object|type).
+    kinds = Counter(af.kind for af in assertion_facts)
     grouped = group_facts_by_subject(facts)
     stats = EtlStats(
         triples_in=len(triple_list),
         facts_out=len(facts),
+        assertions=len(assertion_facts),
+        classes=len(class_ids),
+        properties=len(property_ids),
+        entities=len(entity_ids),
+        subclass_of=subclass_n,
+        subproperty_of=subprop_n,
         skipped=skipped,
         kind_counts=dict(kinds),
         b3_literal_conflicts=count_b3_literal_conflicts(facts),
         subjects=len(grouped),
         graphs=0,
         written_facts=0,
+        written_assertions=0,
+        written_catalog_edges=0,
     )
-    return facts, stats
+    return facts, assertion_facts, catalog, stats
 
 
 def sparql_bindings_to_triples(result: dict[str, Any]) -> list[tuple[str, str, str]]:
@@ -353,7 +536,11 @@ async def write_facts_to_store(
     kg: str,
     batch_size: int = 500,
 ) -> int:
-    """Write Facts through the shared ``insert_facts`` path (GraphStore)."""
+    """Write Facts through ``insert_facts`` store path (dual-writes Assertions).
+
+    ``pg_ops.apply_facts`` MERGEs Entity cache + calls ``assert_fact`` so
+    :Assertion / Class / Property / INSTANCE_OF land on the ADR 0013 model.
+    """
     from cograph_client.graph.kg_writer import insert_facts
     from cograph_client.graph.store import get_graph_store
 
@@ -374,6 +561,43 @@ async def write_facts_to_store(
     return written
 
 
+async def write_catalog_to_store(
+    catalog: Sequence[CatalogEdge],
+    *,
+    tenant_id: str,
+    kg: str,
+) -> int:
+    """Write SUBCLASS_OF / SUBPROPERTY_OF via rdf_model helpers (scoped session)."""
+    if not catalog:
+        return 0
+    from cograph_client.graph.rdf_model import (
+        merge_property_node,
+        set_subclass_of,
+        set_subproperty_of,
+    )
+    from cograph_client.graph.scope import GraphScope
+    from cograph_client.graph.store import get_graph_store
+
+    store = get_graph_store()
+    await store.bootstrap_schema()
+    # Catalog hierarchy for a tenant KG lives on the same instance scope as
+    # type Assertions in Wave 1 (session injects tenant_id+kg). Class IRIs are
+    # the RDF subjects/objects from the dump.
+    scope = GraphScope.for_instance(tenant_id, kg)
+    session = store.session(scope)
+    written = 0
+    for edge in catalog:
+        if edge.kind == "subclass_of":
+            await set_subclass_of(session, edge.child_id, edge.parent_id)
+            written += 1
+        else:
+            await merge_property_node(session, edge.child_id, kind="datatype")
+            await merge_property_node(session, edge.parent_id, kind="datatype")
+            await set_subproperty_of(session, edge.child_id, edge.parent_id)
+            written += 1
+    return written
+
+
 def print_stats(label: str, stats: EtlStats) -> None:
     print(f"=== ETL {label} ===")
     for key, val in stats.as_dict().items():
@@ -387,7 +611,11 @@ def print_stats(label: str, stats: EtlStats) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description="Neptune → Neo4j ETL (B1–B5 Fact mapping; dry-run by default recommended)"
+        description=(
+            "Neptune → Neo4j ETL (ADR 0013 Assertion model; dual-write via "
+            "insert_facts store path). Validate cutover with golden answers, "
+            "not SPARQL→Cypher translation."
+        )
     )
     p.add_argument(
         "--fixture",
@@ -412,6 +640,14 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="Explicit instance graph IRI (overrides --tenant/--kg for Neptune read)",
+    )
+    p.add_argument(
+        "--include-ontology",
+        action="store_true",
+        help=(
+            "Also pull the tenant ontology graph (…/graphs/{tenant}) for "
+            "rdfs:subClassOf / rdfs:subPropertyOf when reading from Neptune"
+        ),
     )
     p.add_argument(
         "--dry-run",
@@ -446,6 +682,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 async def async_main(args: argparse.Namespace) -> int:
+    # Each job: (tenant, kg, instance_and_optional_ontology triples)
     jobs: list[tuple[str | None, str | None, list[tuple[str, str, str]]]] = []
 
     if args.fixture:
@@ -478,6 +715,19 @@ async def async_main(args: argparse.Namespace) -> int:
                 limit=args.limit,
             )
             t, k = (parsed if parsed else (args.tenant, args.kg))
+            if args.include_ontology and t:
+                try:
+                    onto_g = tenant_graph_uri(t)
+                except Exception:
+                    onto_g = None
+                if onto_g:
+                    onto_triples = await fetch_triples_from_neptune(
+                        endpoint,
+                        graph_uri=onto_g,
+                        backend=args.backend,
+                        limit=args.limit,
+                    )
+                    triples = list(triples) + list(onto_triples)
             jobs.append((t, k, triples))
         elif args.tenant and args.kg:
             # Prefer mint via live IRI_BASE; also try any-host discovery.
@@ -493,6 +743,19 @@ async def async_main(args: argparse.Namespace) -> int:
                     limit=args.limit,
                 )
                 if triples:
+                    if args.include_ontology:
+                        try:
+                            onto_g = tenant_graph_uri(args.tenant)
+                        except Exception:
+                            onto_g = None
+                        if onto_g:
+                            onto_triples = await fetch_triples_from_neptune(
+                                endpoint,
+                                graph_uri=onto_g,
+                                backend=args.backend,
+                                limit=args.limit,
+                            )
+                            triples = list(triples) + list(onto_triples)
                     jobs.append((args.tenant, args.kg, triples))
             if not jobs:
                 graphs = await list_instance_graphs_from_neptune(
@@ -510,6 +773,19 @@ async def async_main(args: argparse.Namespace) -> int:
                         limit=args.limit,
                     )
                     t, k = parsed if parsed else (args.tenant, args.kg)
+                    if args.include_ontology and t:
+                        try:
+                            onto_g = tenant_graph_uri(t)
+                        except Exception:
+                            onto_g = None
+                        if onto_g:
+                            onto_triples = await fetch_triples_from_neptune(
+                                endpoint,
+                                graph_uri=onto_g,
+                                backend=args.backend,
+                                limit=args.limit,
+                            )
+                            triples = list(triples) + list(onto_triples)
                     jobs.append((t, k, triples))
         else:
             graphs = await list_instance_graphs_from_neptune(
@@ -533,6 +809,19 @@ async def async_main(args: argparse.Namespace) -> int:
                     limit=args.limit,
                 )
                 t, k = parsed if parsed else (None, None)
+                if args.include_ontology and t:
+                    try:
+                        onto_g = tenant_graph_uri(t)
+                    except Exception:
+                        onto_g = None
+                    if onto_g:
+                        onto_triples = await fetch_triples_from_neptune(
+                            endpoint,
+                            graph_uri=onto_g,
+                            backend=args.backend,
+                            limit=args.limit,
+                        )
+                        triples = list(triples) + list(onto_triples)
                 jobs.append((t, k, triples))
 
     if not jobs:
@@ -542,10 +831,18 @@ async def async_main(args: argparse.Namespace) -> int:
     total = EtlStats()
     kind_acc: Counter[str] = Counter()
     all_written = 0
+    all_written_assertions = 0
+    all_written_catalog = 0
     graphs_done = 0
+    class_acc = 0
+    prop_acc = 0
+    ent_acc = 0
+    assert_acc = 0
+    subclass_acc = 0
+    subprop_acc = 0
 
     for tenant, kg, triples in jobs:
-        facts, stats = map_triples(triples)
+        facts, assertion_facts, catalog, stats = map_triples(triples)
         label = f"tenant={tenant!r} kg={kg!r}"
         print_stats(label, stats)
         # Optional: sanity-call sanitizers so reserved collisions fail early
@@ -573,6 +870,7 @@ async def async_main(args: argparse.Namespace) -> int:
                     )
 
         written = 0
+        written_catalog = 0
         if not args.dry_run:
             if not neo4j_env_ready():
                 print(
@@ -595,20 +893,43 @@ async def async_main(args: argparse.Namespace) -> int:
                 kg=kg,
                 batch_size=max(1, args.batch_size),
             )
+            written_catalog = await write_catalog_to_store(
+                catalog,
+                tenant_id=tenant,
+                kg=kg,
+            )
             print(f"  written_facts: {written}")
+            print(f"  written_assertions: {written}")  # 1:1 with Fact batch
+            print(f"  written_catalog_edges: {written_catalog}")
 
         graphs_done += 1
         kind_acc.update(stats.kind_counts)
         all_written += written
+        all_written_assertions += written
+        all_written_catalog += written_catalog
+        assert_acc += stats.assertions
+        class_acc += stats.classes
+        prop_acc += stats.properties
+        ent_acc += stats.entities
+        subclass_acc += stats.subclass_of
+        subprop_acc += stats.subproperty_of
         total = EtlStats(
             triples_in=total.triples_in + stats.triples_in,
             facts_out=total.facts_out + stats.facts_out,
+            assertions=assert_acc,
+            classes=class_acc,
+            properties=prop_acc,
+            entities=ent_acc,
+            subclass_of=subclass_acc,
+            subproperty_of=subprop_acc,
             skipped=total.skipped + stats.skipped,
             kind_counts=dict(kind_acc),
             b3_literal_conflicts=total.b3_literal_conflicts + stats.b3_literal_conflicts,
             subjects=total.subjects + stats.subjects,
             graphs=graphs_done,
             written_facts=all_written,
+            written_assertions=all_written_assertions,
+            written_catalog_edges=all_written_catalog,
         )
 
     if len(jobs) > 1 or args.json_stats:

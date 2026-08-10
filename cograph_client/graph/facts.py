@@ -159,16 +159,31 @@ def _attrs_leaf(predicate: str) -> str | None:
 
 
 def _onto_leaf(predicate: str) -> str | None:
-    return _leaf_from_uri(predicate, ONTO_PRED_PREFIX)
+    leaf = _leaf_from_uri(predicate, ONTO_PRED_PREFIX)
+    if leaf is not None:
+        return leaf
+    # Cross-host: …/onto/<leaf> (ETL keeps subject/object IRIs as-is).
+    if isinstance(predicate, str) and predicate.startswith("http") and "/onto/" in predicate:
+        tail = predicate.rsplit("/onto/", 1)[-1]
+        if tail and "/" not in tail:
+            return tail
+    return None
 
 
 def _type_leaf_from_object(obj: str) -> str | None:
-    """``…/types/<Type>`` → Type leaf (no further path segments)."""
+    """``…/types/<Type>`` → Type leaf (no further path segments).
+
+    Prefer live :data:`TYPE_URI_PREFIX`; also accept cross-host
+    ``…/types/<Type>`` so Neptune ETL keeps the original Class IRI as ``value``.
+    """
     leaf = _leaf_from_uri(obj, TYPE_URI_PREFIX)
-    if leaf is None or not leaf:
-        return None
-    # Type URI is a single segment (or allow nested with remaining path as leaf)
-    return leaf
+    if leaf is not None and leaf and "/" not in leaf:
+        return leaf
+    if isinstance(obj, str) and obj.startswith("http") and "/types/" in obj:
+        tail = obj.rsplit("/types/", 1)[-1]
+        if tail and "/" not in tail:
+            return tail
+    return None
 
 
 def _is_entity_ref(value: str) -> bool:
@@ -185,6 +200,11 @@ def classify_triple(s: str, p: str, o: str) -> Fact | None:
 
     Skipped: empty terms, pure bookkeeping that is not Entity ``source`` /
     display ``name``, attr_meta companions (not Fact kinds in Wave 1).
+
+    ``kind=type``: ``key`` is the type leaf; ``value`` is the **original Class
+    IRI** when the object is an HTTP IRI (ADR 0013 — keep RDF IRIs as ids),
+    else the leaf. Writers / ``fact_to_assertion_fact`` resolve Class nodes
+    from that value.
     """
     if not s or not p:
         return None
@@ -193,7 +213,9 @@ def classify_triple(s: str, p: str, o: str) -> Fact | None:
         tleaf = _type_leaf_from_object(o) if o else None
         if not tleaf:
             return None
-        return Fact(subject_id=s, kind="type", key=tleaf, value=tleaf)
+        # Preserve original Class IRI when present (do not remint under IRI_BASE).
+        type_value: Any = o if (isinstance(o, str) and o.startswith("http")) else tleaf
+        return Fact(subject_id=s, kind="type", key=tleaf, value=type_value)
 
     if p == _RDFS_LABEL:
         # Display property is ``name`` only (B2).
