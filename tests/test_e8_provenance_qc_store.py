@@ -171,7 +171,9 @@ def test_attr_citation_helper_and_attr_meta_parse(store):
         assert c["provenance"] == "wikidata"
         assert c["value_hash"]  # derived from value
 
-        # attr_meta triples → citations via insert_facts store path
+        # attr_meta triples alone (citation-only, no domain Fact) → residual
+        # :AttrCitation; when a domain value is present they also fold onto
+        # Assertion provenance (see test_er_blocking_store fold case).
         sid2 = entity_uri("Person", "cite2")
         triples = [
             (
@@ -201,6 +203,38 @@ def test_attr_citation_helper_and_attr_meta_parse(store):
         assert phones[0]["source_url"] == "https://example.com/phone"
         assert phones[0]["provenance"] == "enrichment"
         assert phones[0]["verified_at"] == "2026-08-02T00:00:00Z"
+
+        # Domain value + companions in one batch → fold onto Assertion
+        sid3 = entity_uri("Person", "cite3")
+        fold_triples = [
+            (
+                sid3,
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+                f"{IRI_BASE}/types/Person",
+            ),
+            (sid3, f"{IRI_BASE}/types/Person/attrs/email", "c3@x.com"),
+            (
+                sid3,
+                f"{ATTR_META_NS}Person/email/source_url",
+                "https://example.com/c3",
+            ),
+            (
+                sid3,
+                f"{ATTR_META_NS}Person/email/verified_at",
+                "2026-08-03T00:00:00Z",
+            ),
+        ]
+        await insert_facts(None, _graph(), fold_triples, store=store)
+        from infona_client.graph.assertion_model import property_uri
+
+        email_asserts = [
+            a
+            for a in store.snapshot_assertions()
+            if a["subject_id"] == sid3 and a["property_id"] == property_uri("email")
+        ]
+        assert email_asserts
+        assert email_asserts[0]["source_url"] == "https://example.com/c3"
+        assert email_asserts[0]["verified_at"] == "2026-08-03T00:00:00Z"
 
         # parse helper unit
         specs = pg_ops.parse_attr_meta_citations(triples)
