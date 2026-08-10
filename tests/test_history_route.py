@@ -125,3 +125,62 @@ def test_history_route_accepts_valid_iri_subject(client, auth_headers, mock_nept
     assert f"<{SUBJ}>" in sent
     # The FROM graph is the caller's tenant, not the payload's.
     assert history_graph_uri(kg_graph_uri("test-tenant", "widgets")) in sent
+
+
+def test_history_route_neo4j_uses_assertion_store(
+    client, auth_headers, mock_neptune, monkeypatch
+):
+    """When INFONA_GRAPH_BACKEND=neo4j, history lists Assertion provenance
+    via GraphStore — Neptune SPARQL is not called."""
+    import asyncio
+
+    from infona_client.graph.facts import Fact
+    from infona_client.graph.iri import IRI_BASE
+    from infona_client.graph.kg_writer import insert_facts
+    from infona_client.graph.memory_store import MemoryGraphStore
+    from infona_client.graph.ontology_queries import entity_uri
+    from infona_client.graph.store import (
+        configure_graph_store,
+        reset_graph_store_for_tests,
+    )
+
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neo4j")
+    store = MemoryGraphStore()
+    configure_graph_store(store)
+    try:
+        alice = entity_uri("Widget", "w1")
+        graph = f"{IRI_BASE}/graphs/test-tenant/kg/widgets"
+
+        async def _seed():
+            await insert_facts(
+                None,
+                graph,
+                facts=[
+                    Fact(subject_id=alice, kind="type", key="Widget"),
+                    Fact(
+                        subject_id=alice,
+                        kind="literal",
+                        key="weight_kg",
+                        value="12.5",
+                        verified_at="2026-07-07T00:00:00+00:00",
+                    ),
+                ],
+                store=store,
+            )
+
+        asyncio.run(_seed())
+        resp = client.get(
+            "/graphs/test-tenant/history",
+            params={"kg_name": "widgets", "subject": alice},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["count"] >= 1
+        weights = [c for c in body["changes"] if c["new_value"] == "12.5"]
+        assert weights
+        assert weights[0]["changed_at"] == "2026-07-07T00:00:00+00:00"
+        mock_neptune.query.assert_not_called()
+    finally:
+        asyncio.run(store.close())
+        reset_graph_store_for_tests()

@@ -10,6 +10,15 @@ Read-only and GENERAL: it queries the same store for any attribute of any type,
 with optional ``subject`` / ``predicate`` / ``since`` narrowing, so a "changed
 since <cutoff>" question returns only transitions after the cutoff, each dated.
 The WRITE side stays entirely on the shared write path — this route never writes.
+
+**Dual-backend (E9 / ADR 0013):**
+
+* **Neptune (default):** SPARQL companion ``…/history`` graph via
+  :func:`fetch_value_history` — full temporal ``old → new`` transitions.
+* **Neo4j:** Assertion provenance listing via
+  :func:`fetch_store_assertion_history` / ``rdfs_helpers.session_assertion_history``
+  (current facts + ``verified_at`` as ``changed_at``; temporal ValueHistory
+  deferred). Same response shape. Prefer ``subject=`` for scoped reads.
 """
 
 import re
@@ -19,18 +28,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from infona_client.api.deps import get_neptune_client
 from infona_client.auth.api_keys import TenantContext, get_tenant
 from infona_client.graph.client import NeptuneClient
-from infona_client.graph.history import fetch_value_history
+from infona_client.graph.history import (
+    fetch_store_assertion_history,
+    fetch_value_history,
+)
 from infona_client.graph.kg_writer import graph_backend
 from infona_client.graph.queries import kg_graph_uri
+from infona_client.graph.store import GraphConfigError, get_optional_graph_store
 
 router = APIRouter()
-
-_HISTORY_NOT_IMPLEMENTED_NEO4J = (
-    "Value history is not yet available when INFONA_GRAPH_BACKEND=neo4j "
-    "(SPARQL companion history graph is Neptune-only). Use the Neptune "
-    "backend, or track INFONA_VALUE_HISTORY on the shared write path once "
-    "the property-graph history store lands."
-)
 
 # A well-formed absolute IRI for the subject/predicate narrowing filters: an
 # ``http(s)://`` scheme with NO IRIREF-forbidden character. This is the route-
@@ -83,20 +89,41 @@ async def get_value_history(
     _require_abs_iri("subject", subject)
     _require_abs_iri("predicate", predicate)
 
-    # Dual-backend (E9): value-history companion is SPARQL-only today. Degrade
-    # clearly on neo4j without breaking the default Neptune path.
+    # Dual-backend (E9): Neptune → SPARQL companion history; neo4j → Assertion
+    # provenance via GraphStore (rdfs_helpers). Default unset backend stays
+    # Neptune — never forces neo4j.
     if graph_backend() == "neo4j":
-        raise HTTPException(status_code=501, detail=_HISTORY_NOT_IMPLEMENTED_NEO4J)
-
-    graph_uri = kg_graph_uri(tenant.tenant_id, kg_name)
-    changes = await fetch_value_history(
-        client,
-        graph_uri,
-        subject=subject,
-        predicate=predicate,
-        since=since,
-        limit=limit,
-    )
+        try:
+            store = get_optional_graph_store()
+        except GraphConfigError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        if store is None:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "INFONA_GRAPH_BACKEND=neo4j but no GraphStore is configured "
+                    "(call configure_graph_store or set NEO4J_*)"
+                ),
+            )
+        changes = await fetch_store_assertion_history(
+            store,
+            tenant_id=tenant.tenant_id,
+            kg_name=kg_name,
+            subject=subject,
+            predicate=predicate,
+            since=since,
+            limit=limit,
+        )
+    else:
+        graph_uri = kg_graph_uri(tenant.tenant_id, kg_name)
+        changes = await fetch_value_history(
+            client,
+            graph_uri,
+            subject=subject,
+            predicate=predicate,
+            since=since,
+            limit=limit,
+        )
     return {
         "kg_name": kg_name,
         "count": len(changes),

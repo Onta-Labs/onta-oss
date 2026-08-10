@@ -611,6 +611,25 @@ class MemoryGraphSession:
         t, k = self._scope_tk()
         return self._store._assertions_for_subject(t, k, entity_id, prop_id=prop_id)
 
+    async def read_assertion_history(
+        self,
+        *,
+        entity_id: str | None = None,
+        prop_id: str | None = None,
+        since: str | None = None,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        """Assertion rows for history feed (optional subject / since filter)."""
+        t, k = self._scope_tk()
+        return self._store._assertion_history(
+            t,
+            k,
+            entity_id=entity_id,
+            prop_id=prop_id,
+            since=since,
+            limit=limit,
+        )
+
     async def read_list_entities_by_label(
         self,
         label: str,
@@ -1336,6 +1355,43 @@ class MemoryGraphStore:
             if prop_id is not None and a.property_id != prop_id:
                 continue
             rows.append(a.as_record().to_dict())
+        return rows
+
+    def _assertion_history(
+        self,
+        tenant_id: str,
+        kg: str,
+        *,
+        entity_id: str | None = None,
+        prop_id: str | None = None,
+        since: str | None = None,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        """All Assertion rows in scope (optional subject/property/since)."""
+        lim = max(1, min(int(limit), 10000))
+        rows: list[dict[str, Any]] = []
+        for (t, k, _), a in sorted(
+            self._assertions.items(),
+            key=lambda x: (
+                x[1].verified_at or "",
+                x[1].property_id,
+                x[1].subject_id,
+                x[1].id,
+            ),
+        ):
+            if t != tenant_id or k != kg:
+                continue
+            if entity_id is not None and a.subject_id != entity_id:
+                continue
+            if prop_id is not None and a.property_id != prop_id:
+                continue
+            if since:
+                va = (a.verified_at or "").strip()
+                if not va or va <= since:
+                    continue
+            rows.append(a.as_record().to_dict())
+            if len(rows) >= lim:
+                break
         return rows
 
     # --- Structural QC scans (E8) -------------------------------------------
