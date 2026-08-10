@@ -21,10 +21,10 @@ import pytest
 pyoxigraph = pytest.importorskip("pyoxigraph")
 from pyoxigraph import QueryResultsFormat, Store  # noqa: E402
 
-from cograph_client.graph.ontology_queries import attr_uri, type_uri  # noqa: E402
-from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri  # noqa: E402
-from cograph_client.normalization.execute import apply_rule  # noqa: E402
-from cograph_client.normalization.rules import (  # noqa: E402
+from infona_client.graph.ontology_queries import attr_uri, type_uri  # noqa: E402
+from infona_client.graph.queries import kg_graph_uri, tenant_graph_uri  # noqa: E402
+from infona_client.normalization.execute import apply_rule  # noqa: E402
+from infona_client.normalization.rules import (  # noqa: E402
     NormalizationRule,
     make_rule_id,
 )

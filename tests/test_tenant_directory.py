@@ -7,8 +7,8 @@ premium Clerk integration, the same way the auth tests use a fake verifier.
 import pytest
 from fastapi.testclient import TestClient
 
-from cograph_client.api.app import create_app
-from cograph_client.auth.tenant_directory import (
+from infona_client.api.app import create_app
+from infona_client.auth.tenant_directory import (
     TENANT_ID_RE,
     Tenant,
     TenantProvider,
@@ -298,8 +298,8 @@ def test_minted_id_collision_is_re_minted_never_joined(client, monkeypatch):
     allow-and-logs a foreign id while ownership enforcement is off — would put
     a STRANGER'S tenant into the caller's profile and grant them its KG.
     """
-    from cograph_client.api.routes import tenants as tenants_routes
-    from cograph_client.auth.workspace_store import make_workspace_store
+    from infona_client.api.routes import tenants as tenants_routes
+    from infona_client.auth.workspace_store import make_workspace_store
 
     register_tenant_provider(FakeProvider())
     store = make_workspace_store()
@@ -321,8 +321,8 @@ def test_minted_id_collision_is_re_minted_never_joined(client, monkeypatch):
 
 def test_minted_id_gives_up_rather_than_joining_a_stranger(client, monkeypatch):
     """If every draw collides, fail loudly — never fall back to joining one."""
-    from cograph_client.api.routes import tenants as tenants_routes
-    from cograph_client.auth.workspace_store import make_workspace_store
+    from infona_client.api.routes import tenants as tenants_routes
+    from infona_client.auth.workspace_store import make_workspace_store
 
     register_tenant_provider(FakeProvider())
     store = make_workspace_store()

@@ -1,0 +1,1441 @@
+"""The planner — the brain behind the single agent endpoint.
+
+One bounded LLM call classifies the user's intent (question | enrich | clean |
+dedup | ontology | ambiguous); the planner then dispatches to the matching
+registered capability. There is NO per-task fan-out and NO per-task endpoint —
+the classifier picks ONE capability and we call its ``plan()`` (or, for a
+question, answer directly). Writes happen ONLY on ``execute_plan`` (after the
+user confirms a returned plan), never during ``handle``.
+
+Contract (the single conversational surface):
+  handle(message) →
+    {kind:"answer",  answer, sparql, rows}        # questions, no confirm
+    {kind:"clarify", question}                    # ambiguous
+    {kind:"plan",    plan_id, steps:[...]}         # actions, awaiting confirm
+  execute_plan(plan_id) →
+    {kind:"result",  steps:[summaries]}           # the only mutating path
+    # ONE-SHOT: a duplicate confirm never re-runs the steps — it replays the
+    # persisted result ({kind:"result", ..., replayed:true}) once finished, or
+    # errors with code:"plan_already_executing" while the first is in flight.
+
+Plan persistence (A2, COG-124): a swappable, tenant-scoped store keyed by
+plan_id, mirroring the dual-backend :class:`JobStore` pattern. ``make_plan_store``
+returns a :class:`PostgresPlanStore` when ``settings.database_url`` is set
+(durable, shared across ECS tasks — so a confirm→execute survives a process
+restart or a different task than the one that planned), else an
+:class:`InMemoryPlanStore` (zero-config default). See
+:mod:`infona_client.agent.plan_store`.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+from datetime import datetime, timedelta, timezone
+
+import structlog
+
+from infona_client.obs import timed
+from infona_client.agent.capabilities.dedup_cap import DedupCapability
+from infona_client.agent.capabilities.enrich_cap import EnrichCapability
+from infona_client.agent.capabilities.normalize_cap import NormalizeCapability
+from infona_client.agent.capabilities.ontology_cap import OntologyCapability
+from infona_client.agent.capabilities.query import QueryCapability
+from infona_client.agent.capabilities.subscribe_cap import SubscribeCapability
+from infona_client.agent.capabilities.web_ingest_cap import WebIngestCapability
+from infona_client.agent.capabilities.web_research_cap import WebResearchCapability
+from infona_client.agent.conversation_store import (  # noqa: F401  (re-exported)
+    Turn,
+    make_conversation_store,
+    reset_conversation_store,
+)
+from infona_client.agent.plan_store import (  # noqa: F401  (re-exported for back-compat)
+    InMemoryPlanStore,
+    PlanStore,
+    PostgresPlanStore,
+    StoredPlan,
+    claim_plan_for_execution,
+    get_plan_store,
+    make_plan_store,
+    reset_plan_store,
+)
+from infona_client.agent.kg_scope import (
+    CODE_KG_MISSING,
+    CTX_KG_RESOLVED,
+    check_kg_scope,
+    resolved_kg_note,
+)
+from infona_client.agent.registry import (
+    AgentContext,
+    ReadOnlyMembershipError,
+    get_capabilities,
+    get_capability,
+    mutating_step_capabilities,
+    order_steps,
+)
+from infona_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
+from infona_client.web_sources.url_extract import extract_urls
+
+logger = structlog.stdlib.get_logger("cograph.agent.planner")
+
+# Intents the classifier may return. "question" → answer; "ambiguous" → clarify;
+# the rest map to a capability name (clean→normalize).
+_INTENT_TO_CAPABILITY = {
+    "enrich": "enrich",
+    "clean": "normalize",
+    "dedup": "dedup",  # registered (DedupCapability) → plans an ER rebuild
+    "ontology": "ontology",  # registered (OntologyCapability) → inspect/declare
+    "discover": "web_ingest",  # registered (WebIngestCapability) → web search + ingest
+    "research": "web_research",  # registered (WebResearchCapability) → cited answer/artifact, no KG write
+    "subscribe": "subscribe",  # registered (SubscribeCapability) → recurring notify schedule
+}
+
+# When the user asks for SEVERAL actions in one breath ("clean the names and
+# dedupe"), we plan each capability and compose them into one ordered plan. This
+# is the order they run in: cleaning the VALUES first means the dedup/enrich pass
+# operates on already-normalized data — the documented clean-before-dedup /
+# clean-before-enrich pattern. Lower number = earlier.
+_INTENT_PLAN_ORDER = {
+    "clean": 0,
+    "enrich": 1,
+    "dedup": 2,
+    "ontology": 3,
+    "discover": 4,
+    "research": 5,
+    # A subscribe/standing-alert is set up LAST — it schedules a recurring watch
+    # over whatever the other actions in the same breath just built/cleaned.
+    "subscribe": 6,
+}
+
+# Convergence guard (COG-130): once the agent has asked this many clarifying
+# questions in a session, the classifier is told to STOP asking and commit. The
+# real fix is feeding it the dialogue (below) so it rarely needs to; this caps
+# the worst case so the panel can never loop forever on `clarify`.
+_MAX_CLARIFY_ROUNDS = 1
+
+# How many recent turns of a (possibly long, history-backed) transcript to feed
+# the classifier prompt + accumulate for capability extraction. The store keeps
+# a longer tail for the history UI; the prompt only needs the recent context.
+_PROMPT_HISTORY_TURNS = 16
+
+# One-shot confirm guard: how long an ``executing`` claim on a plan stays
+# exclusive before a re-confirm may assume the executor died mid-run (crash,
+# redeploy) and claim it again. execute_plan itself finishes in seconds (long
+# work is spawned as background jobs), so anything past this is a dead claim,
+# not a slow one. Env-overridable so ops can retune without a deploy.
+_EXECUTING_STALE_S = float(os.environ.get("COGRAPH_PLAN_EXECUTING_STALE_S", "600"))
+
+
+_CLASSIFY_SYSTEM = """\
+You are the intent router for a knowledge-graph data assistant. Read the WHOLE \
+conversation (not just the latest message) and classify what the user wants into \
+one or MORE of these intents:
+
+- "question": a read-only question about the data (counts, lookups, "how many", \
+"which", "list", "show me"). The assistant will answer with SPARQL.
+- "enrich": fill in / look up / find missing ATTRIBUTE values for a type from \
+external sources ("enrich", "fill in the X", "look up the Y for Z").
+- "clean": normalize / clean / split / tidy messy VALUES of a field \
+("clean the speaks field", "split the skills", "strip emoji from titles", \
+"clean up the names").
+- "dedup": find and merge duplicate entities ("remove duplicates", "de-dupe", \
+"merge duplicate records").
+- "ontology": change the schema / types / attributes / relationships.
+- "discover": find a NEW set of records FROM THE WEB and ingest them as a new \
+dataset ("find a list of X from the web", "pull all Y", "add data about Z from \
+the web", "get me <records> and add them"). ALSO route question-phrased requests \
+to bring in EXTERNAL records here — "can we ingest <X>", "can we get/pull <X>", \
+"do you have <X that some site offers>" — when X is a set of real-world things \
+NOT already in this graph (e.g. "open-router's TTS models", "S&P 500 companies"). \
+This CREATES new entities that don't exist in the graph yet — distinct from \
+"question" (read-only about data ALREADY in the graph) and from "enrich" (fills \
+attributes on entities that ALREADY exist).
+- "research": answer a question using the WEB and return a cited answer plus a \
+downloadable table (CSV/JSON), WITHOUT storing anything in the graph ("research \
+X and give me a CSV", "what's the <value> of every <thing> on <site>", \
+"compare/look up <facts> across the web and make me a table/report"). This \
+returns an ANSWER/artifact FROM the web — distinct from "discover" (which INGESTS \
+web records as NEW graph entities to keep) and from "question" (read-only about \
+data ALREADY in the graph). Prefer "discover" when the user wants the results \
+ADDED to the graph; prefer "research" when they want an answer/report/CSV back.
+- "subscribe": set up a RECURRING standing alert / scheduled refresh — the user \
+wants something to run ON A CADENCE (weekly, daily, …) and NOTIFY / deliver \
+automatically when watched values CHANGE, set up ONCE instead of re-run by hand \
+("set up a standing weekly alert", "notify my webhook when X changes", "a weekly \
+refresh delivered to me automatically", "I don't want to re-run this by hand — I \
+want a standing trigger", "subscribe me to changes in …"). This creates a \
+recurring trigger — distinct from "question"/"research" (a one-off answer) and \
+from "enrich"/"discover" (a one-off data update). The tell is a CADENCE + \
+"automatically / on its own / don't want to re-run it".
+- "ambiguous": you genuinely cannot tell what is wanted and must ask ONE \
+clarifying question.
+
+When the user supplies explicit LINKS to parse (one or more http(s) URLs in the \
+message, or attached page links), route by what they want done with those pages: \
+filling in attributes on entities that ALREADY exist → "enrich"; bringing in a \
+NEW set of records from those pages → "discover".
+
+CRITICAL rules:
+- The user may ask for several things at once. "clean up the names and remove \
+duplicates" is BOTH "clean" AND "dedup" — return both, do not ask which one.
+- USE THE PRIOR TURNS. If you already asked a clarifying question and the user \
+answered it (even tersely, e.g. "both", "yes", "just the names"), treat the \
+question as ANSWERED and commit — never re-ask the same dimension.
+- Only return "ambiguous" when the conversation as a whole still does not say \
+what to do. If you can act, act.
+
+You are also given the available capabilities (one line each). Respond with \
+STRICT JSON only:
+{"intents": ["<one or more of the above>"], "clarify": "<a clarifying question, \
+ONLY when the single intent is ambiguous>", "options": ["<2-4 short clickable \
+answer choices>"]}
+
+When you ask a clarifying question, ALSO provide "options": a short list (2-4) of \
+the distinct answers the user is choosing between, each a few words, phrased as \
+the user would say them (e.g. for clean-vs-merge: ["Clean up the values", "Merge \
+duplicates", "Both"]). The user can click one instead of typing. Omit "options" \
+(or use []) only when the answer is genuinely free-form (a field name, a value) \
+and no small set of choices fits."""
+
+# Generic action options offered on a fall-back clarify (greeting, "I can't yet
+# handle X", or when the classifier didn't suggest its own). Each maps cleanly to
+# an intent when the user clicks it, so the next turn routes straight to a plan.
+_DEFAULT_ACTION_OPTIONS = [
+    "Ask a question about the data",
+    "Add data from the web",
+    "Clean up messy values",
+    "Enrich missing attributes",
+    "Merge duplicate records",
+    "Change the schema",
+]
+
+# --- deterministic web-discovery guard --------------------------------------- #
+# The LLM classifier occasionally mis-files an explicit "… from the web" ingest
+# as "question" (its payload usually contains "list"/"show me …") or "ambiguous".
+# That strands the Explorer's "Add data from the web" entry point — and the CLI /
+# MCP — on a generic clarify the user can't escape. When the phrasing is an
+# UNMISTAKABLE imperative web fetch we force the discover intent ourselves rather
+# than trusting the LLM. Kept narrow so genuine read-only questions are untouched.
+_WEB_FETCH_RE = re.compile(
+    r"\b(?:add|pull|fetch|find|get|grab|collect|ingest|import|gather|scrape|discover)\b"
+    r"[^?]*\bfrom\s+the\s+web\b",
+    re.IGNORECASE,
+)
+# Widened discovery guard (ONTA-244): a "… from the web" suffix is NOT the only
+# unmistakable discovery framing. Two more, kept just as conservative:
+#   * A "discover"/"scrape" imperative — those verbs are never a read-only query
+#     verb (unlike "find"/"get", which can lead a question), so "discover all
+#     orthopedic surgeons in Orange County" is unambiguously a mint-new-records ask
+#     even without the literal web suffix. We require the verb to LEAD the message
+#     so "how many did we discover" (question) is untouched.
+#   * An explicit "new discovery" / "not enrichment" self-label the user adds to
+#     disambiguate ("… this is a new discovery task, not enrichment"). Honoring the
+#     caller's stated intent is the whole point of ONTA-244.
+# Both still defer to the interrogative guard below (trailing '?' / question lead).
+_DISCOVER_IMPERATIVE_RE = re.compile(
+    r"^\s*(?:please\s+)?(?:discover|scrape)\b",
+    re.IGNORECASE,
+)
+#
+# "new discovery" and "discovery task" are POSITIVE discovery self-labels — they
+# should force-route wherever they appear, including MID-SENTENCE ("new discovery
+# run of Widgets", "kick off a discovery task for Sprockets now"). They match on a
+# plain word boundary (\b), no clause-boundary requirement.
+#
+# "not enrichment" is the one that needs a guard: the word "enrichment" as an
+# ADJECTIVE ("not enrichment candidates", "not enrichment targets") in an ordinary
+# read-only ask must NOT be read as a routing self-label. So ONLY that branch is
+# anchored to a CLAUSE boundary — end-of-string, punctuation, or a conjunction
+# ("but"/"so"/"then"/…). "… not enrichment - find Gadgets" (dash = boundary),
+# "… not enrichment." and "…, not enrichment" still match; "… not enrichment
+# candidates" (a following noun, no boundary) does not.
+_CLAUSE_BOUNDARY = r"(?=$|[\s]*[-:;,.]|\s+(?:but|so|then|and|please)\b)"
+_EXPLICIT_DISCOVERY_INTENT_RE = re.compile(
+    r"\bnew\s+discovery\b|"
+    r"\bdiscovery\s+task\b|"
+    r"\bnot\s+(?:an?\s+)?enrichment" + _CLAUSE_BOUNDARY,
+    re.IGNORECASE,
+)
+# Read-only framings we must NOT hijack even when they mention the web (e.g.
+# "how many companies did we add from the web?"). Includes the read-only display
+# imperatives "show me" / "list" / "give me" — a "show me all records that are not
+# enrichment candidates" is a read-only ask, not a discovery job, even though it
+# lacks a trailing '?'.
+_QUESTION_LEAD_RE = re.compile(
+    r"^\s*(?:how\s+many|how\s+much|what|which|who|whom|whose|when|where|why|"
+    r"do\s+we|did\s+we|does|is\s+there|are\s+there|count|"
+    r"show\s+me|list|give\s+me)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_web_discovery_request(message: str) -> bool:
+    """True when ``message`` is an unmistakable discovery (mint-new-records) request.
+
+    Fires on any of: an explicit "… from the web" fetch, a leading
+    "discover"/"scrape" imperative, or a caller-stated "new discovery / not
+    enrichment" intent. Conservative on purpose: a trailing '?' or a question-word
+    lead disqualifies it, so a real read-only question that merely mentions the web
+    (or the word "discover" mid-sentence) is never forced into discovery.
+    """
+    msg = (message or "").strip()
+    if not msg or msg.endswith("?") or _QUESTION_LEAD_RE.match(msg):
+        return False
+    return bool(
+        _WEB_FETCH_RE.search(msg)
+        or _DISCOVER_IMPERATIVE_RE.match(msg)
+        or _EXPLICIT_DISCOVERY_INTENT_RE.search(msg)
+    )
+
+
+# --- deterministic subscribe / standing-alert guard -------------------------- #
+# The classifier can mis-file "set up a standing weekly alert …" as a plain
+# question / research (the payload reads like "notify me whenever …"), stranding
+# the persona who explicitly wants a RECURRING trigger. When the phrasing is an
+# unmistakable "set up a standing / recurring alert on a cadence, delivered
+# automatically" ask, force the subscribe intent ourselves. Kept narrow: it
+# requires BOTH a recurrence/cadence signal AND an alert/notify/refresh signal, so
+# a one-off "notify me the answer" or a bare "what changed this week?" is untouched.
+_SUBSCRIBE_CADENCE_RE = re.compile(
+    r"\b(standing|recurring|weekly|daily|hourly|monthly|"
+    r"every\s+(?:week|day|hour|month|morning|monday)|"
+    r"each\s+(?:week|day|hour|month|monday)|on\s+a\s+cadence|"
+    r"don'?t\s+want\s+to\s+re-?run|not\s+.*re-?issue|by\s+itself|"
+    r"automatically|on\s+its\s+own)\b",
+    re.IGNORECASE,
+)
+_SUBSCRIBE_ALERT_RE = re.compile(
+    r"\b(alert|notif(?:y|ication)|standing\s+trigger|subscribe|"
+    r"watch\s+for|refresh|monitor)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_subscribe_request(message: str) -> bool:
+    """True when ``message`` is an unmistakable recurring-standing-alert request.
+
+    Requires a cadence/recurrence signal AND an alert/notify/refresh signal, so a
+    one-off "notify me the count" or a read-only "what changed?" never trips it.
+    A trailing '?' or question-word lead still disqualifies (a genuine question).
+    """
+    msg = (message or "").strip()
+    if not msg or msg.endswith("?") or _QUESTION_LEAD_RE.match(msg):
+        return False
+    return bool(
+        _SUBSCRIBE_CADENCE_RE.search(msg) and _SUBSCRIBE_ALERT_RE.search(msg)
+    )
+
+
+# --- deterministic refresh-existing / re-verify guard ------------------------ #
+# A "refresh / re-verify / update / re-check the <attributes> for <existing
+# subset>" ask is ENRICHMENT in re-verify mode (ONTA-245) — re-confirm existing
+# values and advance their freshness stamp, scoped to the matching existing
+# records. It is NOT a new web discovery. But the LLM classifier keeps mis-filing
+# it as "discover" (the goal text reads like "pull current numbers from the web
+# for OpenAI, Google, …"), which mints a fresh dataset instead of refreshing the
+# rows that already exist — the reported persona-eval gap (ran_enrich=false,
+# ran_build=true). When the phrasing is an unmistakable refresh-EXISTING verb we
+# force the enrich intent ourselves so ONTA-245's refresh path fires regardless of
+# the LLM. Kept narrow: a refresh verb near a "from the web"/"discover" framing
+# (genuinely minting new records) still defers to the web-discovery guard below,
+# and a recurring-cadence "standing refresh" still defers to subscribe.
+_REFRESH_EXISTING_RE = re.compile(
+    r"\b(?:re-?verif\w*|re-?check\w*|re-?confirm\w*|re-?validat\w*|"
+    r"refresh(?:ed|es|ing)?|update(?:d|s)?|keep\s+(?:it\s+)?current|"
+    r"make\s+(?:it\s+|them\s+)?current|freshness|decay(?:ing|s)?)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_refresh_existing_request(message: str) -> bool:
+    """True when ``message`` unmistakably asks to REFRESH / re-verify EXISTING data.
+
+    Fires on a refresh/re-verify/re-check/update/keep-current verb. Conservative:
+    a trailing '?' or question-word lead disqualifies it (a genuine question), and
+    the caller only lets it force the enrich rail when the message is NOT already a
+    web-discovery framing ("… from the web", a leading "discover") and NOT a
+    recurring standing-alert (which routes to subscribe). Deterministic so a scoped
+    refresh recovers even when the LLM classifier returns the wrong (discover)
+    intent — the whole point of the guard (mirrors the enrich cap's own
+    ``_looks_like_refresh`` verb detection, which flips the run to verify mode).
+    """
+    msg = (message or "").strip()
+    if not msg or msg.endswith("?") or _QUESTION_LEAD_RE.match(msg):
+        return False
+    return bool(_REFRESH_EXISTING_RE.search(msg))
+
+
+# --- deterministic links-to-parse guard -------------------------------------- #
+# When the user hands us explicit URLs (in the message, or attached as structured
+# request context) the turn is an URL-targeted web extraction, NOT a plain
+# question — even though the payload often reads like one ("get the prices from
+# https://…"). We route it ourselves so it can't be mis-filed by the classifier:
+# an enrich-type verb (fill attributes on entities that ALREADY exist) → Rail B
+# ("enrich"); anything else (bring in a NEW set of records) → Rail A
+# ("discover"). The actual fetching lives behind the premium URL-targeted seam;
+# capabilities read the URLs themselves (ctx.urls or extract_urls(instruction)).
+_ENRICH_VERB_RE = re.compile(
+    r"\b(?:enrich|fill|update|complete|populate)\b", re.IGNORECASE
+)
+
+
+def _message_has_urls(message: str, ctx_urls: list[str] | None) -> bool:
+    """True when this turn carries explicit URLs — in the message or the ctx."""
+    return bool(ctx_urls) or bool(extract_urls(message))
+
+
+def _url_intent(message: str) -> str:
+    """Route a URL-bearing turn: 'enrich' on an enrich-type verb, else 'discover'.
+
+    Enrich-type verbs (enrich/fill/update/complete/populate) mean "fill in
+    attributes on entities that ALREADY exist" (Rail B). Everything else —
+    add/ingest/import/pull/parse/scrape/extract/collect a NEW set — is Rail A
+    (new entities), so it defaults to discovery.
+    """
+    return "enrich" if _ENRICH_VERB_RE.search(message or "") else "discover"
+
+
+def _is_interrogative(message: str) -> bool:
+    """True when ``message`` reads as a read-only question — a trailing '?' or a
+    leading question word. Mirrors the web-discovery guard so a genuine question
+    that merely contains a link is answered, not hijacked into an action."""
+    msg = (message or "").strip()
+    return bool(msg) and (msg.endswith("?") or bool(_QUESTION_LEAD_RE.match(msg)))
+
+
+def _turn_matches_kg(turn: Turn, kg_name: str | None) -> bool:
+    """True when ``turn`` belongs to the knowledge graph this request targets.
+
+    ONTA-419. A turn with no recorded ``kg_name`` matches EVERYTHING: transcripts
+    persisted before the field existed, and turns made with no KG scope at all,
+    keep their pre-change behavior instead of silently disappearing from the
+    window. Likewise a request with no ``kg_name`` (tenant-scoped only) sees the
+    whole transcript, exactly as before.
+    """
+    if not turn.kg_name or not kg_name:
+        return True
+    return turn.kg_name == kg_name
+
+
+def _same_kg_turns(history: list[Turn] | None, kg_name: str | None) -> list[Turn]:
+    """Drop the turns that belong to a DIFFERENT knowledge graph."""
+    return [t for t in history or [] if _turn_matches_kg(t, kg_name)]
+
+
+# A KG name is rendered INTO the classifier's transcript block, which is a
+# line-oriented, role-prefixed format. Anything outside this class (most of all a
+# newline) could forge a turn the model reads as the user's own words, so the
+# label is sanitized at the point of interpolation.
+_KG_LABEL_UNSAFE_RE = re.compile(r"[^A-Za-z0-9_-]")
+_KG_LABEL_MAX = 64
+
+
+def _kg_label(name: str | None) -> str:
+    """Render a knowledge-graph name safe to interpolate into a prompt.
+
+    Real KG names already match ``^[a-zA-Z0-9_-]+$`` (``graph/kg_writer.py``),
+    but the ``/agent`` request body does not enforce that pattern before the name
+    reaches here, so an arbitrary string can be stamped onto a turn today. Escape
+    at the interpolation point rather than trusting an upstream check to arrive:
+    every character outside the safe class becomes ``_`` and the result is
+    length-capped. Only the LABEL is rewritten -- ``_turn_matches_kg`` still
+    compares the raw values, so scoping is unaffected.
+    """
+    safe = _KG_LABEL_UNSAFE_RE.sub("_", str(name or ""))
+    return safe[:_KG_LABEL_MAX]
+
+
+def _recent_window(
+    history: list[Turn] | None, kg_name: str | None, limit: int = _PROMPT_HISTORY_TURNS
+) -> list[Turn]:
+    """A bounded transcript tail that always carries this graph's own turns.
+
+    Trimming the raw tail and only THEN scoping by KG (the shape this code had
+    before) can leave zero same-graph turns: in a session where the user works on
+    graph B, switches to graph A and stays there for ``limit`` turns, B's own
+    open ask falls off the end and the accumulation window comes back empty. That
+    was equally true pre-ONTA-419, so it is a reach limitation rather than a
+    regression, but it is one line to fix now that the KG is known.
+
+    So keep the last ``limit`` turns overall AND the last ``limit`` turns for
+    THIS graph, restored to transcript order (bounded at ``2 * limit``). Foreign
+    turns still reach :func:`_format_history`, where they are labelled rather
+    than dropped; :func:`_open_ask_user_turns` still filters them out.
+    """
+    turns = list(history or [])
+    if len(turns) <= limit:
+        return turns
+    keep = set(range(len(turns) - limit, len(turns)))
+    same = [i for i, t in enumerate(turns) if _turn_matches_kg(t, kg_name)]
+    keep.update(same[-limit:])
+    return [turns[i] for i in sorted(keep)]
+
+
+def _format_history(history: list[Turn] | None, kg_name: str | None = None) -> str:
+    """Render the prior turns as a transcript block for the classifier prompt.
+
+    Foreign-KG turns (ONTA-419) are LABELLED rather than dropped here. The
+    classifier is a semantic router, not a parameter extractor: a genuine
+    cross-graph reference ("do the same thing here") is only legible if its
+    antecedent is still visible, and silently deleting one half of a
+    clarify/reply pair would leave the remaining half reading as a non sequitur.
+    Labelling gives the model the fact it needs -- that turn was about another
+    graph -- and lets it decide. The accumulation window
+    (:func:`_open_ask_user_turns`) takes the opposite, stricter line, because
+    there the text is spliced verbatim into a capability's parameter extraction.
+    """
+    if not history:
+        return ""
+    lines = []
+    saw_foreign = False
+    for t in history:
+        if t.role == "assistant":
+            who = f"Assistant ({t.kind})" if t.kind else "Assistant"
+        else:
+            who = "User"
+        if not _turn_matches_kg(t, kg_name):
+            who = f"{who} [on a different knowledge graph: {_kg_label(t.kg_name)}]"
+            saw_foreign = True
+        text = (t.text or "").strip()
+        if text:
+            lines.append(f"{who}: {text}")
+    if not lines:
+        return ""
+    # Only spend prompt tokens on the cross-graph preamble when the transcript
+    # actually contains a foreign turn; an ordinary single-graph thread renders
+    # byte-for-byte as it did before ONTA-419.
+    header = "Conversation so far:"
+    if saw_foreign:
+        header = (
+            f"Conversation so far (the latest message targets the "
+            f"'{_kg_label(kg_name)}' knowledge graph; turns marked as being on a "
+            "different knowledge graph are about other data and usually should "
+            "not be continued):"
+        )
+    return header + "\n" + "\n".join(lines) + "\n\n"
+
+
+# Assistant reply kinds that COMMIT / resolve an intent, ending the current ask.
+# A ``clarify`` is the ONE reply that means "still gathering the parameters of the
+# SAME ask", so it does NOT close the accumulation window; everything else
+# (``answer`` answered a question, ``plan`` proposed a committed plan, ``result``
+# ran one) is a finished, different request whose text must not bleed forward.
+_COMMITTED_REPLY_KINDS = frozenset({"answer", "plan", "result"})
+
+
+def _open_ask_user_turns(
+    history: list[Turn] | None, kg_name: str | None = None
+) -> list[str]:
+    """The user turns belonging to the CURRENT, still-open ask (oldest→newest).
+
+    Walk the transcript backwards collecting user turns, stopping as soon as we
+    cross the boundary of a RESOLVED intent — any assistant reply that is not a
+    ``clarify`` (see :data:`_COMMITTED_REPLY_KINDS`). A ``clarify`` → answer
+    exchange keeps accumulating so the field named an earlier turn survives a
+    terse reply ("both"); but once a ``plan`` was proposed or a question
+    ``answer``ed, that intent is DONE and its text is dropped from the window so
+    a later, unrelated request is not contaminated by it (the session-context
+    bleed the planner previously suffered — every prior user turn was replayed).
+
+    ONTA-419: turns made against a DIFFERENT knowledge graph are removed before
+    the walk, not merely skipped during it. Removing them first is what makes an
+    interleaved session behave: an open clarify on graph B stays open across a
+    detour to graph A, and graph A's committed reply no longer closes B's window
+    (nor does A's user text get spliced into B's instruction, where it would feed
+    a capability a field/type name from a graph that may not even have it). A
+    turn with no recorded ``kg_name`` is kept -- see :func:`_turn_matches_kg`.
+    """
+    out: list[str] = []
+    for t in reversed(_same_kg_turns(history, kg_name)):
+        if t.role == "assistant":
+            # A clarify keeps the window open; anything else closes it.
+            if t.kind == "clarify":
+                continue
+            break
+        if t.role == "user" and t.text:
+            out.append(t.text)
+    out.reverse()
+    return out
+
+
+def _effective_instruction(
+    history: list[Turn] | None, message: str, kg_name: str | None = None
+) -> str:
+    """Accumulate the user's answers so capability extraction sees the full ask.
+
+    A capability's parameter extraction (which field, which attribute, which
+    rule) runs on a single string. Feeding it only the latest reply ("I wanna do
+    both") loses the field the user named two turns ago — so we DO concatenate
+    prior user turns. But only the turns of the CURRENT, still-open ask
+    (:func:`_open_ask_user_turns`): a committed plan / answered question RESETS
+    the window, so a finished prior request never replays into a new one. The
+    current ``message`` is always appended LAST so it dominates. With no
+    (in-window) prior turns this is just the message (unchanged single-turn
+    behavior). ``kg_name`` scopes the window to the graph this turn targets
+    (ONTA-419).
+    """
+    prior_user = _open_ask_user_turns(history, kg_name)
+    if not prior_user:
+        return message
+    return "\n".join([*prior_user, message])
+
+
+async def _classify(
+    ctx: AgentContext,
+    message: str,
+    history: list[Turn] | None = None,
+    prior_clarify_count: int = 0,
+) -> dict:
+    """One bounded LLM call → {"intents": [...], "clarify": ...}.
+
+    Sees the running transcript (``history``) so a terse answer to a prior
+    clarify is classified in context instead of in isolation. On any error /
+    missing key we degrade to "ambiguous" with a generic clarify so the agent
+    never 500s on classification.
+    """
+    caps = "\n".join(f"- {c.name}: {c.describe()}" for c in get_capabilities())
+    convo = _format_history(history, getattr(ctx, "kg_name", None))
+    guard = ""
+    if prior_clarify_count >= _MAX_CLARIFY_ROUNDS:
+        guard = (
+            f"You have ALREADY asked {prior_clarify_count} clarifying "
+            "question(s) in this conversation and the user has responded. Do NOT "
+            "ask again — use their answers above and commit to the intent(s).\n\n"
+        )
+    user = (
+        f"Available capabilities:\n{caps}\n\n{convo}{guard}"
+        f"Latest user message: {message}"
+    )
+    if not ctx.openrouter_key:
+        return _ambiguous()
+    try:
+        async with timed(logger, "classify"):
+            text = await openrouter_chat(
+                ctx.openrouter_key,
+                _CLASSIFY_SYSTEM,
+                user,
+                model=PRIMARY_MODEL,
+                temperature=0,
+                max_tokens=200,
+                timeout=30,
+            )
+    except Exception:
+        logger.warning("agent_classify_failed", exc_info=True)
+        return _ambiguous()
+    return _parse_classification(text)
+
+
+def _ambiguous(clarify: str = "What would you like me to do?") -> dict:
+    return {
+        "intents": ["ambiguous"],
+        "clarify": clarify,
+        "options": list(_DEFAULT_ACTION_OPTIONS),
+    }
+
+
+def _parse_classification(text: str) -> dict:
+    stripped = (text or "").strip()
+    if stripped.startswith("```"):
+        stripped = "\n".join(
+            l for l in stripped.split("\n") if not l.strip().startswith("```")
+        )
+    start, end = stripped.find("{"), stripped.rfind("}")
+    if start != -1 and end > start:
+        stripped = stripped[start : end + 1]
+    try:
+        data = json.loads(stripped)
+    except (json.JSONDecodeError, TypeError):
+        return _ambiguous()
+    return _normalize_classification(data)
+
+
+def _normalize_classification(data: dict) -> dict:
+    """Coerce a classifier reply to {"intents": [...], "clarify": str}.
+
+    Accepts both the new ``intents`` array and the legacy single ``intent`` key
+    (so older prompts/clients — and the existing test stubs — keep working).
+    De-dupes preserving order and never returns an empty list.
+    """
+    raw = data.get("intents")
+    if not isinstance(raw, list) or not raw:
+        one = data.get("intent")
+        raw = [one] if one else []
+    intents: list[str] = []
+    seen: set[str] = set()
+    for i in raw:
+        s = str(i).strip().lower()
+        if s and s not in seen:
+            seen.add(s)
+            intents.append(s)
+    if not intents:
+        intents = ["ambiguous"]
+    return {
+        "intents": intents,
+        "clarify": data.get("clarify", "") or "",
+        "options": _clean_options(data.get("options")),
+    }
+
+
+def _clean_options(raw) -> list[str]:
+    """Sanitize classifier-suggested clickable options: strings, capped at 4."""
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for o in raw:
+        s = str(o).strip()
+        if s and s.lower() not in seen:
+            seen.add(s.lower())
+            out.append(s)
+        if len(out) >= 4:
+            break
+    return out
+
+
+async def handle(ctx: AgentContext, message: str, session: dict | None = None) -> dict:
+    """Classify the message and respond — answer, clarify, or propose a plan.
+
+    Multi-turn aware (COG-130): when ``session.id`` is supplied, the running
+    transcript is loaded and threaded into both the classifier and the
+    capabilities so a clarify→answer exchange converges instead of looping. Each
+    turn (the user message + the assistant's reply) is appended to the session's
+    transcript. NO data writes happen here — an action returns a persisted plan
+    the caller confirms via :func:`execute_plan`.
+
+    KG-aware (ONTA-419): one session id can span several knowledge graphs, so
+    history is scoped to ``ctx.kg_name`` before it grounds the classifier, the
+    accumulation window, or the clarify-convergence guard.
+    """
+    session_id = (session or {}).get("id")
+    owner = (session or {}).get("owner")
+    history = await _load_history(ctx, session_id)
+    # Count only the clarify rounds spent on THIS graph (ONTA-419). The guard
+    # exists to stop the agent re-asking the SAME question; clarifies spent on
+    # another graph are a different ask, and letting them count would force the
+    # classifier to commit blind on the first message against a new graph.
+    prior_clarify_count = sum(
+        1
+        for t in _same_kg_turns(history, getattr(ctx, "kg_name", None))
+        if t.role == "assistant" and t.kind == "clarify"
+    )
+
+    result = await _respond(ctx, message, session_id, history, prior_clarify_count)
+
+    # ONTA-426: when the turn named no knowledge graph and the gate inferred one,
+    # SAY so on the response. The inference is only ever made when the workspace
+    # has exactly one graph (there is nothing to get wrong), but the user still has
+    # to be able to see which dataset an action landed on. An unannounced default
+    # is the silent-scoping bug in a politer costume.
+    resolved = (getattr(ctx, "extras", None) or {}).get(CTX_KG_RESOLVED)
+    if resolved:
+        result.setdefault("kg_name", resolved)
+        result.setdefault("kg_scope_note", resolved_kg_note(resolved))
+
+    await _record_turn(ctx, session_id, message, result, owner)
+    if session_id:
+        result.setdefault("session_id", session_id)
+    return result
+
+
+async def _respond(
+    ctx: AgentContext,
+    message: str,
+    session_id: str | None,
+    history: list[Turn],
+    prior_clarify_count: int,
+) -> dict:
+    """The classify → dispatch core, factored out of transcript bookkeeping."""
+    # Expose the running clarify count to capabilities so a capability that asks
+    # its own clarifying question (e.g. web discovery confirming which attributes
+    # to collect) can commit to its suggested default instead of re-asking once
+    # it has already asked — the capability-level analogue of the classifier's
+    # _MAX_CLARIFY_ROUNDS guard.
+    ctx.extras["prior_clarify_count"] = prior_clarify_count
+    # Expose the CURRENT message (distinct from the accumulated instruction) so a
+    # capability can prefer a target named in the live turn over one that appears
+    # only in prior-turn history — the enrich cap uses this to resolve the target
+    # TYPE from what the user just said, not a stale mention still in the window.
+    ctx.extras["current_message"] = message
+    # Only the recent tail grounds the prompt — a long history-backed thread
+    # shouldn't blow up the classifier context (COG-131). The tail is chosen
+    # KG-aware (ONTA-419) so a long detour onto another graph can't push this
+    # graph's own open ask off the end of the window.
+    recent = _recent_window(history, getattr(ctx, "kg_name", None))
+    classification = await _classify(ctx, message, recent, prior_clarify_count)
+    intents = classification.get("intents", ["ambiguous"])
+
+    # Deterministic web-discovery override: an explicit "… from the web" ingest
+    # (or a "discover …" / "new discovery, not enrichment" framing — ONTA-244)
+    # must route to discovery even if the classifier filed it as question /
+    # ambiguous (the payload often reads like a query — "list … with …") or
+    # word-triggered "enrich" (a "discover … then enrich each" ask contains the
+    # word "enrich"). Force discover and drop the read-only intents so it can't be
+    # hijacked by the question fast-path below. We ALSO drop a co-classified
+    # "enrich" here: on a mint-new-records ask the entities do not exist yet, so an
+    # enrich pass in the SAME turn would match 0 and premature-clarify (the
+    # enrich-plan-order-1 short-circuit that beat discovery). Discovery mints them
+    # first; enriching the fresh entities is a natural follow-up turn. Only when
+    # the discover capability is registered.
+    if _is_web_discovery_request(message) and get_capability(
+        _INTENT_TO_CAPABILITY["discover"]
+    ) is not None:
+        intents = [
+            "discover",
+            *[
+                i
+                for i in intents
+                if i not in ("discover", "enrich", "question", "ambiguous")
+            ],
+        ]
+
+    # Deterministic refresh-EXISTING override (ONTA-245): a "refresh / re-verify /
+    # update the <attrs> for <existing subset>" ask is ENRICHMENT in re-verify
+    # mode — it re-confirms values on records that ALREADY exist and advances their
+    # freshness stamp, scoped to the matching subset. The LLM classifier keeps
+    # mis-filing it as "discover" (the goal reads like "pull current numbers from
+    # the web for OpenAI, Google, …"), which mints a fresh dataset instead of
+    # refreshing the existing rows (the reported gap: ran_enrich=false,
+    # ran_build=true). Force enrich to the front and DROP a mis-classified
+    # discover/question so the refresh path fires regardless of the LLM. Deliberately
+    # defers to BOTH the web-discovery guard above (a genuine "… from the web" /
+    # leading "discover" mint-new still wins) and the subscribe guard below (a
+    # recurring standing "weekly refresh" still routes to subscribe) — so this only
+    # rescues the plain scoped-refresh case the classifier drops. Only when enrich
+    # is registered.
+    if (
+        _is_refresh_existing_request(message)
+        and not _is_web_discovery_request(message)
+        and not _is_subscribe_request(message)
+        and get_capability(_INTENT_TO_CAPABILITY["enrich"]) is not None
+    ):
+        intents = [
+            "enrich",
+            *[
+                i
+                for i in intents
+                if i not in ("enrich", "discover", "question", "ambiguous")
+            ],
+        ]
+
+    # Deterministic subscribe override: an unmistakable "set up a standing/
+    # recurring alert on a cadence, delivered automatically" ask must route to the
+    # subscribe capability even if the classifier filed it as a plain question /
+    # research (the payload reads like "notify me whenever …"). Force subscribe to
+    # the front and drop the read-only intents so the question fast-path can't
+    # hijack it. Only when the subscribe capability is registered.
+    if _is_subscribe_request(message) and get_capability(
+        _INTENT_TO_CAPABILITY["subscribe"]
+    ) is not None:
+        intents = [
+            "subscribe",
+            *[
+                i
+                for i in intents
+                if i not in ("subscribe", "question", "research", "ambiguous")
+            ],
+        ]
+
+    # Deterministic links-to-parse override: when the user hands us explicit URLs
+    # (in the message or as structured request context), this is a URL-targeted
+    # web extraction, not a plain question — route it by intent ourselves. An
+    # enrich-type verb fills attributes on existing entities ("enrich"); anything
+    # else brings in a NEW set of records ("discover"). Force the chosen intent to
+    # the front and drop question/ambiguous so it can't be hijacked by the
+    # question fast-path below. Only when the target capability is registered.
+    # A subscribe/standing-alert request whose URL is the DELIVERY webhook (not a
+    # page to scrape) must NOT be hijacked by the links-to-parse override below —
+    # "notify https://ex/hook when X changes" is a delivery target, not an ingest
+    # source. When the subscribe override already fired, skip the URL routing.
+    _subscribe_forced = intents and intents[0] == "subscribe"
+    _ctx_urls = getattr(ctx, "urls", None)
+    if not _subscribe_forced and _message_has_urls(message, _ctx_urls):
+        url_intent = _url_intent(message)
+        # Don't hijack a genuine read-only question that merely contains a link in
+        # its TEXT (e.g. "what does https://acme/about say about pricing?"). A link
+        # ATTACHED as structured request context (ctx.urls) or an explicit enrich
+        # verb is an unambiguous action and still routes; a bare interrogative
+        # whose only action signal is a URL falls through to the classifier, which
+        # answers it.
+        defer_to_classifier = (
+            not _ctx_urls
+            and url_intent != "enrich"
+            and _is_interrogative(message)
+        )
+        if not defer_to_classifier and get_capability(
+            _INTENT_TO_CAPABILITY[url_intent]
+        ) is not None:
+            intents = [
+                url_intent,
+                *[
+                    i
+                    for i in intents
+                    if i not in (url_intent, "question", "ambiguous")
+                ],
+            ]
+
+    # A read-only question is terminal and does not compose with actions.
+    if "question" in intents:
+        cap = get_capability("query") or QueryCapability()
+        out = await cap.answer(ctx, message)  # type: ignore[attr-defined]
+        # The capability may return its OWN kind. ONTA-413 short-circuits a
+        # question about a NONEXISTENT kg_name to {kind:"clarify"} naming the
+        # available graphs, instead of an "answer" that is really a silent
+        # "No results found." Defaulting to "answer" keeps every other path
+        # byte-identical.
+        return {**out, "kind": out.get("kind", "answer")}
+
+    actionable = [i for i in intents if i in _INTENT_TO_CAPABILITY]
+    if not actionable:
+        return {
+            "kind": "clarify",
+            "question": classification.get("clarify")
+            or "Could you clarify what you'd like me to do?",
+            # Offer the model's own choices when it gave them, else the generic
+            # action menu — so the user can click instead of typing.
+            "options": classification.get("options") or list(_DEFAULT_ACTION_OPTIONS),
+        }
+
+    # Resolve the registered capabilities. A recognized intent with no capability
+    # registered in THIS deployment (a downstream may map an intent it hasn't
+    # registered) is skipped; if none resolve, clarify rather than fail.
+    available = [
+        (i, get_capability(_INTENT_TO_CAPABILITY[i])) for i in actionable
+    ]
+    available = [(i, c) for i, c in available if c is not None]
+    if not available:
+        return {
+            "kind": "clarify",
+            "question": (
+                f"I can't yet handle '{actionable[0]}' requests. I can answer "
+                "questions, enrich attributes, clean up values, merge duplicates, "
+                "and inspect or extend the ontology — what would you like?"
+            ),
+            "options": list(_DEFAULT_ACTION_OPTIONS),
+        }
+
+    # ONTA-426 / ONTA-428: resolve and validate the KG scope BEFORE any capability
+    # plans. A typo'd kg_name would otherwise plan (and, after a confirm, run) work
+    # against a graph that does not exist (SPARQL returns zero rows rather than an
+    # error, so the turn reports success over nothing), and an OMITTED kg_name
+    # would fall through to the tenant base graph, acting on a dataset the user
+    # never named. Returns a clarify to surface either case; may resolve an omitted
+    # name to the workspace's only graph. See agent/kg_scope.py for the policy and
+    # for why this lives here rather than at the kg_writer seam.
+    scope_clarify = await check_kg_scope(ctx, [c for _, c in available])
+    if scope_clarify is not None:
+        return scope_clarify
+
+    # Accumulate the user's answers across the dialogue so each capability's
+    # field/attribute extraction sees the full ask, not just the latest reply.
+    instruction = _effective_instruction(
+        recent, message, getattr(ctx, "kg_name", None)
+    )
+    steps = await _plan_intents(ctx, available, instruction)
+    if not steps:
+        labels = " and ".join(i for i, _ in available)
+        return {
+            "kind": "clarify",
+            "question": (
+                f"I understood you want to {labels}, but I couldn't determine the "
+                "specifics (which field/attribute and value). Could you be more "
+                "specific?"
+            ),
+        }
+
+    # Read-only answer step: a capability may answer a question-like request
+    # directly (e.g. the ontology capability's INSPECT op renders the schema)
+    # instead of proposing a mutation. Such a step carries action="answer" and an
+    # ``answer_payload``; surface it as {kind:"answer"} (no confirm round-trip),
+    # exactly like the question fast-path. Only a SINGLE no-write answer step
+    # short-circuits — a mutation plan always goes through confirm.
+    if len(steps) == 1 and steps[0].action == "answer":
+        payload = steps[0].params.get("answer_payload")
+        if payload is not None:
+            return {"kind": "answer", **payload}
+
+    # A capability may need one round of clarification before it can plan — e.g.
+    # enrich couldn't pin down WHICH entities the user means, or web discovery
+    # needs to confirm which attributes to collect. A lone clarify step
+    # short-circuits to {kind:"clarify"} (the same shape the classifier emits) so
+    # the panel renders the question + clickable options; the running transcript
+    # accumulates the user's reply, so next turn the capability re-resolves.
+    if len(steps) == 1 and steps[0].action == "clarify":
+        p = steps[0].params
+        out = {
+            "kind": "clarify",
+            "question": p.get("question")
+            or "Could you clarify which entities you mean?",
+            "options": p.get("options") or [],
+        }
+        # A capability may ask SEVERAL questions (each with its own options) — pass
+        # the structured list through for clients that render more than one; the
+        # singular question/options above keep older clients working.
+        if p.get("questions"):
+            out["questions"] = p["questions"]
+        return out
+
+    _assert_may_commit(ctx, steps)
+
+    steps = order_steps(steps)
+    plan_id = _new_plan_id()
+    await make_plan_store().save(
+        StoredPlan(
+            plan_id=plan_id,
+            tenant_id=ctx.tenant_id,
+            kg_name=ctx.kg_name,
+            type_name=ctx.type_name,
+            message=message,
+            steps=steps,
+            session_id=session_id,
+        )
+    )
+    return {
+        "kind": "plan",
+        "plan_id": plan_id,
+        "steps": [s.to_dict() for s in steps],
+    }
+
+
+def _assert_may_commit(ctx: AgentContext, steps: list) -> None:
+    """Refuse to commit a mutating plan for a read-only member (ONTA-451).
+
+    ``/agent`` is the one read/write MIXED surface: the same endpoint answers a
+    question and ingests a dataset, so a blanket ``require_tenant_write`` route
+    dependency would lock a reader out of the read-only turns their role is
+    supposed to allow. The gate therefore sits at CAPABILITY DISPATCH — here,
+    where a mutating plan is about to be persisted, and again in
+    :func:`execute_plan`, the only path that actually runs one.
+
+    Everything upstream of this point is read-only by contract: the classifier,
+    ``QueryCapability.answer``, a capability's ``plan()`` (protocol: "NO
+    writes"), and the ``answer`` / ``clarify`` short-circuits — all of which
+    return before this call. So a reader keeps questions, web research, ontology
+    inspection and clarify rounds, and loses exactly the mutations.
+
+    Capability classification is deny-by-default
+    (:func:`~infona_client.agent.registry.capability_writes`): an unknown or
+    undeclared capability counts as mutating.
+
+    Scope note: this governs PLAN STEPS. The question fast-path in
+    :func:`_respond` dispatches ``get_capability("query").answer`` by NAME
+    without consulting ``capability_writes`` — sound in OSS because
+    ``QueryCapability.answer`` only reads, but a downstream that replaces the
+    ``query`` capability with a writing one would not be gated by this. Give a
+    replacement the same read-only contract, or gate it there too.
+    """
+    if ctx.can_write():
+        return
+    blocked = mutating_step_capabilities(steps)
+    if not blocked:
+        return
+    logger.info(
+        "agent_write_denied_read_only",
+        tenant=ctx.tenant_id,
+        kg=getattr(ctx, "kg_name", ""),
+        capabilities=blocked,
+    )
+    raise ReadOnlyMembershipError(blocked)
+
+
+async def _assert_confirm_may_commit(ctx: AgentContext, store, plan_id: str) -> None:
+    """The ONTA-451 authorization gate for a CONFIRM. Fails CLOSED.
+
+    Re-checked here and not only at plan time because a plan can sit
+    un-confirmed indefinitely: one persisted while the caller had write access
+    must not stay runnable after their role is downgraded to reader.
+
+    Runs BEFORE ``claim_for_execution`` (like the KG-scope gate) so a refused
+    confirm leaves the plan ``proposed`` and re-confirmable by a writer, rather
+    than stranding it in ``executing`` until the stale cutoff.
+
+    Unlike the KG-scope gate — best-effort, deferring to the authoritative claim
+    read — the PLAN READ here fails closed: a plan that cannot be read is a plan
+    that cannot be shown to be read-only, so a read-only caller is refused rather
+    than allowed through to the claim.
+
+    That is a property of this read only, not of the gate end-to-end: the ROLE
+    this depends on is resolved by ``resolve_member_role``, which deliberately
+    fails OPEN to ``writer`` on a workspace-registry outage so a DB blip cannot
+    freeze production for entitled users. Same posture as ``require_tenant_write``
+    — this change neither introduces nor worsens it.
+    """
+    if ctx.can_write():
+        return
+    try:
+        plan = await store.get(plan_id, ctx.tenant_id)
+    except Exception as exc:  # noqa: BLE001 — unreadable ⇒ unprovable ⇒ refuse
+        logger.warning(
+            "agent_plan_capability_read_failed", plan_id=plan_id, exc_info=True
+        )
+        raise ReadOnlyMembershipError() from exc
+    if plan is None:
+        # Nothing to run anyway; refusing rather than reporting "not found" also
+        # keeps the confirm path from being a plan-existence oracle for a reader.
+        raise ReadOnlyMembershipError()
+    _assert_may_commit(ctx, plan.steps)
+
+
+async def _plan_intents(
+    ctx: AgentContext,
+    available: list[tuple[str, object]],
+    instruction: str,
+) -> list:
+    """Plan each requested capability and compose them into one ordered plan.
+
+    Capabilities are planned clean-first (``_INTENT_PLAN_ORDER``) so a "clean and
+    dedup"/"clean and enrich" ask wires the dedup/enrich step's ``depends_on`` to
+    the clean (normalize) step(s) — the documented clean-before-* pattern — and
+    :func:`order_steps` then runs normalize first. A capability that can't ground
+    a concrete step (returns ``[]``) simply contributes nothing; as long as ANY
+    requested capability produces a step the turn converges to a plan instead of
+    re-asking. A single requested intent collapses to exactly the prior
+    single-capability behavior (no cross-capability dependency is added).
+    """
+    available = sorted(
+        available, key=lambda pair: _INTENT_PLAN_ORDER.get(pair[0], 9)
+    )
+    all_steps: list = []
+    normalize_ids: list[str] = []
+    for intent, cap in available:
+        steps = await cap.plan(ctx, instruction)  # type: ignore[attr-defined]
+        if not steps:
+            continue
+        # A capability can ask for a brief clarification instead of proposing a
+        # plan (e.g. enrich couldn't resolve a described subset, or the scope
+        # matched 0 entities). Surface that immediately rather than composing a
+        # partial plan around it — the user's reply re-runs resolution next turn.
+        if len(steps) == 1 and getattr(steps[0], "action", "") == "clarify":
+            return steps
+        if intent in ("dedup", "enrich") and normalize_ids:
+            for s in steps:
+                s.depends_on = list(dict.fromkeys([*s.depends_on, *normalize_ids]))
+        if intent == "clean":
+            normalize_ids.extend(
+                s.id for s in steps if s.capability == "normalize"
+            )
+        all_steps.extend(steps)
+    return all_steps
+
+
+async def _load_history(ctx: AgentContext, session_id: str | None) -> list[Turn]:
+    """Load the session transcript; never fail the turn on a store hiccup."""
+    if not session_id:
+        return []
+    try:
+        return await make_conversation_store().load(session_id, ctx.tenant_id)
+    except Exception:  # noqa: BLE001 — a transcript read must never 500 the turn
+        logger.warning("agent_history_load_failed", exc_info=True)
+        return []
+
+
+def _result_summary(result: dict) -> tuple[str, str | None]:
+    """Derive (assistant_text, intent_label) to store for an agent response."""
+    kind = result.get("kind")
+    if kind == "clarify":
+        return result.get("question", ""), None
+    if kind == "answer":
+        # Store the human summary, not the raw bindings dump: `narrative` is the
+        # rephrased 2-3 sentence answer; `answer` is the formatted-table fallback
+        # (only stored when the rephrase failed open to ""). Clients re-render
+        # this text verbatim on thread reload, so the precedence matters.
+        return result.get("narrative") or result.get("answer") or "", "question"
+    if kind == "plan":
+        caps = ", ".join(
+            dict.fromkeys(s.get("capability", "") for s in result.get("steps", []))
+        )
+        return f"Proposed a plan ({caps}).", caps or None
+    return "", None
+
+
+async def _record_turn(
+    ctx: AgentContext,
+    session_id: str | None,
+    message: str,
+    result: dict,
+    owner: str | None = None,
+) -> None:
+    """Append the user message + assistant reply to the session transcript.
+
+    ``owner`` (the auth subject) tags the thread so a signed-in user can find it
+    in their history; it's None for ownerless (demo) sessions.
+
+    Both turns are stamped with the knowledge graph they were made against
+    (ONTA-419) so a later turn on a different graph can scope them out.
+    """
+    if not session_id:
+        return
+    text, intent = _result_summary(result)
+    kg_name = getattr(ctx, "kg_name", None) or None
+    turns = [
+        Turn(role="user", text=message, kg_name=kg_name),
+        Turn(
+            role="assistant",
+            text=text,
+            kind=result.get("kind"),
+            intent=intent,
+            kg_name=kg_name,
+        ),
+    ]
+    try:
+        await make_conversation_store().append(
+            session_id, ctx.tenant_id, turns, owner=owner
+        )
+    except Exception:  # noqa: BLE001 — persistence is best-effort, never 500
+        logger.warning("agent_history_append_failed", exc_info=True)
+
+
+async def execute_plan(ctx: AgentContext, plan_id: str) -> dict:
+    """Run a persisted plan's steps in dependency order. The ONLY mutating path.
+
+    ONE-SHOT: a plan is executable exactly once. The confirm claims the plan
+    via an atomic status transition (``proposed`` → ``executing``) in the plan
+    store, so a duplicate confirm — the Explorer auto-confirm firing twice, a
+    client retry after a gateway timeout whose first request DID spawn the
+    work — can never run the steps again (a re-run re-issues the paid provider
+    fan-out and re-ingests every row; discovery/enrich executes are not
+    idempotent). A re-confirm of a finished plan replays the persisted
+    acks/job ids verbatim, marked ``"replayed": True``, so a retried confirm
+    converges to the same response; a confirm that races a still-running
+    execution gets ``{kind:"error", code:"plan_already_executing"}``. A claim
+    older than ``COGRAPH_PLAN_EXECUTING_STALE_S`` (default 600s — the executor
+    presumably died mid-run) is claimable again so a crash cannot strand the
+    plan un-runnable forever.
+
+    Each step runs via its capability's ``execute`` (long work is spawned as a
+    background job inside the capability). Records per-step status; the result
+    payload is persisted on the plan for the duplicate-confirm replay above.
+    """
+    store = make_plan_store()
+    # Authorization before validation ON THIS PATH: a refused confirm is a plain
+    # 403 rather than a KG-scope error about a plan the caller could never run.
+    # (The plan-time path deliberately runs check_kg_scope first — a reader may
+    # list graphs, so its clarify reveals nothing the read routes don't.)
+    await _assert_confirm_may_commit(ctx, store, plan_id)
+    gate = await _kg_scope_gate_for_confirm(ctx, store, plan_id)
+    if gate is not None:
+        return gate
+    stale_before = datetime.now(timezone.utc) - timedelta(
+        seconds=_EXECUTING_STALE_S
+    )
+    plan, claimed = await claim_plan_for_execution(
+        store, plan_id, ctx.tenant_id, stale_before=stale_before
+    )
+    if plan is None:
+        return {"kind": "error", "error": "plan not found", "plan_id": plan_id}
+    if not claimed:
+        logger.info(
+            "agent_plan_duplicate_confirm", plan_id=plan_id, status=plan.status
+        )
+        return _already_confirmed_response(plan)
+
+    summaries: list[dict] = []
+    try:
+        ordered = order_steps(plan.steps)
+        for step in ordered:
+            cap = get_capability(step.capability)
+            if cap is None:
+                summaries.append(
+                    {
+                        "step_id": step.id,
+                        "capability": step.capability,
+                        "status": "skipped",
+                        "error": "capability not registered",
+                    }
+                )
+                continue
+            try:
+                result = await cap.execute(ctx, step)
+                # Spread the capability ack first, then stamp the orchestration
+                # status LAST so a capability's own "status" field (e.g. a job's
+                # "queued") can't clobber the step-level success marker.
+                summaries.append({"step_id": step.id, **result, "status": "ok"})
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "agent_step_failed",
+                    step_id=step.id,
+                    capability=step.capability,
+                    exc_info=True,
+                )
+                summaries.append(
+                    {
+                        "step_id": step.id,
+                        "capability": step.capability,
+                        "status": "failed",
+                        "error": str(exc),
+                    }
+                )
+    except Exception:
+        # Catastrophic (non-step) failure. Persist the terminal status so the
+        # one-shot guard still refuses a re-confirm — steps that DID run may
+        # have spawned paid work, so a retry could double-bill. Best-effort: if
+        # even this save fails, the stale-claim cutoff above is the backstop.
+        plan.status = "failed"
+        try:
+            await store.save(plan)
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "agent_plan_fail_persist_failed", plan_id=plan_id, exc_info=True
+            )
+        raise
+    result = {"kind": "result", "plan_id": plan_id, "steps": summaries}
+    plan.status = "done"
+    plan.result = result
+    try:
+        await store.save(plan)
+    except Exception:  # noqa: BLE001
+        # The steps RAN — a store blip on this save must not turn a successful
+        # execution into a 500 that discards the acks/job ids (the client would
+        # treat the confirm as failed and retry; past the stale cutoff that
+        # retry would re-run paid work). Return the result anyway: the caller
+        # converges, and the plan merely stays `executing` (no replay) until
+        # the stale cutoff — the documented backstop for a lost terminal save.
+        logger.warning(
+            "agent_plan_done_persist_failed", plan_id=plan_id, exc_info=True
+        )
+    return result
+
+
+async def _kg_scope_gate_for_confirm(ctx, store, plan_id: str) -> dict | None:
+    """Re-check the KG scope of a plan at CONFIRM time (ONTA-426 / ONTA-428).
+
+    ``execute_plan`` is the only mutating path, so the guarantee "no /agent turn
+    writes to a graph that does not exist" has to hold here too, not only at plan
+    time. Two things this catches that the plan-time gate cannot:
+
+    * the graph existed when the plan was proposed and was deleted before the user
+      confirmed (a plan can sit un-confirmed indefinitely);
+    * a confirm whose request body carries NO ``context.kg_name``, in which case
+      the plan's own recorded scope is restored onto the context instead of
+      letting the execution fall through to the tenant base graph.
+
+    This VALIDATES, it never re-resolves (``resolve_omitted=False``). A plan
+    proposed with no KG scope at all was already gated when it was proposed, in a
+    workspace that had no graphs to choose between; inferring one now, because the
+    workspace has since grown a graph, would silently retarget a plan the user
+    already approved, and would do it without the ``kg_scope_note`` the plan-time
+    path attaches.
+
+    Runs BEFORE ``claim_for_execution`` deliberately: a refused confirm must leave
+    the plan ``proposed`` and re-confirmable once the user creates (or corrects)
+    the graph, rather than stranding it in ``executing`` until the stale cutoff.
+    Returns ``None`` to proceed, or a typed ``{"kind": "error"}`` payload.
+    ``execute_plan``'s contract is ``{kind: result|error}``, so a clarify would be
+    off-contract here even though the plan-time gate returns one.
+
+    Best-effort: an unreadable plan (or any store hiccup) falls through to the
+    normal claim path, which reports "plan not found" as it always did.
+    """
+    try:
+        plan = await store.get(plan_id, ctx.tenant_id)
+    except Exception:  # noqa: BLE001 - the claim below is the authoritative read
+        logger.warning("agent_plan_scope_read_failed", plan_id=plan_id, exc_info=True)
+        return None
+    if plan is None or plan.status != "proposed":
+        # Not found, or already claimed/finished. Leave the duplicate-confirm
+        # replay and the not-found response exactly as they were.
+        return None
+    if not getattr(ctx, "kg_name", "") and plan.kg_name:
+        ctx.kg_name = plan.kg_name
+    caps = [s.capability for s in plan.steps]
+    clarify = await check_kg_scope(ctx, caps, resolve_omitted=False)
+    if clarify is None:
+        return None
+    logger.info("agent_plan_kg_scope_refused", plan_id=plan_id, kg_name=ctx.kg_name)
+    return {
+        "kind": "error",
+        # The gate's own typed reason (kg_missing / kg_ambiguous) rather than a
+        # second, hardcoded copy that could drift from it.
+        "code": clarify.get("code", CODE_KG_MISSING),
+        "error": clarify.get("question", ""),
+        "plan_id": plan_id,
+        "options": clarify.get("options", []),
+    }
+
+
+def _already_confirmed_response(plan: StoredPlan) -> dict:
+    """The duplicate-confirm response for a plan another confirm already claimed.
+
+    Finished with a persisted result → replay the SAME acks/job ids (marked
+    ``replayed`` so clients/telemetry can tell) — a retried confirm converges
+    instead of erroring. Still executing → a typed error; the work is already
+    in flight and its jobs are visible on the jobs feed. Finished without a
+    persisted result (a catastrophic failure, or a plan finished by a build
+    predating result persistence) → a typed error. Nothing re-runs in any case.
+    """
+    if plan.result is not None:
+        return {**plan.result, "replayed": True}
+    if plan.status == "executing":
+        return {
+            "kind": "error",
+            "code": "plan_already_executing",
+            "error": (
+                "This plan is already being executed — the first confirm is "
+                "still in flight, and confirming again will not run it twice. "
+                "Check the running jobs for progress."
+            ),
+            "plan_id": plan.plan_id,
+            "status": plan.status,
+        }
+    return {
+        "kind": "error",
+        "code": "plan_already_executed",
+        "error": (
+            f"This plan already ran (status: {plan.status}) and cannot run "
+            "again. Ask again to get a fresh plan if you want to repeat it."
+        ),
+        "plan_id": plan.plan_id,
+        "status": plan.status,
+    }
+
+
+def _new_plan_id() -> str:
+    import uuid
+
+    return str(uuid.uuid4())
+
+
+def register_default_capabilities() -> None:
+    """Register the OSS A1 capabilities. Import-safe + idempotent.
+
+    Called from app startup (and tests). A downstream/proprietary deployment can
+    register additional capabilities (dedup with embedding matchers, ontology
+    edits) the same way — no route change. ``register_capability`` is last-write-
+    wins, so calling this more than once is harmless.
+    """
+    from infona_client.agent.registry import register_capability
+
+    normalize = NormalizeCapability()
+    register_capability(QueryCapability())
+    register_capability(normalize)
+    register_capability(EnrichCapability(normalize=normalize))
+    register_capability(DedupCapability())
+    register_capability(OntologyCapability())
+    # Web discovery: registered in OSS so the "discover" intent routes, but
+    # DORMANT until a downstream deployment registers a web-source provider —
+    # plan() returns a plain "not enabled" answer when none is registered.
+    register_capability(WebIngestCapability())
+    # Subscribe / standing alert (ONTA-235): registered in OSS so the "subscribe"
+    # intent routes and the persona can set a recurring, subscribe-able alert ONCE.
+    # It persists a `notify` Schedule through the shared schedule store (the same
+    # store the canonical /schedules route uses); the OSS best-effort HTTP sink
+    # delivers change payloads, and a premium reliable sink supersedes it via
+    # register_delivery_sink.
+    register_capability(SubscribeCapability())
+    # Web research (ADR 0006): the read-only counterpart — answers a question from
+    # the web and returns a cited answer/artifact, no KG write.
+    #
+    # OPEN-WEB RETRIEVAL IS OUT OF OSS SCOPE (ONTA-293, decided 2026-07-29). OSS
+    # deliberately registers NO page fetcher and NO web-source provider, so this
+    # capability is dormant here exactly like WebIngestCapability above. It is
+    # still REGISTERED so the "research" intent routes and can explain itself —
+    # a dormant capability that says "hand me the content instead" is a signpost,
+    # not a dead button.
+    #
+    # The retrieval SUBSTRATE stays in OSS (`infona_client/retrieval/`): the
+    # SSRF/DNS guards, HTML safety, the fetch ladder, the cost seam. That is what
+    # premium and self-hosters register INTO via `register_page_fetcher` /
+    # `register_web_source`, and ADR 0008 requires exactly one such substrate. A
+    # deployment that wants the previous behaviour calls `register_default_fetchers()`
+    # itself at boot; nothing was deleted.
+    register_capability(WebResearchCapability())

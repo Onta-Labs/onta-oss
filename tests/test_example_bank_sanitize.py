@@ -26,7 +26,7 @@ import re
 
 import pytest
 
-from cograph_client.nlp.example_bank import (
+from infona_client.nlp.example_bank import (
     DEFAULT_BANK_PATH,
     TARGET_GRAPH_PLACEHOLDER,
     Example,
@@ -335,7 +335,7 @@ async def test_ask_prompt_for_another_tenant_contains_no_demo_tenant_graph():
     """
     from unittest.mock import AsyncMock, MagicMock, patch
 
-    from cograph_client.nlp.pipeline import NLQueryPipeline
+    from infona_client.nlp.pipeline import NLQueryPipeline
 
     neptune = AsyncMock()
     neptune.query.return_value = {
@@ -356,7 +356,7 @@ async def test_ask_prompt_for_another_tenant_contains_no_demo_tenant_graph():
     message = MagicMock()
     message.content = [MagicMock(text=llm_response)]
 
-    with patch("cograph_client.nlp.example_bank.get_example_bank", return_value=bank), \
+    with patch("infona_client.nlp.example_bank.get_example_bank", return_value=bank), \
             patch.object(pipeline.anthropic.messages, "create", new_callable=AsyncMock) as create:
         create.return_value = message
         await pipeline.ask(

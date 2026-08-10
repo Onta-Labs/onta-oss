@@ -10,8 +10,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from cograph_client.graph.layers import Layer, layer_type_uri
-from cograph_client.skills import (
+from infona_client.graph.layers import Layer, layer_type_uri
+from infona_client.skills import (
     InMemoryTypeSkillStore,
     TypeSkill,
     global_skills_for_type,
@@ -26,13 +26,13 @@ from cograph_client.skills import (
     skills_prompt_block,
     validate_skill,
 )
-from cograph_client.skills.registry import (
+from infona_client.skills.registry import (
     global_skills_by_layer,
     load_skill_dir,
     parse_skill_markdown,
 )
-from cograph_client.skills.resolve import DEFAULT_PROMPT_BUDGET
-from cograph_client.skills.store import PostgresTypeSkillStore
+from infona_client.skills.resolve import DEFAULT_PROMPT_BUDGET
+from infona_client.skills.store import PostgresTypeSkillStore
 
 
 @pytest.fixture(autouse=True)
@@ -61,7 +61,7 @@ def _skill(slug="notes", type_name="Person", layer=Layer.TENANT, **kw):
 
 
 def _stack(entitled=False):
-    from cograph_client.graph.layers import LayerStack
+    from infona_client.graph.layers import LayerStack
 
     return LayerStack(tenant_graph_uri="https://graph.onta.sh/graphs/t1", entitled=entitled)
 
@@ -193,7 +193,7 @@ def test_store_returns_copies_not_live_references():
 
 
 def test_store_selection_follows_the_dsn(monkeypatch):
-    from cograph_client.config import settings
+    from infona_client.config import settings
 
     reset_type_skill_store()
     monkeypatch.setattr(settings, "database_url", None, raising=False)
@@ -263,7 +263,7 @@ def test_register_skill_layer_refuses_the_tenant_layer():
 
 def test_register_skill_layer_refuses_nonempty_public_layer():
     """ONTA-400: Public is attrs+rels only — non-empty skill registration refuses."""
-    from cograph_client.graph.layer_content import LayerContentError
+    from infona_client.graph.layer_content import LayerContentError
 
     with pytest.raises(LayerContentError, match="may not carry skills"):
         register_skill_layer(Layer.PUBLIC, [_skill(slug="pub", tenant_id=None)])
@@ -459,7 +459,7 @@ def test_prompt_block_dedupes_a_repeated_type():
 def test_prompt_block_never_raises():
     """A broken skills feature must never take down a query."""
     with patch(
-        "cograph_client.skills.resolve.resolve_skills",
+        "infona_client.skills.resolve.resolve_skills",
         side_effect=RuntimeError("boom"),
     ):
         assert asyncio.run(skills_prompt_block(["Person"], tenant_id="t1")) == ""
@@ -558,7 +558,7 @@ def test_delete_removes_the_skill(client, auth_headers):
 def test_curated_global_skills_are_read_only_over_http(client, auth_headers):
     # Curated skills live on Enhanced (Public may not carry them — ONTA-400).
     # Entitle the caller so the Enhanced layer is visible on the list route.
-    from cograph_client.graph.entitlement import register_entitlement_checker
+    from infona_client.graph.entitlement import register_entitlement_checker
 
     register_skill_layer(
         Layer.ENHANCED,
@@ -655,7 +655,7 @@ def test_routes_require_authentication(client):
 # --------------------------------------------------------------------------- #
 #: An actual import STATEMENT of the proprietary `cograph.` package — anchored
 #: at line start so a prose mention of the rule inside a docstring (which every
-#: module in this package carries) is not a false positive, and `cograph_client`
+#: module in this package carries) is not a false positive, and `infona_client`
 #: is excluded by the required dot.
 _PROPRIETARY_IMPORT = re.compile(r"^\s*(?:from|import)\s+cograph\.", re.MULTILINE)
 
@@ -663,8 +663,8 @@ _PROPRIETARY_IMPORT = re.compile(r"^\s*(?:from|import)\s+cograph\.", re.MULTILIN
 def test_skills_package_never_imports_the_proprietary_tree():
     import pathlib
 
-    import cograph_client.skills as pkg
-    import cograph_client.api.routes.skills as routes
+    import infona_client.skills as pkg
+    import infona_client.api.routes.skills as routes
 
     files = list(pathlib.Path(pkg.__file__).parent.rglob("*.py"))
     files.append(pathlib.Path(routes.__file__))
@@ -678,5 +678,5 @@ def test_the_proprietary_import_guard_can_actually_fail():
     """Keep the guard above honest — a planted violation must trip it."""
     assert _PROPRIETARY_IMPORT.search("from cograph.enrichment import x")
     assert _PROPRIETARY_IMPORT.search("import cograph.qc")
-    assert not _PROPRIETARY_IMPORT.search("from cograph_client.config import settings")
+    assert not _PROPRIETARY_IMPORT.search("from infona_client.config import settings")
     assert not _PROPRIETARY_IMPORT.search("Boundary: OSS — no ``from cograph.*``.")

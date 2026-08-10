@@ -16,11 +16,11 @@ import re
 
 import pytest
 
-from cograph_client.normalization import execute as execute_mod
-from cograph_client.normalization import inference as inference_mod
-from cograph_client.normalization.execute import apply_rule
-from cograph_client.normalization.inference import suggest_rules
-from cograph_client.normalization.rules import (
+from infona_client.normalization import execute as execute_mod
+from infona_client.normalization import inference as inference_mod
+from infona_client.normalization.execute import apply_rule
+from infona_client.normalization.inference import suggest_rules
+from infona_client.normalization.rules import (
     NormalizationRule,
     NormalizationRuleStore,
     make_rule_id,
@@ -44,7 +44,7 @@ KG = "june-16"
 # --------------------------------------------------------------------------- #
 @pytest.fixture(autouse=True)
 def _stub_schedule_recompute(monkeypatch):
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
@@ -1165,7 +1165,7 @@ async def test_rerun_sweep_falls_back_to_touched_composites_without_range():
 async def test_apply_triggers_stats_recompute_on_mutation(monkeypatch):
     """A mutating apply fires explore.schedule_recompute(tenant_id, kg_name); a
     pure no-op re-run does not."""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     calls: list[tuple] = []
     monkeypatch.setattr(
@@ -1427,7 +1427,7 @@ def route_client(monkeypatch):
     os.environ["OMNIX_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
     from fastapi.testclient import TestClient
 
-    from cograph_client.api.app import create_app
+    from infona_client.api.app import create_app
 
     neptune = FakeNeptune()
     app = create_app()

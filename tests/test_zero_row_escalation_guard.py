@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from cograph_client.nlp.empty_type_guard import (
+from infona_client.nlp.empty_type_guard import (
     NO_INSTANCES_MARK,
     declared_types,
     empty_declared_types,
@@ -27,7 +27,7 @@ from cograph_client.nlp.empty_type_guard import (
     types_referenced,
     zero_row_escalation_feedback,
 )
-from cograph_client.nlp.pipeline import NLQueryPipeline
+from infona_client.nlp.pipeline import NLQueryPipeline
 
 TENANT_GRAPH = "https://graph.onta.sh/graphs/t1"
 KG_GRAPH = "https://graph.onta.sh/graphs/t1/kg/widgets"
@@ -175,7 +175,7 @@ async def _ask(pipeline, neptune, question, llm_messages, fetch_ontology=FULL_ON
 
     neptune.query.side_effect = _query
 
-    with patch("cograph_client.nlp.pipeline.get_embedding_service", return_value=svc):
+    with patch("infona_client.nlp.pipeline.get_embedding_service", return_value=svc):
         with patch.object(
             pipeline, "_fetch_ontology", new_callable=AsyncMock,
             return_value=fetch_ontology,
@@ -264,7 +264,7 @@ def test_named_in_question_does_not_match_inside_another_word():
     """The verbatim arm is word-BOUNDED. A bare substring test matched a short
     declared type inside an unrelated word, which now also gates the escalation
     guard, so a spurious match would suppress a legitimate escalation."""
-    from cograph_client.nlp.ontology_embeddings import _types_named_in_question
+    from infona_client.nlp.ontology_embeddings import _types_named_in_question
 
     types = ["Age", "Ion", "Cat", "Rat", "ClinicalTrial"]
     assert _types_named_in_question("who manages the medication categories?", types) == set()
@@ -301,7 +301,7 @@ async def test_honest_note_does_not_ride_onto_a_later_non_empty_answer(
             return WIDGET_ROWS if "types/Widget" in sparql else EMPTY_RESULT
 
         neptune.query.side_effect = _query
-        with patch("cograph_client.nlp.pipeline.get_embedding_service", return_value=svc):
+        with patch("infona_client.nlp.pipeline.get_embedding_service", return_value=svc):
             with patch.object(
                 pipeline, "_fetch_ontology", new_callable=AsyncMock,
                 return_value=FULL_ONTOLOGY,
@@ -327,7 +327,7 @@ async def test_no_escalation_onto_an_ontology_sentinel(pipeline, neptune):
     """`_fetch_ontology` does not raise on failure, it RETURNS a sentinel string,
     and both sentinels are truthy. Escalating onto one would swap a working
     semantic subset for prose and ask the model to regenerate against it."""
-    from cograph_client.nlp.pipeline import ONTOLOGY_EMPTY
+    from infona_client.nlp.pipeline import ONTOLOGY_EMPTY
 
     result, create = await _ask(
         pipeline, neptune, "how many things are there?",

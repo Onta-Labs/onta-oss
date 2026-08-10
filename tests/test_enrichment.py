@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
-from cograph_client.enrichment.cache import EnrichmentCache
-from cograph_client.enrichment.executor import (
+from infona_client.enrichment.cache import EnrichmentCache
+from infona_client.enrichment.executor import (
     EnrichmentExecutor,
     _ProviderTally,
     _build_select_query,
@@ -24,8 +24,8 @@ from cograph_client.enrichment.executor import (
     _scope_subselect,
     _values_match,
 )
-from cograph_client.enrichment.job_store import InMemoryJobStore
-from cograph_client.enrichment.models import (
+from infona_client.enrichment.job_store import InMemoryJobStore
+from infona_client.enrichment.models import (
     ConflictPolicy,
     ConflictReview,
     EnrichJob,
@@ -34,7 +34,7 @@ from cograph_client.enrichment.models import (
     JobStatus,
     Verdict,
 )
-from cograph_client.enrichment.sources.wikidata import (
+from infona_client.enrichment.sources.wikidata import (
     WikidataAdapter,
     _clean_label_candidates,
 )
@@ -175,7 +175,7 @@ def test_cache_key_normalizes_label_and_versions(monkeypatch):
     (a) "City", "city", and "  City  " produce the SAME key (normalized label).
     (b) Changing strategy_version produces a DIFFERENT key (clean miss).
     """
-    from cograph_client.enrichment import cache as cache_mod
+    from infona_client.enrichment import cache as cache_mod
 
     # (a) Normalized-label equivalence at the key level.
     k1 = cache_mod._key("Place", "City", "name", "v1", "wikidata")
@@ -871,7 +871,7 @@ def test_enrich_request_rejects_injecting_entity_uri():
     before it can be spliced into a VALUES block."""
     import pydantic
 
-    from cograph_client.enrichment.models import EnrichRequest
+    from infona_client.enrichment.models import EnrichRequest
 
     bad = [
         "https://graph.onta.sh/entities/Mentor/m1",  # valid
@@ -1145,7 +1145,7 @@ def test_executor_apply_routes_through_shared_writer(monkeypatch):
     housekeeping (graph/kg_writer.refresh_after_write) — the convergence
     guarantee with CSV/JSON ingestion. Regression guard: if someone reintroduces
     a bespoke write tail that skips re-embed / cache-invalidate, this fails."""
-    import cograph_client.enrichment.executor as ex
+    import infona_client.enrichment.executor as ex
 
     captured: dict = {}
 
@@ -1334,7 +1334,7 @@ def test_executor_hung_adapter_does_not_strand_job(monkeypatch):
     async def run():
         # Tiny per-adapter timeout so the test is fast. The executor reads this
         # env var at module import, so patch the module-level constant directly.
-        import cograph_client.enrichment.executor as ex_mod
+        import infona_client.enrichment.executor as ex_mod
 
         monkeypatch.setattr(ex_mod, "ADAPTER_LOOKUP_TIMEOUT_S", 0.2)
 
@@ -1442,7 +1442,7 @@ def test_executor_sources_override_uses_named_chain():
     registered adapter."""
 
     async def run():
-        from cograph_client.enrichment.sources.base import register_adapter
+        from infona_client.enrichment.sources.base import register_adapter
 
         neptune = _single_product_neptune()
         store = InMemoryJobStore()
@@ -1539,7 +1539,7 @@ def test_executor_instructions_flow_into_lookup_context():
     instructions are absent the context carries only ``entity_type``."""
 
     async def run():
-        from cograph_client.enrichment.sources.base import register_adapter
+        from infona_client.enrichment.sources.base import register_adapter
 
         # With instructions.
         neptune = _single_product_neptune()
@@ -1594,7 +1594,7 @@ def test_executor_instructions_vary_cache_key():
     re-queries the adapter rather than reusing the first job's cached result."""
 
     async def run():
-        from cograph_client.enrichment.sources.base import register_adapter
+        from infona_client.enrichment.sources.base import register_adapter
 
         store = InMemoryJobStore()
         cache = EnrichmentCache()  # shared across both jobs
@@ -1626,7 +1626,7 @@ def test_executor_instructions_vary_cache_key():
 def test_strategy_version_with_instructions_helper():
     """The cache-version helper is byte-for-byte identity without instructions,
     and stable + distinct per instruction string with them."""
-    from cograph_client.enrichment.executor import (
+    from infona_client.enrichment.executor import (
         _strategy_version_with_instructions,
     )
 
@@ -2314,7 +2314,7 @@ def test_apply_decisions_writes_accepted_only(monkeypatch):
     # apply_decisions now schedules a real stats recompute after a write; stub it
     # so this test stays focused on the write itself (and doesn't leave a
     # fire-and-forget recompute task draining against the AsyncMock).
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
@@ -2359,7 +2359,7 @@ def test_executor_apply_schedules_stats_recompute(monkeypatch):
     overwrite refresh routes each value through the P6 supersession op, which
     refreshes per fact, so the recompute may be scheduled more than once — the
     invariant is that it IS scheduled for this (tenant, kg).)"""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     calls: list[tuple[str, str]] = []
     monkeypatch.setattr(
@@ -2403,7 +2403,7 @@ def test_executor_no_apply_does_not_recompute(monkeypatch):
     """A stage job whose only result is a CONFLICT writes nothing (the conflict
     is held for review) → no recompute should be scheduled. (ONTA-159: a stage
     FILL now DOES write + recompute, so the no-write case must be a conflict.)"""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     calls: list[tuple[str, str]] = []
     monkeypatch.setattr(
@@ -2447,7 +2447,7 @@ def test_executor_no_apply_does_not_recompute(monkeypatch):
 
 def test_apply_decisions_schedules_stats_recompute(monkeypatch):
     """A review-apply that accepts >=1 fact schedules a recompute for (tenant, kg)."""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     calls: list[tuple[str, str]] = []
     monkeypatch.setattr(
@@ -2486,7 +2486,7 @@ def test_apply_decisions_schedules_stats_recompute(monkeypatch):
 
 def test_apply_decisions_no_accept_does_not_recompute(monkeypatch):
     """All-reject review applies nothing → no recompute scheduled."""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     calls: list[tuple[str, str]] = []
     monkeypatch.setattr(
@@ -2544,7 +2544,7 @@ def test_executor_apply_declares_attribute_in_ontology(monkeypatch):
     so the enriched attribute is first-class schema (COG-112). Its provenance
     companions are deliberately NOT declared (ONTA-262: attr_meta metadata, never
     sibling attributes)."""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
@@ -2615,7 +2615,7 @@ def test_executor_stage_mode_does_not_declare(monkeypatch):
     """A stage job whose only result is a CONFLICT writes nothing yet → it must
     NOT declare attributes in the ontology. (ONTA-159: a stage FILL now writes +
     declares, so the no-declare case must be a held conflict.)"""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
@@ -2656,7 +2656,7 @@ def test_executor_stage_mode_does_not_declare(monkeypatch):
 def test_executor_no_match_does_not_declare(monkeypatch):
     """An attribute that found no value contributes no triples → it must NOT be
     declared (no ontology pollution with empty slots)."""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
@@ -2685,7 +2685,7 @@ def test_executor_no_match_does_not_declare(monkeypatch):
 def test_apply_decisions_declares_accepted_attribute(monkeypatch):
     """Accepting a review decision also extends the ontology (declares the
     accepted attribute + its provenance companions in the tenant graph)."""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
@@ -2745,7 +2745,7 @@ def test_executor_apply_infers_integer_range_for_numeric_values(monkeypatch):
     """A brand-new enriched attribute whose applied values are all numeric must be
     declared with an xsd:integer range — NOT blindly stamped xsd:string (the
     hardcoded-datatype bug)."""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
@@ -2796,7 +2796,7 @@ def test_executor_apply_does_not_downgrade_existing_richer_range(monkeypatch):
     """If an attribute already carries a richer range (an ingest-inferred
     xsd:integer, or a relationship types/<Target> URI), applying an enrichment job
     on it must PRESERVE that range — never silently downgrade it to xsd:string."""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
@@ -2918,7 +2918,7 @@ def _instance_inserts(neptune) -> list[str]:
 def test_executor_apply_infers_datetime_range_for_date_values(monkeypatch):
     """A brand-new enriched attribute whose applied values are all ISO dates must
     be declared with an xsd:dateTime range — NOT stamped xsd:string."""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
@@ -2970,7 +2970,7 @@ def test_executor_apply_entity_iri_values_declare_relationship_and_write_iri(mon
     attribute is declared with a ``types/Manufacturer`` relationship range AND the
     instance triple's OBJECT is written as an IRI ``<…/entities/…>`` (the shared
     writer auto-detects ``https://`` objects), never a quoted literal."""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
@@ -3033,7 +3033,7 @@ def test_executor_apply_does_not_downgrade_datetime_or_relationship_range(monkey
     """No-downgrade holds for the E2 ranges too: an existing xsd:dateTime or a
     relationship types/<Target> range survives an enrichment whose own values
     would infer something weaker."""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
@@ -3086,9 +3086,9 @@ def test_executor_apply_does_not_downgrade_datetime_or_relationship_range(monkey
 
 @pytest.fixture(autouse=True)
 def _reset_singletons():
-    from cograph_client.enrichment.cache import reset_enrichment_cache
-    from cograph_client.enrichment.job_store import reset_job_store
-    from cograph_client.enrichment.tiers import reset_tiers
+    from infona_client.enrichment.cache import reset_enrichment_cache
+    from infona_client.enrichment.job_store import reset_job_store
+    from infona_client.enrichment.tiers import reset_tiers
 
     reset_job_store()
     reset_enrichment_cache()
@@ -3135,7 +3135,7 @@ def test_post_jobs_holds_strong_ref_to_background_task(
     coroutine handed to the executor and assert create routes it through the
     module-level ``_spawn`` helper (which registers it in ``_bg_tasks``), never as
     a bare task."""
-    import cograph_client.api.routes.enrich as enrich_mod
+    import infona_client.api.routes.enrich as enrich_mod
 
     captured: list = []
     real_spawn = enrich_mod._spawn
@@ -3214,7 +3214,7 @@ def test_post_jobs_does_not_block_on_count_entities(
     guarantee): even if count_entities hangs/raises, create still returns a job
     id promptly. We monkeypatch the executor's count_entities to blow up if
     called and assert create succeeds without invoking it."""
-    from cograph_client.enrichment import executor as executor_mod
+    from infona_client.enrichment import executor as executor_mod
 
     async def _boom(*args, **kwargs):  # pragma: no cover - must never run
         raise AssertionError("count_entities must not be called in create path")
@@ -3297,8 +3297,8 @@ def test_get_job_404(client, auth_headers, mock_neptune):
 
 def test_conflicts_and_apply_flow(client, auth_headers, mock_neptune):
     """Seed a job directly, set a conflict result, then call /conflicts and /apply."""
-    from cograph_client.enrichment.job_store import get_job_store
-    from cograph_client.enrichment.models import RowResult
+    from infona_client.enrichment.job_store import get_job_store
+    from infona_client.enrichment.models import RowResult
 
     job = _make_job(policy=ConflictPolicy.stage)
     job.tenant_id = "test-tenant"
@@ -3456,8 +3456,8 @@ def test_adapter_cost_metadata_protocol():
     - The cograph-shipped WikidataAdapter declares free explicitly.
     - A malformed cost_per_call coerces to 0.0 (never raises).
     """
-    from cograph_client.enrichment.sources.base import adapter_cost
-    from cograph_client.enrichment.sources.wikidata import WikidataAdapter
+    from infona_client.enrichment.sources.base import adapter_cost
+    from infona_client.enrichment.sources.wikidata import WikidataAdapter
 
     class _Bare:  # declares nothing → free
         name = "bare"
@@ -3486,7 +3486,7 @@ def test_adapter_cost_metadata_protocol():
 
 
 def test_register_tier_and_get_chain():
-    from cograph_client.enrichment.tiers import (
+    from infona_client.enrichment.tiers import (
         get_chain,
         register_tier,
         reset_tiers,
@@ -3512,7 +3512,7 @@ def test_executor_skips_unregistered_adapter(caplog):
     """Chain with a missing adapter name should log a warning and not fail."""
     import logging
 
-    from cograph_client.enrichment.tiers import (
+    from infona_client.enrichment.tiers import (
         get_chain,
         register_tier,
         reset_tiers,
@@ -3592,7 +3592,7 @@ def _strategy_query_response(rows: list[dict]) -> dict:
 
 
 def test_load_strategy_returns_empty_when_no_triples():
-    from cograph_client.enrichment.strategy import load_strategy
+    from infona_client.enrichment.strategy import load_strategy
 
     async def run():
         neptune = AsyncMock()
@@ -3607,7 +3607,7 @@ def test_load_strategy_returns_empty_when_no_triples():
 
 
 def test_load_strategy_parses_attribute_triples():
-    from cograph_client.enrichment.strategy import load_strategy
+    from infona_client.enrichment.strategy import load_strategy
 
     type_uri = "https://graph.onta.sh/types/LineItem"
     mpn_uri = "https://graph.onta.sh/types/LineItem/attrs/mpn"
@@ -3650,7 +3650,7 @@ def test_load_strategy_parses_attribute_triples():
 
 def test_aliases_resolve_conflicts_to_verified():
     """Existing brand=KN, alias KN->K&N, verdict K&N -> verified, not conflict."""
-    from cograph_client.enrichment.tiers import reset_tiers
+    from infona_client.enrichment.tiers import reset_tiers
 
     type_uri = "https://graph.onta.sh/types/Product"
     brand_uri = "https://graph.onta.sh/types/Product/attrs/brand"
@@ -3719,7 +3719,7 @@ def test_aliases_resolve_conflicts_to_verified():
 
 
 def test_canonicalize_title_case_handles_ampersand():
-    from cograph_client.enrichment.canonicalize import apply_canonicalizer
+    from infona_client.enrichment.canonicalize import apply_canonicalizer
 
     assert apply_canonicalizer("title-case", "k&n filters") == "K&N Filters"
     assert apply_canonicalizer("title-case", "AT&T") == "AT&T"
@@ -3732,8 +3732,8 @@ def test_canonicalize_title_case_handles_ampersand():
 
 def test_enrichment_plugin_loaded_at_startup(monkeypatch):
     """Plugin's register() runs during create_app()."""
-    from cograph_client.api import app as app_module
-    from cograph_client.config import settings
+    from infona_client.api import app as app_module
+    from infona_client.config import settings
 
     monkeypatch.setattr(
         settings, "enrichment_plugin", "tests.fake_enrichment_plugin:register"
@@ -3751,8 +3751,8 @@ def test_enrichment_plugin_loaded_at_startup(monkeypatch):
 
 def test_enrichment_plugin_invalid_format_logged(monkeypatch):
     """Malformed plugin spec is logged but does not raise."""
-    from cograph_client.api import app as app_module
-    from cograph_client.config import settings
+    from infona_client.api import app as app_module
+    from infona_client.config import settings
 
     monkeypatch.setattr(settings, "enrichment_plugin", "no_colon_here")
     # Must not raise.
@@ -3825,8 +3825,8 @@ class _FakePaidAdapter:
 def _paid_core_chain():
     """Register a paid adapter and point the ``core`` tier chain at it, so
     ``chain_has_paid(core)`` is True in this OSS test. Restores defaults after."""
-    from cograph_client.enrichment.sources import base as base_mod
-    from cograph_client.enrichment.tiers import register_tier, reset_tiers
+    from infona_client.enrichment.sources import base as base_mod
+    from infona_client.enrichment.tiers import register_tier, reset_tiers
 
     adapter = _FakePaidAdapter()
     base_mod.register_adapter(adapter)
@@ -3841,7 +3841,7 @@ def _paid_core_chain():
 def test_resolve_auto_tier_no_key_falls_back_to_heuristic():
     """With no openrouter_key the resolver must NOT raise, must pick a concrete
     tier (never needs_clarification), and must set a routing_note."""
-    from cograph_client.enrichment.tier_router import resolve_auto_tier
+    from infona_client.enrichment.tier_router import resolve_auto_tier
 
     async def run():
         # Open-web fact → core, leaning paid.
@@ -3875,8 +3875,8 @@ def test_create_job_auto_needs_clarification_creates_no_job(
     """When the auto resolver returns needs_clarification, create returns status
     'needs_clarification' with candidates and creates NO job (the store stays
     empty / the executor is never spawned)."""
-    import cograph_client.api.routes.enrich as enrich_mod
-    from cograph_client.enrichment.tier_router import TierDecision
+    import infona_client.api.routes.enrich as enrich_mod
+    from infona_client.enrichment.tier_router import TierDecision
 
     async def _ambiguous(attributes, type_name, openrouter_key, timeout_s=8.0):
         return TierDecision(
@@ -3924,8 +3924,8 @@ def test_create_job_auto_resolves_core_lowers_confidence_to_web_floor(
     """auto → core (paid) with the DEFAULT confidence must create a job at core
     AND lower confidence_min to the web floor (0.4) so web verdicts actually
     land instead of all being filtered out."""
-    import cograph_client.api.routes.enrich as enrich_mod
-    from cograph_client.enrichment.tier_router import TierDecision
+    import infona_client.api.routes.enrich as enrich_mod
+    from infona_client.enrichment.tier_router import TierDecision
 
     async def _to_core(attributes, type_name, openrouter_key, timeout_s=8.0):
         return TierDecision(
@@ -4064,7 +4064,7 @@ def test_executor_apply_writes_typed_integer_literal(monkeypatch):
     """A numeric enriched value is stored as a TYPED literal
     ``"92"^^<…#integer>`` matching the declared integer range — NOT a bare
     ``"92"`` xsd:string literal the typed NL filters would miss (the P1 bug)."""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
@@ -4113,7 +4113,7 @@ def test_executor_apply_writes_comma_number_as_string_not_dropped(monkeypatch):
     plain string literal — NOT declared integer and then dropped by the validator
     (the comma data-loss regression the re-review flagged). Inference and the
     write-side validator agree: commas are not numeric."""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
@@ -4160,7 +4160,7 @@ def test_executor_apply_writes_comma_number_as_string_not_dropped(monkeypatch):
 def test_executor_apply_writes_typed_datetime_literal(monkeypatch):
     """A date enriched value is stored as a TYPED ``^^<…#dateTime>`` literal
     matching the declared dateTime range."""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
@@ -4203,7 +4203,7 @@ def test_executor_apply_writes_entity_iri_object(monkeypatch):
     """An entity-IRI enriched value is written as an IRI object
     ``<https://graph.onta.sh/entities/…>`` (a relationship edge), never a quoted
     literal, and is declared with a relationship (types/<Target>) range."""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
@@ -4256,7 +4256,7 @@ def test_executor_apply_skips_value_not_conforming_to_existing_range(monkeypatch
     value ("five stars") is REJECTED (no instance triple written) while a
     conforming numeric value IS written as a typed literal. The P1 guarantee:
     we never PIN a mismatched literal under a declared richer range."""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
@@ -4320,7 +4320,7 @@ def test_executor_apply_provenance_stays_plain_string(monkeypatch):
     """The provenance companions (``*_source_url`` / ``*_provenance``) stay PLAIN
     string literals even when the primary value is typed — they are user-facing
     citations, never typed as anything richer."""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
@@ -4404,7 +4404,7 @@ def test_provenance_triples_stamps_per_fact_verified_at():
     (``FILTER(?x >= "…"^^xsd:dateTime)``); an untyped string would be
     type-incompatible in SPARQL and the row would be SILENTLY DROPPED."""
     from datetime import datetime as _dt
-    from cograph_client.graph.queries import _escape_value
+    from infona_client.graph.queries import _escape_value
 
     XSD_DT = "http://www.w3.org/2001/XMLSchema#dateTime"
 
@@ -4454,7 +4454,7 @@ def test_apply_decisions_writes_typed_integer_literal(monkeypatch):
     """The review-apply path (apply_decisions) also types the accepted value:
     a numeric accepted value is stored as ``"92"^^<…#integer>``, matching the
     declared range — same P1 fix as the auto-apply run() path."""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 

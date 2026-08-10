@@ -9,15 +9,15 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from cograph_client.auth.api_keys import TenantContext
-from cograph_client.enrichment.job_store import InMemoryJobStore
-from cograph_client.enrichment.models import JobCategory, JobStatus
-from cograph_client.models.query import NLResult
-from cograph_client.pipeline.answer_run import (
+from infona_client.auth.api_keys import TenantContext
+from infona_client.enrichment.job_store import InMemoryJobStore
+from infona_client.enrichment.models import JobCategory, JobStatus
+from infona_client.models.query import NLResult
+from infona_client.pipeline.answer_run import (
     answer_run_lookup_path,
     record_answer_run,
 )
-from cograph_client.pipeline.stage_trace import (
+from infona_client.pipeline.stage_trace import (
     StageProjectId,
     StageStatus,
     resolve_trace,
@@ -125,8 +125,8 @@ async def test_record_answer_run_noop_without_store_or_question():
 
 @pytest.mark.asyncio
 async def test_query_capability_returns_run_id_and_persists_job():
-    from cograph_client.agent.capabilities.query import QueryCapability
-    from cograph_client.agent.registry import AgentContext
+    from infona_client.agent.capabilities.query import QueryCapability
+    from infona_client.agent.registry import AgentContext
 
     store = InMemoryJobStore()
     ctx = AgentContext(
@@ -150,7 +150,7 @@ async def test_query_capability_returns_run_id_and_persists_job():
     async def _fake_ask(self, question, ontology_graph, instance_graph, **kw):
         return fake_result
 
-    from cograph_client.nlp.pipeline import NLQueryPipeline
+    from infona_client.nlp.pipeline import NLQueryPipeline
 
     original = NLQueryPipeline.ask
     NLQueryPipeline.ask = _fake_ask  # type: ignore[method-assign]
@@ -172,9 +172,9 @@ async def test_query_capability_returns_run_id_and_persists_job():
 
 @pytest.mark.asyncio
 async def test_query_capability_no_store_still_answers():
-    from cograph_client.agent.capabilities.query import QueryCapability
-    from cograph_client.agent.registry import AgentContext
-    from cograph_client.nlp.pipeline import NLQueryPipeline
+    from infona_client.agent.capabilities.query import QueryCapability
+    from infona_client.agent.registry import AgentContext
+    from infona_client.nlp.pipeline import NLQueryPipeline
 
     ctx = AgentContext(
         tenant_id="demo-tenant",
@@ -200,9 +200,9 @@ async def test_query_capability_no_store_still_answers():
 @pytest.mark.asyncio
 async def test_operator_trace_for_answer_run():
     """Documented path: run_id from answer → GET /operator/jobs/{id}/trace."""
-    from cograph_client.api.routes import operator as operator_routes
-    from cograph_client.api.deps import get_enrichment_job_store
-    from cograph_client.auth import api_keys
+    from infona_client.api.routes import operator as operator_routes
+    from infona_client.api.deps import get_enrichment_job_store
+    from infona_client.auth import api_keys
 
     store = InMemoryJobStore()
     run_id = await record_answer_run(
@@ -243,7 +243,7 @@ async def test_operator_trace_for_answer_run():
 
 def test_ask_route_attaches_run_id(client, auth_headers):
     """POST /ask returns run_id; job is lookup-able for Job Trace."""
-    from cograph_client.api.deps import get_enrichment_job_store
+    from infona_client.api.deps import get_enrichment_job_store
     from unittest.mock import patch
 
     store = InMemoryJobStore()
@@ -252,7 +252,7 @@ def test_ask_route_attaches_run_id(client, auth_headers):
     try:
         ok = NLResult(answer="42", sparql="SELECT ...", explanation="e")
         with patch(
-            "cograph_client.api.routes.ask.NLQueryPipeline.ask",
+            "infona_client.api.routes.ask.NLQueryPipeline.ask",
             new_callable=AsyncMock,
             return_value=ok,
         ):
@@ -275,14 +275,14 @@ def test_ask_route_attaches_run_id(client, auth_headers):
 
 
 def test_reconstruct_answer_category_surfaces_p7():
-    from cograph_client.enrichment.models import (
+    from infona_client.enrichment.models import (
         ConflictPolicy,
         EnrichJob,
         EnrichmentTier,
         JobCategory,
         JobStatus,
     )
-    from cograph_client.pipeline.stage_trace import reconstruct_from_job
+    from infona_client.pipeline.stage_trace import reconstruct_from_job
 
     job = EnrichJob(
         id="ans-1",

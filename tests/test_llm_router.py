@@ -2,7 +2,7 @@
 
 import pytest
 
-from cograph_client.resolver import llm_router
+from infona_client.resolver import llm_router
 
 
 def _capturing_client(monkeypatch, payload: dict, capture: dict):

@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from cograph_client.graph.aliases import (
+from infona_client.graph.aliases import (
     ALIAS_OF,
     AliasStillReferencedError,
     backfill_aliases,
@@ -25,8 +25,8 @@ from cograph_client.graph.aliases import (
     retire_alias,
     rewrite_query_attrs,
 )
-from cograph_client.graph.client import NeptuneClient
-from cograph_client.nlp.pipeline import NLQueryPipeline
+from infona_client.graph.client import NeptuneClient
+from infona_client.nlp.pipeline import NLQueryPipeline
 
 ONTO_GRAPH = "https://graph.onta.sh/graphs/t-alias"
 DATA_GRAPH = "https://graph.onta.sh/graphs/t-alias/kg/main"
@@ -258,7 +258,7 @@ async def test_pipeline_default_off_no_alias_query_no_rewrite(mock_neptune, monk
     assert pipeline._aliases_enabled is False
 
     generated = f"SELECT ?v WHERE {{ ?g <{PHONE_NUM}> ?v }}"
-    with patch("cograph_client.nlp.pipeline.get_embedding_service", return_value=None), \
+    with patch("infona_client.nlp.pipeline.get_embedding_service", return_value=None), \
          patch.object(pipeline, "_fetch_ontology", new=AsyncMock(return_value="Type: Guest")), \
          patch.object(pipeline.anthropic.messages, "create", new_callable=AsyncMock) as mock_create:
         mock_create.return_value = _llm_message(generated)
@@ -283,7 +283,7 @@ async def test_pipeline_enabled_rewrites_aliased_attr(mock_neptune, monkeypatch)
         _alias_bindings((PHONE_NUM, PHONE)),  # alias-map fetch
         _exec_result(),                       # query execution
     ]
-    with patch("cograph_client.nlp.pipeline.get_embedding_service", return_value=None), \
+    with patch("infona_client.nlp.pipeline.get_embedding_service", return_value=None), \
          patch.object(pipeline, "_fetch_ontology", new=AsyncMock(return_value="Type: Guest")), \
          patch.object(pipeline.anthropic.messages, "create", new_callable=AsyncMock) as mock_create:
         mock_create.return_value = _llm_message(generated)
@@ -307,7 +307,7 @@ async def test_pipeline_enabled_zero_aliases_unchanged(mock_neptune, monkeypatch
         {"head": {"vars": ["old", "new"]}, "results": {"bindings": []}},
         _exec_result(),
     ]
-    with patch("cograph_client.nlp.pipeline.get_embedding_service", return_value=None), \
+    with patch("infona_client.nlp.pipeline.get_embedding_service", return_value=None), \
          patch.object(pipeline, "_fetch_ontology", new=AsyncMock(return_value="Type: Guest")), \
          patch.object(pipeline.anthropic.messages, "create", new_callable=AsyncMock) as mock_create:
         mock_create.return_value = _llm_message(generated)

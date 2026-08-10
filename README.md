@@ -2,7 +2,7 @@
 
 Turn any CSV into a context graph — a knowledge graph you can query in natural language.
 
-**Product:** [infona.ai](https://infona.ai) · **Company:** Onta Labs Inc.
+**Product:** [infona.ai](https://infona.ai) · **Company:** Infona
 
 One LLM call infers the schema. All rows are mapped deterministically. Ask questions, get answers backed by SPARQL.
 
@@ -33,11 +33,11 @@ pip install -e ".[neo4j]"   # or pip install -e ".[dev]"
 ```
 
 Bootstrap constraints/indexes (idempotent; required before uniqueness-sensitive
-writes — see `cograph_client/graph/schema_bootstrap.py`):
+writes — see `infona_client/graph/schema_bootstrap.py`):
 
 ```python
 import asyncio
-from cograph_client.graph.store import get_graph_store
+from infona_client.graph.store import get_graph_store
 
 async def main():
     store = get_graph_store()
@@ -65,6 +65,15 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e .
 ```
 
+> **Python import path:** the package installs as `infona-client` on PyPI; import
+> `infona_client` (canonical). The legacy `cograph_client` import still works as a
+> deprecation shim. Graph IRIs under `https://cograph.tech/` are frozen technical IDs.
+
+> **CLI bins:** primary command is `infona`; `onta` is kept as a compatibility alias.
+> MCP: `infona-mcp` (primary), `onta-mcp` (alias).
+
+
+
 ### 3. Configure
 
 ```bash
@@ -76,7 +85,7 @@ cp .env.example .env
 ### 4. Start the server
 
 ```bash
-source .env && uvicorn cograph_client.api.app:create_app --factory --port 8000
+source .env && uvicorn infona_client.api.app:create_app --factory --port 8000
 ```
 
 ### 5. Ingest and query
@@ -86,13 +95,13 @@ source .env && uvicorn cograph_client.api.app:create_app --factory --port 8000
 npm install -g @infona-ai/cli
 
 # Ingest the sample dataset (--local targets http://localhost:8000)
-onta --local ingest examples/bookstore.csv --kg bookstore
+infona --local ingest examples/bookstore.csv --kg bookstore
 
 # Ask questions
-onta --local ask "How many books are there?" --kg bookstore
-onta --local ask "Which genre has the most books?" --kg bookstore
-onta --local ask "What is the average price of Dystopian books?" --kg bookstore
-onta --local ask "List all books by J.R.R. Tolkien" --kg bookstore
+infona --local ask "How many books are there?" --kg bookstore
+infona --local ask "Which genre has the most books?" --kg bookstore
+infona --local ask "What is the average price of Dystopian books?" --kg bookstore
+infona --local ask "List all books by J.R.R. Tolkien" --kg bookstore
 ```
 
 No API key needed for local usage. No AWS account needed.
@@ -121,7 +130,7 @@ Natural Language Query -> SPARQL -> Answer
 
 ## CLI
 
-The Node CLI (`npm install -g @infona-ai/cli`, requires Node 20+) covers both an interactive shell and one-shot subcommands. Run bare `onta` to drop into the shell:
+The Node CLI (`npm install -g @infona-ai/cli`, requires Node 20+) covers both an interactive shell and one-shot subcommands. Run bare `infona` to drop into the shell:
 
 ```text
   /ingest <file>      Ingest a CSV/JSON/text file
@@ -145,12 +154,12 @@ The Node CLI (`npm install -g @infona-ai/cli`, requires Node 20+) covers both an
 The CLI runs against a self-hosted backend without a hosted-version account — pass `--local` (or `--no-login`) to skip the browser sign-in:
 
 ```bash
-onta --local                                   # defaults to http://localhost:8000
-onta --no-login                                # uses INFONA_API_URL env var
-INFONA_API_URL=http://my-host:8000 onta
+infona --local                                   # defaults to http://localhost:8000
+infona --no-login                                # uses INFONA_API_URL env var
+INFONA_API_URL=http://my-host:8000 infona
 ```
 
-When self-hosted, the prompt shows the host suffix: `onta@localhost:8000 (kg) ▸`. The backend detects open-access vs auth-required mode by looking at `OMNIX_API_KEYS` — empty means no auth, `tenant=default`.
+When self-hosted, the prompt shows the host suffix: `infona@localhost:8000 (kg) ▸`. The backend detects open-access vs auth-required mode by looking at `OMNIX_API_KEYS` — empty means no auth, `tenant=default`.
 
 ### Auto-enrichment
 
@@ -178,21 +187,21 @@ Or one-shot, useful in scripts and CI:
 
 ```bash
 # Ingest
-onta ingest data.csv --kg my-dataset
+infona ingest data.csv --kg my-dataset
 
 # Query
-onta ask "How many records are there?" --kg my-dataset
+infona ask "How many records are there?" --kg my-dataset
 
 # Manage KGs
-onta kg list
-onta kg create my-dataset -d "Description"
-onta kg delete my-dataset
+infona kg list
+infona kg create my-dataset -d "Description"
+infona kg delete my-dataset
 
 # View ontology (legacy — prefer /types and /type in the shell)
-onta ontology types
+infona ontology types
 
 # Clear data
-onta clear --kg my-dataset -y
+infona clear --kg my-dataset -y
 ```
 
 ## MCP Server (AI Agent Integration)
@@ -204,7 +213,7 @@ Connect Infona to Claude, Cursor, Windsurf, or any MCP-compatible agent:
   "mcpServers": {
     "infona": {
       "command": "npx",
-      "args": ["-y", "-p", "@infona-ai/mcp", "onta-mcp"],
+      "args": ["-y", "-p", "@infona-ai/mcp", "infona-mcp"],
       "env": {
         "INFONA_API_KEY": "your-key",
         "INFONA_TENANT": "your-workspace-id"

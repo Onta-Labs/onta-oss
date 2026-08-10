@@ -8,15 +8,15 @@ from __future__ import annotations
 
 import pytest
 
-from cograph_client.graph.labels import (
+from infona_client.graph.labels import (
     RESERVED_SYSTEM_LABELS,
     entity_set_labels_cypher,
     sanitize_domain_label,
     set_entity_type_labels,
 )
-from cograph_client.graph.memory_store import MemoryGraphStore
-from cograph_client.graph.queries import InvalidKGName, InvalidTenantId
-from cograph_client.graph.schema_bootstrap import (
+from infona_client.graph.memory_store import MemoryGraphStore
+from infona_client.graph.queries import InvalidKGName, InvalidTenantId
+from infona_client.graph.schema_bootstrap import (
     ENTITY_GET_CYPHER,
     ENTITY_LIST_BY_TYPE_CYPHER,
     ENTITY_MERGE_CYPHER,
@@ -25,7 +25,7 @@ from cograph_client.graph.schema_bootstrap import (
     bootstrap_schema_statements,
     get_template,
 )
-from cograph_client.graph.scope import (
+from infona_client.graph.scope import (
     ENHANCED_KG,
     GLOBAL_TENANT_ID,
     ONTOLOGY_KG,
@@ -33,7 +33,7 @@ from cograph_client.graph.scope import (
     GraphScope,
     GraphScopeError,
 )
-from cograph_client.graph.store import (
+from infona_client.graph.store import (
     GraphConfigError,
     GraphQueryError,
     GraphRecord,
@@ -593,7 +593,7 @@ def test_sanitize_domain_label_b1_rules():
 @pytest.mark.asyncio
 async def test_neo4j_session_missing_id_fail_closed_without_driver():
     """F4: Neo4j session path fails closed on missing id before _run (no docker)."""
-    from cograph_client.graph.neo4j_store import Neo4jGraphSession
+    from infona_client.graph.neo4j_store import Neo4jGraphSession
 
     class _BoomStore:
         async def _run(self, *args, **kwargs):
@@ -712,7 +712,7 @@ def test_store_module_does_not_import_neo4j():
     import ast
     from pathlib import Path
 
-    src = Path(__file__).resolve().parents[1] / "cograph_client" / "graph" / "store.py"
+    src = Path(__file__).resolve().parents[1] / "infona_client" / "graph" / "store.py"
     tree = ast.parse(src.read_text())
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -726,7 +726,7 @@ def test_scope_module_does_not_import_neo4j():
     import ast
     from pathlib import Path
 
-    src = Path(__file__).resolve().parents[1] / "cograph_client" / "graph" / "scope.py"
+    src = Path(__file__).resolve().parents[1] / "infona_client" / "graph" / "scope.py"
     tree = ast.parse(src.read_text())
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):

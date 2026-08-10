@@ -51,13 +51,13 @@ from pathlib import Path
 
 import pytest
 
-from cograph_client.semantic import InMemorySemanticIndex, SemanticChunk
-from cograph_client.semantic.extract import (
+from infona_client.semantic import InMemorySemanticIndex, SemanticChunk
+from infona_client.semantic.extract import (
     MAX_CHUNK_CHARS,
     extract_semantic_chunks,
 )
-from cograph_client.semantic.postgres import PostgresSemanticIndex
-from cograph_client.semantic.protocol import IDENTITY_ATTR
+from infona_client.semantic.postgres import PostgresSemanticIndex
+from infona_client.semantic.protocol import IDENTITY_ATTR
 
 DSN = os.environ.get("OMNIX_DATABASE_URL", "")
 needs_pg_reason = "OMNIX_DATABASE_URL not set; needs live Postgres with pgvector"
@@ -172,7 +172,7 @@ async def backend(request):
         return
     if not DSN:
         pytest.skip(needs_pg_reason)
-    from cograph_client.db.pool import close_pg_pools, reset_pg_pools
+    from infona_client.db.pool import close_pg_pools, reset_pg_pools
 
     reset_pg_pools()
     idx = PostgresSemanticIndex(dsn=DSN, embed_model=GOLDEN_MODEL, embed_dim=DIM)

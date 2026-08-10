@@ -13,7 +13,7 @@ This IS the P1 discovery-quality bar. For each fixture goal in
   3. collects the rows the discovery run SURFACED (recorded at the provider
      boundary, so the metric is immune to whatever internal bundle/dedupe the
      rail does — a sibling P1 ticket is refactoring those internals), and
-  4. scores them with ``cograph_client.pipeline.find_metrics`` and asserts the
+  4. scores them with ``infona_client.pipeline.find_metrics`` and asserts the
      metric bundle against the fixture's expected verdict.
 
 Load-bearing control: ``padded_gadgets.json`` is deliberately gamed (near-dup
@@ -35,23 +35,23 @@ from dataclasses import dataclass
 import pytest
 from unittest.mock import MagicMock
 
-from cograph_client.agent.capabilities import web_ingest_cap
-from cograph_client.agent.capabilities.web_ingest_cap import WebIngestCapability
-from cograph_client.agent.registry import AgentContext
-from cograph_client.enrichment.job_store import InMemoryJobStore
-from cograph_client.enrichment.models import JobStatus
-from cograph_client.pipeline.find_metrics import FindMetrics, Thresholds, score_find
-from cograph_client.resolver.models import IngestResult
-from cograph_client.resolver.schema_resolver import (
+from infona_client.agent.capabilities import web_ingest_cap
+from infona_client.agent.capabilities.web_ingest_cap import WebIngestCapability
+from infona_client.agent.registry import AgentContext
+from infona_client.enrichment.job_store import InMemoryJobStore
+from infona_client.enrichment.models import JobStatus
+from infona_client.pipeline.find_metrics import FindMetrics, Thresholds, score_find
+from infona_client.resolver.models import IngestResult
+from infona_client.resolver.schema_resolver import (
     SchemaResolver,
     _is_fabricated_placeholder,
 )
-from cograph_client.web_sources import (
+from infona_client.web_sources import (
     DiscoverResult,
     register_web_source,
     reset_web_sources,
 )
-from cograph_client.web_sources.base import source_cost
+from infona_client.web_sources.base import source_cost
 
 FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "fixtures", "p1_goals")
 FIXTURE_PATHS = sorted(glob.glob(os.path.join(FIXTURE_DIR, "*.json")))

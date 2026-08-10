@@ -24,14 +24,14 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from cograph_client.resolver import chunker
-from cograph_client.resolver.schema_resolver import SchemaResolver
-from cograph_client.resolver.models import (
+from infona_client.resolver import chunker
+from infona_client.resolver.schema_resolver import SchemaResolver
+from infona_client.resolver.models import (
     ExtractedAttribute,
     ExtractedEntity,
     ExtractionResult,
 )
-from cograph_client.resolver.verdict_cache import JsonVerdictCache
+from infona_client.resolver.verdict_cache import JsonVerdictCache
 
 
 @pytest.fixture
@@ -310,7 +310,7 @@ def _capture_parse_error_truncated(monkeypatch) -> dict:
     """Spy on the resolver logger so a test can read the ``truncated`` kwarg the
     ``extraction_parse_error`` warning carries — robust to structlog's rendering
     (caplog doesn't reliably capture structlog kwargs)."""
-    from cograph_client.resolver import schema_resolver as sr
+    from infona_client.resolver import schema_resolver as sr
 
     captured: dict = {}
     orig = sr.logger.warning
@@ -379,7 +379,7 @@ async def test_dense_five_record_page_no_length_truncation_first_try(
     split_retries: list = []
 
     # Spy on the recovery split log so we can assert it did NOT fire.
-    from cograph_client.resolver import schema_resolver as sr_mod
+    from infona_client.resolver import schema_resolver as sr_mod
 
     orig_warning = sr_mod.logger.warning
 

@@ -11,7 +11,7 @@ the path.
 import pytest
 from fastapi import HTTPException
 
-from cograph_client.auth.api_keys import (
+from infona_client.auth.api_keys import (
     AuthVerdict,
     TenantContext,
     get_tenant,
@@ -27,7 +27,7 @@ def _clear_verifier():
 
 @pytest.fixture
 def open_access(monkeypatch):
-    monkeypatch.setattr("cograph_client.auth.api_keys.settings.api_keys", "{}")
+    monkeypatch.setattr("infona_client.auth.api_keys.settings.api_keys", "{}")
 
 
 def test_multi_tenant_key_routes_to_requested_tenant(open_access):
@@ -119,7 +119,7 @@ def test_static_key_path_mismatch_is_403(monkeypatch):
     """Dogfood S3: a static key for tenant-acme used with path tenant-beta
     must 403 — never silently serve acme data under the beta path."""
     monkeypatch.setattr(
-        "cograph_client.auth.api_keys.settings.api_keys",
+        "infona_client.auth.api_keys.settings.api_keys",
         '{"static-key": "static-tenant"}',
     )
     with pytest.raises(HTTPException) as exc:
@@ -131,7 +131,7 @@ def test_static_key_path_mismatch_is_403(monkeypatch):
 
 def test_static_key_path_match_works(monkeypatch):
     monkeypatch.setattr(
-        "cograph_client.auth.api_keys.settings.api_keys",
+        "infona_client.auth.api_keys.settings.api_keys",
         '{"static-key": "static-tenant"}',
     )
     ctx = get_tenant(tenant="static-tenant", api_key="static-key")
@@ -141,7 +141,7 @@ def test_static_key_path_match_works(monkeypatch):
 def test_static_key_path_omitted_uses_key_tenant(monkeypatch):
     """Back-compat for clients that only send the key (no path tenant)."""
     monkeypatch.setattr(
-        "cograph_client.auth.api_keys.settings.api_keys",
+        "infona_client.auth.api_keys.settings.api_keys",
         '{"static-key": "static-tenant"}',
     )
     ctx = get_tenant(tenant=None, api_key="static-key")
@@ -180,7 +180,7 @@ def test_static_key_is_non_operator(monkeypatch):
     """A static key has no identity → non-operator (so dev-key-001 never sees
     the operator-only view)."""
     monkeypatch.setattr(
-        "cograph_client.auth.api_keys.settings.api_keys",
+        "infona_client.auth.api_keys.settings.api_keys",
         '{"static-key": "static-tenant"}',
     )
     ctx = get_tenant(tenant="static-tenant", api_key="static-key")

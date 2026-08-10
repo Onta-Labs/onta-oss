@@ -7,9 +7,9 @@ TypeMatch verdicts keyed by phrase — so no network, no Neptune, no embeddings.
 
 import pytest
 
-from cograph_client.models.ontology import ResolutionResult, ResolvedChange
-from cograph_client.resolver.models import MatchVerdict, TypeMatch
-from cograph_client.resolver.ontology_resolver import (
+from infona_client.models.ontology import ResolutionResult, ResolvedChange
+from infona_client.resolver.models import MatchVerdict, TypeMatch
+from infona_client.resolver.ontology_resolver import (
     OntologyResolver,
     TypeInventory,
     build_inventory,

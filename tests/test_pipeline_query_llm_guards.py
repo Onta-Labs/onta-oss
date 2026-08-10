@@ -25,8 +25,8 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
-from cograph_client.nlp import pipeline as pipeline_mod
-from cograph_client.nlp.pipeline import NLQueryPipeline, _require_message_content
+from infona_client.nlp import pipeline as pipeline_mod
+from infona_client.nlp.pipeline import NLQueryPipeline, _require_message_content
 
 # Capture the REAL AsyncClient before any patch: patching
 # `pipeline_mod.httpx.AsyncClient` mutates the shared httpx module attribute, so

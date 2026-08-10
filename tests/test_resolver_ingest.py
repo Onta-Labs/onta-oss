@@ -42,10 +42,10 @@ def test_ingest_requires_content(client, auth_headers):
     assert response.status_code == 422
 
 
-@patch("cograph_client.api.routes.ingest.SchemaResolver")
+@patch("infona_client.api.routes.ingest.SchemaResolver")
 def test_ingest_returns_result(mock_resolver_cls, client, auth_headers):
     """Test that ingest endpoint calls resolver and returns result."""
-    from cograph_client.resolver.models import IngestResult
+    from infona_client.resolver.models import IngestResult
     mock_instance = AsyncMock()
     mock_instance.ingest.return_value = IngestResult(
         entities_extracted=2,
@@ -107,11 +107,11 @@ def _extension_mapping() -> dict:
     }
 
 
-@patch("cograph_client.api.routes.ingest.SchemaResolver")
+@patch("infona_client.api.routes.ingest.SchemaResolver")
 def test_csv_rows_preregisters_promoted_types_and_core_slots(
     mock_resolver_cls, client, auth_headers, mock_neptune,
 ):
-    from cograph_client.resolver.models import IngestResult
+    from infona_client.resolver.models import IngestResult
 
     mock_instance = AsyncMock()
     mock_instance._fetch_ontology.return_value = ({}, {})
@@ -146,7 +146,7 @@ def test_csv_rows_preregisters_promoted_types_and_core_slots(
                    for u in updates), slot
 
 
-@patch("cograph_client.api.routes.ingest.SchemaResolver")
+@patch("infona_client.api.routes.ingest.SchemaResolver")
 def test_csv_rows_core_slot_preregistration_uses_attribute_schema(
     mock_resolver_cls, client, auth_headers, mock_neptune,
 ):
@@ -154,8 +154,8 @@ def test_csv_rows_core_slot_preregistration_uses_attribute_schema(
     AttributeSchema, NOT bare marker strings. A str there crashes the insert
     pass with `'str' object has no attribute 'datatype'` the moment any ingested
     entity of the extension type has an attribute matching the slot name."""
-    from cograph_client.resolver.attribute_resolver import AttributeSchema
-    from cograph_client.resolver.models import IngestResult
+    from infona_client.resolver.attribute_resolver import AttributeSchema
+    from infona_client.resolver.models import IngestResult
 
     mock_instance = AsyncMock()
     mock_instance._fetch_ontology.return_value = ({}, {})
@@ -184,11 +184,11 @@ def test_csv_rows_core_slot_preregistration_uses_attribute_schema(
     assert code_slots["code"].datatype == "string"
 
 
-@patch("cograph_client.api.routes.ingest.SchemaResolver")
+@patch("infona_client.api.routes.ingest.SchemaResolver")
 def test_csv_rows_without_extensions_writes_no_core_slots(
     mock_resolver_cls, client, auth_headers, mock_neptune,
 ):
-    from cograph_client.resolver.models import IngestResult
+    from infona_client.resolver.models import IngestResult
 
     mock_instance = AsyncMock()
     mock_instance._fetch_ontology.return_value = ({}, {})

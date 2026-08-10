@@ -14,14 +14,14 @@ import json
 
 import pytest
 
-from cograph_client.agent.capabilities import web_ingest_cap
-from cograph_client.agent.capabilities.web_ingest_cap import (
+from infona_client.agent.capabilities import web_ingest_cap
+from infona_client.agent.capabilities.web_ingest_cap import (
     WebIngestCapability,
     _merge_registry_ensemble,
     _rebuild_registry_sources,
 )
-from cograph_client.agent.registry import AgentContext, PlanStep
-from cograph_client.api_registry import (
+from infona_client.agent.registry import AgentContext, PlanStep
+from infona_client.api_registry import (
     ApiCallResult,
     MODE_API_ONLY,
     MODE_API_PLUS_WEB,
@@ -29,9 +29,9 @@ from cograph_client.api_registry import (
     RoutingDecision,
     RoutingPick,
 )
-from cograph_client.api_registry.catalog import reset_api_source_layers
-from cograph_client.resolver.schema_resolver import IngestResult, SchemaResolver
-from cograph_client.web_sources.base import (
+from infona_client.api_registry.catalog import reset_api_source_layers
+from infona_client.resolver.schema_resolver import IngestResult, SchemaResolver
+from infona_client.web_sources.base import (
     DiscoverResult,
     register_web_source,
     reset_web_sources,
@@ -115,11 +115,11 @@ async def test_rebuild_registry_sources_empty_when_absent():
 
 
 def test_record_requests_accumulates_caps_and_skips_malformed():
-    from cograph_client.agent.capabilities.web_ingest_cap import (
+    from infona_client.agent.capabilities.web_ingest_cap import (
         _MAX_REQUEST_TRACES_PER_PROVIDER,
         _record_requests,
     )
-    from cograph_client.enrichment.models import ProviderLog
+    from infona_client.enrichment.models import ProviderLog
 
     plog = ProviderLog(provider="api:nppes")
     _record_requests(plog, [
@@ -148,7 +148,7 @@ def test_record_requests_accumulates_caps_and_skips_malformed():
 def test_old_job_without_requests_field_deserializes():
     # Jobs whose provider_logs predate the `requests` field (and jobs with no
     # provider_logs at all) must load unchanged, with requests defaulting to [].
-    from cograph_client.enrichment.models import EnrichJob
+    from infona_client.enrichment.models import EnrichJob
 
     old = {
         "id": "j0", "tenant_id": "t", "kg_name": "docs", "type_name": "Physician",
@@ -165,7 +165,7 @@ def test_old_job_without_requests_field_deserializes():
 def test_provider_log_request_trace_survives_json_round_trip():
     # The persisted job serializes ProviderLog.requests to JSON and back
     # unchanged (the PostgresJobStore path), so the trace reaches the UI.
-    from cograph_client.enrichment.models import ApiRequestTrace, EnrichJob, ProviderLog
+    from infona_client.enrichment.models import ApiRequestTrace, EnrichJob, ProviderLog
 
     job = EnrichJob.model_validate({
         "id": "j1", "tenant_id": "t", "kg_name": "docs", "type_name": "Physician",

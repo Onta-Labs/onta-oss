@@ -33,8 +33,8 @@ from fastapi.testclient import TestClient
 os.environ["OMNIX_API_KEYS"] = '{"test-key": "test-tenant"}'
 os.environ["OMNIX_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
 
-from cograph_client.api.app import create_app
-from cograph_client.graph.client import NeptuneClient
+from infona_client.api.app import create_app
+from infona_client.graph.client import NeptuneClient
 
 TENANT = "test-tenant"
 KG = "movies"
@@ -124,7 +124,7 @@ def _gate_on(monkeypatch):
     # The slowapi limiter is a MODULE-GLOBAL whose counters outlive the per-test
     # app, so without this every request in this file shares one 60/min bucket
     # and the file would start 429ing itself as it grows. Reset per test.
-    from cograph_client.api.rate_limit import limiter
+    from infona_client.api.rate_limit import limiter
 
     limiter.reset()
     yield

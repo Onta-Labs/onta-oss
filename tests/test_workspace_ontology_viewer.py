@@ -19,29 +19,29 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from cograph_client.api.deps import get_neptune_client
-from cograph_client.api.routes import ontology as ontology_routes
-from cograph_client.api.routes import operator as operator_routes
-from cograph_client.auth import api_keys
-from cograph_client.auth.api_keys import TenantContext
-from cograph_client.graph.entitlement import register_entitlement_checker
-from cograph_client.graph.global_ontology import fetch_global_ontology, fetch_ontology
-from cograph_client.graph.layers import (
+from infona_client.api.deps import get_neptune_client
+from infona_client.api.routes import ontology as ontology_routes
+from infona_client.api.routes import operator as operator_routes
+from infona_client.auth import api_keys
+from infona_client.auth.api_keys import TenantContext
+from infona_client.graph.entitlement import register_entitlement_checker
+from infona_client.graph.global_ontology import fetch_global_ontology, fetch_ontology
+from infona_client.graph.layers import (
     Layer,
     LayerStack,
     enhanced_graph_uri,
     public_graph_uri,
 )
-from cograph_client.graph.queries import tenant_graph_uri
-from cograph_client.skills.models import TypeSkill
-from cograph_client.skills.store import InMemoryTypeSkillStore, reset_type_skill_store
+from infona_client.graph.queries import tenant_graph_uri
+from infona_client.skills.models import TypeSkill
+from infona_client.skills.store import InMemoryTypeSkillStore, reset_type_skill_store
 
-from cograph_client.api_registry.catalog import (
+from infona_client.api_registry.catalog import (
     LAYER_TENANT_CUSTOM,
     reset_api_source_catalog,
     set_tenant_custom_specs,
 )
-from cograph_client.api_registry.spec import ApiSourceSpec
+from infona_client.api_registry.spec import ApiSourceSpec
 
 from tests.test_global_ontology_browser import (
     ENH,
@@ -244,7 +244,7 @@ async def test_tenant_custom_sources_isolated_and_visible_to_owner():
     set_tenant_custom_specs(TENANT_A, [_spec("acme_pms", ["hotel", "lodging"])])
     set_tenant_custom_specs(TENANT_B, [_spec("globex_crs", ["hotel", "property"])])
 
-    from cograph_client.api_registry.catalog import get_api_source_catalog
+    from infona_client.api_registry.catalog import get_api_source_catalog
 
     body_a = await fetch_ontology(
         neptune,
@@ -286,7 +286,7 @@ async def test_tenant_skills_isolated_and_visible_to_owner():
     neptune = _seeded_private_hotels()
     store = InMemoryTypeSkillStore()
     # Pin the process-wide store so fetch_ontology's make_type_skill_store hits it.
-    import cograph_client.skills.store as skill_store_mod
+    import infona_client.skills.store as skill_store_mod
 
     skill_store_mod._store = store  # type: ignore[attr-defined]
     await store.upsert(
@@ -352,8 +352,8 @@ async def test_operator_fetch_global_has_no_tenant_fields_or_custom():
     """Operator payload must stay free of workspace private overlays."""
     neptune = _seeded_private_hotels()
     set_tenant_custom_specs(TENANT_A, [_spec("acme_pms", ["hotel"])])
-    import cograph_client.skills.store as skill_store_mod
-    from cograph_client.skills.store import InMemoryTypeSkillStore
+    import infona_client.skills.store as skill_store_mod
+    from infona_client.skills.store import InMemoryTypeSkillStore
 
     store = InMemoryTypeSkillStore()
     skill_store_mod._store = store  # type: ignore[attr-defined]

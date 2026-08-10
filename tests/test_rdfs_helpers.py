@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from cograph_client.graph.iri import IRI_BASE
-from cograph_client.graph.memory_store import MemoryGraphStore
-from cograph_client.graph.ontology_catalog import upsert_type_pg
-from cograph_client.graph.rdfs_helpers import (
+from infona_client.graph.iri import IRI_BASE
+from infona_client.graph.memory_store import MemoryGraphStore
+from infona_client.graph.ontology_catalog import upsert_type_pg
+from infona_client.graph.rdfs_helpers import (
     TEMPLATE_ENTITIES_OF_TYPE,
     TEMPLATE_ENTITIES_OF_TYPE_COUNT,
     TEMPLATE_LITERAL_VALUES,
@@ -17,9 +17,9 @@ from cograph_client.graph.rdfs_helpers import (
     semantic_templates,
     type_names_with_subclasses,
 )
-from cograph_client.graph.schema_bootstrap import TEMPLATES, get_template
-from cograph_client.graph.scope import GraphScope
-from cograph_client.nlp.cypher_generate import (
+from infona_client.graph.schema_bootstrap import TEMPLATES, get_template
+from infona_client.graph.scope import GraphScope
+from infona_client.nlp.cypher_generate import (
     try_deterministic_cypher,
     try_list_query,
     try_stub_count_query,
@@ -128,8 +128,8 @@ async def test_entities_of_type_count_with_subclass_e2e_memory():
 
     Membership is via INSTANCE_OF → Class (ADR 0013), not primary_type alone.
     """
-    from cograph_client.graph.ontology_queries import type_uri
-    from cograph_client.graph.rdf_model import AssertionFact, assert_fact, set_subclass_of
+    from infona_client.graph.ontology_queries import type_uri
+    from infona_client.graph.rdf_model import AssertionFact, assert_fact, set_subclass_of
 
     store = MemoryGraphStore()
     cat = store.session(

@@ -2,14 +2,14 @@
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-# Distribution name is the public brand (PyPI `onta` is squatted by an
-# unrelated project, hence -client); the IMPORT name stays `cograph_client`
-# per the repo naming rules — hence the explicit wheel target below, since
-# hatchling can no longer infer the package dir from the project name.
+# Distribution name is the public brand (PyPI short names may be taken —
+# hence -client). Canonical import path is `infona_client`. A thin
+# `cograph_client` shim package re-exports for back-compat — listed in the
+# wheel target below alongside the real package.
 [project]
-name = "onta-client"
+name = "infona-client"
 version = "0.1.0"
-description = "Onta — living knowledge graph platform (OSS core, formerly Cograph)"
+description = "Infona living context graph (OSS core)"
 license = "Apache-2.0"
 requires-python = ">=3.12"
 dependencies = [
@@ -58,7 +58,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["cograph_client"]
+packages = ["infona_client", "cograph_client"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

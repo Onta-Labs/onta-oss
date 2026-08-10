@@ -26,15 +26,15 @@ from datetime import datetime, timezone
 
 import pytest
 
-import cograph_client
-from cograph_client.graph.layers import Layer, layer_type_uri, public_graph_uri
-from cograph_client.resolver.governance import (
+import infona_client
+from infona_client.graph.layers import Layer, layer_type_uri, public_graph_uri
+from infona_client.resolver.governance import (
     GovernanceDecision,
     GovernanceEngine,
     JudgeVerdict,
     TypeProposal,
 )
-from cograph_client.resolver.promotion_consent import (
+from infona_client.resolver.promotion_consent import (
     DenyAllPromotionConsent,
     PromotionConsentError,
     has_promotion_consent,
@@ -42,7 +42,7 @@ from cograph_client.resolver.promotion_consent import (
     require_promotion_consent,
 )
 
-_PKG_ROOT = pathlib.Path(cograph_client.__file__).parent
+_PKG_ROOT = pathlib.Path(infona_client.__file__).parent
 _CONSENT_HOME = "resolver/promotion_consent.py"
 _GOVERNANCE_HOME = "resolver/governance.py"
 
@@ -216,7 +216,7 @@ class _AllowTenant:
 def mock_neptune():
     from unittest.mock import AsyncMock
 
-    from cograph_client.graph.client import NeptuneClient
+    from infona_client.graph.client import NeptuneClient
 
     client = AsyncMock(spec=NeptuneClient)
     client.health.return_value = True
@@ -325,7 +325,7 @@ def test_planted_write_governed_without_require_is_detected():
 
 
 def test_home_module_exports_error_and_default_deny():
-    from cograph_client.resolver import promotion_consent as pc
+    from infona_client.resolver import promotion_consent as pc
 
     assert issubclass(pc.PromotionConsentError, PermissionError)
     assert pc.get_promotion_consent_provider() is not None

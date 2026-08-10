@@ -20,12 +20,12 @@ import json
 
 import pytest
 
-from cograph_client.graph.predicates import (
+from infona_client.graph.predicates import (
     ATTR_META_NS,
     companion_leaves,
     is_internal_predicate,
 )
-from cograph_client.graph.provenance import (
+from infona_client.graph.provenance import (
     attr_provenance_companion_uri,
     build_attribute_provenance_companions,
     legacy_attr_companion_uri,
@@ -93,7 +93,7 @@ def test_companion_leaves_handles_chained_source_url():
 
 
 def test_assemble_summary_drops_legacy_companions_keeps_real_fields():
-    from cograph_client.api.routes.explore import _assemble_summary
+    from infona_client.api.routes.explore import _assemble_summary
 
     attrs = "https://graph.onta.sh/types/Widget/attrs/"
     onto = "https://graph.onta.sh/onto/"
@@ -121,10 +121,10 @@ def test_assemble_summary_drops_legacy_companions_keeps_real_fields():
 def test_applied_attribute_values_excludes_companions():
     from unittest.mock import AsyncMock
 
-    from cograph_client.enrichment.cache import EnrichmentCache
-    from cograph_client.enrichment.executor import EnrichmentExecutor
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.enrichment.models import ConflictPolicy, RowResult, Verdict
+    from infona_client.enrichment.cache import EnrichmentCache
+    from infona_client.enrichment.executor import EnrichmentExecutor
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.models import ConflictPolicy, RowResult, Verdict
 
     executor = EnrichmentExecutor(
         AsyncMock(), InMemoryJobStore(), EnrichmentCache(), AsyncMock()
@@ -146,7 +146,7 @@ def test_applied_attribute_values_excludes_companions():
 # --- migration planner + real-engine rewrite ------------------------------------
 
 def test_plan_migration_maps_only_base_present_companions():
-    from cograph_client.graph.attr_meta_migration import plan_migration
+    from infona_client.graph.attr_meta_migration import plan_migration
 
     attrs = "https://graph.onta.sh/types/Gadget/attrs/"
     preds = [
@@ -174,7 +174,7 @@ def test_predicate_rewrite_preserves_typed_datetime_on_real_engine():
     pytest.importorskip("pyoxigraph")
     from pyoxigraph import QueryResultsFormat, Store
 
-    from cograph_client.graph.queries import rewrite_predicate_update
+    from infona_client.graph.queries import rewrite_predicate_update
 
     store = Store()
     graph = "https://graph.onta.sh/graphs/test-tenant/kg/kg"
@@ -220,8 +220,8 @@ def test_migrate_kg_end_to_end_on_real_engine(monkeypatch):
 
     from pyoxigraph import QueryResultsFormat, Store
 
-    import cograph_client.graph.attr_meta_migration as mig
-    from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
+    import infona_client.graph.attr_meta_migration as mig
+    from infona_client.graph.queries import kg_graph_uri, tenant_graph_uri
 
     class PyoxiNeptune:
         def __init__(self) -> None:
@@ -301,7 +301,7 @@ def test_migrate_kg_end_to_end_on_real_engine(monkeypatch):
 
 
 def test_delete_attribute_declaration_targets_schema_subject_only():
-    from cograph_client.graph.ontology_queries import delete_attribute_declaration
+    from infona_client.graph.ontology_queries import delete_attribute_declaration
 
     sparql = delete_attribute_declaration(
         "https://graph.onta.sh/graphs/tenant", "Widget", "sku_verified_at"
@@ -314,7 +314,7 @@ def test_delete_attribute_declaration_targets_schema_subject_only():
 # --- NL prompt + pipeline --------------------------------------------------------
 
 def test_freshness_prompt_teaches_attr_meta_convention():
-    from cograph_client.nlp.prompts import SPARQL_GENERATION_SYSTEM
+    from infona_client.nlp.prompts import SPARQL_GENERATION_SYSTEM
 
     p = SPARQL_GENERATION_SYSTEM
     assert "attr_meta" in p
@@ -331,7 +331,7 @@ def test_uri_repair_never_rewrites_constructed_attr_meta_predicates():
     onto whatever declared attribute fuzzy-matches best (measured 0.846 against
     a legacy `fax_verified_at`) — silently answering the freshness question with
     the WRONG attribute's stamp."""
-    from cograph_client.nlp.pipeline import NLQueryPipeline
+    from infona_client.nlp.pipeline import NLQueryPipeline
 
     stamp = attr_provenance_companion_uri("Physician", "bio", "verified_at")
     # An ontology summary carrying tempting fuzzy-match bait, including a legacy

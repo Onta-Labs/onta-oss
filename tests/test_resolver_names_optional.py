@@ -13,8 +13,8 @@ concept-level so benign rewording doesn't break them; removing the guidance does
 
 from __future__ import annotations
 
-from cograph_client.resolver.csv_resolver import COMPLETE_SYSTEM, REASON_SYSTEM
-from cograph_client.resolver.schema_resolver import EXTRACTION_SYSTEM
+from infona_client.resolver.csv_resolver import COMPLETE_SYSTEM, REASON_SYSTEM
+from infona_client.resolver.schema_resolver import EXTRACTION_SYSTEM
 
 
 def _names_optional_block() -> str:

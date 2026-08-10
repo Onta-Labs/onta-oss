@@ -30,20 +30,20 @@ import time
 
 import pytest
 
-from cograph_client.nlp.ontology_embeddings import (
+from infona_client.nlp.ontology_embeddings import (
     NO_INSTANCES_MARK,
     OntologyEmbeddingService,
     TenantEmbeddingStore,
     TypeChunk,
     _mark_no_instances,
 )
-from cograph_client.nlp.pipeline import (
+from infona_client.nlp.pipeline import (
     NLQueryPipeline,
     ONTOLOGY_EMPTY,
     _active_types_cache,
     _ontology_cache,
 )
-from cograph_client.nlp.prompts import SPARQL_GENERATION_SYSTEM, build_generation_prompt
+from infona_client.nlp.prompts import SPARQL_GENERATION_SYSTEM, build_generation_prompt
 
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 TYPES = "https://graph.onta.sh/types/"
@@ -430,7 +430,7 @@ class _RecordingService:
 
 async def _ask_with_recorder(monkeypatch, neptune, instance_graph):
     svc = _RecordingService()
-    monkeypatch.setattr("cograph_client.nlp.pipeline.get_embedding_service", lambda: svc)
+    monkeypatch.setattr("infona_client.nlp.pipeline.get_embedding_service", lambda: svc)
     pipe = _pipe(neptune)
 
     async def fake_generate(question, ontology, graph_uri="", **kwargs):
@@ -490,7 +490,7 @@ async def test_ask_without_embeddings_is_unscoped_and_does_not_scan(monkeypatch)
     _ontology_cache.clear()
     neptune = ProbeNeptune(active=("Widget",))
     svc = _RecordingService(declared=())
-    monkeypatch.setattr("cograph_client.nlp.pipeline.get_embedding_service", lambda: svc)
+    monkeypatch.setattr("infona_client.nlp.pipeline.get_embedding_service", lambda: svc)
     pipe = _pipe(neptune)
 
     async def fake_generate(question, ontology, graph_uri="", **kwargs):
@@ -652,7 +652,7 @@ async def test_active_type_cache_reclaims_expired_entries():
     """The TTL gates SERVING; without a sweep nothing was ever deleted, and the
     key now has a second dimension (the candidate set), so a workspace whose
     declared types churn would accumulate an entry per distinct set forever."""
-    import cograph_client.nlp.pipeline as pl
+    import infona_client.nlp.pipeline as pl
 
     _active_types_cache.clear()
     _active_types_cache["stale-entry"] = ({"Old"}, time.time() - pl.ONTOLOGY_CACHE_TTL - 1)

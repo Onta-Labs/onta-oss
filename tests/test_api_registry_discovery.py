@@ -5,7 +5,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from cograph_client.api_registry import (
+from infona_client.api_registry import (
     MODE_API_ONLY,
     MODE_API_PLUS_WEB,
     RegistryApiSource,
@@ -15,8 +15,8 @@ from cograph_client.api_registry import (
     build_registry_sources,
     make_api_source_catalog,
 )
-from cograph_client.api_registry.catalog import reset_api_source_layers
-from cograph_client.retrieval import safety as safety_mod
+from infona_client.api_registry.catalog import reset_api_source_layers
+from infona_client.retrieval import safety as safety_mod
 
 
 @pytest.fixture(autouse=True)
@@ -102,7 +102,7 @@ async def test_dormant_entry_yields_empty_result(monkeypatch):
     # A paid overlay entry with no key -> dormant -> empty DiscoverResult (falls back
     # to web), never an error that would sink the discovery.
     monkeypatch.delenv("DEMO_TOKEN", raising=False)
-    from cograph_client.api_registry import ApiSourceSpec
+    from infona_client.api_registry import ApiSourceSpec
     spec = ApiSourceSpec.from_dict({
         "slug": "paid_demo", "title": "Paid", "base_url": "https://api.demo.test",
         "auth": {"mode": "api_key_query", "key_env": "DEMO_TOKEN", "query_key": "token"},
@@ -154,7 +154,7 @@ def test_build_registry_sources_skips_dormant_key_gated(monkeypatch):
     # A key-gated entry with its env unset is dormant -> excluded from the
     # ensemble (so api_only doesn't drop web in favor of a source that can't run).
     monkeypatch.delenv("SOME_REGISTRY_KEY", raising=False)
-    from cograph_client.api_registry import ApiSourceSpec, register_api_source_layer
+    from infona_client.api_registry import ApiSourceSpec, register_api_source_layer
     paid = ApiSourceSpec.from_dict({
         "slug": "paid_dir", "title": "Paid Directory", "base_url": "https://api.paid.test",
         "auth": {"mode": "api_key_query", "key_env": "SOME_REGISTRY_KEY", "query_key": "token"},
@@ -278,7 +278,7 @@ def test_accepts_false_when_either_constraint_excludes():
 
 def test_accepts_works_via_provider_accepts_helper():
     """Ensemble path uses provider_accepts (ONTA-461); False must propagate."""
-    from cograph_client.web_sources.base import provider_accepts
+    from infona_client.web_sources.base import provider_accepts
 
     src = _openrouter_models_source()
     assert provider_accepts(src, "q", {}) is True

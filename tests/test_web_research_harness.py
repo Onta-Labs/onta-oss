@@ -10,7 +10,7 @@ import dataclasses
 
 import pytest
 
-from cograph_client.research.fetch import (
+from infona_client.research.fetch import (
     FetchedPage,
     StaticHttpFetcher,
     fetcher_cost,
@@ -19,21 +19,21 @@ from cograph_client.research.fetch import (
     register_page_fetcher,
     reset_page_fetchers,
 )
-from cograph_client.research.harness import WebResearchHarness
-from cograph_client.research.types import (
+from infona_client.research.harness import WebResearchHarness
+from infona_client.research.types import (
     Budget,
     ResearchResult,
     ResearchRow,
     SchemaField,
     TargetSchema,
 )
-from cograph_client.research.verify import (
+from infona_client.research.verify import (
     CiteOrAbstainVerifier,
     VerifyOutcome,
     register_research_verifier,
     reset_research_verifier,
 )
-from cograph_client.web_sources.base import (
+from infona_client.web_sources.base import (
     DiscoverResult,
     register_web_source,
     reset_web_sources,

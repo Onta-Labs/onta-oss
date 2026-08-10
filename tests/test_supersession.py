@@ -25,16 +25,16 @@ import json
 
 import pytest
 
-from cograph_client.graph.kg_writer import GraphDelta, insert_facts
-from cograph_client.graph.queries import kg_graph_uri
-from cograph_client.graph.validity import (
+from infona_client.graph.kg_writer import GraphDelta, insert_facts
+from infona_client.graph.queries import kg_graph_uri
+from infona_client.graph.validity import (
     STATUS_SUPERSEDED,
     build_closed_interval_triples,
     fetch_history,
     history_objects_query,
     validity_graph_uri,
 )
-from cograph_client.pipeline.mutations import (
+from infona_client.pipeline.mutations import (
     DEFAULT_RECENCY_POLICY,
     RecencyPolicy,
     retract_fact,
@@ -74,7 +74,7 @@ def test_recency_policy_multivalued_override_coexists():
 def test_closed_interval_builder_carries_valid_to_and_superseded_by():
     """The load-bearing shape: a closed interval carries validTo (the CLOSED
     marker) + superseded_by + status, keyed to the exact (s, p, o) fact."""
-    from cograph_client.graph.validity import (
+    from infona_client.graph.validity import (
         VAL_STATUS,
         VAL_SUPERSEDED_BY,
         VAL_VALID_TO,
@@ -95,7 +95,7 @@ def test_closed_interval_builder_carries_valid_to_and_superseded_by():
 
 
 def test_supersession_provenance_event_shape():
-    from cograph_client.graph.provenance import (
+    from infona_client.graph.provenance import (
         EVENT_SUPERSEDE,
         PROV_EVENT,
         PROV_SUPERSEDED_BY,
@@ -138,8 +138,8 @@ def _quiet_housekeeping(monkeypatch):
     stats recompute) so the end-to-end tests isolate the supersede/retract
     mechanism — exactly as tests/test_kg_writer.py does. The op STILL calls
     refresh_after_write; only its best-effort downstreams are no-ops here."""
-    import cograph_client.api.routes.explore as explore_mod
-    import cograph_client.nlp.pipeline as pipeline_mod
+    import infona_client.api.routes.explore as explore_mod
+    import infona_client.nlp.pipeline as pipeline_mod
 
     monkeypatch.setattr(pipeline_mod.NLQueryPipeline, "invalidate_cache", lambda g: None)
     monkeypatch.setattr(pipeline_mod, "get_embedding_service", lambda: None)
@@ -148,7 +148,7 @@ def _quiet_housekeeping(monkeypatch):
 
 async def _current(n: PyoxiNeptune, subject: str, predicate: str) -> set[str]:
     """The "current facts" projection — objects with no CLOSED validity interval."""
-    from cograph_client.graph.validity import current_objects_query
+    from infona_client.graph.validity import current_objects_query
 
     raw = await n.query(current_objects_query(INSTANCE_GRAPH, subject, predicate))
     return {b["o"]["value"] for b in raw["results"]["bindings"]}
@@ -345,7 +345,7 @@ async def test_supersede_closes_a_typed_literal_value():
 async def test_mutation_records_a_run_manifest_item():
     """A9 wiring (low-cost): a supersede handed a RunManifest records the op as a
     completed item, so a mutation run has honest coverage."""
-    from cograph_client.pipeline.manifest import RunManifest
+    from infona_client.pipeline.manifest import RunManifest
 
     n = PyoxiNeptune()
     await _seed_open_fact(n, ACME, HAS_CEO, "Alice")

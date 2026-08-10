@@ -15,15 +15,15 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 import pytest
 
-from cograph_client.api_registry import (
+from infona_client.api_registry import (
     ApiSourceSpec,
     RegistryApiSource,
     make_api_source_catalog,
 )
-from cograph_client.api_registry.catalog import reset_api_source_layers
+from infona_client.api_registry.catalog import reset_api_source_layers
 # SSRF DNS stub now lives in the shared retrieval substrate (ONTA-193).
-from cograph_client.retrieval import safety as safety_mod
-from cograph_client.research.types import Budget
+from infona_client.retrieval import safety as safety_mod
+from infona_client.research.types import Budget
 
 FIXTURES = Path(__file__).parent / "fixtures" / "nppes"
 

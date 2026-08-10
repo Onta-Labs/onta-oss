@@ -1,6 +1,6 @@
 """ADR 0004 drift-control wired into the Explorer endpoints (flag-gated).
 
-The FOUNDATION (``cograph_client/resolver/drift_control.py``) is the pure
+The FOUNDATION (``infona_client/resolver/drift_control.py``) is the pure
 decision logic; these tests cover the INTEGRATION — the support floor reaching
 the Explorer's overview edges and the recompute drift report. Everything is
 gated behind ``OMNIX_DRIFT_CONTROL``: with the flag OFF the endpoints behave
@@ -26,9 +26,9 @@ from fastapi.testclient import TestClient
 os.environ["OMNIX_API_KEYS"] = '{"test-key": "test-tenant"}'
 os.environ["OMNIX_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
 
-from cograph_client.api.app import create_app
-from cograph_client.api.routes import explore
-from cograph_client.graph.client import NeptuneClient
+from infona_client.api.app import create_app
+from infona_client.api.routes import explore
+from infona_client.graph.client import NeptuneClient
 
 TENANT = "test-tenant"
 KG = "test"

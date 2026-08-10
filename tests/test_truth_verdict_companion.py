@@ -34,31 +34,31 @@ import pytest
 pyoxigraph = pytest.importorskip("pyoxigraph")
 from pyoxigraph import QueryResultsFormat, Store  # noqa: E402
 
-from cograph_client.graph.ontology_queries import attr_uri, type_uri  # noqa: E402
-from cograph_client.graph.predicates import is_internal_predicate  # noqa: E402
-from cograph_client.graph.provenance import (  # noqa: E402
+from infona_client.graph.ontology_queries import attr_uri, type_uri  # noqa: E402
+from infona_client.graph.predicates import is_internal_predicate  # noqa: E402
+from infona_client.graph.provenance import (  # noqa: E402
     TRUTH_VERDICT_SUFFIX,
     attr_provenance_companion_uri,
     build_truth_verdict_companion,
     companion_predicate_for,
 )
-from cograph_client.graph.queries import kg_graph_uri  # noqa: E402
-from cograph_client.models.query import FactCitation  # noqa: E402
-from cograph_client.nlp.answer_meta import build_citations  # noqa: E402
-from cograph_client.resolver.models import (  # noqa: E402
+from infona_client.graph.queries import kg_graph_uri  # noqa: E402
+from infona_client.models.query import FactCitation  # noqa: E402
+from infona_client.nlp.answer_meta import build_citations  # noqa: E402
+from infona_client.resolver.models import (  # noqa: E402
     ExtractedAttribute,
     ExtractedEntity,
     ExtractionResult,
 )
-from cograph_client.resolver.schema_resolver import SchemaResolver  # noqa: E402
-from cograph_client.resolver.verdict_cache import JsonVerdictCache  # noqa: E402
-from cograph_client.verification.policy import VerifyPolicy  # noqa: E402
-from cograph_client.verification.types import (  # noqa: E402
+from infona_client.resolver.schema_resolver import SchemaResolver  # noqa: E402
+from infona_client.resolver.verdict_cache import JsonVerdictCache  # noqa: E402
+from infona_client.verification.policy import VerifyPolicy  # noqa: E402
+from infona_client.verification.types import (  # noqa: E402
     EvidenceRef,
     TruthVerdict,
     VerifierResult,
 )
-from cograph_client.verification.verifier import register_fact_verifier  # noqa: E402
+from infona_client.verification.verifier import register_fact_verifier  # noqa: E402
 
 TENANT = "onta375"
 KG = "providers"
@@ -262,10 +262,10 @@ def test_fact_citation_new_field_defaults_empty_and_is_additive():
 # --------------------------------------------------------------------------- #
 # (b) READ — build_citations populates the DISTINCT epistemic field.
 # --------------------------------------------------------------------------- #
-from cograph_client.graph.kg_writer import insert_facts  # noqa: E402
-from cograph_client.graph.parser import parse_sparql_results  # noqa: E402
-from cograph_client.graph.provenance import build_provenance_triples  # noqa: E402
-from cograph_client.graph.validity import (  # noqa: E402
+from infona_client.graph.kg_writer import insert_facts  # noqa: E402
+from infona_client.graph.parser import parse_sparql_results  # noqa: E402
+from infona_client.graph.provenance import build_provenance_triples  # noqa: E402
+from infona_client.graph.validity import (  # noqa: E402
     STATUS_SUPERSEDED,
     build_closed_interval_triples,
     build_open_interval_triples,
@@ -278,7 +278,7 @@ FOUNDED_PRED = attr_uri("Company", "founded")
 
 @pytest.fixture(autouse=True)
 def _quiet_housekeeping(monkeypatch):
-    import cograph_client.nlp.pipeline as pipeline_mod
+    import infona_client.nlp.pipeline as pipeline_mod
 
     monkeypatch.setattr(pipeline_mod, "get_embedding_service", lambda: None)
 

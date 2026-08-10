@@ -15,16 +15,16 @@ import asyncio
 
 import pytest
 
-from cograph_client.graph.assertion_model import (
+from infona_client.graph.assertion_model import (
     property_uri,
     type_membership_property_id,
 )
-from cograph_client.graph.facts import Fact
-from cograph_client.graph.iri import IRI_BASE
-from cograph_client.graph.kg_writer import graph_backend, insert_facts
-from cograph_client.graph.memory_store import MemoryGraphStore
-from cograph_client.graph.ontology_queries import entity_uri, type_uri
-from cograph_client.graph.rdf_model import (
+from infona_client.graph.facts import Fact
+from infona_client.graph.iri import IRI_BASE
+from infona_client.graph.kg_writer import graph_backend, insert_facts
+from infona_client.graph.memory_store import MemoryGraphStore
+from infona_client.graph.ontology_queries import entity_uri, type_uri
+from infona_client.graph.rdf_model import (
     AssertionFact,
     assert_fact,
     class_iri,
@@ -33,7 +33,7 @@ from cograph_client.graph.rdf_model import (
     set_subclass_of,
     set_subproperty_of,
 )
-from cograph_client.graph.rdfs_helpers import (
+from infona_client.graph.rdfs_helpers import (
     descendants_of,
     session_assertions_for_subject,
     session_entities_of_type,
@@ -42,8 +42,8 @@ from cograph_client.graph.rdfs_helpers import (
     subclass_closure,
     subproperty_closure,
 )
-from cograph_client.graph.schema_bootstrap import SCHEMA_STATEMENTS, bootstrap_schema_statements
-from cograph_client.graph.scope import GraphScope
+from infona_client.graph.schema_bootstrap import SCHEMA_STATEMENTS, bootstrap_schema_statements
+from infona_client.graph.scope import GraphScope
 
 
 @pytest.fixture
@@ -414,8 +414,8 @@ def test_fact_full_provenance_lands_on_assertion(store):
 
 def test_apply_facts_requires_write_assertion(store):
     """M1: soft-skip of write_assertion is gone — missing surface fails closed."""
-    from cograph_client.graph.pg_ops import apply_facts
-    from cograph_client.graph.scope import GraphScopeError
+    from infona_client.graph.pg_ops import apply_facts
+    from infona_client.graph.scope import GraphScopeError
 
     class _NoAssertSession:
         scope = GraphScope.for_instance("demo-tenant", "bookstore")
@@ -435,7 +435,7 @@ def test_apply_facts_requires_write_assertion(store):
 
 def test_delete_literals_removes_assertions_not_swallowed(store):
     """M4: delete_literals removes matching Assertions; no silent except:pass."""
-    from cograph_client.graph import pg_ops
+    from infona_client.graph import pg_ops
 
     async def run():
         sid = entity_uri("Person", "del-lit")
@@ -465,7 +465,7 @@ def test_delete_literals_removes_assertions_not_swallowed(store):
 
 def test_instance_of_evicted_when_type_assertion_deleted(store):
     """Derived INSTANCE_OF is removed when the backing type Assertion is deleted."""
-    from cograph_client.graph.rdf_model import delete_assertions_for_subject
+    from infona_client.graph.rdf_model import delete_assertions_for_subject
 
     async def run():
         sid = entity_uri("Person", "evict-me")
@@ -549,9 +549,9 @@ def test_descendants_of_helper():
 
 def test_assertion_memory_golden_helpers_still_importable():
     """Golden harness AssertionMemoryStore helpers remain available."""
-    from cograph_client.graph.assertion_memory import AssertionMemoryStore
-    from cograph_client.graph.golden_fixture import build_mini_people
-    from cograph_client.graph.rdfs_helpers import entities_of_type, count_entities_of_type
+    from infona_client.graph.assertion_memory import AssertionMemoryStore
+    from infona_client.graph.golden_fixture import build_mini_people
+    from infona_client.graph.rdfs_helpers import entities_of_type, count_entities_of_type
 
     fx = build_mini_people()
     rows = entities_of_type(

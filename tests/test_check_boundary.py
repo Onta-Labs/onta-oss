@@ -276,7 +276,7 @@ def test_docs_placeholder_keys_are_not_secrets(sandbox):
 def test_role_address_on_company_domain_is_allowed(sandbox):
     """The sanctioned contact shape for outbound User-Agents."""
     result = sandbox(
-        "probe.py", 'UA = "onta-client/0.1 (+https://example.com; ops@onta.team)"'
+        "probe.py", 'UA = "infona-client/0.1 (+https://example.com; ops@infona.ai)"'
     )
     assert result.returncode == 0, result.stdout + result.stderr
 
@@ -494,8 +494,8 @@ def test_fails_loudly_outside_a_git_repo(tmp_path):
     """
     (tmp_path / "scripts").mkdir()
     shutil.copy(SCRIPT, tmp_path / "scripts" / "check_boundary.sh")
-    (tmp_path / "cograph_client").mkdir()
-    (tmp_path / "cograph_client" / "leak.py").write_text('K = "AKIAQ7WXYZ12ABCD34EF"')  # boundary-ok: fake credential planted for this self-test
+    (tmp_path / "infona_client").mkdir()
+    (tmp_path / "infona_client" / "leak.py").write_text('K = "AKIAQ7WXYZ12ABCD34EF"')  # boundary-ok: fake credential planted for this self-test
 
     result = _run(tmp_path)
 

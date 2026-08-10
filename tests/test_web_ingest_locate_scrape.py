@@ -26,12 +26,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from cograph_client.agent.capabilities.web_ingest_cap import (
+from infona_client.agent.capabilities.web_ingest_cap import (
     _merge_registry_ensemble,
     _record_locate_trace,
 )
-from cograph_client.api_registry.router import MODE_API_ONLY, MODE_API_PLUS_WEB
-from cograph_client.enrichment.models import (
+from infona_client.api_registry.router import MODE_API_ONLY, MODE_API_PLUS_WEB
+from infona_client.enrichment.models import (
     ConflictPolicy,
     EnrichJob,
     EnrichmentTier,
@@ -40,8 +40,8 @@ from cograph_client.enrichment.models import (
     JobStatus,
     JobTrigger,
 )
-from cograph_client.pipeline.stage_trace import StageProjectId, attach_recorder
-from cograph_client.web_sources.base import DiscoverResult
+from infona_client.pipeline.stage_trace import StageProjectId, attach_recorder
+from infona_client.web_sources.base import DiscoverResult
 
 
 # --------------------------------------------------------------------------- #

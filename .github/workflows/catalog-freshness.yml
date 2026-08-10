@@ -1,8 +1,8 @@
 name: API catalog freshness
 
 # ONTA-194 phase 4 — scheduled freshness audit of the API-source registry's
-# seed catalog (cograph_client/api_registry/data/*.json). The audit
-# (cograph_client/api_registry/catalog_audit.py) flags every entry whose
+# seed catalog (infona_client/api_registry/data/*.json). The audit
+# (infona_client/api_registry/catalog_audit.py) flags every entry whose
 # `verified_at` is empty (UNVERIFIED) or older than the threshold (STALE) and
 # exits non-zero so this job can open/refresh a tracking issue.
 #
@@ -44,7 +44,7 @@ jobs:
         run: uv python install 3.12
 
       - name: Create venv and install the OSS package
-        # The audit imports cograph_client.api_registry (which pulls in the
+        # The audit imports infona_client.api_registry (which pulls in the
         # package's runtime deps: pydantic, httpx, structlog, …).
         run: |
           uv venv
@@ -60,7 +60,7 @@ jobs:
           source .venv/bin/activate
           set +e
           MAX_AGE="${{ github.event.inputs.max_age_days || '180' }}"
-          python -m cograph_client.api_registry.catalog_audit \
+          python -m infona_client.api_registry.catalog_audit \
             --max-age-days "$MAX_AGE" > catalog_report.md
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
           set -e

@@ -12,8 +12,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from cograph_client.graph.client import NeptuneClient
-from cograph_client.graph.layers import (
+from infona_client.graph.client import NeptuneClient
+from infona_client.graph.layers import (
     Layer,
     LayerStack,
     enhanced_graph_uri,
@@ -22,7 +22,7 @@ from cograph_client.graph.layers import (
     public_graph_uri,
     type_namespace,
 )
-from cograph_client.graph.ontology_queries import type_uri
+from infona_client.graph.ontology_queries import type_uri
 
 
 # ---------------------------------------------------------------------------

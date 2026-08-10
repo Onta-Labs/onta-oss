@@ -28,7 +28,7 @@ import os
 
 import pytest
 
-from cograph_client.nlp.pipeline import NLQueryPipeline
+from infona_client.nlp.pipeline import NLQueryPipeline
 from tests._hermetic import (
     ALLOW_LIVE_VAR,
     HERMETIC_SENTINEL_VAR,

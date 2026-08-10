@@ -27,8 +27,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-import cograph_client.resolver.schema_resolver as sr
-from cograph_client.resolver.models import (
+import infona_client.resolver.schema_resolver as sr
+from infona_client.resolver.models import (
     ExtractedAttribute,
     ExtractedEntity,
     ExtractedRelationship,
@@ -36,8 +36,8 @@ from cograph_client.resolver.models import (
     ExtractionResult,
     IngestResult,
 )
-from cograph_client.resolver.schema_resolver import SchemaResolver
-from cograph_client.resolver.verdict_cache import JsonVerdictCache
+from infona_client.resolver.schema_resolver import SchemaResolver
+from infona_client.resolver.verdict_cache import JsonVerdictCache
 
 
 # --------------------------------------------------------------------------- #
@@ -494,7 +494,7 @@ async def test_ingest_real_two_chunk_path_rehomes_across_chunks(tmp_path, monkey
     # ONTA-380 source-grounding backstop keeps them (unknown → omit; a value
     # that never appears in the chunk is treated as fabrication).
     monkeypatch.setattr(
-        "cograph_client.resolver.chunker.chunk_text",
+        "infona_client.resolver.chunker.chunk_text",
         lambda content: [
             "WIDGET_CHUNK Widget One",
             "CERT_CHUNK SprocketSafe cost_per_unit 4.20",

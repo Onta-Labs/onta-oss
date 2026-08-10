@@ -12,8 +12,8 @@ selection, and the apply-guard branch.
 """
 from __future__ import annotations
 
-from cograph_client.resolver import schema_resolver as sr
-from cograph_client.resolver.models import (
+from infona_client.resolver import schema_resolver as sr
+from infona_client.resolver.models import (
     ExtractedAttribute,
     ExtractedEntity,
     ExtractedRelationship,

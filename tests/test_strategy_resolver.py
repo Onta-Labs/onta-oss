@@ -1,6 +1,6 @@
 """Strategy-bundle resolver tests (ADR 0002 §3, COG-39).
 
-Covers the generalized chain-walking resolver in cograph_client/resolver/strategy.py:
+Covers the generalized chain-walking resolver in infona_client/resolver/strategy.py:
 
   - chain-walk inheritance for a non-ER entry (sensitivity tags)
   - precedence across ordered registries (tenant overrides public for the
@@ -17,7 +17,7 @@ registries so the module-level default registry is never mutated.
 
 from __future__ import annotations
 
-from cograph_client.resolver.er.types import (
+from infona_client.resolver.er.types import (
     DEFAULT_CUSTOMER_CONFIG,
     DEFAULT_GUEST_CONFIG,
     DEFAULTS_BY_TYPE,
@@ -25,7 +25,7 @@ from cograph_client.resolver.er.types import (
     config_for,
     config_for_with_hierarchy,
 )
-from cograph_client.resolver.strategy import (
+from infona_client.resolver.strategy import (
     WELL_KNOWN_ENTRIES,
     default_registry,
     register_strategy,

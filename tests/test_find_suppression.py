@@ -28,23 +28,23 @@ import json
 
 import pytest
 
-from cograph_client.agent.capabilities import web_ingest_cap
-from cograph_client.agent.capabilities.web_ingest_cap import WebIngestCapability
-from cograph_client.agent.registry import AgentContext
-from cograph_client.graph.kg_writer import insert_facts
-from cograph_client.graph.ontology_queries import entity_uri
-from cograph_client.graph.queries import kg_graph_uri
-from cograph_client.graph.suppression import (
+from infona_client.agent.capabilities import web_ingest_cap
+from infona_client.agent.capabilities.web_ingest_cap import WebIngestCapability
+from infona_client.agent.registry import AgentContext
+from infona_client.graph.kg_writer import insert_facts
+from infona_client.graph.ontology_queries import entity_uri
+from infona_client.graph.queries import kg_graph_uri
+from infona_client.graph.suppression import (
     build_entity_suppression_triples,
     build_suppression_triples,
     fetch_suppressed_entities,
     is_entity_suppressed,
     is_suppressed,
 )
-from cograph_client.pipeline.source_bundle import SourceBundle
-from cograph_client.resolver.models import IngestResult
-from cograph_client.resolver.schema_resolver import SchemaResolver
-from cograph_client.web_sources import (
+from infona_client.pipeline.source_bundle import SourceBundle
+from infona_client.resolver.models import IngestResult
+from infona_client.resolver.schema_resolver import SchemaResolver
+from infona_client.web_sources import (
     DiscoverResult,
     register_web_source,
     reset_web_sources,

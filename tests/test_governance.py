@@ -28,11 +28,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from cograph_client.graph.client import NeptuneClient
-from cograph_client.graph.layers import Layer, layer_type_uri, public_graph_uri
-from cograph_client.graph.ontology_queries import type_uri
-from cograph_client.graph.provenance import provenance_graph_uri
-from cograph_client.resolver.governance import (
+from infona_client.graph.client import NeptuneClient
+from infona_client.graph.layers import Layer, layer_type_uri, public_graph_uri
+from infona_client.graph.ontology_queries import type_uri
+from infona_client.graph.provenance import provenance_graph_uri
+from infona_client.resolver.governance import (
     GOV_NS,
     GovernanceDecision,
     GovernanceEngine,
@@ -42,9 +42,9 @@ from cograph_client.resolver.governance import (
     changelog_graph_uri,
     revoke_type,
 )
-from cograph_client.resolver.models import ExtractedEntity, IngestResult
-from cograph_client.resolver.promotion_consent import register_promotion_consent_provider
-from cograph_client.resolver.schema_resolver import SchemaResolver
+from infona_client.resolver.models import ExtractedEntity, IngestResult
+from infona_client.resolver.promotion_consent import register_promotion_consent_provider
+from infona_client.resolver.schema_resolver import SchemaResolver
 
 
 FIXED_TS = datetime(2026, 6, 9, 12, 0, 0, tzinfo=timezone.utc)
@@ -120,7 +120,7 @@ def _patch_judge_chat(monkeypatch, reply: str):
     """Patch the OpenRouter helper the judge panel calls; return the mock so
     tests can assert fan-out and inspect the prompt."""
     mock = AsyncMock(return_value=reply)
-    monkeypatch.setattr("cograph_client.resolver.governance.openrouter_chat", mock)
+    monkeypatch.setattr("infona_client.resolver.governance.openrouter_chat", mock)
     return mock
 
 
@@ -456,7 +456,7 @@ async def test_engine_revoke_method_delegates(mock_neptune):
 
 def _make_resolver(mock_neptune, governance: bool) -> SchemaResolver:
     verdict_path = Path(tempfile.mkdtemp()) / "verdicts.json"
-    from cograph_client.resolver.verdict_cache import JsonVerdictCache
+    from infona_client.resolver.verdict_cache import JsonVerdictCache
 
     env = {
         "ANTHROPIC_API_KEY": "test-key",

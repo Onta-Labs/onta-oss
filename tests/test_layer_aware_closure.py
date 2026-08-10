@@ -26,19 +26,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from cograph_client.graph.client import NeptuneClient
-from cograph_client.graph.layers import (
+from infona_client.graph.client import NeptuneClient
+from infona_client.graph.layers import (
     LayerStack,
     enhanced_graph_uri,
     public_graph_uri,
     type_name_from_uri,
 )
-from cograph_client.graph.ontology_queries import (
+from infona_client.graph.ontology_queries import (
     add_layer_from_clauses,
     parent_map_query,
     rewrite_type_predicate_to_closure,
 )
-from cograph_client.resolver.schema_resolver import SchemaResolver
+from infona_client.resolver.schema_resolver import SchemaResolver
 
 TENANT_GRAPH = "https://graph.onta.sh/graphs/closure-test-tenant"
 RDFS_SUBCLASS = "http://www.w3.org/2000/01/rdf-schema#subClassOf"
@@ -56,7 +56,7 @@ def mock_neptune():
 @pytest.fixture
 def resolver(mock_neptune):
     verdict_path = Path(tempfile.mkdtemp()) / "verdicts.json"
-    from cograph_client.resolver.verdict_cache import JsonVerdictCache
+    from infona_client.resolver.verdict_cache import JsonVerdictCache
 
     with patch.dict("os.environ", {
         "ANTHROPIC_API_KEY": "test-key",
@@ -323,7 +323,7 @@ def _mock_llm_message(sparql: str) -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_ask_with_layer_graph_uris_widens_generated_query(mock_neptune):
-    from cograph_client.nlp.pipeline import NLQueryPipeline
+    from infona_client.nlp.pipeline import NLQueryPipeline
 
     mock_neptune.query.return_value = {
         "head": {"vars": ["name"]},
@@ -351,7 +351,7 @@ async def test_ask_with_layer_graph_uris_widens_generated_query(mock_neptune):
 @pytest.mark.asyncio
 async def test_ask_without_layer_graph_uris_unchanged(mock_neptune):
     """REGRESSION: default ask() never widens — no layer graphs leak in."""
-    from cograph_client.nlp.pipeline import NLQueryPipeline
+    from infona_client.nlp.pipeline import NLQueryPipeline
 
     mock_neptune.query.return_value = {
         "head": {"vars": ["name"]},

@@ -12,20 +12,20 @@ from unittest.mock import AsyncMock, MagicMock, patch, call
 
 import pytest
 
-from cograph_client.resolver.schema_resolver import (
+from infona_client.resolver.schema_resolver import (
     SchemaResolver,
     EXTRACTION_SYSTEM,
     EXTRACTION_USER_TEMPLATE,
 )
-from cograph_client.resolver.models import (
+from infona_client.resolver.models import (
     ExtractedEntity,
     ExtractedAttribute,
     ExtractedRelationship,
     ExtractionResult,
     IngestResult,
 )
-from cograph_client.resolver.verdict_cache import JsonVerdictCache
-from cograph_client.graph.ontology_queries import type_uri
+from infona_client.resolver.verdict_cache import JsonVerdictCache
+from infona_client.graph.ontology_queries import type_uri
 
 
 # ---------------------------------------------------------------------------
@@ -231,7 +231,7 @@ class TestRelationshipRegistration:
         """If the relationship attribute already exists, don't re-register it."""
         resolver = SchemaResolver(mock_neptune, "fake-key", mock_cache)
 
-        from cograph_client.resolver.attribute_resolver import AttributeSchema
+        from infona_client.resolver.attribute_resolver import AttributeSchema
 
         extraction = ExtractionResult(
             entities=[
@@ -268,7 +268,7 @@ class TestRelationshipRegistration:
         """
         resolver = SchemaResolver(mock_neptune, "fake-key", mock_cache)
 
-        from cograph_client.resolver.attribute_resolver import AttributeSchema
+        from infona_client.resolver.attribute_resolver import AttributeSchema
 
         extraction = ExtractionResult(
             entities=[
@@ -342,7 +342,7 @@ class TestDomainModeling:
         """Force every proposed type to resolve as genuinely-new (DIFFERENT),
         hermetically — no LLM, no embeddings. Real behavior for brand-new types;
         subtyping is then driven by parent_chain in _link_parent."""
-        from cograph_client.resolver.models import MatchVerdict, TypeMatch
+        from infona_client.resolver.models import MatchVerdict, TypeMatch
 
         async def fake_match(proposed_type, proposed_description, existing_types):
             return TypeMatch(

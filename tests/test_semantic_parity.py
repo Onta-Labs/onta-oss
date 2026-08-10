@@ -20,12 +20,12 @@ import uuid
 
 import pytest
 
-from cograph_client.semantic import (
+from infona_client.semantic import (
     InMemorySemanticIndex,
     SemanticChunk,
     content_hash,
 )
-from cograph_client.semantic.postgres import PostgresSemanticIndex
+from infona_client.semantic.postgres import PostgresSemanticIndex
 
 DSN = os.environ.get("OMNIX_DATABASE_URL", "")
 
@@ -155,7 +155,7 @@ async def backend(request):
         return
     if not DSN:
         pytest.skip(needs_pg_reason)
-    from cograph_client.db.pool import close_pg_pools, reset_pg_pools
+    from infona_client.db.pool import close_pg_pools, reset_pg_pools
 
     reset_pg_pools()
     idx = PostgresSemanticIndex(dsn=DSN, embed_model=FAKE_MODEL, embed_dim=DIM)
@@ -352,7 +352,7 @@ async def test_smoke_parity_memory_vs_postgres():
     """Loose top-k overlap between the backends on the SAME corpus: the
     must-hit entity in both, top-1 agreement where deterministic, and a
     non-empty intersection of the top-3 sets. Never ranking equality."""
-    from cograph_client.db.pool import close_pg_pools, reset_pg_pools
+    from infona_client.db.pool import close_pg_pools, reset_pg_pools
 
     reset_pg_pools()
     mem = InMemorySemanticIndex(embed_model=FAKE_MODEL)

@@ -18,7 +18,7 @@ import re
 
 import pytest
 
-from cograph_client.pipeline.role_membership_gate import (
+from infona_client.pipeline.role_membership_gate import (
     DEFAULT_ROLE_ATTRIBUTES,
     alnum_norm,
     identity_rank,
@@ -427,7 +427,7 @@ _FORBIDDEN_PROD_LITERALS = (
 def test_prod_module_has_no_brand_or_incident_literals():
     mod_path = (
         pathlib.Path(__file__).resolve().parents[1]
-        / "cograph_client"
+        / "infona_client"
         / "pipeline"
         / "role_membership_gate.py"
     )

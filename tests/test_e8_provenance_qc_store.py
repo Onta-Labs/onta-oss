@@ -15,19 +15,19 @@ import asyncio
 
 import pytest
 
-from cograph_client.graph.facts import Fact
-from cograph_client.graph.iri import ATTR_META_NS, IRI_BASE
-from cograph_client.graph.kg_writer import (
+from infona_client.graph.facts import Fact
+from infona_client.graph.iri import ATTR_META_NS, IRI_BASE
+from infona_client.graph.kg_writer import (
     _provenance_enabled,
     delete_facts,
     insert_facts,
     rewrite_subject,
 )
-from cograph_client.graph.memory_store import MemoryGraphStore
-from cograph_client.graph.ontology_queries import entity_uri, type_uri
-from cograph_client.graph import pg_ops
-from cograph_client.graph.scope import GraphScope
-from cograph_client.qc import (
+from infona_client.graph.memory_store import MemoryGraphStore
+from infona_client.graph.ontology_queries import entity_uri, type_uri
+from infona_client.graph import pg_ops
+from infona_client.graph.scope import GraphScope
+from infona_client.qc import (
     INVARIANTS,
     STORE_INVARIANT_INSTANCE_OF_NO_TYPE_ASSERTION,
     STORE_INVARIANT_MISSING_PRIMARY_TYPE,
@@ -36,7 +36,7 @@ from cograph_client.qc import (
     check_assertion_cache_skew,
     check_invariants,
 )
-from cograph_client.qc.invariants_store import check_store_invariants
+from infona_client.qc.invariants_store import check_store_invariants
 
 
 @pytest.fixture
@@ -225,7 +225,7 @@ def test_qc_missing_primary_type_and_orphan(store):
         assert any(bare in v.detail for v in vs)
 
         # Inject orphan rel (bypass merge_rel which auto-creates endpoints)
-        from cograph_client.graph.memory_store import _RelRow
+        from infona_client.graph.memory_store import _RelRow
 
         store._rels[("demo-tenant", "bookstore", bare, "urn:missing", "WORKS_AT")] = _RelRow(
             tenant_id="demo-tenant",
@@ -314,7 +314,7 @@ def test_assertion_cache_skew_planted_instance_of(store):
 
         # Entity + Class + derived INSTANCE_OF only — no type Assertion (SoT gap).
         await pg_ops.merge_entity(session, sid, primary_type="Person")
-        from cograph_client.graph.rdf_model import merge_class
+        from infona_client.graph.rdf_model import merge_class
 
         await merge_class(session, class_id, name="Person")
         await session.write_instance_of(sid, class_id)
@@ -346,7 +346,7 @@ def test_assertion_cache_skew_planted_instance_of(store):
         assert vs3[0].binding.get("class_id") == class_id
 
         # Repair: write the type Assertion (+ dual-write is fine); skew clears.
-        from cograph_client.graph.rdf_model import AssertionFact, assert_fact
+        from infona_client.graph.rdf_model import AssertionFact, assert_fact
 
         await assert_fact(
             session,

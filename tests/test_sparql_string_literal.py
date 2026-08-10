@@ -15,10 +15,10 @@ from __future__ import annotations
 
 import pytest
 
-from cograph_client.api.routes import explore as explore_route
-from cograph_client.enrichment import executor as enrichment_executor
-from cograph_client.graph import ontology_queries
-from cograph_client.graph.queries import _escape_literal, sparql_string_literal
+from infona_client.api.routes import explore as explore_route
+from infona_client.enrichment import executor as enrichment_executor
+from infona_client.graph import ontology_queries
+from infona_client.graph.queries import _escape_literal, sparql_string_literal
 
 
 @pytest.mark.parametrize(

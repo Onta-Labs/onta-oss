@@ -1,8 +1,8 @@
 {
-  "name": "cograph-monorepo",
+  "name": "infona-oss-monorepo",
   "private": true,
   "version": "0.1.0",
-  "description": "Cograph Node SDK + CLI + MCP server monorepo",
+  "description": "Infona Node SDK + CLI + MCP server monorepo",
   "license": "Apache-2.0",
   "workspaces": [
     "packages/*"

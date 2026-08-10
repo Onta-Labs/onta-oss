@@ -22,12 +22,12 @@ from datetime import datetime, timezone
 
 import pytest
 
-from cograph_client.agent.capabilities.enrich_cap import EnrichCapability
-from cograph_client.agent.registry import AgentContext, PlanStep
-from cograph_client.enrichment.cache import EnrichmentCache
-from cograph_client.enrichment.executor import EnrichmentExecutor
-from cograph_client.enrichment.job_store import InMemoryJobStore
-from cograph_client.enrichment.models import (
+from infona_client.agent.capabilities.enrich_cap import EnrichCapability
+from infona_client.agent.registry import AgentContext, PlanStep
+from infona_client.enrichment.cache import EnrichmentCache
+from infona_client.enrichment.executor import EnrichmentExecutor
+from infona_client.enrichment.job_store import InMemoryJobStore
+from infona_client.enrichment.models import (
     ConflictPolicy,
     EnrichJob,
     EnrichmentTier,
@@ -152,7 +152,7 @@ def test_executor_source_urls_flow_into_chain_lookup_context():
     ``target_urls``; absent → the context carries no ``target_urls`` key."""
 
     async def run():
-        from cograph_client.enrichment.sources.base import register_adapter
+        from infona_client.enrichment.sources.base import register_adapter
 
         # WITH source_urls.
         neptune = _single_product_neptune()
@@ -232,7 +232,7 @@ def test_executor_type_name_flows_into_chain_lookup_context():
     because every job carries a type_name (unchanged call shape otherwise)."""
 
     async def run():
-        from cograph_client.enrichment.sources.base import register_adapter
+        from infona_client.enrichment.sources.base import register_adapter
 
         neptune = _single_product_neptune()
         store = InMemoryJobStore()
@@ -349,13 +349,13 @@ def _stub_plan_deps(monkeypatch, *, schema=None, extract=None):
         return json.dumps(extract)
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap._list_types", fake_list_types
+        "infona_client.agent.capabilities.enrich_cap._list_types", fake_list_types
     )
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
+        "infona_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
     )
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.openrouter_chat", fake_chat
+        "infona_client.agent.capabilities.enrich_cap.openrouter_chat", fake_chat
     )
 
 

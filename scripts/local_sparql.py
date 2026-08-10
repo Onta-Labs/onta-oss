@@ -10,7 +10,7 @@ Wraps an embedded pyoxigraph Store behind the three HTTP paths the
 then start the API with:
 
     OMNIX_GRAPH_BACKEND=fuseki OMNIX_NEPTUNE_ENDPOINT=http://localhost:3030 \
-        uvicorn cograph_client.api.app:app --port 8000
+        uvicorn infona_client.api.app:app --port 8000
 
 Dataset semantics:
 - Queries **with** ``FROM`` / ``FROM NAMED`` honor those clauses (named-graph

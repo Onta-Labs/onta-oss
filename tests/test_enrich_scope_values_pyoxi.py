@@ -23,19 +23,19 @@ import pytest
 pyoxigraph = pytest.importorskip("pyoxigraph")
 from pyoxigraph import QueryResultsFormat, Store  # noqa: E402
 
-from cograph_client.enrichment.cache import EnrichmentCache  # noqa: E402
-from cograph_client.enrichment.executor import EnrichmentExecutor  # noqa: E402
-from cograph_client.enrichment.job_store import InMemoryJobStore  # noqa: E402
-from cograph_client.enrichment.models import (  # noqa: E402
+from infona_client.enrichment.cache import EnrichmentCache  # noqa: E402
+from infona_client.enrichment.executor import EnrichmentExecutor  # noqa: E402
+from infona_client.enrichment.job_store import InMemoryJobStore  # noqa: E402
+from infona_client.enrichment.models import (  # noqa: E402
     ConflictPolicy,
     EnrichJob,
     EnrichmentTier,
     JobStatus,
     Verdict,
 )
-from cograph_client.graph.ontology_queries import attr_uri, type_uri  # noqa: E402
-from cograph_client.graph.provenance import attr_provenance_companion_uri  # noqa: E402
-from cograph_client.graph.queries import (  # noqa: E402
+from infona_client.graph.ontology_queries import attr_uri, type_uri  # noqa: E402
+from infona_client.graph.provenance import attr_provenance_companion_uri  # noqa: E402
+from infona_client.graph.queries import (  # noqa: E402
     kg_graph_uri,
     tenant_graph_uri,
 )
@@ -241,7 +241,7 @@ def _objects(n: PyoxiNeptune, subject: str, pred: str) -> list[str]:
 async def _current_objects(n: PyoxiNeptune, subject: str, pred: str) -> set[str]:
     """The CURRENT objects of ``(subject, pred)`` — those with no CLOSED validity
     interval (the P7 "current facts" projection)."""
-    from cograph_client.graph.validity import current_objects_query
+    from infona_client.graph.validity import current_objects_query
 
     raw = await n.query(current_objects_query(kg_graph_uri(TENANT, KG), subject, pred))
     return {b["o"]["value"] for b in raw["results"]["bindings"]}

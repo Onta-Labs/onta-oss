@@ -14,8 +14,8 @@ import json
 
 import pytest
 
-from cograph_client.qc.boundary import BOUNDARY_SPECS, default_fixtures_dir
-from cograph_client.resolver.models import (
+from infona_client.qc.boundary import BOUNDARY_SPECS, default_fixtures_dir
+from infona_client.resolver.models import (
     ExtractedAttribute,
     ExtractedEntity,
     ExtractionResult,

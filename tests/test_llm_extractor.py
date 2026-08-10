@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import pytest
 
-import cograph_client.enrichment.llm_extractor as llm_extractor
-from cograph_client.enrichment.llm_extractor import (
+import infona_client.enrichment.llm_extractor as llm_extractor
+from infona_client.enrichment.llm_extractor import (
     get_default_extractor,
     llm_extract,
 )

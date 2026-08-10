@@ -17,11 +17,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from cograph_client.enrichment.cache import EnrichmentCache
-from cograph_client.enrichment.executor import EnrichmentExecutor, _attr_uri, _now
-from cograph_client.enrichment.job_store import InMemoryJobStore
-from cograph_client.enrichment.models import ConflictPolicy, Verdict
-from cograph_client.graph.provenance import (
+from infona_client.enrichment.cache import EnrichmentCache
+from infona_client.enrichment.executor import EnrichmentExecutor, _attr_uri, _now
+from infona_client.enrichment.job_store import InMemoryJobStore
+from infona_client.enrichment.models import ConflictPolicy, Verdict
+from infona_client.graph.provenance import (
     attr_provenance_companion_uri,
     build_attribute_provenance_companions,
 )
@@ -42,7 +42,7 @@ def test_verified_at_is_typed_datetime_literal(type_name, attr, label, value, sr
     """An enriched value's `<attr>_verified_at` stamp is written as a TYPED
     xsd:dateTime literal (not a plain string), so SPARQL date arithmetic can filter
     it. Two unrelated invented domains."""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
@@ -77,7 +77,7 @@ def test_recency_filter_selects_and_excludes_by_window():
     pytest.importorskip("pyoxigraph")
     from pyoxigraph import QueryResultsFormat, Store
 
-    from cograph_client.nlp.pipeline import _neptune_safe_duration
+    from infona_client.nlp.pipeline import _neptune_safe_duration
 
     store = Store()
     graph = "https://graph.onta.sh/graphs/test-tenant/kg/kg"
@@ -124,7 +124,7 @@ def test_neptune_safe_duration_rewrites_all_surface_forms():
       * same query with `xsd:duration`                               → ?cutoff computes;
         recency FILTER returned the 33 fresh rows.
     """
-    from cograph_client.nlp.pipeline import _neptune_safe_duration
+    from infona_client.nlp.pipeline import _neptune_safe_duration
 
     XSD = "http://www.w3.org/2001/XMLSchema#"
     cases = [
@@ -176,7 +176,7 @@ def test_freshness_prompt_teaches_relative_window():
     """The NL generation prompt teaches a NOW()-relative recency window keyed off
     dateTime attributes — generically (NOW() minus a duration), not a hardcoded
     field or absolute date, and using the Neptune-valid `xsd:duration` datatype."""
-    from cograph_client.nlp.prompts import SPARQL_GENERATION_SYSTEM
+    from infona_client.nlp.prompts import SPARQL_GENERATION_SYSTEM
 
     p = SPARQL_GENERATION_SYSTEM
     assert "NOW()" in p

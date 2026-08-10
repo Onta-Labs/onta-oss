@@ -25,10 +25,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from cograph_client.graph.client import NeptuneClient
-from cograph_client.graph.ontology_queries import type_uri
-from cograph_client.resolver.attribute_resolver import is_junk_type_name
-from cograph_client.resolver.models import (
+from infona_client.graph.client import NeptuneClient
+from infona_client.graph.ontology_queries import type_uri
+from infona_client.resolver.attribute_resolver import is_junk_type_name
+from infona_client.resolver.models import (
     ExtractedAttribute,
     ExtractedEntity,
     ExtractedRelationship,
@@ -37,12 +37,12 @@ from cograph_client.resolver.models import (
     MatchVerdict,
     TypeMatch,
 )
-from cograph_client.resolver import schema_resolver
-from cograph_client.resolver.schema_resolver import (
+from infona_client.resolver import schema_resolver
+from infona_client.resolver.schema_resolver import (
     SchemaResolver,
     _primary_entity_ids,
 )
-from cograph_client.resolver.verdict_cache import JsonVerdictCache
+from infona_client.resolver.verdict_cache import JsonVerdictCache
 
 
 # The junk set from the BC-universities symptom (ticket brief).

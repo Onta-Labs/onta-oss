@@ -35,34 +35,34 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from cograph_client.api.deps import get_neptune_client
-from cograph_client.api.routes import ask as ask_routes
-from cograph_client.api.routes import explore as explore_routes
-from cograph_client.api.routes import functions as functions_routes
-from cograph_client.api.routes import grep as grep_routes
-from cograph_client.api.routes import knowledge_graphs as kg_routes
-from cograph_client.api.routes import ontology as ontology_routes
-from cograph_client.api.routes import operator as operator_routes
-from cograph_client.api.routes import skills as skills_routes
-from cograph_client.auth import api_keys
-from cograph_client.auth.api_keys import TenantContext
-from cograph_client.graph.entitlement import register_entitlement_checker
-from cograph_client.graph.global_ontology import fetch_global_ontology, fetch_ontology
-from cograph_client.graph.layers import (
+from infona_client.api.deps import get_neptune_client
+from infona_client.api.routes import ask as ask_routes
+from infona_client.api.routes import explore as explore_routes
+from infona_client.api.routes import functions as functions_routes
+from infona_client.api.routes import grep as grep_routes
+from infona_client.api.routes import knowledge_graphs as kg_routes
+from infona_client.api.routes import ontology as ontology_routes
+from infona_client.api.routes import operator as operator_routes
+from infona_client.api.routes import skills as skills_routes
+from infona_client.auth import api_keys
+from infona_client.auth.api_keys import TenantContext
+from infona_client.graph.entitlement import register_entitlement_checker
+from infona_client.graph.global_ontology import fetch_global_ontology, fetch_ontology
+from infona_client.graph.layers import (
     Layer,
     LayerStack,
     enhanced_graph_uri,
     public_graph_uri,
 )
-from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
-from cograph_client.models.query import NLResult
-from cograph_client.resolver.promotion_consent import (
+from infona_client.graph.queries import kg_graph_uri, tenant_graph_uri
+from infona_client.models.query import NLResult
+from infona_client.resolver.promotion_consent import (
     PromotionConsentError,
     register_promotion_consent_provider,
     require_promotion_consent,
 )
-from cograph_client.skills.models import TypeSkill
-from cograph_client.skills.store import InMemoryTypeSkillStore, reset_type_skill_store
+from infona_client.skills.models import TypeSkill
+from infona_client.skills.store import InMemoryTypeSkillStore, reset_type_skill_store
 
 from tests.test_global_ontology_browser import (
     PUB,
@@ -641,7 +641,7 @@ def _reset_global_state():
     register_promotion_consent_provider(None)
     reset_type_skill_store()
     explore_routes._summary_cache.clear()
-    from cograph_client.nlp.pipeline import _ontology_cache
+    from infona_client.nlp.pipeline import _ontology_cache
     _ontology_cache.clear()
     yield
     register_entitlement_checker(None)
@@ -662,7 +662,7 @@ def _ctx(tenant_id: str, *, entitled: bool = False, is_operator: bool = False) -
 
 async def _seed_skills_async() -> InMemoryTypeSkillStore:
     store = InMemoryTypeSkillStore()
-    import cograph_client.skills.store as skill_store_mod
+    import infona_client.skills.store as skill_store_mod
 
     skill_store_mod._store = store  # type: ignore[attr-defined]
     await store.upsert(
@@ -1084,7 +1084,7 @@ def test_ask_route_layer_graph_uris_are_tenant_scoped():
     app.dependency_overrides[api_keys.get_tenant] = (
         lambda tenant=None, api_key=None, request=None: _ctx(TENANT_B)
     )
-    from cograph_client.api.deps import get_enrichment_job_store
+    from infona_client.api.deps import get_enrichment_job_store
     app.dependency_overrides[get_enrichment_job_store] = lambda: None
 
     captured: dict = {}
@@ -1109,7 +1109,7 @@ def test_ask_route_layer_graph_uris_are_tenant_scoped():
 @pytest.mark.asyncio
 async def test_ask_ontology_summary_no_prompt_leakage():
     """NL ontology summary for B must never contain A-only markers."""
-    from cograph_client.nlp.pipeline import NLQueryPipeline, _ontology_cache
+    from infona_client.nlp.pipeline import NLQueryPipeline, _ontology_cache
 
     _ontology_cache.clear()
     neptune = _seed_adversarial()
@@ -1216,7 +1216,7 @@ def test_summary_cache_planted_cross_tenant_key_is_not_hit():
 @pytest.mark.asyncio
 async def test_ontology_cache_keyed_by_graph_uri_no_poisoning():
     """pipeline._ontology_cache keys by graph_uri (+ layers); A then B is safe."""
-    from cograph_client.nlp.pipeline import NLQueryPipeline, _ontology_cache
+    from infona_client.nlp.pipeline import NLQueryPipeline, _ontology_cache
 
     _ontology_cache.clear()
     neptune = _seed_adversarial()
@@ -1300,7 +1300,7 @@ async def test_consent_refuses_without_record_zero_writes():
     with pytest.raises(PromotionConsentError, match="no recorded consent"):
         await require_promotion_consent(TENANT_A, target_layer="public")
 
-    from cograph_client.resolver.governance import (
+    from infona_client.resolver.governance import (
         GovernanceDecision,
         GovernanceEngine,
         JudgeVerdict,

@@ -20,17 +20,17 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from cograph_client.enrichment.cache import EnrichmentCache
-from cograph_client.enrichment.executor import EnrichmentExecutor, _attr_uri, _now
-from cograph_client.enrichment.job_store import InMemoryJobStore
-from cograph_client.enrichment.models import (
+from infona_client.enrichment.cache import EnrichmentCache
+from infona_client.enrichment.executor import EnrichmentExecutor, _attr_uri, _now
+from infona_client.enrichment.job_store import InMemoryJobStore
+from infona_client.enrichment.models import (
     ConflictPolicy,
     EnrichJob,
     EnrichmentTier,
     JobStatus,
     Verdict,
 )
-from cograph_client.graph.provenance import (
+from infona_client.graph.provenance import (
     attr_provenance_companion_uri,
     provenance_graph_uri,
 )
@@ -50,7 +50,7 @@ from tests._enrichment_prov_helpers import (
 def test_enrichment_writes_per_attribute_source_url(type_name, attr, label, value, src, monkeypatch):
     """Enriching one attribute lands its OWN `<attr>_source_url` display companion on
     the entity (per-attribute, not per-record). Two invented domains."""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
@@ -81,7 +81,7 @@ def test_enrichment_writes_per_attribute_source_url(type_name, attr, label, valu
 def test_two_attributes_carry_independent_sources(monkeypatch):
     """Enriching TWO attributes on the same entity from DIFFERENT sources gives each
     its own independent `<attr>_source_url` — per-attribute provenance."""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
@@ -121,7 +121,7 @@ def test_companions_dated_from_verdict_not_write_time(monkeypatch):
     """The `<attr>_verified_at` companion is dated from the VERDICT's real source date
     (source_published_at), NOT the write time — so provenance shows when the source
     knew the fact (F1)."""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
     published = datetime(2021, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
@@ -153,7 +153,7 @@ def test_canonical_provenance_graph_gets_confidence_and_source_date(monkeypatch)
     """With COGRAPH_PROVENANCE_ENABLED on, enrichment feeds the CANONICAL companion
     provenance GRAPH via the shared insert_facts(provenance_triples=…) seam — each
     record keyed with prov:confidence + a source-dated prov:timestamp (F1)."""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
     monkeypatch.setenv("COGRAPH_PROVENANCE_ENABLED", "1")
@@ -194,7 +194,7 @@ def test_verified_row_advances_freshness_without_rewriting_value(policy, monkeyp
     """F2: a re-verify (source re-confirms the existing value → `verified`) under
     verify/stage RE-STAMPS the freshness companion WITHOUT writing a duplicate
     primary value triple. Clock advances; value untouched."""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
@@ -244,7 +244,7 @@ def test_agent_refresh_intent_routes_to_verify_policy():
     """F3: the enrich capability routes a REFRESH intent to the `verify` conflict
     policy (advancing the clock on existing values) rather than the default `stage`
     — generic verb detection, no persona field."""
-    from cograph_client.agent.capabilities.enrich_cap import (
+    from infona_client.agent.capabilities.enrich_cap import (
         _default_conflict_policy,
         _looks_like_refresh,
         _refresh_conflict_policy,
@@ -279,7 +279,7 @@ def test_agent_replace_intent_routes_to_overwrite_policy():
     purpose clause). A false-positive overwrite destroys data with no review, so the
     goal signals are gated behind `_looks_like_refresh` — this keeps benign first-fill
     "enrich/fill/map/link … with the latest X" language on the safe `stage` path."""
-    from cograph_client.agent.capabilities.enrich_cap import (
+    from infona_client.agent.capabilities.enrich_cap import (
         _default_conflict_policy,
         _looks_like_overwrite,
         _looks_like_refresh,
@@ -348,7 +348,7 @@ def test_agent_replace_intent_routes_to_overwrite_policy():
 def test_scoped_refresh_processes_subset_without_discovery(monkeypatch):
     """A scoped refresh (entity_uris subset + verify policy) processes ONLY the named
     subset and mints NO new entities — re-verify-existing, not re-discover."""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
@@ -392,14 +392,14 @@ async def test_discovery_writes_companions_end_to_end(tmp_path, monkeypatch):
     emits, PER ATTRIBUTE, its own `<attr>_source_url` + typed `<attr>_verified_at`
     companion — collected into the SAME batch that flows through insert_facts. A
     discovered fact is now provenance-symmetric with an enriched one (F1 cross-rail)."""
-    from cograph_client.resolver.attribute_resolver import AttributeSchema
-    from cograph_client.resolver.models import (
+    from infona_client.resolver.attribute_resolver import AttributeSchema
+    from infona_client.resolver.models import (
         ExtractedAttribute,
         ExtractedEntity,
         IngestResult,
     )
-    from cograph_client.resolver.schema_resolver import SchemaResolver
-    from cograph_client.resolver.verdict_cache import JsonVerdictCache
+    from infona_client.resolver.schema_resolver import SchemaResolver
+    from infona_client.resolver.verdict_cache import JsonVerdictCache
 
     monkeypatch.setenv("COGRAPH_DISCOVERY_ATTR_PROVENANCE", "1")
     resolver = SchemaResolver(AsyncMock(), "fake-key", JsonVerdictCache(tmp_path / "c.json"))
@@ -445,14 +445,14 @@ async def test_discovery_writes_companions_end_to_end(tmp_path, monkeypatch):
 async def test_discovery_companions_off_by_default(tmp_path, monkeypatch):
     """The discovery attribute-provenance rail is OFF by default so bulk CSV ingest
     stays byte-stable — no companions unless the flag is set."""
-    from cograph_client.resolver.attribute_resolver import AttributeSchema
-    from cograph_client.resolver.models import (
+    from infona_client.resolver.attribute_resolver import AttributeSchema
+    from infona_client.resolver.models import (
         ExtractedAttribute,
         ExtractedEntity,
         IngestResult,
     )
-    from cograph_client.resolver.schema_resolver import SchemaResolver
-    from cograph_client.resolver.verdict_cache import JsonVerdictCache
+    from infona_client.resolver.schema_resolver import SchemaResolver
+    from infona_client.resolver.verdict_cache import JsonVerdictCache
 
     monkeypatch.delenv("COGRAPH_DISCOVERY_ATTR_PROVENANCE", raising=False)
     resolver = SchemaResolver(AsyncMock(), "fake-key", JsonVerdictCache(tmp_path / "c.json"))

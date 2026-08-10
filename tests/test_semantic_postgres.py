@@ -24,7 +24,7 @@ import uuid
 
 import pytest
 
-from cograph_client.semantic import (
+from infona_client.semantic import (
     InMemorySemanticIndex,
     SemanticChunk,
     SemanticIndex,
@@ -32,13 +32,13 @@ from cograph_client.semantic import (
     make_semantic_index,
     reset_semantic_index,
 )
-from cograph_client.semantic.postgres import (
+from infona_client.semantic.postgres import (
     HNSW_EF_SEARCH,
     PostgresSemanticIndex,
     _vector_text,
     _version_at_least,
 )
-from cograph_client.semantic.protocol import IDENTITY_ATTR
+from infona_client.semantic.protocol import IDENTITY_ATTR
 
 DSN = os.environ.get("OMNIX_DATABASE_URL", "")
 
@@ -133,7 +133,7 @@ def test_env_knobs_are_read(monkeypatch):
 
 
 def test_factory_returns_postgres_when_dsn_set(monkeypatch):
-    from cograph_client import config
+    from infona_client import config
 
     monkeypatch.setattr(config.settings, "database_url", "postgres://u@h/db", raising=False)
     idx = make_semantic_index()
@@ -142,14 +142,14 @@ def test_factory_returns_postgres_when_dsn_set(monkeypatch):
 
 
 def test_factory_returns_inmemory_without_dsn(monkeypatch):
-    from cograph_client import config
+    from infona_client import config
 
     monkeypatch.setattr(config.settings, "database_url", "", raising=False)
     assert isinstance(make_semantic_index(), InMemorySemanticIndex)
 
 
 def test_lazy_package_export():
-    from cograph_client import semantic
+    from infona_client import semantic
 
     assert semantic.PostgresSemanticIndex is PostgresSemanticIndex
     with pytest.raises(AttributeError):
@@ -252,7 +252,7 @@ def pg(monkeypatch):
     import asyncpg
 
     monkeypatch.setattr(asyncpg, "create_pool", fake_create_pool)
-    from cograph_client.db.pool import reset_pg_pools
+    from infona_client.db.pool import reset_pg_pools
 
     reset_pg_pools()
     store = PostgresSemanticIndex(
@@ -312,7 +312,7 @@ async def test_extension_failure_tolerated(monkeypatch):
     import asyncpg
 
     monkeypatch.setattr(asyncpg, "create_pool", fake_create_pool)
-    from cograph_client.db.pool import reset_pg_pools
+    from infona_client.db.pool import reset_pg_pools
 
     reset_pg_pools()
     store = PostgresSemanticIndex(dsn="postgres://u@h/db", embed_dim=4)
@@ -325,8 +325,8 @@ async def test_extension_failure_tolerated(monkeypatch):
 async def test_codec_hook_registered_and_tolerant(pg, monkeypatch):
     store, recorder, _conn, _pool = pg
     await store._ensure_pool()
-    from cograph_client.db import pool as pool_mod
-    from cograph_client.semantic.postgres import _register_vector_codec
+    from infona_client.db import pool as pool_mod
+    from infona_client.semantic.postgres import _register_vector_codec
 
     assert _register_vector_codec in pool_mod._init_hooks
 
@@ -809,7 +809,7 @@ async def live():
     the creating test's event loop, so each test resets the cache up front and
     CLOSES its pools afterwards (reset alone would leak real connections).
     """
-    from cograph_client.db.pool import close_pg_pools, reset_pg_pools
+    from infona_client.db.pool import close_pg_pools, reset_pg_pools
 
     reset_pg_pools()
     idx = PostgresSemanticIndex(dsn=DSN, embed_model=FAKE_MODEL, embed_dim=DIM)
@@ -1228,7 +1228,7 @@ async def test_live_hnsw_index_mode_fallback_never_crashes():
     exercising hnsw_default on pgvector 0.6 (the deployed-Aurora situation)
     and hnsw_iterative on 0.8+, and proving neither crashes nor silently
     changes the result contract."""
-    from cograph_client.db.pool import close_pg_pools, reset_pg_pools
+    from infona_client.db.pool import close_pg_pools, reset_pg_pools
 
     reset_pg_pools()
     idx = PostgresSemanticIndex(

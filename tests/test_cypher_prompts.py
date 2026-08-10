@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from cograph_client.nlp.prompts import (
+from infona_client.nlp.prompts import (
     CYPHER_GENERATION_SYSTEM,
     SPARQL_GENERATION_SYSTEM,
     build_cypher_generation_prompt,

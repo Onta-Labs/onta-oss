@@ -38,13 +38,13 @@ from pathlib import Path
 
 import pytest
 
-from cograph_client.resolver.csv_resolver import (
+from infona_client.resolver.csv_resolver import (
     COMPLETE_SYSTEM,
     REASON_SYSTEM,
     REFUTE_SYSTEM,
     CSVResolver,
 )
-from cograph_client.resolver.models import CSVSchemaMapping
+from infona_client.resolver.models import CSVSchemaMapping
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "text_candidacy"
 FIXTURE_PATHS = sorted(FIXTURE_DIR.glob("*.json"))

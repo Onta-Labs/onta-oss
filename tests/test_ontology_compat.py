@@ -10,13 +10,13 @@ from collections import defaultdict
 
 import pytest
 
-from cograph_client.graph.ontology_commit import (
+from infona_client.graph.ontology_commit import (
     OntologyShape,
     commit_ontology,
     fingerprint_ontology,
     load_ontology_shape,
 )
-from cograph_client.graph.ontology_compat import (
+from infona_client.graph.ontology_compat import (
     CompatClass,
     OntologyCompatError,
     assert_publishable,
@@ -25,13 +25,13 @@ from cograph_client.graph.ontology_compat import (
     describe_range_change,
     is_ancestor,
 )
-from cograph_client.graph.ontology_snapshots import (
+from infona_client.graph.ontology_snapshots import (
     diff_shapes,
     execute_snapshot,
     plan_snapshot,
     snapshot_ontology,
 )
-from cograph_client.models.ontology import (
+from infona_client.models.ontology import (
     ChangeKind,
     ChangeRecord,
     OntologyMutation,

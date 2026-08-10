@@ -9,12 +9,12 @@ from datetime import datetime, timezone
 
 import pytest
 
-from cograph_client.enrichment.job_store import (
+from infona_client.enrichment.job_store import (
     InMemoryJobStore,
     PostgresJobStore,
     make_job_store,
 )
-from cograph_client.enrichment.models import (
+from infona_client.enrichment.models import (
     ConflictPolicy,
     EnrichJob,
     EnrichmentTier,
@@ -108,7 +108,7 @@ def test_progress_pct_edge_cases():
 
 
 def test_make_job_store_inmemory_when_no_db(monkeypatch):
-    from cograph_client.config import settings
+    from infona_client.config import settings
 
     monkeypatch.setattr(settings, "database_url", "")
     store = make_job_store()
@@ -116,7 +116,7 @@ def test_make_job_store_inmemory_when_no_db(monkeypatch):
 
 
 def test_make_job_store_postgres_when_db_set(monkeypatch):
-    from cograph_client.config import settings
+    from infona_client.config import settings
 
     monkeypatch.setattr(settings, "database_url", "postgresql://x/y")
     store = make_job_store()
@@ -320,8 +320,8 @@ def test_postgres_store_real_db():
 
 @pytest.fixture(autouse=True)
 def _reset_singletons():
-    from cograph_client.enrichment.cache import reset_enrichment_cache
-    from cograph_client.enrichment.job_store import reset_job_store
+    from infona_client.enrichment.cache import reset_enrichment_cache
+    from infona_client.enrichment.job_store import reset_job_store
 
     reset_job_store()
     reset_enrichment_cache()
@@ -331,7 +331,7 @@ def _reset_singletons():
 
 
 def _seed(job: EnrichJob):
-    from cograph_client.enrichment.job_store import get_job_store
+    from infona_client.enrichment.job_store import get_job_store
 
     async def go():
         await get_job_store().create(job)
@@ -377,7 +377,7 @@ def test_action_find_merge_duplicates_creates_dedupe_job(
     async def fake_rebuild(client_, instance_graph):
         return {"types": [{"type": "Product"}], "fragments_absorbed_total": 3}
 
-    import cograph_client.resolver.er.rebuild as rebuild_mod
+    import infona_client.resolver.er.rebuild as rebuild_mod
 
     monkeypatch.setattr(rebuild_mod, "rebuild_kg", fake_rebuild)
 
@@ -405,9 +405,9 @@ def test_run_dedupe_schedules_stats_recompute(monkeypatch):
     per-type counts, mirroring the er-rebuild route."""
     from unittest.mock import AsyncMock
 
-    import cograph_client.api.routes.actions as actions_mod
-    import cograph_client.api.routes.explore as explore_mod
-    import cograph_client.resolver.er.rebuild as rebuild_mod
+    import infona_client.api.routes.actions as actions_mod
+    import infona_client.api.routes.explore as explore_mod
+    import infona_client.resolver.er.rebuild as rebuild_mod
 
     async def fake_rebuild(client_, instance_graph):
         return {"types": [{"type": "Product"}], "fragments_absorbed_total": 3}
@@ -439,9 +439,9 @@ def test_run_dedupe_failure_does_not_recompute(monkeypatch):
     """A failed rebuild writes nothing → no recompute scheduled."""
     from unittest.mock import AsyncMock
 
-    import cograph_client.api.routes.actions as actions_mod
-    import cograph_client.api.routes.explore as explore_mod
-    import cograph_client.resolver.er.rebuild as rebuild_mod
+    import infona_client.api.routes.actions as actions_mod
+    import infona_client.api.routes.explore as explore_mod
+    import infona_client.resolver.er.rebuild as rebuild_mod
 
     async def boom(client_, instance_graph):
         raise RuntimeError("rebuild blew up")
@@ -470,7 +470,7 @@ def test_run_dedupe_failure_does_not_recompute(monkeypatch):
 
 
 def test_action_suggest_relationships_degrades(client, auth_headers):
-    from cograph_client.api.routes import actions
+    from infona_client.api.routes import actions
 
     # No recommender wired (default) → terminal failed job, but still a job_id.
     actions.register_relationship_recommender(None)
@@ -637,7 +637,7 @@ def test_enrich_knobs_default_to_none_when_absent(
 def test_scheduled_params_carry_instructions_and_sources():
     """A schedule whose params include instructions/sources dispatches a job
     carrying them (the scheduled path honors the new knobs)."""
-    import cograph_client.api.routes.actions as actions_mod
+    import infona_client.api.routes.actions as actions_mod
 
     schedule = type(
         "S",
@@ -664,7 +664,7 @@ def test_scheduled_params_carry_instructions_and_sources():
 
 def test_scheduled_params_without_knobs_default_none():
     """A schedule without the new params leaves the job's knobs None (unchanged)."""
-    import cograph_client.api.routes.actions as actions_mod
+    import infona_client.api.routes.actions as actions_mod
 
     schedule = type(
         "S",
@@ -694,7 +694,7 @@ def test_create_job_threads_spend_ceiling(client, auth_headers, mock_neptune):
     """POST /enrich/jobs accepts spend_ceiling_usd, persists it on the job, and
     that value is the EXPLICIT override resolve_spend_ceiling picks over a
     different deployment default (so it bounds THIS job, ONTA-378)."""
-    from cograph_client.pipeline.manifest import resolve_spend_ceiling
+    from infona_client.pipeline.manifest import resolve_spend_ceiling
 
     mock_neptune.query.return_value = {
         "head": {"vars": ["n"]},
@@ -752,7 +752,7 @@ def test_spend_ceiling_defaults_to_none_when_absent(
     """Omitting spend_ceiling_usd leaves it None on the job (behavior unchanged),
     and resolve_spend_ceiling then falls back to the deployment default — a None
     default meaning UNLIMITED exactly as before this feature existed."""
-    from cograph_client.pipeline.manifest import resolve_spend_ceiling
+    from infona_client.pipeline.manifest import resolve_spend_ceiling
 
     mock_neptune.query.return_value = {
         "head": {"vars": ["n"]},
@@ -781,7 +781,7 @@ def test_spend_ceiling_defaults_to_none_when_absent(
 def test_scheduled_params_carry_spend_ceiling():
     """A schedule whose params include spend_ceiling_usd dispatches a job carrying
     it; a schedule without it leaves the job's ceiling None (unchanged)."""
-    import cograph_client.api.routes.actions as actions_mod
+    import infona_client.api.routes.actions as actions_mod
 
     with_ceiling = type(
         "S",
@@ -820,8 +820,8 @@ def test_agent_request_threads_spend_ceiling_to_context():
     the job it creates (ONTA-378). Omitting it leaves the context None."""
     from unittest.mock import MagicMock
 
-    import cograph_client.api.routes.agent as agent_mod
-    from cograph_client.auth.api_keys import TenantContext
+    import infona_client.api.routes.agent as agent_mod
+    from infona_client.auth.api_keys import TenantContext
 
     tenant = TenantContext(tenant_id="test-tenant", api_key="test-key", subject=None)
     body = agent_mod.AgentRequest(

@@ -27,11 +27,11 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from cograph_client.api.deps import get_neptune_client
-from cograph_client.api.routes import operator as operator_routes
-from cograph_client.auth import api_keys
-from cograph_client.auth.api_keys import TenantContext
-from cograph_client.graph.layers import enhanced_graph_uri, public_graph_uri
+from infona_client.api.deps import get_neptune_client
+from infona_client.api.routes import operator as operator_routes
+from infona_client.auth import api_keys
+from infona_client.auth.api_keys import TenantContext
+from infona_client.graph.layers import enhanced_graph_uri, public_graph_uri
 
 RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns"
 RDFS = "http://www.w3.org/2000/01/rdf-schema"
@@ -512,7 +512,7 @@ def test_pick_is_the_lexicographic_minimum_not_set_iteration_order():
     import random
     import string
 
-    from cograph_client.graph.global_ontology import _pick
+    from infona_client.graph.global_ontology import _pick
 
     assert _pick(set()) is None
     assert _pick({"only"}) == "only"
@@ -536,7 +536,7 @@ def test_pick_is_the_lexicographic_minimum_not_set_iteration_order():
 def test_conflicting_ranges_fold_deterministically_regardless_of_row_order():
     """Two declared ranges must not flip a slot between attributes and
     relationships depending on the engine's (unspecified) row order."""
-    from cograph_client.graph.global_ontology import _TypeAccumulator
+    from infona_client.graph.global_ontology import _TypeAccumulator
 
     rows = [
         {"typeLabel": "Org", "attrLabel": "hq", "range": f"{XSD}#string"},
@@ -552,7 +552,7 @@ def test_conflicting_ranges_fold_deterministically_regardless_of_row_order():
 
 
 def test_conflicting_comments_and_parents_fold_deterministically():
-    from cograph_client.graph.global_ontology import _TypeAccumulator
+    from infona_client.graph.global_ontology import _TypeAccumulator
 
     rows = [
         {"typeLabel": "Org", "typeComment": "b", "parent": f"{PUB}/Thing"},
@@ -587,7 +587,7 @@ def test_every_operator_route_is_gated():
     """A future /operator/* route that forgets Depends(require_operator) would be
     ungated AND cross-tenant. The gate is declared on the ROUTER, so this holds
     for routes that do not exist yet — assert it rather than trust review."""
-    from cograph_client.api.routes.operator import require_operator, router
+    from infona_client.api.routes.operator import require_operator, router
 
     routes = [r for r in router.routes if hasattr(r, "dependant")]
     assert routes, "no routes found on the operator router"
@@ -598,14 +598,14 @@ def test_every_operator_route_is_gated():
 
 
 def test_router_declares_the_gate_itself():
-    from cograph_client.api.routes.operator import require_operator, router
+    from infona_client.api.routes.operator import require_operator, router
 
     assert any(d.dependency is require_operator for d in router.dependencies)
 
 
 def test_preexisting_job_trace_route_still_gated_403_and_200():
     """The router-level dependency must not change existing route behavior."""
-    from cograph_client.api.deps import get_enrichment_job_store
+    from infona_client.api.deps import get_enrichment_job_store
 
     class _Store:
         async def get(self, job_id):
@@ -629,7 +629,7 @@ def test_preexisting_job_trace_route_still_gated_403_and_200():
 
 
 def test_query_builders_default_to_tenant_namespace():
-    from cograph_client.graph.ontology_queries import (
+    from infona_client.graph.ontology_queries import (
         get_attribute_range_query,
         get_subtypes_query,
         get_type_attributes_query,
@@ -647,7 +647,7 @@ def test_query_builders_default_to_tenant_namespace():
 
 def test_batched_query_is_deterministically_ordered():
     """No ORDER BY => unspecified solution order => a non-deterministic fold."""
-    from cograph_client.graph.ontology_queries import full_ontology_detail_query
+    from infona_client.graph.ontology_queries import full_ontology_detail_query
 
     sparql = full_ontology_detail_query(public_graph_uri())
     assert "ORDER BY" in sparql
@@ -665,7 +665,7 @@ def test_oss_boundary_no_proprietary_import():
     """The reader must never reach into the proprietary parent package."""
     from pathlib import Path
 
-    import cograph_client.graph.global_ontology as mod
+    import infona_client.graph.global_ontology as mod
 
     src = Path(mod.__file__).read_text()
     assert "from cograph." not in src
@@ -679,7 +679,7 @@ def test_oss_boundary_no_proprietary_import():
 
 def _spec(slug: str, kinds: list[str], **kw):
     """A minimal catalog entry. Only the fields this overlay reads are set."""
-    from cograph_client.api_registry.spec import ApiSourceSpec, Coverage
+    from infona_client.api_registry.spec import ApiSourceSpec, Coverage
 
     return ApiSourceSpec(
         slug=slug,
@@ -693,7 +693,7 @@ def _spec(slug: str, kinds: list[str], **kw):
 
 
 def _catalog(*specs):
-    from cograph_client.api_registry.catalog import ApiSourceCatalog
+    from infona_client.api_registry.catalog import ApiSourceCatalog
 
     return ApiSourceCatalog(entries={s.slug: s for s in specs})
 
@@ -704,7 +704,7 @@ def _fetch(neptune, **kw):
     catalog and the real clock would rot on its own."""
     import asyncio
 
-    from cograph_client.graph.global_ontology import fetch_global_ontology
+    from infona_client.graph.global_ontology import fetch_global_ontology
 
     return asyncio.run(fetch_global_ontology(neptune, **kw)).model_dump()
 
@@ -816,8 +816,8 @@ def test_membership_is_exactly_the_shared_matcher_over_the_real_seed_catalog():
     dropping disabled entries) is caught here even when it agrees on the common
     cases.
     """
-    from cograph_client.api_registry.catalog import make_api_source_catalog
-    from cograph_client.api_registry.matching import type_matches
+    from infona_client.api_registry.catalog import make_api_source_catalog
+    from infona_client.api_registry.matching import type_matches
 
     catalog = make_api_source_catalog()
     assert catalog.slugs(), "seed catalog is empty — the guard would be vacuous"
@@ -891,7 +891,7 @@ def test_freshness_grades_come_from_catalog_audit(verified_at, expected):
 def test_freshness_never_reports_a_live_smoke_status():
     """The grade is OFFLINE by construction: an ontology read must not make
     network calls, so EMPTY / UNREACHABLE can never appear."""
-    from cograph_client.api_registry import catalog_audit
+    from infona_client.api_registry import catalog_audit
 
     calls = []
 
@@ -918,7 +918,7 @@ def test_freshness_never_reports_a_live_smoke_status():
 
 
 def test_registry_unavailable_degrades_to_empty_sources_not_500(monkeypatch):
-    from cograph_client.api_registry import catalog as catalog_mod
+    from infona_client.api_registry import catalog as catalog_mod
 
     def _explode(*a, **kw):
         raise RuntimeError("registry is down")
@@ -935,7 +935,7 @@ def test_registry_unavailable_degrades_to_empty_sources_not_500(monkeypatch):
 
 
 def test_registry_audit_failure_also_degrades(monkeypatch):
-    from cograph_client.api_registry import catalog_audit
+    from infona_client.api_registry import catalog_audit
 
     async def _explode(*a, **kw):
         raise RuntimeError("audit blew up")
@@ -948,7 +948,7 @@ def test_registry_audit_failure_also_degrades(monkeypatch):
 def test_a_matcher_failure_degrades_that_type_only(monkeypatch):
     """A spec the matcher chokes on must cost that type its overlay, not the
     whole request."""
-    from cograph_client.api_registry import matching
+    from infona_client.api_registry import matching
 
     def _explode(spec, entity_type):
         raise RuntimeError("bad spec")
@@ -967,7 +967,7 @@ def test_a_matcher_failure_degrades_that_type_only(monkeypatch):
 def test_a_tenants_private_sources_never_appear():
     """`/operator/ontology/global` is cross-tenant. Passing a tenant_id into the
     catalog would leak one workspace's private entries onto the shared canon."""
-    from cograph_client.api_registry.catalog import (
+    from infona_client.api_registry.catalog import (
         reset_api_source_catalog,
         set_tenant_custom_specs,
     )
@@ -1044,9 +1044,9 @@ def test_function_writer_mints_layer_qualified_enhanced_attachment():
     Bare tenant names still mint the tenant namespace (back-compat); Enhanced
     is explicit via layer= or a path/URI. Public remains refused (ONTA-400).
     """
-    from cograph_client.graph.layers import Layer, layer_type_uri
-    from cograph_client.graph.ontology_queries import type_uri
-    from cograph_client.graph.queries import register_function_triple
+    from infona_client.graph.layers import Layer, layer_type_uri
+    from infona_client.graph.ontology_queries import type_uri
+    from infona_client.graph.queries import register_function_triple
 
     tenant_sparql = register_function_triple(
         public_graph_uri(), entity_type="Place", function_name="f",
@@ -1082,7 +1082,7 @@ def test_a_function_attached_to_the_BARE_tenant_uri_does_not_surface():
 
 
 def test_query_builder_joins_attached_functions():
-    from cograph_client.graph.ontology_queries import full_ontology_detail_query
+    from infona_client.graph.ontology_queries import full_ontology_detail_query
 
     sparql = full_ontology_detail_query(public_graph_uri())
     assert "https://graph.onta.sh/onto/attachedTo" in sparql
@@ -1091,7 +1091,7 @@ def test_query_builder_joins_attached_functions():
 
 
 def test_function_fold_is_deterministic_regardless_of_row_order():
-    from cograph_client.graph.global_ontology import _TypeAccumulator
+    from infona_client.graph.global_ontology import _TypeAccumulator
 
     rows = [
         {"typeLabel": "Place", "funcName": "f", "funcDesc": "b", "funcEndpoint": "https://z"},
@@ -1125,7 +1125,7 @@ def clean_skill_registry():
     would otherwise bleed into the next one — and the OSS seed dir ships empty,
     so a clean registry means a genuinely empty overlay to assert against.
     """
-    from cograph_client.skills import reset_skill_layers
+    from infona_client.skills import reset_skill_layers
 
     reset_skill_layers()
     try:
@@ -1143,14 +1143,14 @@ def _register(*skills, layer=None):
     Default layer is ENHANCED (ONTA-400: Public may not carry skills; the
     premium overlay registers onto Enhanced only).
     """
-    from cograph_client.graph.layers import Layer
-    from cograph_client.skills import register_skill_layer
+    from infona_client.graph.layers import Layer
+    from infona_client.skills import register_skill_layer
 
     register_skill_layer(layer or Layer.ENHANCED, list(skills))
 
 
 def _skill(slug: str, type_name: str, body: str = "Some guidance.", **kw):
-    from cograph_client.skills import TypeSkill
+    from infona_client.skills import TypeSkill
 
     return TypeSkill(slug=slug, type_name=type_name, body=body, **kw)
 
@@ -1200,8 +1200,8 @@ def test_skill_carries_only_real_fields_and_no_body(clean_skill_registry):
 
 def test_a_long_body_is_excerpted_not_inlined(clean_skill_registry):
     """A 20k body (the validator's ceiling) must not ride along whole."""
-    from cograph_client.graph.global_ontology import SKILL_EXCERPT_CHARS
-    from cograph_client.skills import MAX_BODY_CHARS
+    from infona_client.graph.global_ontology import SKILL_EXCERPT_CHARS
+    from infona_client.skills import MAX_BODY_CHARS
 
     # A 9-char word deliberately does NOT divide the excerpt budget, so the raw
     # cut lands MID-WORD ("…alph") and the word-boundary rule is observable. A
@@ -1240,7 +1240,7 @@ def test_skills_sorted_by_slug_then_layer_so_an_override_pair_is_adjacent(
     still pinned for multiple Enhanced skills (and any future permitted
     layers) so the operator browse view stays stable.
     """
-    from cograph_client.graph.layers import Layer
+    from infona_client.graph.layers import Layer
 
     _register(_skill("zeta", "Hospital"), _skill("naming", "Hospital"))
     _register(_skill("alpha", "Hospital"), layer=Layer.ENHANCED)
@@ -1257,7 +1257,7 @@ def test_a_skills_layer_may_differ_from_the_types_layer(clean_skill_registry):
     SKILL's layer, so a curated ENHANCED skill can legitimately hang off a
     PUBLIC type. The UI may share the badge; it must not assume the values
     agree."""
-    from cograph_client.graph.layers import Layer
+    from infona_client.graph.layers import Layer
 
     _register(_skill("premium-guidance", "Hospital"), layer=Layer.ENHANCED)
     hospital = _types_of(_fetch(_one_public_type("Hospital")))["Hospital"]
@@ -1308,13 +1308,13 @@ def test_a_disabled_skill_is_still_listed_and_says_so(clean_skill_registry):
 def test_skills_subsystem_failure_degrades_to_empty_not_500(
     monkeypatch, clean_skill_registry
 ):
-    import cograph_client.skills as skills_pkg
+    import infona_client.skills as skills_pkg
 
     def _explode(*a, **kw):
         raise RuntimeError("skills registry is down")
 
     # Patch the attribute the assembler's LAZY IMPORT actually binds
-    # (`from cograph_client.skills import global_skills_for_type`) — patching
+    # (`from infona_client.skills import global_skills_for_type`) — patching
     # `skills.registry` instead would leave the package re-export untouched and
     # this test would pass without exercising the degradation at all.
     monkeypatch.setattr(skills_pkg, "global_skills_for_type", _explode)
@@ -1339,8 +1339,8 @@ def test_a_tenants_private_skills_never_appear(clean_skill_registry):
     skills are its own data and must not surface on the shared canon."""
     import asyncio
 
-    from cograph_client.graph.layers import Layer
-    from cograph_client.skills import InMemoryTypeSkillStore, TypeSkill
+    from infona_client.graph.layers import Layer
+    from infona_client.skills import InMemoryTypeSkillStore, TypeSkill
 
     store = InMemoryTypeSkillStore()
     asyncio.run(
@@ -1358,7 +1358,7 @@ def test_a_tenants_private_skills_never_appear(clean_skill_registry):
     # so the assertion below is not passing merely because the write no-oped.
     resolved = asyncio.run(
         __import__(
-            "cograph_client.skills", fromlist=["resolve_skills"]
+            "infona_client.skills", fromlist=["resolve_skills"]
         ).resolve_skills("Hospital", tenant_id="demo-tenant", store=store)
     )
     assert [s.slug for s in resolved] == ["workspace-private"]
@@ -1381,8 +1381,8 @@ def test_the_read_function_cannot_carry_a_tenant_row_at_all(clean_skill_registry
     ONTA-400: Public refuses non-empty registration, so the smuggle test uses
     Enhanced (the only global layer that may carry skills).
     """
-    from cograph_client.graph.layers import Layer
-    from cograph_client.skills import global_skills_for_type, register_skill_layer
+    from infona_client.graph.layers import Layer
+    from infona_client.skills import global_skills_for_type, register_skill_layer
 
     with pytest.raises(ValueError, match="GLOBAL layers only"):
         register_skill_layer(Layer.TENANT, [_skill("t", "Hospital")])
@@ -1402,7 +1402,7 @@ def test_skills_reader_takes_no_tenant_context(clean_skill_registry):
     parameter and this page would be one keyword argument away from leaking."""
     import inspect
 
-    from cograph_client.skills import global_skills_for_type
+    from infona_client.skills import global_skills_for_type
 
     params = inspect.signature(global_skills_for_type).parameters
     assert list(params) == ["type_name", "layer"]
@@ -1425,7 +1425,7 @@ def test_the_source_reader_never_passes_a_tenant_to_the_catalog():
     import ast
     import inspect
 
-    from cograph_client.graph import global_ontology as mod
+    from infona_client.graph import global_ontology as mod
 
     tree = ast.parse(inspect.getsource(mod))
     calls = [

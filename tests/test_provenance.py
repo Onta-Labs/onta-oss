@@ -19,9 +19,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from cograph_client.graph.client import NeptuneClient
-from cograph_client.graph.ontology_queries import attr_uri
-from cograph_client.graph.provenance import (
+from infona_client.graph.client import NeptuneClient
+from infona_client.graph.ontology_queries import attr_uri
+from infona_client.graph.provenance import (
     EVENT_REWRITE,
     EVENT_TOMBSTONE,
     PROV_EVENT,
@@ -39,14 +39,14 @@ from cograph_client.graph.provenance import (
     provenance_query,
     statement_id,
 )
-from cograph_client.resolver.attribute_resolver import AttributeSchema
-from cograph_client.resolver.models import (
+from infona_client.resolver.attribute_resolver import AttributeSchema
+from infona_client.resolver.models import (
     ExtractedAttribute,
     ExtractedEntity,
     ExtractionResult,
     IngestResult,
 )
-from cograph_client.resolver.schema_resolver import SchemaResolver
+from infona_client.resolver.schema_resolver import SchemaResolver
 
 
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
@@ -68,7 +68,7 @@ def mock_neptune():
 
 def _make_resolver(mock_neptune, provenance: bool) -> SchemaResolver:
     verdict_path = Path(tempfile.mkdtemp()) / "verdicts.json"
-    from cograph_client.resolver.verdict_cache import JsonVerdictCache
+    from infona_client.resolver.verdict_cache import JsonVerdictCache
 
     env = {
         "ANTHROPIC_API_KEY": "test-key",

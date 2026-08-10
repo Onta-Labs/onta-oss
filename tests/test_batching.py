@@ -6,7 +6,7 @@ wide rows never exceed the ALB ~1MB request-body limit and 413.
 
 import json
 
-from cograph_client.resolver.batching import body_overhead_bytes, iter_byte_batches
+from infona_client.resolver.batching import body_overhead_bytes, iter_byte_batches
 
 
 def _body_bytes(batch: list[dict]) -> int:

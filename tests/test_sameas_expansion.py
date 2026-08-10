@@ -28,13 +28,13 @@ import json
 
 import pytest
 
-from cograph_client.graph.kg_writer import insert_facts
-from cograph_client.graph.ontology_queries import (
+from infona_client.graph.kg_writer import insert_facts
+from infona_client.graph.ontology_queries import (
     SAME_AS,
     entity_uri,
     rewrite_entity_ref_to_sameas_closure,
 )
-from cograph_client.graph.queries import kg_graph_uri
+from infona_client.graph.queries import kg_graph_uri
 
 TENANT, KG = "onta278", "corp"
 INSTANCE_GRAPH = kg_graph_uri(TENANT, KG)
@@ -132,8 +132,8 @@ def test_non_entity_uris_are_left_untouched():
 pyoxigraph = pytest.importorskip("pyoxigraph")
 from pyoxigraph import QueryResultsFormat, Store  # noqa: E402
 
-from cograph_client.nlp.pipeline import NLQueryPipeline  # noqa: E402
-from cograph_client.pipeline.mutations import merge_entities  # noqa: E402
+from infona_client.nlp.pipeline import NLQueryPipeline  # noqa: E402
+from infona_client.pipeline.mutations import merge_entities  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #
@@ -227,8 +227,8 @@ def _quiet_housekeeping(monkeypatch):
     """Silence the shared refresh_after_write downstreams (cache-invalidate / embed /
     stats recompute) so the tests isolate the entailment mechanism — exactly as
     tests/test_merge_split.py does."""
-    import cograph_client.api.routes.explore as explore_mod
-    import cograph_client.nlp.pipeline as pipeline_mod
+    import infona_client.api.routes.explore as explore_mod
+    import infona_client.nlp.pipeline as pipeline_mod
 
     monkeypatch.setattr(pipeline_mod.NLQueryPipeline, "invalidate_cache", lambda g: None)
     monkeypatch.setattr(pipeline_mod, "get_embedding_service", lambda: None)

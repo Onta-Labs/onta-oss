@@ -19,20 +19,20 @@ import json
 
 import pytest
 
-from cograph_client.agent import planner as planner_mod
-from cograph_client.agent.conversation_store import (
+from infona_client.agent import planner as planner_mod
+from infona_client.agent.conversation_store import (
     InMemoryConversationStore,
     Turn,
     make_conversation_store,
     reset_conversation_store,
 )
-from cograph_client.auth.api_keys import AuthVerdict, register_external_verifier
-from cograph_client.agent.planner import (
+from infona_client.auth.api_keys import AuthVerdict, register_external_verifier
+from infona_client.agent.planner import (
     handle,
     register_default_capabilities,
     reset_plan_store,
 )
-from cograph_client.agent.registry import (
+from infona_client.agent.registry import (
     AgentContext,
     reset_capabilities,
 )
@@ -103,9 +103,9 @@ def _fresh():
 @pytest.fixture(autouse=True)
 def _track_bg_tasks(monkeypatch):
     """Run capability-spawned background work as tracked tasks (no leaks)."""
-    import cograph_client.agent.capabilities.dedup_cap as dedup_cap
-    import cograph_client.agent.capabilities.enrich_cap as enrich_cap
-    import cograph_client.agent.capabilities.normalize_cap as norm_cap
+    import infona_client.agent.capabilities.dedup_cap as dedup_cap
+    import infona_client.agent.capabilities.enrich_cap as enrich_cap
+    import infona_client.agent.capabilities.normalize_cap as norm_cap
 
     def tracking_spawn(coro):
         asyncio.ensure_future(coro)
@@ -120,7 +120,7 @@ def _stub_schema(monkeypatch):
         return _SCHEMA
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.normalize_cap.list_type_schema",
+        "infona_client.agent.capabilities.normalize_cap.list_type_schema",
         fake_schema,
     )
 
@@ -140,14 +140,14 @@ def _stub_normalize_directive(monkeypatch, predicate="name"):
         )
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.normalize_cap.openrouter_chat", fake_chat
+        "infona_client.agent.capabilities.normalize_cap.openrouter_chat", fake_chat
     )
 
     async def fake_sample(neptune, tenant_id, kg, type_name, pred_leaf):
         return (["Acme Corp 🚀", "Acme Corp"], "attribute")
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.normalize_cap.sample_predicate_values",
+        "infona_client.agent.capabilities.normalize_cap.sample_predicate_values",
         fake_sample,
     )
 
@@ -229,7 +229,7 @@ async def test_conversation_store_roundtrip_and_tenant_scope():
 
 @pytest.mark.asyncio
 async def test_conversation_store_trims_to_max():
-    from cograph_client.agent import conversation_store as cs
+    from infona_client.agent import conversation_store as cs
 
     store = InMemoryConversationStore()
     for i in range(cs._MAX_TURNS + 8):
@@ -504,13 +504,13 @@ def _history_client(monkeypatch):
 
     from fastapi.testclient import TestClient
 
-    from cograph_client.api.app import create_app
-    from cograph_client.graph.client import NeptuneClient
+    from infona_client.api.app import create_app
+    from infona_client.graph.client import NeptuneClient
 
-    monkeypatch.setattr("cograph_client.auth.api_keys.settings.api_keys", "{}")
+    monkeypatch.setattr("infona_client.auth.api_keys.settings.api_keys", "{}")
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.setattr(
-        "cograph_client.api.routes.agent.settings.openrouter_api_key", "", raising=False
+        "infona_client.api.routes.agent.settings.openrouter_api_key", "", raising=False
     )
 
     subjects = {"key-a": "user_a", "key-b": "user_b"}

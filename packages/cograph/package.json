@@ -1,7 +1,7 @@
 {
   "name": "@infona-ai/cli",
   "version": "0.1.7",
-  "description": "Infona SDK and CLI — context graph platform for structured data",
+  "description": "Infona SDK and CLI \u2014 context graph platform for structured data",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -15,6 +15,7 @@
     }
   },
   "bin": {
+    "infona": "./dist/cli.js",
     "onta": "./dist/cli.js"
   },
   "publishConfig": {

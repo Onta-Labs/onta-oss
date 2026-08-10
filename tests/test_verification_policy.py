@@ -20,25 +20,25 @@ import re
 
 import pytest
 
-from cograph_client.normalization.policy import (
+from infona_client.normalization.policy import (
     POLICY_MODES,
     CleanPolicy,
     CleanPolicyStore,
     PolicyBase,
     make_policy_id,
 )
-from cograph_client.resolver.models import CleanFact, CleanOutcome
+from infona_client.resolver.models import CleanFact, CleanOutcome
 
 # Import the sibling-owned verifier surface via its FULL submodule path (do not rely
 # on / edit verification/__init__.py re-exports).
-from cograph_client.verification.policy import (
+from infona_client.verification.policy import (
     VERIFY_POLICY_ENTITY_PREFIX,
     VERIFY_POLICY_TYPE_URI,
     VerifyPolicy,
     VerifyPolicyStore,
 )
-from cograph_client.verification.types import TruthVerdict, VerifierResult
-from cograph_client.verification.verifier import (
+from infona_client.verification.types import TruthVerdict, VerifierResult
+from infona_client.verification.verifier import (
     register_fact_verifier,
     verify_clean_facts,
 )
@@ -65,8 +65,8 @@ def test_mode_enum_lives_only_in_the_base_zero_duplication():
     assert "mode" not in VerifyPolicy.__dict__.get("__annotations__", {})
     # And VerifyPolicy shares the SAME POLICY_MODES object as CleanPolicy — one
     # source of truth for the accepted modes, imported not copied.
-    from cograph_client.normalization import policy as base_mod
-    from cograph_client.verification import policy as verify_mod
+    from infona_client.normalization import policy as base_mod
+    from infona_client.verification import policy as verify_mod
 
     assert verify_mod.POLICY_MODES is base_mod.POLICY_MODES
 

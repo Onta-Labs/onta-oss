@@ -6,11 +6,11 @@ commits stay separate; empty input is empty (never an error).
 
 from __future__ import annotations
 
-from cograph_client.graph.ontology_changelog import (
+from infona_client.graph.ontology_changelog import (
     ChangelogEntry,
     group_changelog_entries,
 )
-from cograph_client.models.ontology import ChangeKind, ChangeRecord
+from infona_client.models.ontology import ChangeKind, ChangeRecord
 
 
 def _entry(

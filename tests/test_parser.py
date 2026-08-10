@@ -1,4 +1,4 @@
-from cograph_client.graph.parser import parse_sparql_results, unbound_projection_vars
+from infona_client.graph.parser import parse_sparql_results, unbound_projection_vars
 
 
 def test_parse_empty_results():

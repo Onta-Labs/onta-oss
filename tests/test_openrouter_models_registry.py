@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from cograph_client.api_registry.catalog import make_api_source_catalog
-from cograph_client.api_registry.discovery import (
+from infona_client.api_registry.catalog import make_api_source_catalog
+from infona_client.api_registry.discovery import (
     RegistryDiscoverySource,
     _enrich_provider_from_id,
 )
-from cograph_client.api_registry.executor import RegistryApiSource
+from infona_client.api_registry.executor import RegistryApiSource
 
 
 def test_openrouter_models_in_seed_catalog():

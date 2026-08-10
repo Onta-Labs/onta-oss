@@ -36,7 +36,7 @@ import pytest
 # Pure hierarchy helpers (no I/O)
 # ---------------------------------------------------------------------------
 
-from cograph_client.resolver.er.types import (
+from infona_client.resolver.er.types import (
     DEFAULT_GUEST_CONFIG,
     ancestor_chain,
     config_for,
@@ -44,13 +44,13 @@ from cograph_client.resolver.er.types import (
     primary_config_type,
     primary_type,
 )
-from cograph_client.graph.ontology_queries import (
+from infona_client.graph.ontology_queries import (
     parent_map_query,
     rewrite_type_predicate_to_closure,
     with_subclass_closure,
 )
-from cograph_client.resolver.models import ExtractedAttribute, ExtractedEntity, IngestResult
-from cograph_client.resolver.er.types import MergeAction, MergeDecision
+from infona_client.resolver.models import ExtractedAttribute, ExtractedEntity, IngestResult
+from infona_client.resolver.er.types import MergeAction, MergeDecision
 
 
 # Hospitality domain hierarchy used across all tests
@@ -196,7 +196,7 @@ class TestPrimaryConfigTypeHospitality:
 @pytest.fixture
 def mock_neptune():
     """Minimal AsyncMock NeptuneClient."""
-    from cograph_client.graph.client import NeptuneClient
+    from infona_client.graph.client import NeptuneClient
     client = AsyncMock(spec=NeptuneClient)
     client.health.return_value = True
     client.query.return_value = {"head": {"vars": []}, "results": {"bindings": []}}
@@ -207,8 +207,8 @@ def mock_neptune():
 @pytest.fixture
 def resolver(mock_neptune):
     """SchemaResolver wired to mocked Neptune (no real LLM, no real DB)."""
-    from cograph_client.resolver.schema_resolver import SchemaResolver
-    from cograph_client.resolver.verdict_cache import JsonVerdictCache
+    from infona_client.resolver.schema_resolver import SchemaResolver
+    from infona_client.resolver.verdict_cache import JsonVerdictCache
     import tempfile
     from pathlib import Path
 
@@ -324,14 +324,14 @@ async def test_a4_er_merges_hotel_guests_via_guest_config():
     With config_for_with_hierarchy + PARENT_OF the correct config is supplied
     and the decisive email signal causes AUTO_MERGE.
     """
-    from cograph_client.resolver.er.engine import ERPipeline
-    from cograph_client.resolver.er.types import MergeAction
+    from infona_client.resolver.er.engine import ERPipeline
+    from infona_client.resolver.er.types import MergeAction
 
     mock_neptune = AsyncMock()
 
     # The second call to candidates_with_signals returns a single candidate
     # whose normalized signals match the incoming entity (same email).
-    from cograph_client.resolver.er.types import NormalizedSignals
+    from infona_client.resolver.er.types import NormalizedSignals
     CANONICAL_URI = "https://graph.onta.sh/entities/HotelGuest/alice_example_com-abc12345"
     existing_candidate_signals = NormalizedSignals(
         name="alice smith",
@@ -371,7 +371,7 @@ async def test_a4_er_merges_hotel_guests_via_guest_config():
 @pytest.mark.asyncio
 async def test_a4_er_no_merge_without_hierarchy():
     """A4 (control) — flat config_for returns None for HotelGuest, so ER is skipped."""
-    from cograph_client.resolver.er.engine import ERPipeline
+    from infona_client.resolver.er.engine import ERPipeline
 
     mock_neptune = AsyncMock()
     pipeline = ERPipeline(mock_neptune)
@@ -519,8 +519,8 @@ class TestParentMapQueryHospitality:
 @pytest.mark.asyncio
 async def test_fetch_parent_map_builds_hospitality_map(mock_neptune):
     """SchemaResolver._fetch_parent_map turns Neptune bindings into the parent_of dict."""
-    from cograph_client.resolver.schema_resolver import SchemaResolver
-    from cograph_client.resolver.verdict_cache import JsonVerdictCache
+    from infona_client.resolver.schema_resolver import SchemaResolver
+    from infona_client.resolver.verdict_cache import JsonVerdictCache
     import tempfile
 
     # Mock Neptune to return two rdfs:subClassOf edges:

@@ -33,15 +33,15 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from cograph_client.config import settings
-from cograph_client.pipeline.manifest import (
+from infona_client.config import settings
+from infona_client.pipeline.manifest import (
     HaltReasonKind,
     RunManifest,
     RunState,
     classify_halt,
     resolve_spend_ceiling,
 )
-from cograph_client.retrieval.errors import CostCeilingExceeded, RetrievalError
+from infona_client.retrieval.errors import CostCeilingExceeded, RetrievalError
 
 
 # --------------------------------------------------------------------------- #
@@ -130,17 +130,17 @@ def test_resolve_spend_ceiling():
 #    a cost_ceiling manifest + accurate partial coverage; a HIGH ceiling (the
 #    load-bearing control) completes clean.
 # --------------------------------------------------------------------------- #
-from cograph_client.enrichment.cache import EnrichmentCache  # noqa: E402
-from cograph_client.enrichment.executor import EnrichmentExecutor  # noqa: E402
-from cograph_client.enrichment.job_store import InMemoryJobStore  # noqa: E402
-from cograph_client.enrichment.models import (  # noqa: E402
+from infona_client.enrichment.cache import EnrichmentCache  # noqa: E402
+from infona_client.enrichment.executor import EnrichmentExecutor  # noqa: E402
+from infona_client.enrichment.job_store import InMemoryJobStore  # noqa: E402
+from infona_client.enrichment.models import (  # noqa: E402
     ConflictPolicy,
     EnrichJob,
     EnrichmentTier,
     JobStatus,
     Verdict,
 )
-from cograph_client.enrichment.sources.base import register_adapter  # noqa: E402
+from infona_client.enrichment.sources.base import register_adapter  # noqa: E402
 
 
 class _FixedCostAdapter:
@@ -274,18 +274,18 @@ async def test_high_ceiling_control_completes_clean():
 # 3. ACCEPTANCE (discovery) — a LOW ceiling halts the web-ingest run at the
 #    envelope with a cost_ceiling manifest + accurate partial coverage.
 # --------------------------------------------------------------------------- #
-from cograph_client.agent.capabilities import web_ingest_cap  # noqa: E402
-from cograph_client.agent.capabilities.web_ingest_cap import (  # noqa: E402
+from infona_client.agent.capabilities import web_ingest_cap  # noqa: E402
+from infona_client.agent.capabilities.web_ingest_cap import (  # noqa: E402
     WebIngestCapability,
 )
-from cograph_client.agent.registry import AgentContext  # noqa: E402
-from cograph_client.resolver.models import (  # noqa: E402
+from infona_client.agent.registry import AgentContext  # noqa: E402
+from infona_client.resolver.models import (  # noqa: E402
     ExtractedEntity,
     ExtractionResult,
     IngestResult,
 )
-from cograph_client.resolver.schema_resolver import SchemaResolver  # noqa: E402
-from cograph_client.web_sources import (  # noqa: E402
+from infona_client.resolver.schema_resolver import SchemaResolver  # noqa: E402
+from infona_client.web_sources import (  # noqa: E402
     DiscoverResult,
     register_web_source,
     reset_web_sources,

@@ -1,9 +1,9 @@
-"""Tests for DefaultNormalizer (cograph_client.resolver.er.normalize)."""
+"""Tests for DefaultNormalizer (infona_client.resolver.er.normalize)."""
 
 from __future__ import annotations
 
-from cograph_client.resolver.er.normalize import DefaultNormalizer
-from cograph_client.resolver.er.types import EntitySignals
+from infona_client.resolver.er.normalize import DefaultNormalizer
+from infona_client.resolver.er.types import EntitySignals
 
 
 N = DefaultNormalizer()

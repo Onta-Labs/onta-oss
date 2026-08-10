@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from cograph_client.pipeline.discovery_quality import (
+from infona_client.pipeline.discovery_quality import (
     alnum_identity,
     apply_discovery_quality_gate,
     catalog_identity_key,

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from cograph_client.graph.kg_status import (
+from infona_client.graph.kg_status import (
     KG_EMPTY,
     KG_MISSING,
     KG_OK,
@@ -248,7 +248,7 @@ async def test_blank_kg_name_short_circuits_to_ok():
 @pytest.mark.asyncio
 async def test_invalid_kg_name_raises_before_any_query():
     """ONTA-414: fail closed rather than interpolate a hostile name into SPARQL."""
-    from cograph_client.graph.queries import InvalidKGName
+    from infona_client.graph.queries import InvalidKGName
 
     n = ProbeNeptune(registered=True, has_data=True)
     with pytest.raises(InvalidKGName):

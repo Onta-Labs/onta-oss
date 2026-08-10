@@ -15,7 +15,7 @@
 #
 # Two scopes, because the two failure modes differ:
 #
-#   CODE scope  — cograph_client/ + packages/: what ships to PyPI/npm and is
+#   CODE scope  — infona_client/ + packages/: what ships to PyPI/npm and is
 #                 copied into the ECS image. Import/module-path rules apply
 #                 only here, since docs legitimately name proprietary paths.
 #   REPO scope  — every git-tracked file, plus uncommitted ones so a local run
@@ -41,7 +41,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 # Directories holding published/deployed source.
-SCAN_DIRS=(cograph_client packages)
+SCAN_DIRS=(infona_client packages)
 EXCLUDES=(
   --exclude-dir=node_modules
   --exclude-dir=dist
@@ -314,7 +314,7 @@ PAT_SECRET='sk-ant-[A-Za-z0-9_-]{20,}|sk-or-v1-[A-Za-z0-9]{20,}|sk-proj-[A-Za-z0
 
 # A personal mailbox baked into public code or data. Outbound requests must
 # identify the DEPLOYMENT (via config), never an individual — see
-# cograph_client/api/routes/lambda_functions.py::sec_user_agent. Free-mail
+# infona_client/api/routes/lambda_functions.py::sec_user_agent. Free-mail
 # domains only: a role address on a company domain is a legitimate contact.
 PAT_CONTACT='[A-Za-z0-9._%+-]+@(gmail|googlemail|yahoo|hotmail|outlook|live|icloud|me|proton|protonmail|aol)\.[A-Za-z]{2,}'
 
@@ -328,9 +328,9 @@ PAT_CONTACT_OK=':(john|jane|jack|jill|alice|bob|carol|dave|foo|bar|test|example|
 
 # 1. No imports from the proprietary parent `cograph` namespace.
 #    `cograph\b` matches `import cograph` / `from cograph.x` but NOT
-#    `cograph_client` (underscore is a word char, so no boundary after
-#    "cograph"). The OSS package is `cograph_client`; the parent is `cograph`.
-run_check "imports the proprietary 'cograph' parent package (use cograph_client or a plugin protocol)" \
+#    `infona_client` (underscore is a word char, so no boundary after
+#    "cograph"). The OSS package is `infona_client`; the parent is `cograph`.
+run_check "imports the proprietary 'cograph' parent package (use infona_client or a plugin protocol)" \
   '(^|[[:space:]])(from|import)[[:space:]]+cograph\b'
 
 # 2. No references to proprietary-only source paths.

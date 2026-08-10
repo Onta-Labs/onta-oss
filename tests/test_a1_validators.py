@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import pytest
 
-from cograph_client.pipeline.a1_validators import (
+from infona_client.pipeline.a1_validators import (
     ROLE_ADDRESS,
     ROLE_CITY,
     ROLE_NAME,

@@ -7,7 +7,7 @@ every SPARQL binding verbatim — so a "describe this entity" (`SELECT ?p ?o`) o
 "list all predicates" (`SELECT DISTINCT ?p`) query dumped the ER/ingest plumbing
 straight into the answer.
 
-The fix lifts the filter into `cograph_client.graph.predicates.is_internal_predicate`
+The fix lifts the filter into `infona_client.graph.predicates.is_internal_predicate`
 (ONE definition, shared by `explore.py` AND the pipeline) and applies it at
 render-time in `_format_answer` (and the narrative rephrase). These tests assert
 on the MECHANISM using INVENTED predicate/entity tokens across two unrelated
@@ -20,8 +20,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from cograph_client.graph.predicates import is_internal_predicate
-from cograph_client.nlp.pipeline import (
+from infona_client.graph.predicates import is_internal_predicate
+from infona_client.nlp.pipeline import (
     NLQueryPipeline,
     _drop_internal_predicate_rows,
 )
@@ -47,7 +47,7 @@ def _pipe():
 # --------------------------------------------------------------- shared-filter one def
 def test_filter_is_the_one_shared_definition():
     """explore.py must re-export the SAME helper object, not a copy."""
-    from cograph_client.api.routes import explore
+    from infona_client.api.routes import explore
 
     assert explore._is_internal_predicate is is_internal_predicate
 

@@ -53,18 +53,18 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi import HTTPException
 
-import cograph_client
-from cograph_client.agent.plan_store import StoredPlan, make_plan_store
-from cograph_client.agent.registry import (
+import infona_client
+from infona_client.agent.plan_store import StoredPlan, make_plan_store
+from infona_client.agent.registry import (
     PlanStep,
     capability_writes,
     get_capabilities,
 )
-from cograph_client.auth import api_keys
-from cograph_client.auth.api_keys import TenantContext
-from cograph_client.auth.workspace_store import make_workspace_store
+from infona_client.auth import api_keys
+from infona_client.auth.api_keys import TenantContext
+from infona_client.auth.workspace_store import make_workspace_store
 
-_ROUTES_DIR = pathlib.Path(cograph_client.__file__).parent / "api" / "routes"
+_ROUTES_DIR = pathlib.Path(infona_client.__file__).parent / "api" / "routes"
 _MUTATING_METHODS = {"post", "put", "patch", "delete"}
 
 #: The ONE dependency that enforces the workspace write capability.
@@ -337,7 +337,7 @@ def test_route_scanner_catches_a_planted_violation(tmp_path):
     planted = tmp_path / "planted.py"
     planted.write_text(
         "from fastapi import APIRouter, Depends\n"
-        "from cograph_client.auth.api_keys import TenantContext, get_tenant\n"
+        "from infona_client.auth.api_keys import TenantContext, get_tenant\n"
         "router = APIRouter()\n"
         "@router.post('/danger')\n"
         "async def danger(tenant: TenantContext = Depends(get_tenant)):\n"
@@ -365,8 +365,8 @@ def test_route_scanner_accepts_direct_and_wrapped_write_deps(tmp_path):
     ok.write_text(
         "from typing import Annotated\n"
         "from fastapi import APIRouter, Depends\n"
-        "from cograph_client.auth.access import require_tenant_write\n"
-        "from cograph_client.auth.api_keys import TenantContext\n"
+        "from infona_client.auth.access import require_tenant_write\n"
+        "from infona_client.auth.api_keys import TenantContext\n"
         "router = APIRouter()\n"
         "@router.post('/direct')\n"
         "async def direct(t: TenantContext = Depends(require_tenant_write)):\n"
@@ -391,14 +391,14 @@ def test_route_scanner_accepts_decorator_and_router_level_deps(tmp_path):
     ``dependencies=[Depends(...)]`` on the decorator, and the router-wide
     ``APIRouter(dependencies=[...])``. Both are real FastAPI idioms and the
     router-wide one is the STRONGER of the two (opt-out, not opt-in);
-    ``cograph_client/api/routes/operator.py`` already uses it, so the first
+    ``infona_client/api/routes/operator.py`` already uses it, so the first
     mutating operator route would have tripped the guard. Flagging either is a
     false POSITIVE, and the natural fix for one of those is an allowlist entry
     that would exempt the route forever, including after its guard was removed.
     """
     (tmp_path / "on_decorator.py").write_text(
         "from fastapi import APIRouter, Depends\n"
-        "from cograph_client.auth.access import require_tenant_write\n"
+        "from infona_client.auth.access import require_tenant_write\n"
         "router = APIRouter()\n"
         "@router.post('/x', dependencies=[Depends(require_tenant_write)])\n"
         "async def x():\n"
@@ -406,7 +406,7 @@ def test_route_scanner_accepts_decorator_and_router_level_deps(tmp_path):
     )
     (tmp_path / "on_router.py").write_text(
         "from fastapi import APIRouter, Depends\n"
-        "from cograph_client.auth.access import require_tenant_write\n"
+        "from infona_client.auth.access import require_tenant_write\n"
         "router = APIRouter(\n"
         "    prefix='/w', dependencies=[Depends(require_tenant_write)]\n"
         ")\n"
@@ -426,7 +426,7 @@ def test_router_level_deps_do_not_leak_to_an_unguarded_router(tmp_path):
     fix would itself become a blanket exemption."""
     (tmp_path / "two_routers.py").write_text(
         "from fastapi import APIRouter, Depends\n"
-        "from cograph_client.auth.access import require_tenant_write\n"
+        "from infona_client.auth.access import require_tenant_write\n"
         "guarded = APIRouter(dependencies=[Depends(require_tenant_write)])\n"
         "public = APIRouter()\n"
         "@guarded.post('/ok')\n"
@@ -446,7 +446,7 @@ def test_route_scanner_descends_into_route_subpackages(tmp_path):
     sub.mkdir()
     (sub / "nested.py").write_text(
         "from fastapi import APIRouter, Depends\n"
-        "from cograph_client.auth.api_keys import TenantContext, get_tenant\n"
+        "from infona_client.auth.api_keys import TenantContext, get_tenant\n"
         "router = APIRouter()\n"
         "@router.post('/danger')\n"
         "async def danger(t: TenantContext = Depends(get_tenant)):\n"
@@ -553,7 +553,7 @@ _READ_ONLY_CAPABILITIES: dict[str, str] = {
 
 
 def _registered_by_name() -> dict:
-    from cograph_client.agent.planner import register_default_capabilities
+    from infona_client.agent.planner import register_default_capabilities
 
     register_default_capabilities()
     return {c.name: c for c in get_capabilities()}
@@ -603,8 +603,8 @@ def test_default_capability_is_treated_as_mutating():
 def test_mutating_capabilities_are_refused_to_a_reader():
     """Every registered mutating capability is denied at execute_plan for a
     read-only context, including any a downstream deployment registered."""
-    from cograph_client.agent.planner import execute_plan
-    from cograph_client.agent.registry import AgentContext, ReadOnlyMembershipError
+    from infona_client.agent.planner import execute_plan
+    from infona_client.agent.registry import AgentContext, ReadOnlyMembershipError
 
     caps = _registered_by_name()
     store = make_plan_store()
@@ -729,7 +729,7 @@ def test_operator_with_a_reader_membership_is_denied_raw_update(app, mock_neptun
 def test_reader_cannot_mutate_a_kg_through_the_agent(reader_client):
     """THE bug: a reader confirming a dedup plan reached DedupCapability.execute
     (a real KG mutation) through POST /agent, while POST /ingest 403s."""
-    from cograph_client.agent.capabilities.dedup_cap import DedupCapability
+    from infona_client.agent.capabilities.dedup_cap import DedupCapability
 
     _save_plan("plan-reader-dedup", "dedup", "rebuild")
     spy = AsyncMock(return_value={"status": "queued"})
@@ -748,7 +748,7 @@ def test_reader_cannot_mutate_a_kg_through_the_agent(reader_client):
 
 def test_reader_cannot_ingest_through_the_agent(reader_client):
     """Same escalation for the web-ingest capability (mints new entities)."""
-    from cograph_client.agent.capabilities.web_ingest_cap import WebIngestCapability
+    from infona_client.agent.capabilities.web_ingest_cap import WebIngestCapability
 
     _save_plan("plan-reader-ingest", "web_ingest", "ingest")
     spy = AsyncMock(return_value={"status": "queued"})
@@ -772,19 +772,19 @@ def test_reader_is_refused_before_a_mutating_plan_is_even_persisted(reader_clien
     can never confirm (and not a row in the plan store). The confirm-time gate
     stays because a plan can sit un-confirmed while the caller's role changes.
     """
-    from cograph_client.agent.capabilities.enrich_cap import EnrichCapability
+    from infona_client.agent.capabilities.enrich_cap import EnrichCapability
 
     step = PlanStep(capability="enrich", action="enrich", params={})
     with patch(
-        "cograph_client.agent.planner._classify",
+        "infona_client.agent.planner._classify",
         new=AsyncMock(return_value={"intents": ["enrich"]}),
     ), patch.object(
         EnrichCapability, "plan", AsyncMock(return_value=[step])
     ), patch(
-        "cograph_client.agent.planner.check_kg_scope",
+        "infona_client.agent.planner.check_kg_scope",
         new=AsyncMock(return_value=None),
     ), patch(
-        "cograph_client.agent.planner.make_plan_store"
+        "infona_client.agent.planner.make_plan_store"
     ) as plan_store:
         saver = AsyncMock()
         plan_store.return_value.save = saver
@@ -812,12 +812,12 @@ def test_reader_is_refused_at_the_front_door_too(reader_client):
 def test_reader_can_still_ask_a_question_through_the_agent(reader_client):
     """The other direction, which matters just as much: gating the mutating
     turns must NOT break a reader's read turn."""
-    from cograph_client.agent.capabilities.query import QueryCapability
+    from infona_client.agent.capabilities.query import QueryCapability
 
     answer = AsyncMock(return_value={"answer": "42", "sparql": "SELECT * {}", "rows": []})
     with patch.object(QueryCapability, "answer", answer):
         with patch(
-            "cograph_client.agent.planner._classify",
+            "infona_client.agent.planner._classify",
             new=AsyncMock(return_value={"intents": ["question"]}),
         ):
             resp = reader_client.post(
@@ -832,7 +832,7 @@ def test_reader_can_still_ask_a_question_through_the_agent(reader_client):
 def test_reader_can_still_run_a_read_only_capability_plan(reader_client):
     """A confirm whose steps are all read-only (web research) stays allowed.
     The gate is per-capability, not "any confirm"."""
-    from cograph_client.agent.capabilities.web_research_cap import WebResearchCapability
+    from infona_client.agent.capabilities.web_research_cap import WebResearchCapability
 
     _save_plan("plan-reader-research", "web_research", "research")
     spy = AsyncMock(return_value={"kind": "research_result", "answer": "ok"})
@@ -852,7 +852,7 @@ def test_reader_can_still_run_a_read_only_capability_plan(reader_client):
 def test_writer_can_still_execute_a_mutating_plan(app):
     """Regression floor: the fix must not lock out writers."""
     from fastapi.testclient import TestClient
-    from cograph_client.agent.capabilities.dedup_cap import DedupCapability
+    from infona_client.agent.capabilities.dedup_cap import DedupCapability
 
     store = make_workspace_store()
     _run(store.claim_workspace("esc-ws-w", "user_owner2", "Escalation W"))
@@ -903,8 +903,8 @@ def test_read_only_get_paths_do_not_write(reader_client, mock_neptune):
     store, kicked off the billed summary backfill, and scheduled the SAME
     whole-KG recompute that ``POST /recompute-stats`` refuses to a reader.
     """
-    from cograph_client.api.routes import explore as explore_mod
-    from cograph_client.api.routes import knowledge_graphs as kg_mod
+    from infona_client.api.routes import explore as explore_mod
+    from infona_client.api.routes import knowledge_graphs as kg_mod
 
     mock_neptune.query.return_value = {
         "head": {"vars": ["name"]},
@@ -912,7 +912,7 @@ def test_read_only_get_paths_do_not_write(reader_client, mock_neptune):
     }
     upsert = AsyncMock()
     with patch.object(kg_mod, "_store_triple_count", AsyncMock()) as store_count, patch(
-        "cograph_client.graph.kg_stats_store.get_kg_stats_store"
+        "infona_client.graph.kg_stats_store.get_kg_stats_store"
     ) as stats_store, patch.object(
         explore_mod, "schedule_recompute"
     ) as sched, patch.object(
@@ -945,14 +945,14 @@ def test_reader_stats_miss_still_schedules_the_recompute(reader_client, mock_nep
     recompute (idempotent, de-duplicated per KG, fires only on a miss) runs for
     readers too. The unbounded on-demand twin POST /recompute-stats stays gated.
     """
-    from cograph_client.api.routes import explore as explore_mod
+    from infona_client.api.routes import explore as explore_mod
 
     mock_neptune.query.return_value = {
         "head": {"vars": ["name"]},
         "results": {"bindings": [{"name": {"value": "kg"}}]},
     }
     with patch(
-        "cograph_client.graph.kg_stats_store.get_kg_stats_store"
+        "infona_client.graph.kg_stats_store.get_kg_stats_store"
     ) as stats_store, patch.object(explore_mod, "schedule_recompute") as sched, patch.object(
         explore_mod, "read_kg_summary_from_stats", AsyncMock(return_value=None)
     ):
@@ -972,7 +972,7 @@ def test_schedule_recompute_collapses_repeats_for_one_kg():
     """
     import asyncio as _asyncio
 
-    from cograph_client.api.routes import explore as explore_mod
+    from infona_client.api.routes import explore as explore_mod
 
     started = _asyncio.Event()
 
@@ -1021,7 +1021,7 @@ def test_schedule_recompute_reruns_a_request_that_arrived_mid_scan():
     """
     import asyncio as _asyncio
 
-    from cograph_client.api.routes import explore as explore_mod
+    from infona_client.api.routes import explore as explore_mod
 
     state = {"actual": 1, "persisted": None}
     scans = []
@@ -1062,8 +1062,8 @@ def test_schedule_recompute_reruns_a_request_that_arrived_mid_scan():
 def test_reader_ontology_read_does_not_pin_the_workspace(reader_client):
     """Opening the ontology / version strip must not backfill or auto-upgrade
     the workspace base pin, which is a write to the pin graph."""
-    from cograph_client.graph import ontology_base_pin as pin_mod
-    from cograph_client.graph.ontology_base_pin import BasePin
+    from infona_client.graph import ontology_base_pin as pin_mod
+    from infona_client.graph.ontology_base_pin import BasePin
 
     # set_base_pin returns a REAL BasePin, not a bare AsyncMock: when this test
     # fails it must fail on the await_count assertion below (the actual

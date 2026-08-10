@@ -11,18 +11,18 @@ from __future__ import annotations
 
 import pytest
 
-from cograph_client.api_registry.catalog import (
+from infona_client.api_registry.catalog import (
     ApiSourceCatalog,
     reset_api_source_layers,
 )
-from cograph_client.api_registry.enrichment import (
+from infona_client.api_registry.enrichment import (
     RegistrySourceAdapter,
     apply_registry_selection,
     register_registry_enrichment,
     reset_registry_enrichment,
 )
-from cograph_client.api_registry import registry_selection as rs
-from cograph_client.api_registry.spec import (
+from infona_client.api_registry import registry_selection as rs
+from infona_client.api_registry.spec import (
     ApiSourceSpec,
     AuthMode,
     AuthSpec,
@@ -32,8 +32,8 @@ from cograph_client.api_registry.spec import (
     Entitlement,
     ParamSpec,
 )
-from cograph_client.enrichment.sources.base import register_adapter
-from cograph_client.enrichment.tiers import (
+from infona_client.enrichment.sources.base import register_adapter
+from infona_client.enrichment.tiers import (
     reset_chain_prefix_providers,
     reset_tiers,
 )

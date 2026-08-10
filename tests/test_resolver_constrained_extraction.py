@@ -30,22 +30,22 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from cograph_client.resolver import schema_resolver as sr
-from cograph_client.resolver.schema_resolver import (
+from infona_client.resolver import schema_resolver as sr
+from infona_client.resolver.schema_resolver import (
     EXTRACTION_SYSTEM,
     EXTRACTION_CONSTRAINT_SYSTEM,
     SchemaResolver,
     _apply_extraction_constraint,
     _build_constraint_user_block,
 )
-from cograph_client.resolver.models import (
+from infona_client.resolver.models import (
     ExtractedAttribute,
     ExtractedEntity,
     ExtractedRelationship,
     ExtractionConstraint,
     ExtractionResult,
 )
-from cograph_client.resolver.verdict_cache import JsonVerdictCache
+from infona_client.resolver.verdict_cache import JsonVerdictCache
 
 
 @pytest.fixture
@@ -241,7 +241,7 @@ async def test_ingest_threads_constraint_through_multi_chunk_json(
     EVERY ``_extract`` call (first-batch + concurrent remainder), not just the
     single-chunk path — so a large discovery pull stays constrained throughout.
     """
-    from cograph_client.resolver import chunker
+    from infona_client.resolver import chunker
 
     # Force the multi-chunk path: small conservative batches over 60 records.
     monkeypatch.setattr(chunker, "EXTRACT_TOKENS_PER_RECORD", 700)

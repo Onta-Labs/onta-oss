@@ -14,15 +14,15 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from cograph_client.enrichment.job_store import InMemoryJobStore
-from cograph_client.enrichment.models import JobCategory, JobStatus, JobTrigger
-from cograph_client.scheduling.models import Schedule
-from cograph_client.scheduling.runner import (
+from infona_client.enrichment.job_store import InMemoryJobStore
+from infona_client.enrichment.models import JobCategory, JobStatus, JobTrigger
+from infona_client.scheduling.models import Schedule
+from infona_client.scheduling.runner import (
     ScheduleRunner,
     _advance,
     make_schedule_runner,
 )
-from cograph_client.scheduling.store import (
+from infona_client.scheduling.store import (
     InMemoryScheduleStore,
     PostgresScheduleStore,
 )
@@ -113,7 +113,7 @@ def test_tick_dispatches_due_and_advances(monkeypatch):
     async def fake_dispatch(schedule, *, client, job_store, executor, **kw):  # noqa: ANN001
         captured.append(schedule)
 
-    import cograph_client.api.routes.actions as actions_mod
+    import infona_client.api.routes.actions as actions_mod
 
     monkeypatch.setattr(actions_mod, "dispatch_scheduled_action", fake_dispatch)
 
@@ -152,7 +152,7 @@ def test_tick_no_due_dispatches_nothing(monkeypatch):
     async def fake_dispatch(schedule, **kw):  # noqa: ANN001
         calls.append(schedule)
 
-    import cograph_client.api.routes.actions as actions_mod
+    import infona_client.api.routes.actions as actions_mod
 
     monkeypatch.setattr(actions_mod, "dispatch_scheduled_action", fake_dispatch)
 
@@ -172,7 +172,7 @@ def test_tick_no_due_dispatches_nothing(monkeypatch):
 
 
 def test_dispatch_enrich_runs_executor_with_scheduled_trigger():
-    from cograph_client.api.routes.actions import dispatch_scheduled_action
+    from infona_client.api.routes.actions import dispatch_scheduled_action
 
     store = InMemoryJobStore()
     executor = _CapturingExecutor()
@@ -198,10 +198,10 @@ def test_dispatch_enrich_runs_executor_with_scheduled_trigger():
 
 
 def test_dispatch_dedupe_runs_dedupe_worker(monkeypatch):
-    import cograph_client.api.routes.actions as actions_mod
-    import cograph_client.api.routes.explore as explore_mod
-    import cograph_client.resolver.er.rebuild as rebuild_mod
-    from cograph_client.api.routes.actions import dispatch_scheduled_action
+    import infona_client.api.routes.actions as actions_mod
+    import infona_client.api.routes.explore as explore_mod
+    import infona_client.resolver.er.rebuild as rebuild_mod
+    from infona_client.api.routes.actions import dispatch_scheduled_action
 
     async def fake_rebuild(client_, instance_graph):  # noqa: ANN001
         return {"types": [{"type": "Product"}], "fragments_absorbed_total": 2}
@@ -233,8 +233,8 @@ def test_dispatch_dedupe_runs_dedupe_worker(monkeypatch):
 
 
 def test_dispatch_suggest_degrades_without_recommender():
-    from cograph_client.api.routes import actions
-    from cograph_client.api.routes.actions import dispatch_scheduled_action
+    from infona_client.api.routes import actions
+    from infona_client.api.routes.actions import dispatch_scheduled_action
 
     actions.register_relationship_recommender(None)
     store = InMemoryJobStore()
@@ -388,7 +388,7 @@ def test_postgres_claim_uses_for_update_skip_locked(monkeypatch):
     async def fake_dispatch(schedule, **kw):  # noqa: ANN001
         captured.append(schedule)
 
-    import cograph_client.api.routes.actions as actions_mod
+    import infona_client.api.routes.actions as actions_mod
 
     monkeypatch.setattr(actions_mod, "dispatch_scheduled_action", fake_dispatch)
 
@@ -427,7 +427,7 @@ class _State:
 
 
 def test_make_runner_disabled_when_no_dsn(monkeypatch):
-    from cograph_client.config import settings
+    from infona_client.config import settings
 
     monkeypatch.setattr(settings, "database_url", "")
     monkeypatch.delenv("COGRAPH_SCHEDULER_ENABLED", raising=False)
@@ -435,7 +435,7 @@ def test_make_runner_disabled_when_no_dsn(monkeypatch):
 
 
 def test_make_runner_enabled_when_dsn_set(monkeypatch):
-    from cograph_client.config import settings
+    from infona_client.config import settings
     from unittest.mock import AsyncMock
 
     monkeypatch.setattr(settings, "database_url", "postgresql://x/y")
@@ -450,7 +450,7 @@ def test_make_runner_enabled_when_dsn_set(monkeypatch):
 
 
 def test_make_runner_explicit_disable_overrides_dsn(monkeypatch):
-    from cograph_client.config import settings
+    from infona_client.config import settings
 
     monkeypatch.setattr(settings, "database_url", "postgresql://x/y")
     monkeypatch.setenv("COGRAPH_SCHEDULER_ENABLED", "false")
@@ -458,7 +458,7 @@ def test_make_runner_explicit_disable_overrides_dsn(monkeypatch):
 
 
 def test_make_runner_explicit_enable_without_dsn(monkeypatch):
-    from cograph_client.config import settings
+    from infona_client.config import settings
     from unittest.mock import AsyncMock
 
     monkeypatch.setattr(settings, "database_url", "")

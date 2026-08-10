@@ -25,8 +25,8 @@ import re
 
 import pytest
 
-from cograph_client.models.query import FactCitation
-from cograph_client.nlp.answer_meta import build_citations, build_coverage_caveat
+from infona_client.models.query import FactCitation
+from infona_client.nlp.answer_meta import build_citations, build_coverage_caveat
 
 ACME = "https://graph.onta.sh/entities/Company/acme"
 HAS_CEO = "https://graph.onta.sh/onto/hasCEO"
@@ -161,7 +161,7 @@ async def test_build_citations_skips_non_keyable_and_internal_rows():
 def test_build_coverage_caveat_composes_summary_and_stale_count():
     """The caveat joins a RunManifest coverage summary ("N of M …") with a
     validity-derived stale count."""
-    from cograph_client.pipeline.manifest import HaltReasonKind, RunManifest
+    from infona_client.pipeline.manifest import HaltReasonKind, RunManifest
 
     manifest = RunManifest(run_id="r", stage="discovery").start(total=3)
     manifest.record_completed("a")
@@ -193,11 +193,11 @@ def test_build_coverage_caveat_empty_when_nothing_to_flag():
 pyoxigraph = pytest.importorskip("pyoxigraph")
 from pyoxigraph import QueryResultsFormat, Store  # noqa: E402
 
-from cograph_client.graph.kg_writer import insert_facts  # noqa: E402
-from cograph_client.graph.parser import parse_sparql_results  # noqa: E402
-from cograph_client.graph.provenance import build_provenance_triples  # noqa: E402
-from cograph_client.graph.queries import kg_graph_uri  # noqa: E402
-from cograph_client.graph.validity import (  # noqa: E402
+from infona_client.graph.kg_writer import insert_facts  # noqa: E402
+from infona_client.graph.parser import parse_sparql_results  # noqa: E402
+from infona_client.graph.provenance import build_provenance_triples  # noqa: E402
+from infona_client.graph.queries import kg_graph_uri  # noqa: E402
+from infona_client.graph.validity import (  # noqa: E402
     STATUS_SUPERSEDED,
     build_closed_interval_triples,
     build_open_interval_triples,
@@ -226,7 +226,7 @@ class PyoxiNeptune:
 def _quiet_housekeeping(monkeypatch):
     """Silence insert_facts's best-effort derived-index / embedding downstreams so
     the acceptance test isolates the citation mechanism (as test_supersession does)."""
-    import cograph_client.nlp.pipeline as pipeline_mod
+    import infona_client.nlp.pipeline as pipeline_mod
 
     monkeypatch.setattr(pipeline_mod, "get_embedding_service", lambda: None)
 

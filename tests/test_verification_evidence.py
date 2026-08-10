@@ -13,18 +13,18 @@ import asyncio
 
 import pytest
 
-import cograph_client.verification.evidence as ev
-from cograph_client.resolver.models import CleanFact, CleanOutcome
-from cograph_client.retrieval.errors import CostCeilingExceeded
-from cograph_client.retrieval.fetch import (
+import infona_client.verification.evidence as ev
+from infona_client.resolver.models import CleanFact, CleanOutcome
+from infona_client.retrieval.errors import CostCeilingExceeded
+from infona_client.retrieval.fetch import (
     get_page_fetchers,
     register_page_fetcher,
     reset_page_fetchers,
 )
-from cograph_client.retrieval.types import FetchedPage
-from cograph_client.verification.evidence import EvidenceVerifier
-from cograph_client.verification.types import TruthVerdict
-from cograph_client.verification.verifier import FactVerifier
+from infona_client.retrieval.types import FetchedPage
+from infona_client.verification.evidence import EvidenceVerifier
+from infona_client.verification.types import TruthVerdict
+from infona_client.verification.verifier import FactVerifier
 
 SOURCE_HOST = "own-source.com"
 DISTINCT_URL = "https://corroborator.org/report"

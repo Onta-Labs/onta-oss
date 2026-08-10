@@ -29,16 +29,16 @@ import json
 
 import pytest
 
-from cograph_client.api_registry.spec import AuthorityLevel
-from cograph_client.graph.kg_writer import GraphDelta, insert_facts
-from cograph_client.graph.provenance import fetch_provenance
-from cograph_client.graph.queries import kg_graph_uri
-from cograph_client.graph.validity import (
+from infona_client.api_registry.spec import AuthorityLevel
+from infona_client.graph.kg_writer import GraphDelta, insert_facts
+from infona_client.graph.provenance import fetch_provenance
+from infona_client.graph.queries import kg_graph_uri
+from infona_client.graph.validity import (
     STATUS_DEPRECATED,
     current_objects_query,
     fetch_history,
 )
-from cograph_client.pipeline.conflict import (
+from infona_client.pipeline.conflict import (
     REASON_AUTHORITY,
     REASON_CONFIDENCE,
     REASON_RECENCY,
@@ -46,11 +46,11 @@ from cograph_client.pipeline.conflict import (
     FactClaim,
     resolve,
 )
-from cograph_client.pipeline.mutations import (
+from infona_client.pipeline.mutations import (
     ConflictReceipt,
     write_with_conflict_resolution,
 )
-from cograph_client.resolver.models import ValidatedTriple
+from infona_client.resolver.models import ValidatedTriple
 
 TENANT, KG = "onta276", "corp"
 INSTANCE_GRAPH = kg_graph_uri(TENANT, KG)
@@ -189,8 +189,8 @@ def _quiet_housekeeping(monkeypatch):
     """Silence the shared refresh_after_write internals (cache-invalidate / embed /
     stats recompute) so the end-to-end tests isolate the conflict mechanism — as
     tests/test_supersession.py does. The op STILL calls refresh_after_write."""
-    import cograph_client.api.routes.explore as explore_mod
-    import cograph_client.nlp.pipeline as pipeline_mod
+    import infona_client.api.routes.explore as explore_mod
+    import infona_client.nlp.pipeline as pipeline_mod
 
     monkeypatch.setattr(pipeline_mod.NLQueryPipeline, "invalidate_cache", lambda g: None)
     monkeypatch.setattr(pipeline_mod, "get_embedding_service", lambda: None)

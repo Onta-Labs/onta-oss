@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from cograph_client.nlp.pipeline import NLQueryPipeline, _ontology_cache
+from infona_client.nlp.pipeline import NLQueryPipeline, _ontology_cache
 
 TYPES = "https://graph.onta.sh/types/"
 
@@ -271,7 +271,7 @@ class TestAntiCheatExclusion:
 
     def test_exclude_questions_passed_through_api(self):
         """The NLQuery model should accept exclude_questions field."""
-        from cograph_client.models.query import NLQuery
+        from infona_client.models.query import NLQuery
 
         q = NLQuery(
             question="How many singers?",
@@ -282,7 +282,7 @@ class TestAntiCheatExclusion:
 
     def test_exclude_questions_default_empty(self):
         """exclude_questions should default to empty list."""
-        from cograph_client.models.query import NLQuery
+        from infona_client.models.query import NLQuery
 
         q = NLQuery(question="test")
         assert q.exclude_questions == []

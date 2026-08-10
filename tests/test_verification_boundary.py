@@ -29,9 +29,9 @@ from pathlib import Path
 
 import pytest
 
-from cograph_client.qc import boundary as b
-from cograph_client.resolver.models import CleanFact, CleanOutcome
-from cograph_client.verification import (
+from infona_client.qc import boundary as b
+from infona_client.resolver.models import CleanFact, CleanOutcome
+from infona_client.verification import (
     DefaultOfflineVerifier,
     TruthVerdict,
     get_fact_verifier,
@@ -164,7 +164,7 @@ def test_render_is_deterministic():
 # --------------------------------------------------------------------------- #
 def test_mechanical_boundary_fixtures_stay_byte_stable():
     """This epistemic characterization must not perturb qc/boundary's a2/a3/a4/a5 —
-    equivalent to `python -m cograph_client.qc.boundary --check` exiting 0."""
+    equivalent to `python -m infona_client.qc.boundary --check` exiting 0."""
     assert b.check() == []
     assert b.TIERS == ("a2", "a3", "a4", "a5")  # our tier is NOT appended to theirs
 
