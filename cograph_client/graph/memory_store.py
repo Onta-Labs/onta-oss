@@ -8,6 +8,8 @@ isolation tests do not need a live database. Supports:
 * Domain-label SET via :func:`cograph_client.graph.labels.set_entity_type_labels`
 * Native writer methods used by :mod:`cograph_client.graph.pg_ops` (E3):
   literals (list-union), typed rels (B4 MERGE key), delete, rewrite, ProvEvent
+* Ontology catalog (E4): ``:OntoType`` / ``:OntoAttr`` + hierarchy / DECLARES /
+  RANGE_TYPE templates
 
 Anything outside the smoke Cypher subset raises :class:`GraphQueryError` —
 prefer the native ``write_*`` methods for instance mutations.
@@ -21,9 +23,18 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
 from cograph_client.graph.schema_bootstrap import (
+    ENTITY_COUNT_BY_PRIMARY_TYPE_CYPHER,
     ENTITY_GET_CYPHER,
     ENTITY_LIST_BY_TYPE_CYPHER,
     ENTITY_MERGE_CYPHER,
+    ONTO_ATTR_LIST_CYPHER,
+    ONTO_ATTR_RANGE_TYPE_CYPHER,
+    ONTO_ATTR_UPSERT_CYPHER,
+    ONTO_SUBCLASS_CLEAR_CYPHER,
+    ONTO_SUBCLASS_SET_CYPHER,
+    ONTO_TYPE_GET_CYPHER,
+    ONTO_TYPE_LIST_CYPHER,
+    ONTO_TYPE_UPSERT_CYPHER,
     bootstrap_schema_statements,
     get_template,
 )
@@ -46,6 +57,15 @@ def _norm_cypher(cypher: str) -> str:
 _MERGE_NORM = _norm_cypher(ENTITY_MERGE_CYPHER)
 _GET_NORM = _norm_cypher(ENTITY_GET_CYPHER)
 _LIST_NORM = _norm_cypher(ENTITY_LIST_BY_TYPE_CYPHER)
+_ONTO_TYPE_UPSERT_NORM = _norm_cypher(ONTO_TYPE_UPSERT_CYPHER)
+_ONTO_SUBCLASS_SET_NORM = _norm_cypher(ONTO_SUBCLASS_SET_CYPHER)
+_ONTO_SUBCLASS_CLEAR_NORM = _norm_cypher(ONTO_SUBCLASS_CLEAR_CYPHER)
+_ONTO_TYPE_LIST_NORM = _norm_cypher(ONTO_TYPE_LIST_CYPHER)
+_ONTO_TYPE_GET_NORM = _norm_cypher(ONTO_TYPE_GET_CYPHER)
+_ONTO_ATTR_UPSERT_NORM = _norm_cypher(ONTO_ATTR_UPSERT_CYPHER)
+_ONTO_ATTR_RANGE_NORM = _norm_cypher(ONTO_ATTR_RANGE_TYPE_CYPHER)
+_ONTO_ATTR_LIST_NORM = _norm_cypher(ONTO_ATTR_LIST_CYPHER)
+_ENTITY_COUNT_BY_TYPE_NORM = _norm_cypher(ENTITY_COUNT_BY_PRIMARY_TYPE_CYPHER)
 
 
 @dataclass
@@ -96,6 +116,64 @@ class _ProvRow:
     reason: str = ""
     source: str | None = None
     ts: str | None = None
+
+
+@dataclass
+class _OntoTypeRow:
+    tenant_id: str
+    kg: str
+    layer: str
+    name: str
+    description: str = ""
+    label_token: str | None = None
+    uri: str | None = None
+    parent_type: str | None = None
+
+    def as_record(self) -> GraphRecord:
+        return GraphRecord(
+            data={
+                "name": self.name,
+                "layer": self.layer,
+                "description": self.description,
+                "label_token": self.label_token,
+                "uri": self.uri,
+                "parent_type": self.parent_type,
+                "tenant_id": self.tenant_id,
+                "kg": self.kg,
+            }
+        )
+
+
+@dataclass
+class _OntoAttrRow:
+    tenant_id: str
+    kg: str
+    layer: str
+    domain: str
+    name: str
+    kind: str = "literal"
+    datatype: str | None = None
+    range_type: str | None = None
+    cardinality: str = "1:1"
+    description: str = ""
+    prop_key: str | None = None
+
+    def as_record(self) -> GraphRecord:
+        return GraphRecord(
+            data={
+                "name": self.name,
+                "domain": self.domain,
+                "kind": self.kind,
+                "datatype": self.datatype,
+                "range_type": self.range_type,
+                "cardinality": self.cardinality,
+                "description": self.description,
+                "prop_key": self.prop_key,
+                "layer": self.layer,
+                "tenant_id": self.tenant_id,
+                "kg": self.kg,
+            }
+        )
 
 
 class MemoryGraphSession:
@@ -294,6 +372,10 @@ class MemoryGraphStore:
         # B4 key: (tenant_id, kg, start_id, end_id, rel_type)
         self._rels: dict[tuple[str, str, str, str, str], _RelRow] = {}
         self._prov: list[_ProvRow] = []
+        # Catalog: (tenant_id, kg, layer, name)
+        self._onto_types: dict[tuple[str, str, str, str], _OntoTypeRow] = {}
+        # Catalog: (tenant_id, kg, layer, domain, name)
+        self._onto_attrs: dict[tuple[str, str, str, str, str], _OntoAttrRow] = {}
         self._bootstrapped: list[str] = []
 
     def session(self, scope: GraphScope) -> GraphSession:
@@ -313,6 +395,8 @@ class MemoryGraphStore:
         self._entities.clear()
         self._rels.clear()
         self._prov.clear()
+        self._onto_types.clear()
+        self._onto_attrs.clear()
         self._bootstrapped.clear()
 
     # --- test helpers -------------------------------------------------------
@@ -612,6 +696,213 @@ class MemoryGraphStore:
     def _add_prov(self, row: _ProvRow) -> None:
         self._prov.append(row)
 
+    # --- Ontology catalog (E4) ----------------------------------------------
+
+    def _upsert_onto_type(
+        self,
+        tenant_id: str,
+        kg: str,
+        layer: str,
+        name: str,
+        *,
+        description: str = "",
+        label_token: str | None = None,
+        uri: str | None = None,
+    ) -> list[GraphRecord]:
+        key = (tenant_id, kg, layer, name)
+        existing = self._onto_types.get(key)
+        if existing is None:
+            row = _OntoTypeRow(
+                tenant_id=tenant_id,
+                kg=kg,
+                layer=layer,
+                name=name,
+                description=description or "",
+                label_token=label_token,
+                uri=uri,
+            )
+            self._onto_types[key] = row
+        else:
+            if description:
+                existing.description = description
+            if label_token is not None:
+                existing.label_token = label_token
+            if uri is not None:
+                existing.uri = uri
+            row = existing
+        return [row.as_record()]
+
+    def _set_subclass(
+        self,
+        tenant_id: str,
+        kg: str,
+        layer: str,
+        name: str,
+        parent_name: str,
+        parent_label_token: str | None,
+    ) -> list[GraphRecord]:
+        child_key = (tenant_id, kg, layer, name)
+        child = self._onto_types.get(child_key)
+        if child is None:
+            return []
+        parent_key = (tenant_id, kg, layer, parent_name)
+        if parent_key not in self._onto_types:
+            self._onto_types[parent_key] = _OntoTypeRow(
+                tenant_id=tenant_id,
+                kg=kg,
+                layer=layer,
+                name=parent_name,
+                label_token=parent_label_token,
+            )
+        child.parent_type = parent_name
+        return [
+            GraphRecord(data={"name": name, "parent_type": parent_name})
+        ]
+
+    def _clear_subclass(
+        self, tenant_id: str, kg: str, layer: str, name: str
+    ) -> list[GraphRecord]:
+        child = self._onto_types.get((tenant_id, kg, layer, name))
+        if child is None:
+            return []
+        child.parent_type = None
+        return [GraphRecord(data={"name": name, "parent_type": None})]
+
+    def _list_onto_types(
+        self, tenant_id: str, kg: str, layer: str | None
+    ) -> list[GraphRecord]:
+        rows: list[_OntoTypeRow] = []
+        for (t, k, ly, _n), row in self._onto_types.items():
+            if t != tenant_id or k != kg:
+                continue
+            if layer is not None and ly != layer:
+                continue
+            rows.append(row)
+        rows.sort(key=lambda r: r.name)
+        return [r.as_record() for r in rows]
+
+    def _get_onto_type(
+        self, tenant_id: str, kg: str, layer: str, name: str
+    ) -> list[GraphRecord]:
+        row = self._onto_types.get((tenant_id, kg, layer, name))
+        return [row.as_record()] if row else []
+
+    def _upsert_onto_attr(
+        self,
+        tenant_id: str,
+        kg: str,
+        layer: str,
+        domain: str,
+        name: str,
+        *,
+        kind: str,
+        datatype: str | None,
+        range_type: str | None,
+        cardinality: str,
+        description: str,
+        prop_key: str | None,
+        domain_label_token: str | None,
+    ) -> list[GraphRecord]:
+        # Ensure domain type exists (DECLARES target).
+        dkey = (tenant_id, kg, layer, domain)
+        if dkey not in self._onto_types:
+            self._onto_types[dkey] = _OntoTypeRow(
+                tenant_id=tenant_id,
+                kg=kg,
+                layer=layer,
+                name=domain,
+                label_token=domain_label_token,
+            )
+        akey = (tenant_id, kg, layer, domain, name)
+        existing = self._onto_attrs.get(akey)
+        if existing is None:
+            row = _OntoAttrRow(
+                tenant_id=tenant_id,
+                kg=kg,
+                layer=layer,
+                domain=domain,
+                name=name,
+                kind=kind,
+                datatype=datatype,
+                range_type=range_type,
+                cardinality=cardinality or "1:1",
+                description=description or "",
+                prop_key=prop_key,
+            )
+            self._onto_attrs[akey] = row
+        else:
+            existing.kind = kind
+            existing.datatype = datatype
+            existing.range_type = range_type
+            if cardinality:
+                existing.cardinality = cardinality
+            if description:
+                existing.description = description
+            if prop_key is not None:
+                existing.prop_key = prop_key
+            row = existing
+        return [row.as_record()]
+
+    def _set_attr_range_type(
+        self,
+        tenant_id: str,
+        kg: str,
+        layer: str,
+        domain: str,
+        name: str,
+        range_type: str,
+        range_label_token: str | None,
+    ) -> list[GraphRecord]:
+        akey = (tenant_id, kg, layer, domain, name)
+        attr = self._onto_attrs.get(akey)
+        if attr is None:
+            return []
+        rkey = (tenant_id, kg, layer, range_type)
+        if rkey not in self._onto_types:
+            self._onto_types[rkey] = _OntoTypeRow(
+                tenant_id=tenant_id,
+                kg=kg,
+                layer=layer,
+                name=range_type,
+                label_token=range_label_token,
+            )
+        attr.range_type = range_type
+        attr.kind = "relationship"
+        return [GraphRecord(data={"name": name, "range_type": range_type})]
+
+    def _list_onto_attrs(
+        self,
+        tenant_id: str,
+        kg: str,
+        domain: str | None,
+        layer: str | None,
+    ) -> list[GraphRecord]:
+        rows: list[_OntoAttrRow] = []
+        for (t, k, ly, dom, _n), row in self._onto_attrs.items():
+            if t != tenant_id or k != kg:
+                continue
+            if layer is not None and ly != layer:
+                continue
+            if domain is not None and dom != domain:
+                continue
+            rows.append(row)
+        rows.sort(key=lambda r: (r.domain, r.name))
+        return [r.as_record() for r in rows]
+
+    def _entity_counts_by_primary_type(
+        self, tenant_id: str, kg: str
+    ) -> list[GraphRecord]:
+        counts: dict[str, int] = {}
+        for (t, k, _id), row in self._entities.items():
+            if t != tenant_id or k != kg:
+                continue
+            if row.primary_type:
+                counts[row.primary_type] = counts.get(row.primary_type, 0) + 1
+        return [
+            GraphRecord(data={"primary_type": pt, "n": n})
+            for pt, n in sorted(counts.items())
+        ]
+
     def _execute(
         self,
         cypher: str,
@@ -652,6 +943,86 @@ class MemoryGraphStore:
                 if t == tenant_id and k == kg and r.primary_type == primary_type
             ]
             return rows
+
+        # --- Ontology catalog templates ------------------------------------
+        if norm == _ONTO_TYPE_UPSERT_NORM:
+            if not writing:
+                raise GraphQueryError("onto_type_upsert requires execute_write")
+            return self._upsert_onto_type(
+                tenant_id,
+                kg,
+                str(params["layer"]),
+                str(params["name"]),
+                description=str(params.get("description") or ""),
+                label_token=params.get("label_token"),
+                uri=params.get("uri"),
+            )
+
+        if norm == _ONTO_SUBCLASS_SET_NORM:
+            if not writing:
+                raise GraphQueryError("onto_subclass_set requires execute_write")
+            return self._set_subclass(
+                tenant_id,
+                kg,
+                str(params["layer"]),
+                str(params["name"]),
+                str(params["parent_name"]),
+                params.get("parent_label_token"),
+            )
+
+        if norm == _ONTO_SUBCLASS_CLEAR_NORM:
+            if not writing:
+                raise GraphQueryError("onto_subclass_clear requires execute_write")
+            return self._clear_subclass(
+                tenant_id, kg, str(params["layer"]), str(params["name"])
+            )
+
+        if norm == _ONTO_TYPE_LIST_NORM:
+            return self._list_onto_types(tenant_id, kg, params.get("layer"))
+
+        if norm == _ONTO_TYPE_GET_NORM:
+            return self._get_onto_type(
+                tenant_id, kg, str(params["layer"]), str(params["name"])
+            )
+
+        if norm == _ONTO_ATTR_UPSERT_NORM:
+            if not writing:
+                raise GraphQueryError("onto_attr_upsert requires execute_write")
+            return self._upsert_onto_attr(
+                tenant_id,
+                kg,
+                str(params["layer"]),
+                str(params["domain"]),
+                str(params["name"]),
+                kind=str(params.get("kind") or "literal"),
+                datatype=params.get("datatype"),
+                range_type=params.get("range_type"),
+                cardinality=str(params.get("cardinality") or "1:1"),
+                description=str(params.get("description") or ""),
+                prop_key=params.get("prop_key"),
+                domain_label_token=params.get("domain_label_token"),
+            )
+
+        if norm == _ONTO_ATTR_RANGE_NORM:
+            if not writing:
+                raise GraphQueryError("onto_attr_range_type requires execute_write")
+            return self._set_attr_range_type(
+                tenant_id,
+                kg,
+                str(params["layer"]),
+                str(params["domain"]),
+                str(params["name"]),
+                str(params["range_type"]),
+                params.get("range_label_token"),
+            )
+
+        if norm == _ONTO_ATTR_LIST_NORM:
+            return self._list_onto_attrs(
+                tenant_id, kg, params.get("domain"), params.get("layer")
+            )
+
+        if norm == _ENTITY_COUNT_BY_TYPE_NORM:
+            return self._entity_counts_by_primary_type(tenant_id, kg)
 
         set_labels_m = re.search(
             r"MATCH\s+\(e:Entity\s*\{[^}]*\}\)\s*SET\s+e:([A-Za-z][A-Za-z0-9_]*(?::[A-Za-z][A-Za-z0-9_]*)*)",
