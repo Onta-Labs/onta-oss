@@ -19,6 +19,14 @@ from cograph_client.qc.invariants import (
     Violation,
     check_invariants,
 )
+from cograph_client.qc.invariants_store import (
+    STORE_INVARIANT_MISSING_PRIMARY_TYPE,
+    STORE_INVARIANT_NAMES,
+    STORE_INVARIANT_ORPHAN_REL_TARGET,
+    STORE_INVARIANT_REL_MISSING_SCOPE,
+    check_invariants_for_store,
+    check_store_invariants,
+)
 from cograph_client.qc.isolation import (
     IsolationViolation,
     WorkspaceScope,
@@ -32,6 +40,12 @@ __all__ = [
     "Invariant",
     "Violation",
     "check_invariants",
+    "STORE_INVARIANT_MISSING_PRIMARY_TYPE",
+    "STORE_INVARIANT_NAMES",
+    "STORE_INVARIANT_ORPHAN_REL_TARGET",
+    "STORE_INVARIANT_REL_MISSING_SCOPE",
+    "check_invariants_for_store",
+    "check_store_invariants",
     "AuditReport",
     "GraphAudit",
     "run_audit",

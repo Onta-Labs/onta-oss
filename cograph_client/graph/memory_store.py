@@ -24,10 +24,12 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
 from cograph_client.graph.schema_bootstrap import (
+    ENTITY_1HOP_OUT_CYPHER,
     ENTITY_COUNT_BY_PRIMARY_TYPE_CYPHER,
     ENTITY_COUNT_BY_TYPE_CYPHER,
     ENTITY_COUNT_TOTAL_CYPHER,
     ENTITY_DETAIL_CYPHER,
+    ENTITY_FILTER_PROP_EQ_CYPHER,
     ENTITY_GET_CYPHER,
     ENTITY_LIST_BY_TYPE_CYPHER,
     ENTITY_LIST_BY_TYPE_PAGE_CYPHER,
@@ -68,6 +70,8 @@ _COUNT_BY_TYPE_SINGLE_NORM = _norm_cypher(ENTITY_COUNT_BY_TYPE_CYPHER)
 _COUNT_TOTAL_NORM = _norm_cypher(ENTITY_COUNT_TOTAL_CYPHER)
 _DETAIL_NORM = _norm_cypher(ENTITY_DETAIL_CYPHER)
 _RELS_NORM = _norm_cypher(ENTITY_RELS_CYPHER)
+_FILTER_PROP_EQ_NORM = _norm_cypher(ENTITY_FILTER_PROP_EQ_CYPHER)
+_HOP_OUT_NORM = _norm_cypher(ENTITY_1HOP_OUT_CYPHER)
 _ONTO_TYPE_UPSERT_NORM = _norm_cypher(ONTO_TYPE_UPSERT_CYPHER)
 _ONTO_SUBCLASS_SET_NORM = _norm_cypher(ONTO_SUBCLASS_SET_CYPHER)
 _ONTO_SUBCLASS_CLEAR_NORM = _norm_cypher(ONTO_SUBCLASS_CLEAR_CYPHER)
@@ -126,7 +130,21 @@ class _ProvRow:
     new_id: str | None = None
     reason: str = ""
     source: str | None = None
+    fact_hash: str | None = None
     ts: str | None = None
+    # ABOUT is implied: event is always about subject_id when entity exists.
+
+
+@dataclass
+class _CitationRow:
+    tenant_id: str
+    kg: str
+    entity_id: str
+    attr: str
+    source_url: str | None = None
+    provenance: str | None = None
+    verified_at: str | None = None
+    value_hash: str = ""
 
 
 @dataclass
@@ -347,9 +365,14 @@ class MemoryGraphSession:
         new_id: str | None = None,
         reason: str = "",
         source: str | None = None,
+        fact_hash: str | None = None,
         ts: str | None = None,
     ) -> None:
         t, k = self._scope_tk()
+        # Ensure ABOUT target for assert/rewrite only — never re-mint a deleted
+        # Entity when writing a post-removal tombstone (subject_id is enough).
+        if event_type in ("assert", "rewrite"):
+            self._store._merge_entity(t, k, subject_id)
         self._store._add_prov(
             _ProvRow(
                 tenant_id=t,
@@ -362,7 +385,33 @@ class MemoryGraphSession:
                 new_id=new_id,
                 reason=reason,
                 source=source,
+                fact_hash=fact_hash,
                 ts=ts,
+            )
+        )
+
+    async def write_attr_citation(
+        self,
+        *,
+        entity_id: str,
+        attr: str,
+        source_url: str | None = None,
+        provenance: str | None = None,
+        verified_at: str | None = None,
+        value_hash: str = "",
+    ) -> None:
+        t, k = self._scope_tk()
+        self._store._merge_entity(t, k, entity_id)
+        self._store._upsert_citation(
+            _CitationRow(
+                tenant_id=t,
+                kg=k,
+                entity_id=entity_id,
+                attr=attr,
+                source_url=source_url,
+                provenance=provenance,
+                verified_at=verified_at,
+                value_hash=value_hash or "",
             )
         )
 
@@ -396,6 +445,8 @@ class MemoryGraphStore:
         # B4 key: (tenant_id, kg, start_id, end_id, rel_type)
         self._rels: dict[tuple[str, str, str, str, str], _RelRow] = {}
         self._prov: list[_ProvRow] = []
+        # AttrCitation MERGE key: (tenant_id, kg, entity_id, attr, value_hash)
+        self._citations: dict[tuple[str, str, str, str, str], _CitationRow] = {}
         # Catalog: (tenant_id, kg, layer, name)
         self._onto_types: dict[tuple[str, str, str, str], _OntoTypeRow] = {}
         # Catalog: (tenant_id, kg, layer, domain, name)
@@ -419,6 +470,7 @@ class MemoryGraphStore:
         self._entities.clear()
         self._rels.clear()
         self._prov.clear()
+        self._citations.clear()
         self._onto_types.clear()
         self._onto_attrs.clear()
         self._bootstrapped.clear()
@@ -465,6 +517,9 @@ class MemoryGraphStore:
 
     def snapshot_prov(self) -> list[dict[str, Any]]:
         return [copy.deepcopy(r.__dict__) for r in self._prov]
+
+    def snapshot_citations(self) -> list[dict[str, Any]]:
+        return [copy.deepcopy(r.__dict__) for r in self._citations.values()]
 
     def _apply_domain_labels(
         self,
@@ -722,9 +777,104 @@ class MemoryGraphStore:
         for p in self._prov:
             if p.tenant_id == tenant_id and p.kg == kg and p.subject_id == old_id:
                 p.subject_id = new_id
+        # Rebind AttrCitation entity_id keys.
+        cite_moves: list[tuple[tuple, _CitationRow]] = []
+        cite_drop: list[tuple] = []
+        for ck, c in list(self._citations.items()):
+            if c.tenant_id == tenant_id and c.kg == kg and c.entity_id == old_id:
+                cite_drop.append(ck)
+                c.entity_id = new_id
+                cite_moves.append(
+                    (
+                        (c.tenant_id, c.kg, new_id, c.attr, c.value_hash or ""),
+                        c,
+                    )
+                )
+        for ck in cite_drop:
+            del self._citations[ck]
+        for nk, crow in cite_moves:
+            self._citations[nk] = crow
 
     def _add_prov(self, row: _ProvRow) -> None:
         self._prov.append(row)
+
+    def _upsert_citation(self, row: _CitationRow) -> None:
+        key = (row.tenant_id, row.kg, row.entity_id, row.attr, row.value_hash or "")
+        existing = self._citations.get(key)
+        if existing is None:
+            self._citations[key] = row
+            return
+        # Merge non-empty fields onto existing citation.
+        if row.source_url:
+            existing.source_url = row.source_url
+        if row.provenance:
+            existing.provenance = row.provenance
+        if row.verified_at:
+            existing.verified_at = row.verified_at
+
+    # --- Structural QC scans (E8) -------------------------------------------
+
+    def scan_entities_missing_primary_type(
+        self, tenant_id: str, kg: str
+    ) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for (t, k, eid), row in self._entities.items():
+            if t != tenant_id or k != kg:
+                continue
+            if not row.primary_type:
+                out.append({"id": eid, "tenant_id": t, "kg": k})
+        return out
+
+    def scan_rels_missing_scope(
+        self, tenant_id: str, kg: str
+    ) -> list[dict[str, Any]]:
+        """Rels in this scope whose tenant_id/kg are empty (construction bug)."""
+        out: list[dict[str, Any]] = []
+        for r in self._rels.values():
+            # Include unscoped rows that claim this scope via empty mismatch, and
+            # any row with blank scope fields that would pollute isolation.
+            if not r.tenant_id or not r.kg:
+                out.append(
+                    {
+                        "start_id": r.start_id,
+                        "end_id": r.end_id,
+                        "attr": r.attr,
+                        "tenant_id": r.tenant_id,
+                        "kg": r.kg,
+                    }
+                )
+            elif r.tenant_id == tenant_id and r.kg == kg:
+                # In-scope but somehow blank after normalize — already covered.
+                pass
+        return out
+
+    def scan_orphan_rel_targets(
+        self, tenant_id: str, kg: str
+    ) -> list[dict[str, Any]]:
+        """Relationship endpoints whose Entity node is missing in scope."""
+        out: list[dict[str, Any]] = []
+        for r in self._rels.values():
+            if r.tenant_id != tenant_id or r.kg != kg:
+                continue
+            if (tenant_id, kg, r.end_id) not in self._entities:
+                out.append(
+                    {
+                        "start_id": r.start_id,
+                        "end_id": r.end_id,
+                        "attr": r.attr,
+                        "side": "end",
+                    }
+                )
+            if (tenant_id, kg, r.start_id) not in self._entities:
+                out.append(
+                    {
+                        "start_id": r.start_id,
+                        "end_id": r.end_id,
+                        "attr": r.attr,
+                        "side": "start",
+                    }
+                )
+        return out
 
     # --- Ontology catalog (E4) ----------------------------------------------
 
@@ -1079,6 +1229,87 @@ class MemoryGraphStore:
         out.sort(key=lambda rec: (rec.get("direction"), rec.get("attr"), rec.get("other_id")))
         return out
 
+    def _entity_prop_value(self, row: _EntityRow, prop_key: str) -> Any:
+        """Read a property the way Neo4j ``e[$prop_key]`` would for Entity."""
+        if prop_key in ("id", "tenant_id", "kg", "primary_type", "name", "source"):
+            return getattr(row, prop_key, None)
+        return row.props.get(prop_key)
+
+    def _entity_filter_prop_eq(
+        self,
+        tenant_id: str,
+        kg: str,
+        primary_type: str,
+        prop_key: str,
+        prop_value: Any,
+        limit: int,
+    ) -> list[GraphRecord]:
+        rows: list[_EntityRow] = [
+            r
+            for (t, k, _), r in sorted(self._entities.items(), key=lambda x: x[0][2])
+            if t == tenant_id and k == kg and r.primary_type == primary_type
+        ]
+        out: list[GraphRecord] = []
+        for r in rows:
+            if self._entity_prop_value(r, prop_key) == prop_value:
+                out.append(
+                    GraphRecord(
+                        data={
+                            "id": r.id,
+                            "name": r.name,
+                            "primary_type": r.primary_type,
+                        }
+                    )
+                )
+            if limit >= 0 and len(out) >= limit:
+                break
+        return out
+
+    def _entity_1hop_out(
+        self,
+        tenant_id: str,
+        kg: str,
+        from_type: str,
+        to_type: str | None,
+        rel_attr: str | None,
+        limit: int,
+    ) -> list[GraphRecord]:
+        out: list[GraphRecord] = []
+        rels = sorted(
+            self._rels.values(),
+            key=lambda r: (r.start_id, r.end_id, r.rel_type),
+        )
+        for r in rels:
+            if r.tenant_id != tenant_id or r.kg != kg:
+                continue
+            a = self._entities.get((tenant_id, kg, r.start_id))
+            b = self._entities.get((tenant_id, kg, r.end_id))
+            if a is None or b is None:
+                continue
+            if a.primary_type != from_type:
+                continue
+            if to_type is not None and b.primary_type != to_type:
+                continue
+            if rel_attr is not None and r.attr != rel_attr and r.rel_type != rel_attr:
+                continue
+            out.append(
+                GraphRecord(
+                    data={
+                        "from_id": a.id,
+                        "from_name": a.name,
+                        "from_type": a.primary_type,
+                        "to_id": b.id,
+                        "to_name": b.name,
+                        "to_type": b.primary_type,
+                        "rel_type": r.rel_type,
+                        "attr": r.attr or r.rel_type,
+                    }
+                )
+            )
+            if limit >= 0 and len(out) >= limit:
+                break
+        return out
+
     def _execute(
         self,
         cypher: str,
@@ -1148,6 +1379,30 @@ class MemoryGraphStore:
             if entity_id is None:
                 return []
             return self._entity_rels(tenant_id, kg, str(entity_id))
+
+        if norm == _FILTER_PROP_EQ_NORM:
+            lim = params.get("limit")
+            return self._entity_filter_prop_eq(
+                tenant_id,
+                kg,
+                str(params.get("primary_type") or ""),
+                str(params.get("prop_key") or ""),
+                params.get("prop_value"),
+                int(lim) if lim is not None else 25,
+            )
+
+        if norm == _HOP_OUT_NORM:
+            lim = params.get("limit")
+            to_type = params.get("to_type")
+            rel_attr = params.get("rel_attr")
+            return self._entity_1hop_out(
+                tenant_id,
+                kg,
+                str(params.get("from_type") or ""),
+                None if to_type is None else str(to_type),
+                None if rel_attr is None else str(rel_attr),
+                int(lim) if lim is not None else 25,
+            )
 
         # --- Ontology catalog templates ------------------------------------
         if norm == _ONTO_TYPE_UPSERT_NORM:
