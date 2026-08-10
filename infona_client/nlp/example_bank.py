@@ -1155,7 +1155,11 @@ def format_examples_for_prompt(
 
 
 def _format_cypher_examples(examples: list[Example]) -> str:
-    """Format examples that carry a ``cypher`` field for the Cypher prompt."""
+    """Format examples that carry a ``cypher`` field for the Cypher prompt.
+
+    SPARQL-only rows are skipped entirely. If nothing usable remains, returns
+    ``""`` (prefer empty few-shot over injecting SPARQL into a Cypher prompt).
+    """
     usable = [ex for ex in examples if (ex.cypher or "").strip()]
     if not usable:
         return ""
@@ -1165,14 +1169,21 @@ def _format_cypher_examples(examples: list[Example]) -> str:
         "schema above instead of copying it.",
         "Always scope MATCH with {tenant_id: $tenant_id, kg: $kg}; never hardcode "
         "workspace ids. Session parameters are injected at execution time.",
+        "These examples are Cypher only — never emit SPARQL.",
     ]
     for i, ex in enumerate(usable, 1):
         tag_str = " + ".join(ex.pattern_tags) if ex.pattern_tags else "basic"
         cypher_compact = " ".join(sanitize_example_cypher(ex.cypher).split())
+        # Defense in depth: never surface a SPARQL body under a Cypher label.
+        if re.search(r"(?i)\bSELECT\b|\bFROM\s*<|\bPREFIX\b", cypher_compact):
+            continue
         lines.append("")
         lines.append(f"Example {i} ({tag_str}):")
         lines.append(f"  Q: {ex.question}")
         lines.append(f"  Cypher: {cypher_compact}")
+    # Header-only → empty (no usable Cypher bodies after scrub).
+    if len(lines) <= 3:
+        return ""
     return "\n".join(lines)
 
 
