@@ -93,6 +93,17 @@ def test_ingest_route_delegates_housekeeping_to_shared_writer(
 #        is not a triple write.
 _M1 = re.compile(r"(?<![\w.])insert_triples\(")
 _M2 = re.compile(r"DELETE\s*\{|DELETE\s+WHERE|DELETE\s+DATA")
+# E3 / Neo4j: free-form instance CREATE/MERGE outside the write path (or schema
+# bootstrap) is the Cypher-era twin of bespoke insert_triples. Allowlisted
+# modules own the only sanctioned emitters.
+_M3 = re.compile(
+    r"(?<![\w.])(?:execute_write)\s*\(\s*(?:f?['\"]|cypher\s*=)",
+    re.IGNORECASE,
+)
+_M3b = re.compile(
+    r"""(?:CREATE|MERGE)\s+\([a-zA-Z_][a-zA-Z0-9_]*\s*:(?:Entity|ProvEvent)\b""",
+    re.IGNORECASE,
+)
 
 # Deny-by-default allowlist: the ONLY modules permitted to construct raw SPARQL
 # instance/graph writes, each with the reason it is not a convergence violation.
@@ -132,6 +143,20 @@ _ALLOWLIST: dict[str, str] = {
     "api/routes/knowledge_graphs.py": "KG-lifecycle admin (create/delete KG, triple-count metadata) — graph lifecycle, not instance-fact writing (ADR 0007 allowlist: whole-graph admin ops).",
 }
 
+# Cypher-era allowlist (E3): modules that may emit Entity/ProvEvent CREATE|MERGE
+# or free-form execute_write with instance Cypher. Everyone else must go through
+# kg_writer → pg_ops → session write_* / execute_template.
+_CYPHER_WRITE_ALLOWLIST: dict[str, str] = {
+    "graph/kg_writer.py": "converged write path — dual-backend dispatcher; does not hand-roll instance Cypher (uses pg_ops).",
+    "graph/pg_ops.py": "property-graph write ops — delegates to session write_* / execute_template only.",
+    "graph/schema_bootstrap.py": "allowlisted Cypher template registry + schema constraints (not a free-form instance writer).",
+    "graph/labels.py": "domain-label SET builder (sanitized tokens) used by set_entity_type_labels.",
+    "graph/memory_store.py": "hermetic GraphStore — native write_* + smoke templates for tests.",
+    "graph/neo4j_store.py": "Neo4j GraphStore — write_* methods emit scoped Cypher with sanitized prop/rel tokens.",
+    "graph/store.py": "GraphStore protocol + scope gates; no instance CREATE/MERGE payloads.",
+    "graph/facts.py": "Fact IR + sanitizers; no store I/O.",
+}
+
 _PKG_ROOT = pathlib.Path(cograph_client.__file__).parent
 
 
@@ -167,6 +192,14 @@ def _bespoke_markers(code: str) -> list[str]:
     return marks
 
 
+def _cypher_instance_write_markers(code: str) -> list[str]:
+    """Markers for free-form Neo4j instance CREATE/MERGE (E3 drift guard)."""
+    marks = []
+    if _M3b.search(code):
+        marks.append("CREATE/MERGE Entity|ProvEvent Cypher")
+    return marks
+
+
 def test_no_bespoke_instance_write_outside_allowlist():
     """Scan ALL of ``cograph_client/`` for bespoke instance-write markers and fail
     on any hit outside the justified allowlist (ADR 0007 §4).
@@ -189,6 +222,27 @@ def test_no_bespoke_instance_write_outside_allowlist():
         "or — if the module legitimately writes a non-instance graph "
         "(ontology/governance/admin) — add it to _ALLOWLIST with a one-line "
         "justification. Offenders:\n  " + "\n  ".join(violations)
+    )
+
+
+def test_no_freeform_cypher_instance_write_outside_allowlist():
+    """E3: scan for CREATE/MERGE of Entity|ProvEvent outside the GraphStore /
+    kg_writer surface. Application code must not invent a second Cypher write
+    path (ADR 0012 + model §8)."""
+    violations: list[str] = []
+    for path in sorted(_PKG_ROOT.rglob("*.py")):
+        rel = path.relative_to(_PKG_ROOT).as_posix()
+        if rel in _CYPHER_WRITE_ALLOWLIST:
+            continue
+        code = _strip_comments(path.read_text())
+        marks = _cypher_instance_write_markers(code)
+        if marks:
+            violations.append(f"{rel}: {', '.join(marks)}")
+    assert not violations, (
+        "Free-form Entity/ProvEvent CREATE|MERGE Cypher found outside the E3 "
+        "write-path allowlist. Route instance mutations through "
+        "graph/kg_writer.py (store/session path → pg_ops). Offenders:\n  "
+        + "\n  ".join(violations)
     )
 
 

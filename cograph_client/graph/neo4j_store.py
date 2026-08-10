@@ -177,6 +177,252 @@ class Neo4jGraphSession:
             database=self._scope.database,
         )
 
+    # --- E3 native writer surface (pg_ops) — sanitized tokens only ------------
+
+    async def write_merge_entity(
+        self,
+        *,
+        id: str,
+        primary_type: str | None = None,
+        name: str | None = None,
+        source: str | None = None,
+        ts: str | None = None,
+    ) -> list[GraphRecord]:
+        require_entity_write_identity({"id": id})
+        return await self.execute_template(
+            "entity_merge",
+            {
+                "id": id,
+                "primary_type": primary_type,
+                "name": name,
+                "source": source,
+                "ts": ts,
+            },
+        )
+
+    async def write_set_literal(
+        self,
+        entity_id: str,
+        prop_key: str,
+        value: Any,
+        *,
+        multi_union: bool = True,
+        original_leaf: str | None = None,
+    ) -> list[GraphRecord]:
+        """SET entity property with sanitized key (model §2.5). List-union when asked."""
+        from cograph_client.graph.facts import sanitize_prop_key
+
+        require_entity_write_identity({"id": entity_id})
+        # prop_key is already sanitized by pg_ops except name/source/primary_type.
+        if prop_key not in ("name", "source", "primary_type"):
+            prop_key = sanitize_prop_key(prop_key)
+        # Token is [A-Za-z_][A-Za-z0-9_]* — safe to interpolate as a property key.
+        if multi_union:
+            cypher = (
+                "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg, id: $id})\n"
+                f"WITH e, e.`{prop_key}` AS cur\n"
+                "WITH e, cur, $value AS incoming\n"
+                "SET e.`"
+                + prop_key
+                + "` = CASE\n"
+                "  WHEN cur IS NULL THEN incoming\n"
+                "  WHEN cur = incoming THEN cur\n"
+                "  WHEN cur IS :: LIST<ANY> AND incoming IS :: LIST<ANY> THEN\n"
+                "    cur + [x IN incoming WHERE NOT x IN cur]\n"
+                "  WHEN cur IS :: LIST<ANY> AND NOT incoming IN cur THEN cur + [incoming]\n"
+                "  WHEN cur IS :: LIST<ANY> THEN cur\n"
+                "  WHEN incoming IS :: LIST<ANY> THEN\n"
+                "    CASE WHEN cur IN incoming THEN incoming ELSE [cur] + incoming END\n"
+                "  ELSE [cur, incoming]\n"
+                "END\n"
+                "RETURN e.id AS id"
+            )
+        else:
+            cypher = (
+                "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg, id: $id})\n"
+                f"SET e.`{prop_key}` = $value\n"
+                "RETURN e.id AS id"
+            )
+        return await self.execute_write(
+            cypher, {"id": entity_id, "value": value}
+        )
+
+    async def write_merge_rel(
+        self,
+        start_id: str,
+        end_id: str,
+        rel_type: str,
+        attr_leaf: str,
+    ) -> list[GraphRecord]:
+        """MERGE typed rel with B4 key; rel type token already sanitized+upper."""
+        from cograph_client.graph.facts import sanitize_rel_type
+
+        require_entity_write_identity({"id": start_id})
+        require_entity_write_identity({"id": end_id})
+        # Re-validate so free callers cannot inject labels.
+        rel_type = sanitize_rel_type(attr_leaf) if attr_leaf else rel_type
+        # Ensure both endpoints exist (bare Entity) then MERGE the edge.
+        await self.write_merge_entity(id=start_id)
+        await self.write_merge_entity(id=end_id)
+        cypher = (
+            "MATCH (a:Entity {tenant_id: $tenant_id, kg: $kg, id: $start_id})\n"
+            "MATCH (b:Entity {tenant_id: $tenant_id, kg: $kg, id: $end_id})\n"
+            f"MERGE (a)-[r:`{rel_type}` {{tenant_id: $tenant_id, kg: $kg}}]->(b)\n"
+            "ON CREATE SET r.attr = $attr\n"
+            "ON MATCH SET r.attr = coalesce(r.attr, $attr)\n"
+            "RETURN a.id AS start_id, b.id AS end_id, type(r) AS rel_type, r.attr AS attr"
+        )
+        return await self.execute_write(
+            cypher,
+            {
+                "start_id": start_id,
+                "end_id": end_id,
+                "attr": attr_leaf,
+            },
+        )
+
+    async def write_delete_entity(self, entity_id: str) -> int:
+        require_entity_write_identity({"id": entity_id})
+        cypher = (
+            "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg, id: $id})\n"
+            "DETACH DELETE e\n"
+            "RETURN 1 AS n"
+        )
+        rows = await self.execute_write(cypher, {"id": entity_id})
+        return len(rows)
+
+    async def write_delete_literals(
+        self, entity_id: str, keys: Sequence[str]
+    ) -> int:
+        require_entity_write_identity({"id": entity_id})
+        from cograph_client.graph.facts import sanitize_prop_key
+
+        n = 0
+        for key in keys:
+            if key not in ("name", "source", "primary_type"):
+                key = sanitize_prop_key(key)
+            cypher = (
+                "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg, id: $id})\n"
+                f"REMOVE e.`{key}`\n"
+                "RETURN e.id AS id"
+            )
+            rows = await self.execute_write(cypher, {"id": entity_id})
+            n += len(rows)
+        return n
+
+    async def write_delete_rels(
+        self,
+        *,
+        start_id: str | None = None,
+        end_id: str | None = None,
+        rel_type: str | None = None,
+        attr_leaf: str | None = None,
+    ) -> int:
+        if rel_type:
+            type_clause = f"[r:`{rel_type}`]"
+        else:
+            type_clause = "[r]"
+        # Build MATCH pattern with optional endpoint filters via WHERE.
+        cypher = (
+            f"MATCH (a:Entity {{tenant_id: $tenant_id, kg: $kg}})-"
+            f"{type_clause}->"
+            f"(b:Entity {{tenant_id: $tenant_id, kg: $kg}})\n"
+            "WHERE r.tenant_id = $tenant_id AND r.kg = $kg\n"
+            "  AND ($start_id IS NULL OR a.id = $start_id)\n"
+            "  AND ($end_id IS NULL OR b.id = $end_id)\n"
+            "  AND ($attr IS NULL OR r.attr = $attr)\n"
+            "DELETE r\n"
+            "RETURN count(*) AS n"
+        )
+        rows = await self.execute_write(
+            cypher,
+            {
+                "start_id": start_id,
+                "end_id": end_id,
+                "attr": attr_leaf,
+            },
+        )
+        if not rows:
+            return 0
+        return int(rows[0].get("n") or 0)
+
+    async def write_rewrite_entity_id(self, old_id: str, new_id: str) -> None:
+        require_entity_write_identity({"id": old_id})
+        require_entity_write_identity({"id": new_id})
+        if old_id == new_id:
+            return
+        # Re-key id property; relationships stay bound to the node when target
+        # id is free. If new_id already exists, merge display props then
+        # DETACH DELETE old (Wave-1 best-effort; full rel rebind → E7/ER).
+        simple = (
+            "MATCH (old:Entity {tenant_id: $tenant_id, kg: $kg, id: $old_id})\n"
+            "OPTIONAL MATCH (neu:Entity {tenant_id: $tenant_id, kg: $kg, id: $new_id})\n"
+            "WITH old, neu\n"
+            "FOREACH (_ IN CASE WHEN neu IS NULL THEN [1] ELSE [] END |\n"
+            "  SET old.id = $new_id\n"
+            ")\n"
+            "FOREACH (_ IN CASE WHEN neu IS NOT NULL THEN [1] ELSE [] END |\n"
+            "  SET neu.primary_type = coalesce(neu.primary_type, old.primary_type),\n"
+            "      neu.name = coalesce(neu.name, old.name),\n"
+            "      neu.source = coalesce(neu.source, old.source)\n"
+            ")\n"
+            "WITH old, neu WHERE neu IS NOT NULL\n"
+            "DETACH DELETE old\n"
+            "RETURN $new_id AS id"
+        )
+        await self.execute_write(
+            simple, {"old_id": old_id, "new_id": new_id}
+        )
+        # When target was free, relationships stay on the same node (id changed).
+        # When target existed, outbound/inbound of old are dropped with DETACH —
+        # Wave-1 best-effort; full rel rebind for merge-into-existing is E7/ER.
+
+    async def write_prov_event(
+        self,
+        *,
+        event_type: str,
+        subject_id: str,
+        attr: str | None = None,
+        object_repr: str | None = None,
+        old_id: str | None = None,
+        new_id: str | None = None,
+        reason: str = "",
+        source: str | None = None,
+        ts: str | None = None,
+    ) -> None:
+        cypher = (
+            "MERGE (e:Entity {tenant_id: $tenant_id, kg: $kg, id: $subject_id})\n"
+            "CREATE (p:ProvEvent {\n"
+            "  tenant_id: $tenant_id, kg: $kg,\n"
+            "  event_type: $event_type, subject_id: $subject_id,\n"
+            "  attr: $attr, object_repr: $object_repr,\n"
+            "  old_id: $old_id, new_id: $new_id,\n"
+            "  reason: $reason, source: $source, ts: $ts\n"
+            "})\n"
+            "CREATE (p)-[:ABOUT]->(e)\n"
+            "RETURN p.subject_id AS subject_id"
+        )
+        await self.execute_write(
+            cypher,
+            {
+                "subject_id": subject_id,
+                "event_type": event_type,
+                "attr": attr,
+                "object_repr": object_repr,
+                "old_id": old_id,
+                "new_id": new_id,
+                "reason": reason,
+                "source": source,
+                "ts": ts,
+            },
+        )
+
+    async def write_get_entity(self, entity_id: str) -> Mapping[str, Any] | None:
+        rows = await self.execute_template("entity_get", {"id": entity_id})
+        if not rows:
+            return None
+        return rows[0].to_dict()
+
 
 class Neo4jGraphStore:
     """Official ``neo4j`` async driver backed :class:`GraphStore`."""
