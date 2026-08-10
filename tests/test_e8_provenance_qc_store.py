@@ -5,6 +5,7 @@ Covers:
 * COGRAPH_PROVENANCE_ENABLED and COGRAPH_PROVENANCE_STORE_ALWAYS gates
 * AttrCitation write helper (enrichment source_url style) + attr_meta parse
 * Store-path check_invariants (missing primary_type, orphan rel, unscoped rel)
+* ADR 0013 dual-write skew (INSTANCE_OF without type Assertion)
 * SPARQL QC path still importable / unchanged catalogue
 """
 
@@ -23,14 +24,16 @@ from cograph_client.graph.kg_writer import (
     rewrite_subject,
 )
 from cograph_client.graph.memory_store import MemoryGraphStore
-from cograph_client.graph.ontology_queries import entity_uri
+from cograph_client.graph.ontology_queries import entity_uri, type_uri
 from cograph_client.graph import pg_ops
 from cograph_client.graph.scope import GraphScope
 from cograph_client.qc import (
     INVARIANTS,
+    STORE_INVARIANT_INSTANCE_OF_NO_TYPE_ASSERTION,
     STORE_INVARIANT_MISSING_PRIMARY_TYPE,
     STORE_INVARIANT_ORPHAN_REL_TARGET,
     STORE_INVARIANT_REL_MISSING_SCOPE,
+    check_assertion_cache_skew,
     check_invariants,
 )
 from cograph_client.qc.invariants_store import check_store_invariants
@@ -270,6 +273,88 @@ def test_sparql_qc_path_still_present():
     async def run():
         vs = await check_invariants(_Empty())
         assert vs == []
+
+    asyncio.run(run())
+
+
+def test_assertion_cache_skew_clean_after_insert_facts(store):
+    """Proper dual-write via insert_facts → no INSTANCE_OF / Assertion skew."""
+
+    async def run():
+        sid = entity_uri("Person", "skew-clean")
+        await insert_facts(
+            None,
+            _graph(),
+            facts=[
+                Fact(subject_id=sid, kind="type", key="Person"),
+                Fact(subject_id=sid, kind="literal", key="email", value="c@x.com"),
+            ],
+            store=store,
+        )
+        session = store.session(GraphScope.for_instance("demo-tenant", "bookstore"))
+        vs = await check_assertion_cache_skew(session)
+        assert vs == []
+        # Also via the full store-path suite (include filter).
+        vs2 = await check_store_invariants(
+            session,
+            include={STORE_INVARIANT_INSTANCE_OF_NO_TYPE_ASSERTION},
+        )
+        assert vs2 == []
+
+    asyncio.run(run())
+
+
+def test_assertion_cache_skew_planted_instance_of(store):
+    """Planted INSTANCE_OF without type Assertion is reported as dual-write skew."""
+
+    async def run():
+        session = store.session(GraphScope.for_instance("demo-tenant", "bookstore"))
+        sid = entity_uri("Person", "skew-orphan-io")
+        class_id = type_uri("Person")
+
+        # Entity + Class + derived INSTANCE_OF only — no type Assertion (SoT gap).
+        await pg_ops.merge_entity(session, sid, primary_type="Person")
+        from cograph_client.graph.rdf_model import merge_class
+
+        await merge_class(session, class_id, name="Person")
+        await session.write_instance_of(sid, class_id)
+
+        # Standalone skew check.
+        vs = await check_assertion_cache_skew(session)
+        assert any(
+            v.invariant == STORE_INVARIANT_INSTANCE_OF_NO_TYPE_ASSERTION for v in vs
+        )
+        assert any(sid in v.detail and class_id in v.detail for v in vs)
+        assert all(v.severity == "error" for v in vs)
+
+        # Wired into E8 store-path invariants (default include set).
+        vs_all = await check_store_invariants(session)
+        assert any(
+            v.invariant == STORE_INVARIANT_INSTANCE_OF_NO_TYPE_ASSERTION
+            for v in vs_all
+        )
+
+        # Via dual-backend check_invariants(store=...).
+        vs3 = await check_invariants(
+            store=store,
+            tenant_id="demo-tenant",
+            kg_name="bookstore",
+            include={STORE_INVARIANT_INSTANCE_OF_NO_TYPE_ASSERTION},
+        )
+        assert len(vs3) >= 1
+        assert vs3[0].binding.get("entity_id") == sid
+        assert vs3[0].binding.get("class_id") == class_id
+
+        # Repair: write the type Assertion (+ dual-write is fine); skew clears.
+        from cograph_client.graph.rdf_model import AssertionFact, assert_fact
+
+        await assert_fact(
+            session,
+            AssertionFact(subject_id=sid, kind="type", value="Person"),
+            dual_write_cache=True,
+        )
+        vs_fixed = await check_assertion_cache_skew(session)
+        assert vs_fixed == []
 
     asyncio.run(run())
 

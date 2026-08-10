@@ -6,6 +6,8 @@ violation list) but for Neo4j-era instance data:
 * entities missing ``primary_type``
 * relationships missing ``tenant_id`` / ``kg`` (scope on the rel)
 * orphan relationship endpoints (target/start Entity missing in scope)
+* **ADR 0013 dual-write skew** — derived ``INSTANCE_OF`` without a type Assertion
+  (Assertion is SoT; Entity props / ``INSTANCE_OF`` / shortcut rels are derived)
 
 These are **cheap structural** checks — not the full SPARQL ontology-aware
 suite (attrs-vs-onto, range membership). The SPARQL path in ``invariants.py``
@@ -28,12 +30,17 @@ if TYPE_CHECKING:
 STORE_INVARIANT_MISSING_PRIMARY_TYPE = "entity_missing_primary_type"
 STORE_INVARIANT_REL_MISSING_SCOPE = "relationship_missing_scope"
 STORE_INVARIANT_ORPHAN_REL_TARGET = "orphan_relationship_endpoint"
+# ADR 0013: derived INSTANCE_OF cache without backing type Assertion SoT.
+STORE_INVARIANT_INSTANCE_OF_NO_TYPE_ASSERTION = (
+    "instance_of_without_type_assertion"
+)
 
 STORE_INVARIANT_NAMES: frozenset[str] = frozenset(
     {
         STORE_INVARIANT_MISSING_PRIMARY_TYPE,
         STORE_INVARIANT_REL_MISSING_SCOPE,
         STORE_INVARIANT_ORPHAN_REL_TARGET,
+        STORE_INVARIANT_INSTANCE_OF_NO_TYPE_ASSERTION,
     }
 )
 
@@ -61,6 +68,17 @@ RETURN a.id AS start_id, coalesce(b.id, '') AS end_id,
        coalesce(r.attr, type(r)) AS attr, 'end' AS side
 """.strip()
 
+# ADR 0013 skew: INSTANCE_OF cache edge with no type Assertion (OBJECT_CLASS).
+_CYPHER_INSTANCE_OF_NO_TYPE_ASSERTION = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})
+      -[:INSTANCE_OF]->(c:Class {tenant_id: $tenant_id, kg: $kg})
+WHERE NOT EXISTS {
+  MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg, subject_id: e.id})
+        -[:OBJECT_CLASS]->(c)
+}
+RETURN e.id AS entity_id, c.id AS class_id
+""".strip()
+
 
 def _selected(include: Optional[set[str]]) -> set[str]:
     if include is None:
@@ -73,6 +91,78 @@ def _scope_from_session(session: "GraphSession") -> tuple[str, str]:
     if scope is None:
         raise ValueError("GraphSession must carry a GraphScope for store invariants")
     return str(scope.tenant_id), str(scope.kg)
+
+
+def _record_to_dict(rec: Any) -> dict[str, Any]:
+    if hasattr(rec, "to_dict"):
+        return rec.to_dict()
+    if hasattr(rec, "data") and isinstance(rec.data, dict):
+        return dict(rec.data)
+    return dict(rec)
+
+
+def _violation_instance_of_skew(row: dict[str, Any]) -> Violation:
+    eid = row.get("entity_id", "")
+    cid = row.get("class_id", "")
+    return Violation(
+        invariant=STORE_INVARIANT_INSTANCE_OF_NO_TYPE_ASSERTION,
+        severity="error",
+        detail=(
+            f"{eid} -[:INSTANCE_OF]-> {cid} "
+            "(derived INSTANCE_OF with no type Assertion — ADR 0013 dual-write skew)"
+        ),
+        binding=dict(row),
+    )
+
+
+async def check_assertion_cache_skew(
+    session: "GraphSession",
+    *,
+    include_entity_props: bool = False,
+) -> list[Violation]:
+    """Detect ADR 0013 dual-write skew: derived cache present without Assertion SoT.
+
+    **Mandate:** Assertion is source of truth. Entity property cache,
+    ``INSTANCE_OF``, and shortcut rels are **derived only**.
+
+    Currently reports:
+
+    * ``instance_of_without_type_assertion`` — Entity has
+      ``-[:INSTANCE_OF]->(Class)`` with no type Assertion linking that subject
+      to that Class via ``OBJECT_CLASS``.
+
+    Entity property cache without a matching datatype Assertion is **optional**
+    (``include_entity_props=True``) and off by default: many dual-write paths
+    only cache a subset of leaves (``name`` / ``source`` / hot props), so a
+    full prop scan is noisy relative to the high-signal ``INSTANCE_OF`` check.
+
+    Prefer Memory native scans when present; otherwise Cypher via
+    :meth:`GraphSession.execute_read`.
+    """
+    tenant_id, kg = _scope_from_session(session)
+    violations: list[Violation] = []
+
+    store = getattr(session, "_store", None)
+    if store is not None and hasattr(
+        store, "scan_instance_of_without_type_assertion"
+    ):
+        for row in store.scan_instance_of_without_type_assertion(tenant_id, kg):
+            violations.append(_violation_instance_of_skew(row))
+    else:
+        rows = await session.execute_read(
+            _CYPHER_INSTANCE_OF_NO_TYPE_ASSERTION, {}
+        )
+        for rec in rows:
+            violations.append(_violation_instance_of_skew(_record_to_dict(rec)))
+
+    # Reserved for a quieter prop-cache scan later; not wired by default.
+    if include_entity_props:
+        # Deliberately empty: full Entity.props ⊆ Assertion is too noisy until
+        # dual-write coverage is complete for every leaf (see module doc).
+        pass
+
+    violations.sort(key=lambda v: 0 if v.severity == "error" else 1)
+    return violations
 
 
 async def check_store_invariants(
@@ -147,6 +237,11 @@ async def _check_via_memory_scans(
                     binding=dict(row),
                 )
             )
+    if STORE_INVARIANT_INSTANCE_OF_NO_TYPE_ASSERTION in names:
+        scan = getattr(store, "scan_instance_of_without_type_assertion", None)
+        if callable(scan):
+            for row in scan(tenant_id, kg):
+                out.append(_violation_instance_of_skew(row))
     return out
 
 
@@ -164,13 +259,13 @@ async def _check_via_cypher(
                     invariant=STORE_INVARIANT_MISSING_PRIMARY_TYPE,
                     severity="error",
                     detail=f"{eid} (Entity missing primary_type)",
-                    binding=rec.to_dict() if hasattr(rec, "to_dict") else dict(rec.data),
+                    binding=_record_to_dict(rec),
                 )
             )
     if STORE_INVARIANT_REL_MISSING_SCOPE in names:
         rows = await session.execute_read(_CYPHER_REL_MISSING_SCOPE, {})
         for rec in rows:
-            d = rec.to_dict() if hasattr(rec, "to_dict") else dict(rec.data)
+            d = _record_to_dict(rec)
             out.append(
                 Violation(
                     invariant=STORE_INVARIANT_REL_MISSING_SCOPE,
@@ -185,7 +280,7 @@ async def _check_via_cypher(
     if STORE_INVARIANT_ORPHAN_REL_TARGET in names:
         rows = await session.execute_read(_CYPHER_ORPHAN_V2, {})
         for rec in rows:
-            d = rec.to_dict() if hasattr(rec, "to_dict") else dict(rec.data)
+            d = _record_to_dict(rec)
             out.append(
                 Violation(
                     invariant=STORE_INVARIANT_ORPHAN_REL_TARGET,
@@ -197,6 +292,12 @@ async def _check_via_cypher(
                     binding=d,
                 )
             )
+    if STORE_INVARIANT_INSTANCE_OF_NO_TYPE_ASSERTION in names:
+        rows = await session.execute_read(
+            _CYPHER_INSTANCE_OF_NO_TYPE_ASSERTION, {}
+        )
+        for rec in rows:
+            out.append(_violation_instance_of_skew(_record_to_dict(rec)))
     return out
 
 
@@ -215,10 +316,12 @@ async def check_invariants_for_store(
 
 
 __all__ = [
+    "STORE_INVARIANT_INSTANCE_OF_NO_TYPE_ASSERTION",
     "STORE_INVARIANT_MISSING_PRIMARY_TYPE",
     "STORE_INVARIANT_ORPHAN_REL_TARGET",
     "STORE_INVARIANT_REL_MISSING_SCOPE",
     "STORE_INVARIANT_NAMES",
+    "check_assertion_cache_skew",
     "check_invariants_for_store",
     "check_store_invariants",
 ]
