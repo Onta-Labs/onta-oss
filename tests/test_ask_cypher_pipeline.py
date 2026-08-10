@@ -168,42 +168,75 @@ def test_format_schema_types_for_cypher():
 
 
 async def _seed_bookstore(store: MemoryGraphStore) -> None:
+    """Seed via Assertion SoT (+ dual-write cache) so ADR 0013 NL templates match."""
+    from cograph_client.graph.rdf_model import AssertionFact, assert_fact
+
     scope = GraphScope.for_instance("demo-tenant", "bookstore")
     session = store.session(scope)
     for i, title in enumerate(["Dune", "Foundation", "Hyperion"]):
-        await session.write_merge_entity(
-            id=f"{IRI_BASE}/entities/Book/b{i}",
-            primary_type="Book",
-            name=title,
-            source="test",
+        eid = f"{IRI_BASE}/entities/Book/b{i}"
+        await assert_fact(
+            session,
+            AssertionFact(subject_id=eid, kind="type", value="Book"),
+            dual_write_cache=True,
         )
-        await session.write_set_literal(
-            f"{IRI_BASE}/entities/Book/b{i}", "status", "published"
+        await assert_fact(
+            session,
+            AssertionFact(
+                subject_id=eid,
+                kind="literal",
+                property_leaf="name",
+                value=title,
+            ),
+            dual_write_cache=True,
         )
-    await session.write_merge_entity(
-        id=f"{IRI_BASE}/entities/Author/a1",
-        primary_type="Author",
-        name="Herbert",
-        source="test",
+        await assert_fact(
+            session,
+            AssertionFact(
+                subject_id=eid,
+                kind="literal",
+                property_leaf="status",
+                value="published",
+            ),
+            dual_write_cache=True,
+        )
+    for i, aname in enumerate(["Herbert", "Asimov"]):
+        aid = f"{IRI_BASE}/entities/Author/a{i + 1}"
+        await assert_fact(
+            session,
+            AssertionFact(subject_id=aid, kind="type", value="Author"),
+            dual_write_cache=True,
+        )
+        await assert_fact(
+            session,
+            AssertionFact(
+                subject_id=aid,
+                kind="literal",
+                property_leaf="name",
+                value=aname,
+            ),
+            dual_write_cache=True,
+        )
+    # Book 0 → Author 1 (Herbert wrote Dune); Book 1 → Asimov
+    await assert_fact(
+        session,
+        AssertionFact(
+            subject_id=f"{IRI_BASE}/entities/Book/b0",
+            kind="object",
+            property_leaf="author",
+            value=f"{IRI_BASE}/entities/Author/a1",
+        ),
+        dual_write_cache=True,
     )
-    await session.write_merge_entity(
-        id=f"{IRI_BASE}/entities/Author/a2",
-        primary_type="Author",
-        name="Asimov",
-        source="test",
-    )
-    # Book 0 → Author 0 (Herbert wrote Dune)
-    await session.write_merge_rel(
-        f"{IRI_BASE}/entities/Book/b0",
-        f"{IRI_BASE}/entities/Author/a1",
-        "AUTHOR",
-        "author",
-    )
-    await session.write_merge_rel(
-        f"{IRI_BASE}/entities/Book/b1",
-        f"{IRI_BASE}/entities/Author/a2",
-        "AUTHOR",
-        "author",
+    await assert_fact(
+        session,
+        AssertionFact(
+            subject_id=f"{IRI_BASE}/entities/Book/b1",
+            kind="object",
+            property_leaf="author",
+            value=f"{IRI_BASE}/entities/Author/a2",
+        ),
+        dual_write_cache=True,
     )
 
 
@@ -432,14 +465,29 @@ async def test_ask_default_path_does_not_enter_cypher_when_disabled(monkeypatch)
 @pytest.mark.asyncio
 async def test_ask_cypher_rejects_model_tenant_in_params_via_confine():
     """Session overwrites evil tenant even if fixture somehow set it."""
+    from cograph_client.graph.rdf_model import AssertionFact, assert_fact
+
     store = MemoryGraphStore()
     scope = GraphScope.for_instance("demo-tenant", "bookstore")
     session = store.session(scope)
-    await session.write_merge_entity(
-        id=f"{IRI_BASE}/entities/Book/b1",
-        primary_type="Book",
-        name="One",
-        source="test",
+    await assert_fact(
+        session,
+        AssertionFact(
+            subject_id=f"{IRI_BASE}/entities/Book/b1",
+            kind="type",
+            value="Book",
+        ),
+        dual_write_cache=True,
+    )
+    await assert_fact(
+        session,
+        AssertionFact(
+            subject_id=f"{IRI_BASE}/entities/Book/b1",
+            kind="literal",
+            property_leaf="name",
+            value="One",
+        ),
+        dual_write_cache=True,
     )
 
     neptune = MagicMock()

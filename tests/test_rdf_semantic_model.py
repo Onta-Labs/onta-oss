@@ -301,6 +301,168 @@ def test_insert_facts_structured_fact_ir_assertions(store):
     asyncio.run(run())
 
 
+def test_insert_facts_memory_assertion_per_literal_rel_type(store):
+    """M5: insert_facts Memory writes one Assertion for each literal/rel/type Fact."""
+    async def run():
+        person = entity_uri("Person", "carol")
+        org = entity_uri("Organization", "acme")
+        facts = [
+            Fact(subject_id=person, kind="type", key="Person"),
+            Fact(subject_id=person, kind="literal", key="email", value="c@example.com"),
+            Fact(subject_id=person, kind="rel", key="works_at", value=org),
+            Fact(subject_id=org, kind="type", key="Organization"),
+        ]
+        await insert_facts(None, _graph(), facts=facts, store=store)
+        session = _session(store)
+        person_rows = await session_assertions_for_subject(session, person)
+        props = {r["property_id"] for r in person_rows}
+        assert type_membership_property_id() in props
+        assert property_uri("email") in props
+        assert property_uri("works_at") in props
+        assert len(person_rows) == 3
+        # INSTANCE_OF dual-written for type
+        ents = await session_entities_of_type(
+            session, type_uri("Person"), include_subclasses=False
+        )
+        assert person in ents
+        # object Assertion present
+        objs = await session_object_values(session, person, property_uri("works_at"))
+        assert objs == [org]
+
+    asyncio.run(run())
+
+
+def test_entities_of_type_via_instance_of_with_subclass(store):
+    """M5: entities_of_type reads INSTANCE_OF + Class SUBCLASS_OF, not primary_type only."""
+    async def run():
+        session = _session(store)
+        agent_id = type_uri("Agent")
+        person_id = type_uri("Person")
+        await set_subclass_of(session, person_id, agent_id)
+
+        alice = entity_uri("Person", "alice-io")
+        await insert_facts(
+            None,
+            _graph(),
+            facts=[Fact(subject_id=alice, kind="type", key="Person")],
+            store=store,
+        )
+        # Semantic helper path
+        ents = await session_entities_of_type(
+            session, agent_id, include_subclasses=True
+        )
+        assert alice in ents
+        # Template path ($type_names expanded to parent∪child leaves)
+        rows = await session.execute_template(
+            "entities_of_type",
+            {
+                "type_names": ["Agent", "Person"],
+                "after_id": None,
+                "limit": 50,
+            },
+        )
+        ids = {r.get("id") for r in rows}
+        assert alice in ids
+        # Exact Agent only — no direct INSTANCE_OF Agent
+        exact = await session.execute_template(
+            "entities_of_type",
+            {"type_names": ["Agent"], "after_id": None, "limit": 50},
+        )
+        assert alice not in {r.get("id") for r in exact}
+
+    asyncio.run(run())
+
+
+def test_fact_full_provenance_lands_on_assertion(store):
+    """M5: Fact source_url / verified_at / run_id / confidence land on Assertion."""
+    async def run():
+        sid = entity_uri("Person", "prov-person")
+        facts = [
+            Fact(
+                subject_id=sid,
+                kind="type",
+                key="Person",
+            ),
+            Fact(
+                subject_id=sid,
+                kind="literal",
+                key="email",
+                value="p@example.com",
+                source_url="https://example.com/cite",
+                verified_at="2026-08-09T12:00:00Z",
+                run_id="run-m5",
+                confidence=0.87,
+            ),
+        ]
+        # source alias also maps
+        assert facts[1].source == "https://example.com/cite"
+        await insert_facts(None, _graph(), facts=facts, store=store)
+        session = _session(store)
+        rows = await session_assertions_for_subject(
+            session, sid, prop_id=property_uri("email")
+        )
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["literal_value"] == "p@example.com"
+        assert row["source_url"] == "https://example.com/cite"
+        assert row["verified_at"] == "2026-08-09T12:00:00Z"
+        assert row["run_id"] == "run-m5"
+        assert row["confidence"] == 0.87
+
+    asyncio.run(run())
+
+
+def test_apply_facts_requires_write_assertion(store):
+    """M1: soft-skip of write_assertion is gone — missing surface fails closed."""
+    from cograph_client.graph.pg_ops import apply_facts
+    from cograph_client.graph.scope import GraphScopeError
+
+    class _NoAssertSession:
+        scope = GraphScope.for_instance("demo-tenant", "bookstore")
+
+        async def write_merge_entity(self, **kwargs):
+            return []
+
+    async def run():
+        with pytest.raises(GraphScopeError, match="write_assertion"):
+            await apply_facts(
+                _NoAssertSession(),  # type: ignore[arg-type]
+                [Fact(subject_id=entity_uri("Person", "x"), kind="type", key="Person")],
+            )
+
+    asyncio.run(run())
+
+
+def test_delete_literals_removes_assertions_not_swallowed(store):
+    """M4: delete_literals removes matching Assertions; no silent except:pass."""
+    from cograph_client.graph import pg_ops
+
+    async def run():
+        sid = entity_uri("Person", "del-lit")
+        await insert_facts(
+            None,
+            _graph(),
+            facts=[
+                Fact(subject_id=sid, kind="type", key="Person"),
+                Fact(subject_id=sid, kind="literal", key="email", value="x@y.z"),
+            ],
+            store=store,
+        )
+        session = _session(store)
+        before = await session_assertions_for_subject(
+            session, sid, prop_id=property_uri("email")
+        )
+        assert len(before) == 1
+        n = await pg_ops.delete_literals(session, sid, ["email"])
+        assert n >= 1
+        after = await session_assertions_for_subject(
+            session, sid, prop_id=property_uri("email")
+        )
+        assert after == []
+
+    asyncio.run(run())
+
+
 def test_neptune_default_path_without_store(monkeypatch):
     """Default backend remains neptune; insert_facts without store does not require GraphStore."""
     monkeypatch.delenv("COGRAPH_GRAPH_BACKEND", raising=False)

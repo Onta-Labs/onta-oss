@@ -360,10 +360,19 @@ async def delete_assertions_for_subject(
     property_id: str | None = None,
     object_key: str | None = None,
 ) -> int:
+    """Delete Assertions for a subject (ADR 0013 SoT cleanup).
+
+    Requires ``write_delete_assertions`` on the session — soft-skip is not
+    allowed on the product store path (Memory / Neo4j).
+    """
     require_entity_write_identity({"id": subject_id})
     native = getattr(session, "write_delete_assertions", None)
     if not callable(native):
-        return 0
+        raise GraphScopeError(
+            "GraphSession does not implement write_delete_assertions; "
+            "Assertion SoT cleanup is required on the store path (ADR 0013). "
+            "Use MemoryGraphStore or Neo4jGraphStore."
+        )
     return int(
         await native(
             subject_id=subject_id,
