@@ -165,6 +165,30 @@ Allowlisted templates: `entity_list_by_type_page`, `entity_count_by_type`,
 `entity_count_total`, `entity_detail`, `entity_rels` (+ existing
 `entity_count_by_primary_type`).
 
+## Write rails → GraphStore (E7)
+
+Instance writers resolve the store once per write batch via
+`resolve_optional_graph_store()` (`graph/store.py`) and pass `store=` into
+`insert_facts` / `delete_facts` / `rewrite_subject`:
+
+| Rail | Module |
+|------|--------|
+| Ingest (CSV / JSON / discovery) | `resolver/schema_resolver.py` |
+| Enrichment | `enrichment/executor.py` |
+| Normalization (promote_to_node, list_explode, strip_emoji) | `normalization/execute.py` |
+| ER rebuild / merge | `resolver/er/rebuild.py` |
+
+When `COGRAPH_GRAPH_BACKEND` is unset or `neptune`, the helper returns `None`
+and rails keep the Neptune SPARQL path (no Neo4j credentials required). When
+backend is `neo4j`, missing store config fails closed (`GraphConfigError`).
+
+**Still SPARQL-only by design (this epic):** normalization SELECTs that find
+candidates before the write, ER signal load (`SparqlBlocker`), ontology-graph
+config rows (normalization rules/policy stores), companion RDF provenance on
+the Neptune path. Full explore/admin rewrite is E9.
+
+Hermetic tests: `tests/test_rails_graph_store_write.py` (MemoryGraphStore).
+
 ## NL → Cypher /ask (E6 foundation)
 
 When `COGRAPH_GRAPH_BACKEND=neo4j`, `POST /graphs/{tenant}/ask` (and
@@ -208,6 +232,7 @@ rebaseline, SPARQL example conversion).
 ```bash
 # Hermetic (default CI) — in-memory store + scope unit tests
 pytest tests/test_graph_store.py tests/test_explore_store.py \
+  tests/test_kg_writer_store.py tests/test_rails_graph_store_write.py \
   tests/test_cypher_scope.py tests/test_cypher_prompts.py \
   tests/test_example_bank_cypher.py tests/test_ask_cypher_pipeline.py -q
 

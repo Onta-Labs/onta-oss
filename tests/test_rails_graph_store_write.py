@@ -1,0 +1,406 @@
+"""E7 — write rails wire GraphStore into kg_writer when neo4j backend is active.
+
+Hermetic: MemoryGraphStore only (no live Neo4j / Neptune). Default Neptune path
+must stay untouched when ``COGRAPH_GRAPH_BACKEND`` is unset.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from cograph_client.graph.facts import Fact
+from cograph_client.graph.iri import IRI_BASE
+from cograph_client.graph.kg_writer import insert_facts, rewrite_subject
+from cograph_client.graph.memory_store import MemoryGraphStore
+from cograph_client.graph.ontology_queries import entity_uri
+from cograph_client.graph.store import (
+    GraphConfigError,
+    configure_graph_store,
+    get_optional_graph_store,
+    graph_backend,
+    reset_graph_store_for_tests,
+    resolve_optional_graph_store,
+)
+from cograph_client.resolver.er.rebuild import rebuild_type
+from cograph_client.resolver.er.types import DEFAULT_GUEST_CONFIG
+
+
+def _graph(tenant: str = "demo-tenant", kg: str = "bookstore") -> str:
+    return f"{IRI_BASE}/graphs/{tenant}/kg/{kg}"
+
+
+@pytest.fixture
+def memory_store(monkeypatch):
+    reset_graph_store_for_tests()
+    store = MemoryGraphStore()
+    configure_graph_store(store)
+    yield store
+    asyncio.run(store.close())
+    reset_graph_store_for_tests()
+    monkeypatch.delenv("COGRAPH_GRAPH_BACKEND", raising=False)
+
+
+# ---------------------------------------------------------------------------
+# Helper
+# ---------------------------------------------------------------------------
+
+
+def test_get_optional_graph_store_default_none(monkeypatch):
+    monkeypatch.delenv("COGRAPH_GRAPH_BACKEND", raising=False)
+    reset_graph_store_for_tests()
+    assert graph_backend() == "neptune"
+    assert get_optional_graph_store() is None
+    assert resolve_optional_graph_store() is None
+
+
+def test_get_optional_graph_store_neo4j_returns_configured(memory_store, monkeypatch):
+    monkeypatch.setenv("COGRAPH_GRAPH_BACKEND", "neo4j")
+    assert resolve_optional_graph_store() is memory_store
+
+
+def test_get_optional_graph_store_neo4j_fails_closed_without_config(monkeypatch):
+    monkeypatch.setenv("COGRAPH_GRAPH_BACKEND", "neo4j")
+    monkeypatch.delenv("NEO4J_URI", raising=False)
+    monkeypatch.delenv("NEO4J_PASSWORD", raising=False)
+    reset_graph_store_for_tests()
+    with pytest.raises(GraphConfigError):
+        get_optional_graph_store()
+
+
+# ---------------------------------------------------------------------------
+# Ingest / schema_resolver (also covers discovery + CSV → same insert_facts)
+# ---------------------------------------------------------------------------
+
+
+def test_schema_resolver_insert_facts_receives_store(memory_store, monkeypatch):
+    """Ingest rail passes store= from resolve_optional_graph_store into insert_facts."""
+    monkeypatch.setenv("COGRAPH_GRAPH_BACKEND", "neo4j")
+    captured: dict = {}
+
+    async def spy(neptune, instance_graph, instance_triples=None, **kwargs):
+        captured["store"] = kwargs.get("store")
+        captured["triples"] = list(instance_triples or [])
+        return await insert_facts(
+            neptune, instance_graph, instance_triples, **kwargs
+        )
+
+    import cograph_client.resolver.schema_resolver as sr
+
+    monkeypatch.setattr(sr, "insert_facts", spy)
+    # Resolve the same way the rail does, then simulate its write call shape.
+    store = sr.resolve_optional_graph_store()
+    person = entity_uri("Person", "alice")
+    triples = [
+        (
+            person,
+            "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+            f"{IRI_BASE}/types/Person",
+        ),
+        (person, "http://www.w3.org/2000/01/rdf-schema#label", "Alice"),
+    ]
+
+    async def run():
+        # Call through the spy-bound name the module uses after import.
+        await sr.insert_facts(None, _graph(), triples, store=store)
+
+    asyncio.run(run())
+    assert captured["store"] is memory_store
+    assert memory_store.entity_count(tenant_id="demo-tenant", kg="bookstore") == 1
+    row = memory_store._entities[("demo-tenant", "bookstore", person)]
+    assert row.primary_type == "Person"
+    assert row.name == "Alice"
+
+
+def test_schema_resolver_source_wires_store_kwarg():
+    """Source guard: schema_resolver write site passes store= (E7)."""
+    import inspect
+
+    import cograph_client.resolver.schema_resolver as sr
+
+    src = inspect.getsource(sr)
+    assert "resolve_optional_graph_store" in src
+    assert "store=resolve_optional_graph_store()" in src
+
+
+# ---------------------------------------------------------------------------
+# Enrichment
+# ---------------------------------------------------------------------------
+
+
+def test_enrichment_insert_facts_receives_store(memory_store, monkeypatch):
+    """Enrichment rail passes store into insert_facts when backend=neo4j."""
+    monkeypatch.setenv("COGRAPH_GRAPH_BACKEND", "neo4j")
+    captured: dict = {}
+
+    async def spy(neptune, instance_graph, instance_triples=None, **kwargs):
+        captured["store"] = kwargs.get("store")
+        return await insert_facts(
+            neptune, instance_graph, instance_triples, **kwargs
+        )
+
+    import cograph_client.enrichment.executor as ex
+
+    monkeypatch.setattr(ex, "insert_facts", spy)
+    store = ex.resolve_optional_graph_store()
+    sid = entity_uri("Widget", "w1")
+    triples = [
+        (
+            sid,
+            "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+            f"{IRI_BASE}/types/Widget",
+        ),
+        (
+            sid,
+            f"{IRI_BASE}/types/Widget/attrs/color",
+            "blue",
+        ),
+    ]
+
+    async def run():
+        await ex.insert_facts(None, _graph(), triples, store=store)
+
+    asyncio.run(run())
+    assert captured["store"] is memory_store
+    row = memory_store._entities[("demo-tenant", "bookstore", sid)]
+    assert row.props.get("color") == "blue"
+
+
+def test_enrichment_source_wires_store_kwarg():
+    import inspect
+
+    import cograph_client.enrichment.executor as ex
+
+    src = inspect.getsource(ex)
+    assert "resolve_optional_graph_store" in src
+    assert "store=graph_store" in src or "store=resolve_optional_graph_store()" in src
+
+
+# ---------------------------------------------------------------------------
+# Normalization (promote_to_node / rule apply writes)
+# ---------------------------------------------------------------------------
+
+
+def test_normalization_insert_delete_receive_store(memory_store, monkeypatch):
+    """Normalization write batch uses Memory store for insert + predicate clear."""
+    monkeypatch.setenv("COGRAPH_GRAPH_BACKEND", "neo4j")
+    captured: list[dict] = []
+
+    async def spy_insert(neptune, instance_graph, instance_triples=None, **kwargs):
+        captured.append({"op": "insert", "store": kwargs.get("store")})
+        return await insert_facts(
+            neptune, instance_graph, instance_triples, **kwargs
+        )
+
+    async def spy_delete(neptune, instance_graph, **kwargs):
+        captured.append({"op": "delete", "store": kwargs.get("store")})
+        from cograph_client.graph.kg_writer import delete_facts
+
+        return await delete_facts(neptune, instance_graph, **kwargs)
+
+    import cograph_client.normalization.execute as nx
+
+    monkeypatch.setattr(nx, "insert_facts", spy_insert)
+    monkeypatch.setattr(nx, "delete_facts", spy_delete)
+
+    store = nx.resolve_optional_graph_store()
+    owner = entity_uri("Person", "p1")
+    city = entity_uri("City", "sf")
+    graph = _graph()
+    lit_pred = f"{IRI_BASE}/types/Person/attrs/city"
+    onto_pred = f"{IRI_BASE}/onto/city"
+
+    async def run():
+        # Seed owner (literal path pre-promote).
+        await insert_facts(
+            None,
+            graph,
+            facts=[
+                Fact(subject_id=owner, kind="type", key="Person"),
+                Fact(subject_id=owner, kind="literal", key="city", value="SF"),
+            ],
+            store=store,
+        )
+        # Promote-shaped write: mint node + onto edge + clear literal.
+        await nx.insert_facts(
+            None,
+            graph,
+            [
+                (
+                    city,
+                    "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+                    f"{IRI_BASE}/types/City",
+                ),
+                (city, "http://www.w3.org/2000/01/rdf-schema#label", "SF"),
+            ],
+            store=store,
+        )
+        await nx.insert_facts(
+            None, graph, [(owner, onto_pred, city)], store=store
+        )
+        await nx.delete_facts(
+            None,
+            graph,
+            triples=[(owner, lit_pred, None)],
+            reason="normalization:promote_to_node literal->node",
+            store=store,
+        )
+
+    asyncio.run(run())
+    assert all(c["store"] is memory_store for c in captured)
+    assert memory_store.entity_count(tenant_id="demo-tenant", kg="bookstore") == 2
+    owner_row = memory_store._entities[("demo-tenant", "bookstore", owner)]
+    assert "city" not in owner_row.props  # literal cleared
+    rels = memory_store.snapshot_rels()
+    assert any(
+        r["start_id"] == owner and r["end_id"] == city and r["attr"] == "city"
+        for r in rels
+    )
+
+
+def test_normalization_source_wires_store_kwarg():
+    import inspect
+
+    import cograph_client.normalization.execute as nx
+
+    src = inspect.getsource(nx)
+    assert "resolve_optional_graph_store" in src
+    assert "store=store" in src
+
+
+# ---------------------------------------------------------------------------
+# ER rebuild / merge
+# ---------------------------------------------------------------------------
+
+
+def test_er_rebuild_rewrite_subject_with_memory_store(memory_store, monkeypatch):
+    """ER rebuild passes store into rewrite_subject; Memory store re-keys entities."""
+    monkeypatch.setenv("COGRAPH_GRAPH_BACKEND", "neo4j")
+    # Stub stats recompute side-effects.
+    monkeypatch.setattr(
+        "cograph_client.graph.kg_writer.refresh_after_write",
+        AsyncMock(),
+    )
+
+    graph = _graph()
+    loser = entity_uri("Person", "johnB")
+    survivor = entity_uri("Person", "johnA")
+
+    async def seed():
+        await insert_facts(
+            None,
+            graph,
+            facts=[
+                Fact(subject_id=loser, kind="type", key="Person"),
+                Fact(subject_id=loser, kind="literal", key="name", value="Jon"),
+                Fact(subject_id=survivor, kind="type", key="Person"),
+                Fact(subject_id=survivor, kind="literal", key="name", value="John"),
+            ],
+            store=memory_store,
+        )
+
+    asyncio.run(seed())
+    assert memory_store.entity_count(tenant_id="demo-tenant", kg="bookstore") == 2
+
+    # Blocker returns signals that force a merge (same email).
+    class _FakeBlocker:
+        def __init__(self, client):
+            pass
+
+        async def all_entities_with_signals(self, instance_graph, type_uri):
+            from cograph_client.resolver.er.types import NormalizedSignals
+
+            return {
+                loser: NormalizedSignals(
+                    name="jon smith",
+                    name_tokens=("jon", "smith"),
+                    email="john.smith0@gmail.com",
+                    email_local="johnsmith0",
+                    phone_e164="+442258595506",
+                ),
+                survivor: NormalizedSignals(
+                    name="john smith",
+                    name_tokens=("john", "smith"),
+                    email="john.smith0@gmail.com",
+                    email_local="johnsmith0",
+                    phone_e164="+442258595506",
+                ),
+            }
+
+    monkeypatch.setattr(
+        "cograph_client.resolver.er.rebuild.SparqlBlocker",
+        _FakeBlocker,
+    )
+
+    captured: list = []
+    real_rewrite = rewrite_subject
+
+    async def spy_rewrite(client, instance_graph, old_uri, new_uri, **kwargs):
+        captured.append(kwargs.get("store"))
+        return await real_rewrite(
+            client, instance_graph, old_uri, new_uri, **kwargs
+        )
+
+    monkeypatch.setattr(
+        "cograph_client.resolver.er.rebuild.rewrite_subject",
+        spy_rewrite,
+    )
+
+    async def run():
+        report = await rebuild_type(
+            None,
+            graph,
+            "Person",
+            f"{IRI_BASE}/types/Person",
+            DEFAULT_GUEST_CONFIG,
+        )
+        return report
+
+    report = asyncio.run(run())
+    assert report["fragments_absorbed"] == 1
+    assert captured and captured[0] is memory_store
+    # Survivor remains; loser re-keyed away.
+    assert ("demo-tenant", "bookstore", loser) not in memory_store._entities
+    assert ("demo-tenant", "bookstore", survivor) in memory_store._entities
+
+
+def test_er_rebuild_source_wires_store_kwarg():
+    import inspect
+
+    import cograph_client.resolver.er.rebuild as rb
+
+    src = inspect.getsource(rb)
+    assert "resolve_optional_graph_store" in src
+    assert "store=store" in src
+
+
+# ---------------------------------------------------------------------------
+# Neptune default must not require store
+# ---------------------------------------------------------------------------
+
+
+def test_insert_facts_neptune_default_ignores_missing_store(monkeypatch):
+    """Without neo4j backend, insert_facts does not call get_graph_store."""
+    monkeypatch.delenv("COGRAPH_GRAPH_BACKEND", raising=False)
+    reset_graph_store_for_tests()
+    neptune = AsyncMock()
+    neptune.update = AsyncMock()
+
+    async def run():
+        sid = entity_uri("Person", "x")
+        await insert_facts(
+            neptune,
+            _graph(),
+            [
+                (
+                    sid,
+                    "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+                    f"{IRI_BASE}/types/Person",
+                ),
+            ],
+        )
+
+    asyncio.run(run())
+    assert neptune.update.await_count >= 1

@@ -69,6 +69,7 @@ from cograph_client.graph.kg_writer import (
     insert_facts,
     refresh_after_write,
 )
+from cograph_client.graph.store import resolve_optional_graph_store
 from cograph_client.graph.ontology_commit import commit_ontology
 from cograph_client.graph.ontology_queries import (
     PRIMITIVE_TYPES,
@@ -1713,6 +1714,9 @@ class EnrichmentExecutor:
             # actually received a written value under `write_policy`, mapped to
             # their values. Empty ⇒ nothing to declare or write.
             applied_attr_values = self._applied_attribute_values(all_rows, write_policy)
+            # E7: resolve GraphStore once for this write batch when neo4j backend
+            # is active; None keeps the Neptune SPARQL default.
+            graph_store = resolve_optional_graph_store()
             if applied_attr_values:
                 # Declare schema, THEN write data. Enrichment must EXTEND THE
                 # ONTOLOGY (COG-112): before writing instance values, upsert the
@@ -1776,6 +1780,7 @@ class EnrichmentExecutor:
                             graph_uri,
                             write_triples,
                             provenance_triples=prov_graph_triples or None,
+                            store=graph_store,
                         )
                     await refresh_after_write(
                         self._neptune,
@@ -1808,6 +1813,7 @@ class EnrichmentExecutor:
                         graph_uri,
                         triples,
                         provenance_triples=prov_graph_triples or None,
+                        store=graph_store,
                     )
                     await refresh_after_write(
                         self._neptune,
@@ -1825,7 +1831,12 @@ class EnrichmentExecutor:
                 # ontology attributes (ONTA-262; this branch used to declare
                 # `_verified_at` as "first-class schema", which is exactly what
                 # rendered it as a sibling column in every schema surface).
-                await insert_facts(self._neptune, graph_uri, restamp_triples)
+                await insert_facts(
+                    self._neptune,
+                    graph_uri,
+                    restamp_triples,
+                    store=graph_store,
+                )
                 await refresh_after_write(
                     self._neptune,
                     tenant_id=tenant_id,
@@ -2801,12 +2812,13 @@ class EnrichmentExecutor:
             )
             # Same shared write path as run() / ingestion (graph/kg_writer.py):
             # batched insert + post-write housekeeping (cache-invalidate,
-            # re-embed the type, recompute stats).
+            # re-embed the type, recompute stats). E7: GraphStore when neo4j.
             await insert_facts(
                 self._neptune,
                 graph_uri,
                 triples,
                 provenance_triples=prov_graph_triples or None,
+                store=resolve_optional_graph_store(),
             )
             await refresh_after_write(
                 self._neptune,

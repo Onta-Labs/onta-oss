@@ -398,6 +398,42 @@ def env_neo4j_configured() -> bool:
     )
 
 
+def graph_backend() -> str:
+    """Active instance backend: ``neptune`` (default) or ``neo4j``.
+
+    Same switch as :func:`cograph_client.graph.kg_writer.graph_backend` — kept
+    here so write rails can resolve an optional store without importing
+    ``kg_writer`` (avoids circular imports at rail module load).
+    """
+    return (os.environ.get("COGRAPH_GRAPH_BACKEND") or "neptune").strip().lower()
+
+
+def get_optional_graph_store() -> GraphStore | None:
+    """Return the process GraphStore when the neo4j backend is active, else None.
+
+    **Neptune default (no env / ``neptune``):** returns ``None`` so callers keep
+    the SPARQL path and never require ``NEO4J_*`` credentials.
+
+    **``COGRAPH_GRAPH_BACKEND=neo4j``:** delegates to :func:`get_graph_store`
+    (process singleton from :func:`configure_graph_store`, or BYOK Neo4j from
+    env). Raises :class:`GraphConfigError` if neither is configured — fail
+    closed rather than silently writing to Neptune under a neo4j flag.
+
+    Write rails (ingest, enrichment, normalization, ER) call this once per
+    write batch and pass the result as ``store=`` into
+    :func:`cograph_client.graph.kg_writer.insert_facts` /
+    ``delete_facts`` / ``rewrite_subject``. Prefer the alias
+    :func:`resolve_optional_graph_store` at those call sites.
+    """
+    if graph_backend() != "neo4j":
+        return None
+    return get_graph_store()
+
+
+# Preferred name at write-site call sites (E7 — wire rails to Neo4j write path).
+resolve_optional_graph_store = get_optional_graph_store
+
+
 # Re-export scope symbols that callers commonly need from one place.
 __all__ = [
     "GLOBAL_TENANT_ID",
@@ -414,9 +450,12 @@ __all__ = [
     "cypher_has_scope_param",
     "env_neo4j_configured",
     "get_graph_store",
+    "get_optional_graph_store",
+    "graph_backend",
     "maybe_require_entity_write_identity",
     "merge_scope_params",
     "require_entity_write_identity",
+    "resolve_optional_graph_store",
     "reset_graph_store_for_tests",
     "scrub_store_detail",
 ]

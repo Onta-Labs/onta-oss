@@ -81,6 +81,7 @@ import structlog
 
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.kg_writer import delete_facts, insert_facts, refresh_after_write
+from cograph_client.graph.store import resolve_optional_graph_store
 from cograph_client.graph.ontology_commit import commit_ontology
 from cograph_client.graph.ontology_queries import (
     RDF,
@@ -453,10 +454,12 @@ async def _explode_relationship(
         edges_to_delete.append((s, p, composite))
 
     # 2) Apply: add atomic entity triples + new edges, then delete composite edges.
+    # E7: GraphStore once per write batch when neo4j backend is active.
+    store = resolve_optional_graph_store()
     if atomic_triples:
-        await insert_facts(neptune, kg_graph, atomic_triples)
+        await insert_facts(neptune, kg_graph, atomic_triples, store=store)
     if edges_to_add:
-        await insert_facts(neptune, kg_graph, edges_to_add)
+        await insert_facts(neptune, kg_graph, edges_to_add, store=store)
     if edges_to_delete:
         # Concrete-triple removal via the shared primitive (ADR 0007); delete_facts
         # batches internally (no oversized statement). These are edge drops — the
@@ -466,6 +469,7 @@ async def _explode_relationship(
             kg_graph,
             triples=edges_to_delete,
             reason="normalization:list_explode composite-edge drop",
+            store=store,
         )
 
     # 3) Final orphan sweep. After ALL edges for this predicate are re-pointed,
@@ -647,6 +651,7 @@ async def _sweep_orphan_composites(
                 subjects=orphan_uris,
                 touched_types=[target_type],
                 reason="normalization:list_explode orphan-composite sweep",
+                store=resolve_optional_graph_store(),
             )
         except Exception:
             logger.warning(
@@ -709,14 +714,17 @@ async def _explode_literal(
         to_delete.append((s, p, o))
         rewritten += 1
 
+    # E7: GraphStore once per write batch when neo4j backend is active.
+    store = resolve_optional_graph_store()
     if to_add:
-        await insert_facts(neptune, kg_graph, to_add)
+        await insert_facts(neptune, kg_graph, to_add, store=store)
     if to_delete:
         await delete_facts(
             neptune,
             kg_graph,
             triples=to_delete,
             reason="normalization:list_explode packed-literal replace",
+            store=store,
         )
 
     summary = {
@@ -905,16 +913,19 @@ async def _promote_to_node(
     #    every literal object regardless of datatype and never hits the onto/<leaf>
     #    edge (a different predicate), all through the shared delete_facts (batched,
     #    provenance tombstone, ADR 0007).
+    # E7: GraphStore once per write batch when neo4j backend is active.
+    store = resolve_optional_graph_store()
     if node_triples:
-        await insert_facts(neptune, kg_graph, node_triples)
+        await insert_facts(neptune, kg_graph, node_triples, store=store)
     if edges_to_add:
-        await insert_facts(neptune, kg_graph, edges_to_add)
+        await insert_facts(neptune, kg_graph, edges_to_add, store=store)
     if subjects_to_clear:
         await delete_facts(
             neptune,
             kg_graph,
             triples=[(s, prim_pred, None) for s in sorted(subjects_to_clear)],
             reason="normalization:promote_to_node literal->node",
+            store=store,
         )
 
     # 3) ONTOLOGY (only when something was promoted — a pure re-run stays a total
@@ -1020,14 +1031,17 @@ async def _strip_emoji(neptune: NeptuneClient, kg_graph: str, rule) -> tuple[dic
             to_add.append((s, p, cleaned))
         # else: cleaned is empty (pure-emoji value) — drop the triple entirely.
 
+    # E7: GraphStore once per write batch when neo4j backend is active.
+    store = resolve_optional_graph_store()
     if to_add:
-        await insert_facts(neptune, kg_graph, to_add)
+        await insert_facts(neptune, kg_graph, to_add, store=store)
     if to_delete:
         await delete_facts(
             neptune,
             kg_graph,
             triples=to_delete,
             reason="normalization:strip_emoji literal cleanup",
+            store=store,
         )
 
     summary = {
