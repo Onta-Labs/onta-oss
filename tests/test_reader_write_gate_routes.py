@@ -1,6 +1,6 @@
 """A ``reader`` member may not write through ANY route (ONTA-451).
 
-ONTA membership v1 (infona-oss#257) defines the ``reader`` role and enforces it
+Infona membership v1 (infona-oss#257) defines the ``reader`` role and enforces it
 with ``require_tenant_write``, but four mutating surfaces were never wired to
 that guard and took a plain ``Depends(get_tenant)``, so a read-only member could
 still mutate the workspace:

@@ -22,7 +22,7 @@ class TenantContext:
     # (e.g. Ask-AI conversation history, COG-131) without the OSS layer knowing
     # anything provider-specific: "subject" is a generic auth concept.
     subject: Optional[str] = None
-    # Whether the authenticated identity is an ONTA *operator* (a first-party
+    # Whether the authenticated identity is an Infona operator (a first-party
     # staff/admin account), as decided by the auth PROVIDER — never by anything
     # the client sends. Generic like ``subject``: the OSS layer only carries the
     # bit; the *determination* (email domain / allowlist / provider role) lives in
@@ -54,7 +54,7 @@ class TenantContext:
 class AuthVerdict:
     """A richer verifier result: the tenants a key may access plus the auth
     subject (the user id behind the key, when the provider exposes one),
-    whether that identity is an ONTA operator, and which of its workspaces
+    whether that identity is an Infona operator, and which of its workspaces
     are Enhanced-entitled.
 
     Verifiers may keep returning a bare ``str``/``Sequence[str]`` (no subject,

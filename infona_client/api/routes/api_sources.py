@@ -252,7 +252,7 @@ async def list_api_sources(
     * a **regular** caller sees ONLY their own ``tenant_custom`` (editable)
       sources — the GLOBAL catalog (``global_public`` + ``global_enhanced``) is
       never returned, so our vendor stack / coverage is not exposed to tenants.
-    * an **ONTA operator** (``tenant.is_operator``, decided server-side from the
+    * an **Infona operator** (``tenant.is_operator``, decided server-side from the
       verified identity) additionally sees the full global catalog, read-only —
       the authoring aid for the operator-curated, PR-reviewed global sources.
 
