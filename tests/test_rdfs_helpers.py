@@ -103,7 +103,13 @@ def test_filter_and_hop_use_semantic_template_names():
 
 @pytest.mark.asyncio
 async def test_entities_of_type_count_with_subclass_e2e_memory():
-    """Type + subclass semantic template returns parent∪descendant entities."""
+    """Type + subclass semantic template returns parent∪descendant entities.
+
+    Membership is via INSTANCE_OF → Class (ADR 0013), not primary_type alone.
+    """
+    from cograph_client.graph.ontology_queries import type_uri
+    from cograph_client.graph.rdf_model import AssertionFact, assert_fact, set_subclass_of
+
     store = MemoryGraphStore()
     cat = store.session(
         GraphScope.for_catalog(layer="tenant", tenant_id="demo-tenant")
@@ -112,24 +118,27 @@ async def test_entities_of_type_count_with_subclass_e2e_memory():
     await upsert_type_pg(cat, name="Dog", description="bark", parent_type="Animal")
     scope = GraphScope.for_instance("demo-tenant", "zoo")
     session = store.session(scope)
-    await session.write_merge_entity(
-        id=f"{IRI_BASE}/entities/Animal/a1",
-        primary_type="Animal",
-        name="Generic",
-        source="test",
-    )
-    await session.write_merge_entity(
-        id=f"{IRI_BASE}/entities/Dog/d1",
-        primary_type="Dog",
-        name="Fido",
-        source="test",
-    )
-    await session.write_merge_entity(
-        id=f"{IRI_BASE}/entities/Dog/d2",
-        primary_type="Dog",
-        name="Rex",
-        source="test",
-    )
+
+    animal_id = type_uri("Animal")
+    dog_id = type_uri("Dog")
+    await set_subclass_of(session, dog_id, animal_id)
+
+    a1 = f"{IRI_BASE}/entities/Animal/a1"
+    d1 = f"{IRI_BASE}/entities/Dog/d1"
+    d2 = f"{IRI_BASE}/entities/Dog/d2"
+    for eid, tleaf, name in (
+        (a1, "Animal", "Generic"),
+        (d1, "Dog", "Fido"),
+        (d2, "Dog", "Rex"),
+    ):
+        await session.write_merge_entity(
+            id=eid, primary_type=tleaf, name=name, source="test"
+        )
+        await assert_fact(
+            session,
+            AssertionFact(subject_id=eid, kind="type", value=tleaf),
+            dual_write_cache=True,
+        )
 
     onto = (
         "Type: Animal\n"

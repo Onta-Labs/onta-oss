@@ -1649,18 +1649,54 @@ class MemoryGraphStore:
             return {raw} if raw else set()
         return {str(x) for x in raw if x is not None and str(x)}
 
+    def _class_ids_matching_type_names(
+        self, tenant_id: str, kg: str, type_names: Any
+    ) -> set[str]:
+        """Resolve NL ``$type_names`` (leaves and/or Class IRIs) to Class ids."""
+        names = self._as_type_name_set(type_names)
+        if not names:
+            return set()
+        ids: set[str] = set()
+        for (t, k, cid), row in self._classes.items():
+            if t != tenant_id or k != kg:
+                continue
+            if row.name in names or cid in names:
+                ids.add(cid)
+        # Accept leaf names that have not yet been MERGEd as Class rows by
+        # minting the shared type_uri (assert_fact / type Assertions use this).
+        from cograph_client.graph.ontology_queries import type_uri
+
+        for n in names:
+            if n.startswith("http://") or n.startswith("https://"):
+                ids.add(n)
+            else:
+                ids.add(type_uri(n))
+        return ids
+
+    def _entity_ids_via_instance_of(
+        self, tenant_id: str, kg: str, type_names: Any
+    ) -> set[str]:
+        """Entity ids with INSTANCE_OF (or type Assertion) in ``type_names``."""
+        allowed = self._class_ids_matching_type_names(tenant_id, kg, type_names)
+        if not allowed:
+            return set()
+        out: set[str] = set()
+        for (t, k, eid), cids in self._instance_of.items():
+            if t == tenant_id and k == kg and cids & allowed:
+                out.add(eid)
+        for (t, k, _), a in self._assertions.items():
+            if t != tenant_id or k != kg:
+                continue
+            if a.object_class_id and a.object_class_id in allowed:
+                out.add(a.subject_id)
+        return out
+
     def _entity_count_by_types(
         self, tenant_id: str, kg: str, type_names: Any
     ) -> list[GraphRecord]:
-        names = self._as_type_name_set(type_names)
-        if not names:
-            return [GraphRecord(data={"n": 0})]
-        n = sum(
-            1
-            for (t, k, _), r in self._entities.items()
-            if t == tenant_id and k == kg and r.primary_type in names
-        )
-        return [GraphRecord(data={"n": n})]
+        # Semantic path: INSTANCE_OF → Class (ADR 0013), not primary_type alone.
+        matched = self._entity_ids_via_instance_of(tenant_id, kg, type_names)
+        return [GraphRecord(data={"n": len(matched)})]
 
     def _list_entities_by_types_page(
         self,
@@ -1670,11 +1706,11 @@ class MemoryGraphStore:
         after_id: str | None,
         limit: int,
     ) -> list[GraphRecord]:
-        names = self._as_type_name_set(type_names)
+        matched = self._entity_ids_via_instance_of(tenant_id, kg, type_names)
         rows = [
             r
-            for (t, k, _), r in sorted(self._entities.items(), key=lambda x: x[0][2])
-            if t == tenant_id and k == kg and r.primary_type in names
+            for (t, k, eid), r in sorted(self._entities.items(), key=lambda x: x[0][2])
+            if t == tenant_id and k == kg and eid in matched
         ]
         if after_id is not None:
             rows = [r for r in rows if r.id > after_id]
@@ -1703,10 +1739,53 @@ class MemoryGraphStore:
         prop_value: Any,
         limit: int,
     ) -> list[GraphRecord]:
-        names = self._as_type_name_set(type_names)
+        # Prefer Assertion literal SoT; Entity property cache is secondary.
+        matched = self._entity_ids_via_instance_of(tenant_id, kg, type_names)
+        from cograph_client.graph.assertion_model import property_uri
+
+        prop_id = property_uri(prop_key) if prop_key else None
         out: list[GraphRecord] = []
-        for (t, k, _), r in sorted(self._entities.items(), key=lambda x: x[0][2]):
-            if t != tenant_id or k != kg or r.primary_type not in names:
+        seen: set[str] = set()
+        for (t, k, _), a in sorted(
+            self._assertions.items(), key=lambda x: x[1].subject_id
+        ):
+            if t != tenant_id or k != kg:
+                continue
+            if a.subject_id not in matched:
+                continue
+            if a.literal_value is None:
+                continue
+            if prop_id is not None and a.property_id != prop_id:
+                # Also accept Property catalog name match.
+                prop_row = self._properties.get((tenant_id, kg, a.property_id))
+                if prop_row is None or prop_row.name != prop_key:
+                    continue
+            if a.literal_value != prop_value:
+                continue
+            if a.subject_id in seen:
+                continue
+            r = self._entities.get((tenant_id, kg, a.subject_id))
+            if r is None:
+                continue
+            seen.add(a.subject_id)
+            out.append(
+                GraphRecord(
+                    data={
+                        "id": r.id,
+                        "name": r.name,
+                        "primary_type": r.primary_type,
+                        "literal_value": a.literal_value,
+                    }
+                )
+            )
+            if len(out) >= limit:
+                return out
+        # Secondary: Entity property cache (dual-written after Assertion).
+        for eid in sorted(matched):
+            if eid in seen:
+                continue
+            r = self._entities.get((tenant_id, kg, eid))
+            if r is None:
                 continue
             actual = self._entity_prop_value(r, prop_key)
             if actual != prop_value:
@@ -1734,26 +1813,74 @@ class MemoryGraphStore:
         rel_attr: str | None,
         limit: int,
     ) -> list[GraphRecord]:
-        from_set = self._as_type_name_set(from_types)
-        to_set = None if to_types is None else self._as_type_name_set(to_types)
-        # Reuse 1-hop logic but with type sets
+        # Prefer object Assertions (SoT); shortcut rels are derived dual-write.
+        from_ids = self._entity_ids_via_instance_of(tenant_id, kg, from_types)
+        to_ids = (
+            None
+            if to_types is None
+            else self._entity_ids_via_instance_of(tenant_id, kg, to_types)
+        )
         out: list[GraphRecord] = []
+        seen: set[tuple[str, str, str]] = set()
+        for (t, k, _), a in sorted(
+            self._assertions.items(),
+            key=lambda x: (x[1].subject_id, x[1].object_id or ""),
+        ):
+            if t != tenant_id or k != kg:
+                continue
+            if not a.object_id or a.subject_id not in from_ids:
+                continue
+            if to_ids is not None and a.object_id not in to_ids:
+                continue
+            prop_row = self._properties.get((tenant_id, kg, a.property_id))
+            prop_name = prop_row.name if prop_row else a.property_id
+            if rel_attr is not None and prop_name != rel_attr and a.property_id != rel_attr:
+                continue
+            start = self._entities.get((tenant_id, kg, a.subject_id))
+            end = self._entities.get((tenant_id, kg, a.object_id))
+            if start is None or end is None:
+                continue
+            key = (start.id, end.id, prop_name)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(
+                GraphRecord(
+                    data={
+                        "from_id": start.id,
+                        "from_name": start.name,
+                        "from_type": start.primary_type,
+                        "to_id": end.id,
+                        "to_name": end.name,
+                        "to_type": end.primary_type,
+                        "rel_type": prop_name,
+                        "attr": prop_name,
+                    }
+                )
+            )
+            if len(out) >= limit:
+                return out
+        # Secondary derived shortcut rels (document as cache — dual-written).
         for rel in sorted(
             self._rels.values(),
             key=lambda r: (r.start_id, r.end_id),
         ):
             if rel.tenant_id != tenant_id or rel.kg != kg:
                 continue
+            if rel.start_id not in from_ids:
+                continue
+            if to_ids is not None and rel.end_id not in to_ids:
+                continue
+            if rel_attr is not None and rel.attr != rel_attr and rel.rel_type != rel_attr:
+                continue
             a = self._entities.get((tenant_id, kg, rel.start_id))
             b = self._entities.get((tenant_id, kg, rel.end_id))
             if a is None or b is None:
                 continue
-            if a.primary_type not in from_set:
+            key = (a.id, b.id, rel.attr or rel.rel_type)
+            if key in seen:
                 continue
-            if to_set is not None and b.primary_type not in to_set:
-                continue
-            if rel_attr is not None and rel.attr != rel_attr and rel.rel_type != rel_attr:
-                continue
+            seen.add(key)
             out.append(
                 GraphRecord(
                     data={
