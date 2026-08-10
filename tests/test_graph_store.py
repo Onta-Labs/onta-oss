@@ -8,6 +8,12 @@ from __future__ import annotations
 
 import pytest
 
+from cograph_client.graph.labels import (
+    RESERVED_SYSTEM_LABELS,
+    entity_set_labels_cypher,
+    sanitize_domain_label,
+    set_entity_type_labels,
+)
 from cograph_client.graph.memory_store import MemoryGraphStore
 from cograph_client.graph.queries import InvalidKGName, InvalidTenantId
 from cograph_client.graph.schema_bootstrap import (
@@ -15,7 +21,9 @@ from cograph_client.graph.schema_bootstrap import (
     ENTITY_LIST_BY_TYPE_CYPHER,
     ENTITY_MERGE_CYPHER,
     SCHEMA_STATEMENTS,
+    TEMPLATES,
     bootstrap_schema_statements,
+    get_template,
 )
 from cograph_client.graph.scope import (
     ENHANCED_KG,
@@ -31,8 +39,10 @@ from cograph_client.graph.store import (
     GraphRecord,
     assert_cypher_is_scoped,
     configure_graph_store,
+    cypher_has_scope_param,
     env_neo4j_configured,
     get_graph_store,
+    maybe_require_entity_write_identity,
     merge_scope_params,
     require_entity_write_identity,
     reset_graph_store_for_tests,
@@ -122,6 +132,72 @@ def test_assert_cypher_rejects_empty():
         assert_cypher_is_scoped("   ")
 
 
+def test_scope_param_word_boundary_kg_vs_kg_name():
+    """``$kg`` must not match inside ``$kg_name`` (F4)."""
+    cypher = (
+        "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg_name}) RETURN e"
+    )
+    assert cypher_has_scope_param(cypher, "tenant_id") is True
+    assert cypher_has_scope_param(cypher, "kg") is False
+    with pytest.raises(GraphScopeError, match=r"\$kg"):
+        assert_cypher_is_scoped(cypher)
+
+
+def test_scope_param_word_boundary_tenant_id_suffix():
+    cypher = "MATCH (e {tenant_id: $tenant_id_x, kg: $kg}) RETURN e"
+    assert cypher_has_scope_param(cypher, "tenant_id") is False
+    with pytest.raises(GraphScopeError, match=r"\$tenant_id"):
+        assert_cypher_is_scoped(cypher)
+
+
+def test_red_team_params_mentioned_but_not_in_pattern():
+    """Red-team: mention $tenant_id/$kg without map property keys (F1/F4).
+
+    Non-privileged sessions reject MATCH/MERGE/CREATE that lack ``tenant_id:``
+    and ``kg:`` property keys — params alone are not enough.
+    """
+    bypass = (
+        "MATCH (n) WHERE $tenant_id = $tenant_id AND $kg = $kg RETURN n"
+    )
+    # Param tokens present (word-boundary).
+    assert cypher_has_scope_param(bypass, "tenant_id")
+    assert cypher_has_scope_param(bypass, "kg")
+    with pytest.raises(GraphScopeError, match="property keys|execute_template"):
+        assert_cypher_is_scoped(bypass, privileged=False)
+
+
+def test_red_team_bypass_allowed_only_when_privileged():
+    """Privileged free-form still only checks param tokens (admin risk)."""
+    bypass = (
+        "MATCH (n) WHERE $tenant_id = $tenant_id AND $kg = $kg RETURN n"
+    )
+    assert_cypher_is_scoped(bypass, privileged=True)
+
+
+def test_assert_cypher_return_only_needs_params_not_property_keys():
+    """Diagnostic RETURN of scope params has no MATCH — no property-key rule."""
+    assert_cypher_is_scoped(
+        "RETURN $tenant_id AS tenant_id, $kg AS kg", privileged=False
+    )
+
+
+def test_maybe_require_entity_write_identity_on_merge():
+    maybe_require_entity_write_identity(
+        "MERGE (e:Entity {tenant_id: $tenant_id, kg: $kg, id: $id}) RETURN e",
+        {"id": "https://cograph.tech/entities/Book/1"},
+    )
+    with pytest.raises(GraphScopeError, match="non-empty id"):
+        maybe_require_entity_write_identity(
+            "MERGE (e:Entity {tenant_id: $tenant_id, kg: $kg, id: $id}) RETURN e",
+            {},
+        )
+    # Non-entity write with $id is not forced.
+    maybe_require_entity_write_identity(
+        "MERGE (x:Other {tenant_id: $tenant_id, kg: $kg, id: $id}) RETURN x",
+        {},
+    )
+
+
 def test_merge_scope_params_overwrites_caller_scope():
     scope = GraphScope.for_instance("real-tenant", "real-kg")
     bound = merge_scope_params(
@@ -207,6 +283,19 @@ def test_smoke_cypher_templates_are_scoped():
         ENTITY_LIST_BY_TYPE_CYPHER,
     ):
         assert_cypher_is_scoped(template)
+
+
+def test_templates_registry_covers_smoke_helpers():
+    assert set(TEMPLATES) >= {
+        "entity_merge",
+        "entity_get",
+        "entity_list_by_type",
+    }
+    assert get_template("entity_merge").writing is True
+    assert get_template("entity_merge").require_entity_id is True
+    assert get_template("entity_get").writing is False
+    with pytest.raises(KeyError, match="Unknown Cypher template"):
+        get_template("not_a_real_template")
 
 
 # ---------------------------------------------------------------------------
@@ -344,6 +433,167 @@ async def test_memory_store_merge_requires_id():
             },
         )
     await store.close()
+
+
+@pytest.mark.asyncio
+async def test_memory_execute_template_merge_and_get():
+    store = MemoryGraphStore()
+    session = store.session(GraphScope.for_instance("t1", "kg1"))
+    written = await session.execute_template(
+        "entity_merge",
+        {
+            "id": "ent-tmpl",
+            "primary_type": "Book",
+            "name": "Templated",
+            "source": "unit",
+            "ts": "t",
+            "tenant_id": "evil",
+            "kg": "evil",
+        },
+    )
+    assert written[0]["tenant_id"] == "t1"
+    assert written[0]["kg"] == "kg1"
+    rows = await session.execute_template("entity_get", {"id": "ent-tmpl"})
+    assert rows[0]["name"] == "Templated"
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_memory_execute_template_missing_id_fail_closed():
+    store = MemoryGraphStore()
+    session = store.session(GraphScope.for_instance("t", "k"))
+    with pytest.raises(GraphScopeError, match="non-empty id"):
+        await session.execute_template(
+            "entity_merge",
+            {
+                "primary_type": "T",
+                "name": "n",
+                "source": "s",
+                "ts": "t",
+            },
+        )
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_memory_execute_template_unknown_name():
+    store = MemoryGraphStore()
+    session = store.session(GraphScope.for_instance("t", "k"))
+    with pytest.raises(GraphScopeError, match="Unknown Cypher template"):
+        await session.execute_template("drop_everything", {})
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_memory_red_team_isolation_bypass_rejected():
+    store = MemoryGraphStore()
+    session = store.session(GraphScope.for_instance("t", "k"))
+    bypass = "MATCH (n) WHERE $tenant_id = $tenant_id AND $kg = $kg RETURN n"
+    with pytest.raises(GraphScopeError, match="property keys|execute_template"):
+        await session.execute_read(bypass)
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_memory_cross_tenant_isolation():
+    """Sibling tenants never see each other's entities (hermetic F4)."""
+    store = MemoryGraphStore()
+    a = store.session(GraphScope.for_instance("tenant-a", "shared-kg-name"))
+    b = store.session(GraphScope.for_instance("tenant-b", "shared-kg-name"))
+    await a.execute_template(
+        "entity_merge",
+        {
+            "id": "same-id",
+            "primary_type": "Thing",
+            "name": "A secret",
+            "source": "a",
+            "ts": "t",
+        },
+    )
+    assert await b.execute_template("entity_get", {"id": "same-id"}) == []
+    await b.execute_template(
+        "entity_merge",
+        {
+            "id": "same-id",
+            "primary_type": "Thing",
+            "name": "B secret",
+            "source": "b",
+            "ts": "t",
+        },
+    )
+    assert (await a.execute_template("entity_get", {"id": "same-id"}))[0][
+        "name"
+    ] == "A secret"
+    assert (await b.execute_template("entity_get", {"id": "same-id"}))[0][
+        "name"
+    ] == "B secret"
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_set_entity_type_labels_memory():
+    store = MemoryGraphStore()
+    session = store.session(GraphScope.for_instance("t", "k"))
+    await session.execute_template(
+        "entity_merge",
+        {
+            "id": "e1",
+            "primary_type": "Person",
+            "name": "P",
+            "source": "s",
+            "ts": "t",
+        },
+    )
+    rows = await set_entity_type_labels(session, "e1", ["Person", "Author"])
+    assert rows[0]["labels"] == ["Entity", "Person", "Author"]
+    # Reserved system labels rejected by sanitizer.
+    with pytest.raises(GraphScopeError, match="reserved"):
+        await set_entity_type_labels(session, "e1", ["Entity"])
+    await store.close()
+
+
+def test_sanitize_domain_label_b1_rules():
+    assert sanitize_domain_label("Person") == "Person"
+    assert sanitize_domain_label("city/town") == "city_town"
+    assert sanitize_domain_label("2fa") == "T_2fa"
+    with pytest.raises(GraphScopeError, match="reserved"):
+        sanitize_domain_label("ProvEvent")
+    assert "Entity" in RESERVED_SYSTEM_LABELS
+    cypher = entity_set_labels_cypher(["Person", "Book"])
+    assert_cypher_is_scoped(cypher)
+    assert "SET e:Person:Book" in cypher.replace("\n", " ")
+
+
+@pytest.mark.asyncio
+async def test_neo4j_session_missing_id_fail_closed_without_driver():
+    """F4: Neo4j session path fails closed on missing id before _run (no docker)."""
+    from cograph_client.graph.neo4j_store import Neo4jGraphSession
+
+    class _BoomStore:
+        async def _run(self, *args, **kwargs):
+            raise AssertionError("driver must not be called when id is missing")
+
+    session = Neo4jGraphSession(_BoomStore(), GraphScope.for_instance("t", "k"))  # type: ignore[arg-type]
+    with pytest.raises(GraphScopeError, match="non-empty id"):
+        await session.execute_template(
+            "entity_merge",
+            {
+                "primary_type": "T",
+                "name": "n",
+                "source": "s",
+                "ts": "t",
+            },
+        )
+    with pytest.raises(GraphScopeError, match="non-empty id"):
+        await session.execute_write(
+            ENTITY_MERGE_CYPHER,
+            {
+                "primary_type": "T",
+                "name": "n",
+                "source": "s",
+                "ts": "t",
+            },
+        )
 
 
 @pytest.mark.asyncio

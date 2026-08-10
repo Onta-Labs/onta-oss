@@ -119,25 +119,86 @@ class GraphConfigError(GraphStoreError):
 # ---------------------------------------------------------------------------
 
 # Cypher must mention these parameters so MATCH/MERGE patterns cannot silently
-# omit isolation. We look for the `$name` form only (Neo4j parameter syntax).
+# omit isolation. Word-boundary match: `$kg` must not match inside `$kg_name`.
 _SCOPE_PARAM_NAMES = ("tenant_id", "kg")
+_SCOPE_PARAM_RES: dict[str, re.Pattern[str]] = {
+    name: re.compile(rf"\${name}\b") for name in _SCOPE_PARAM_NAMES
+}
+
+# Graph-touching clauses that should carry map-form isolation property keys.
+_GRAPH_CLAUSE_RE = re.compile(r"\b(?:MATCH|MERGE|CREATE)\b", re.IGNORECASE)
+# Property-key form in node/rel maps: `tenant_id: $tenant_id` / `kg: $kg`.
+_TENANT_PROP_KEY_RE = re.compile(r"\btenant_id\s*:")
+_KG_PROP_KEY_RE = re.compile(r"\bkg\s*:")
+# Entity write identity: MERGE/CREATE of Entity that binds `$id`.
+_ENTITY_WRITE_RE = re.compile(r"\b(?:MERGE|CREATE)\b", re.IGNORECASE)
+_ENTITY_LABEL_RE = re.compile(r"\bEntity\b")
+_ID_PARAM_RE = re.compile(r"\$id\b")
 
 
-def assert_cypher_is_scoped(cypher: str) -> None:
-    """Reject Cypher that does not reference both scope parameters.
+def cypher_has_scope_param(cypher: str, name: str) -> bool:
+    """True if ``cypher`` references ``$name`` as a whole parameter token."""
+    pattern = _SCOPE_PARAM_RES.get(name)
+    if pattern is None:
+        pattern = re.compile(rf"\${re.escape(name)}\b")
+    return bool(pattern.search(cypher))
 
-    Model §3.3 T1: unscoped ``MATCH (n) RETURN n`` is a hard deny at the
-    session boundary. Callers write parameterized patterns such as
-    ``MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg, id: $id})``.
+
+def assert_cypher_is_scoped(cypher: str, *, privileged: bool = False) -> None:
+    """Reject Cypher that is not isolation-scoped (model §3.3 T1).
+
+    Always required
+      * non-empty string
+      * word-boundary ``$tenant_id`` and ``$kg`` parameters (so ``$kg_name``
+        does **not** satisfy the ``$kg`` check)
+
+    Non-privileged sessions (app path) additionally require that any
+    ``MATCH`` / ``MERGE`` / ``CREATE`` clause appears together with map-style
+    property keys ``tenant_id:`` and ``kg:`` in the query text. This is a
+    **heuristic**, not a Cypher rewriter: a query can still mention those
+    keys and never bind the session params into the pattern. Prefer
+    :meth:`GraphSession.execute_template` for application writers.
+
+    Privileged sessions keep free-form Cypher for admin/bootstrap/tests after
+    the parameter-token check only — document the residual risk in
+    ``docs/neo4j-local.md``.
     """
     if not isinstance(cypher, str) or not cypher.strip():
         raise GraphScopeError("Cypher query must be a non-empty string")
-    missing = [name for name in _SCOPE_PARAM_NAMES if f"${name}" not in cypher]
+    missing = [
+        name for name in _SCOPE_PARAM_NAMES if not cypher_has_scope_param(cypher, name)
+    ]
     if missing:
         raise GraphScopeError(
             "Cypher must reference $tenant_id and $kg parameters so every "
             f"pattern is isolation-scoped; missing: {', '.join('$' + m for m in missing)}"
         )
+    if privileged:
+        return
+    if _GRAPH_CLAUSE_RE.search(cypher):
+        if not _TENANT_PROP_KEY_RE.search(cypher) or not _KG_PROP_KEY_RE.search(cypher):
+            raise GraphScopeError(
+                "Non-privileged Cypher with MATCH/MERGE/CREATE must include "
+                "tenant_id: and kg: property keys in the pattern (map form). "
+                "Prefer execute_template() for application writers; free-form "
+                "execute_read/execute_write is not isolation-complete"
+            )
+
+
+def maybe_require_entity_write_identity(cypher: str, params: Mapping[str, Any]) -> None:
+    """Fail closed on Entity MERGE/CREATE that bind ``$id`` without a value.
+
+    Detects writes that mention ``Entity`` and the ``$id`` parameter token.
+    Templates with ``require_entity_id`` also call
+    :func:`require_entity_write_identity` directly.
+    """
+    if not _ENTITY_WRITE_RE.search(cypher):
+        return
+    if not _ENTITY_LABEL_RE.search(cypher):
+        return
+    if not _ID_PARAM_RE.search(cypher):
+        return
+    require_entity_write_identity(params)
 
 
 def merge_scope_params(
@@ -190,6 +251,12 @@ class GraphSession(Protocol):
 
     All reads/writes inject and overwrite ``$tenant_id`` / ``$kg``. The
     session must not expose a mutable "current graph" field (model §3.3 T6).
+
+    **Isolation note (Wave 1):** free-form :meth:`execute_read` /
+    :meth:`execute_write` apply heuristic scope gates only — they are **not**
+    a full Cypher rewriter. Application writers **must** use
+    :meth:`execute_template` (allowlisted Cypher) or the future ``kg_writer``
+    port. See ``docs/neo4j-local.md``.
     """
 
     @property
@@ -202,7 +269,10 @@ class GraphSession(Protocol):
         cypher: str,
         params: Mapping[str, Any] | None = None,
     ) -> list[GraphRecord]:
-        """Run a read (auto-commit or read transaction). Parameterized only."""
+        """Run a read (auto-commit or read transaction). Parameterized only.
+
+        Free-form path for admin/bootstrap/tests. Prefer :meth:`execute_template`.
+        """
         ...
 
     async def execute_write(
@@ -210,7 +280,23 @@ class GraphSession(Protocol):
         cypher: str,
         params: Mapping[str, Any] | None = None,
     ) -> list[GraphRecord]:
-        """Run a write (auto-commit or write transaction). Parameterized only."""
+        """Run a write (auto-commit or write transaction). Parameterized only.
+
+        Free-form path for admin/bootstrap/tests. Prefer :meth:`execute_template`.
+        Entity MERGE/CREATE with ``$id`` fails closed if ``id`` is missing.
+        """
+        ...
+
+    async def execute_template(
+        self,
+        name: str,
+        params: Mapping[str, Any] | None = None,
+    ) -> list[GraphRecord]:
+        """Run allowlisted Cypher from :data:`schema_bootstrap.TEMPLATES`.
+
+        Safe path for application code: only registered templates execute;
+        entity-write templates enforce :func:`require_entity_write_identity`.
+        """
         ...
 
 
@@ -325,8 +411,10 @@ __all__ = [
     "GraphStoreError",
     "assert_cypher_is_scoped",
     "configure_graph_store",
+    "cypher_has_scope_param",
     "env_neo4j_configured",
     "get_graph_store",
+    "maybe_require_entity_write_identity",
     "merge_scope_params",
     "require_entity_write_identity",
     "reset_graph_store_for_tests",
