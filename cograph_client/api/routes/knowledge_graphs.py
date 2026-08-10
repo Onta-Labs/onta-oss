@@ -763,7 +763,30 @@ async def list_type_counts(
     Tenant-global ontology types with zero instances in this KG are not
     returned here — fetch them via /ontology/types if the caller needs the
     full schema.
+
+    **Dual-backend (E5):** when ``COGRAPH_GRAPH_BACKEND=neo4j`` (or a process
+    GraphStore is configured for that backend), counts come from
+    :func:`cograph_client.graph.explore_store.type_counts` instead of SPARQL.
+    Spatio-temporal index flags are still best-effort from the stats graph
+    (Neptune path only; Neo4j returns False until stats port).
     """
+    # GraphStore path (E5 explore_store) — same response shape.
+    from cograph_client.graph.explore_store import type_counts as pg_type_counts
+
+    pg_rows = await pg_type_counts(
+        tenant_id=tenant.tenant_id, kg_name=kg_name
+    )
+    if pg_rows is not None:
+        return [
+            TypeCount(
+                name=r.name,
+                entity_count=r.entity_count,
+                spatially_indexed=False,
+                temporally_indexed=False,
+            )
+            for r in pg_rows
+        ]
+
     graph = kg_graph_uri(tenant.tenant_id, kg_name)
     sparql = (
         f"SELECT ?type (COUNT(DISTINCT ?e) AS ?cnt) FROM <{graph}> WHERE {{\n"

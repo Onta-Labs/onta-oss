@@ -10,6 +10,7 @@ isolation tests do not need a live database. Supports:
   literals (list-union), typed rels (B4 MERGE key), delete, rewrite, ProvEvent
 * Ontology catalog (E4): ``:OntoType`` / ``:OntoAttr`` + hierarchy / DECLARES /
   RANGE_TYPE templates
+* Explore reads (E5): paged list-by-type, entity detail + rels, type / total counts
 
 Anything outside the smoke Cypher subset raises :class:`GraphQueryError` —
 prefer the native ``write_*`` methods for instance mutations.
@@ -24,9 +25,14 @@ from typing import Any, Mapping, Sequence
 
 from cograph_client.graph.schema_bootstrap import (
     ENTITY_COUNT_BY_PRIMARY_TYPE_CYPHER,
+    ENTITY_COUNT_BY_TYPE_CYPHER,
+    ENTITY_COUNT_TOTAL_CYPHER,
+    ENTITY_DETAIL_CYPHER,
     ENTITY_GET_CYPHER,
     ENTITY_LIST_BY_TYPE_CYPHER,
+    ENTITY_LIST_BY_TYPE_PAGE_CYPHER,
     ENTITY_MERGE_CYPHER,
+    ENTITY_RELS_CYPHER,
     ONTO_ATTR_LIST_CYPHER,
     ONTO_ATTR_RANGE_TYPE_CYPHER,
     ONTO_ATTR_UPSERT_CYPHER,
@@ -57,6 +63,11 @@ def _norm_cypher(cypher: str) -> str:
 _MERGE_NORM = _norm_cypher(ENTITY_MERGE_CYPHER)
 _GET_NORM = _norm_cypher(ENTITY_GET_CYPHER)
 _LIST_NORM = _norm_cypher(ENTITY_LIST_BY_TYPE_CYPHER)
+_LIST_PAGE_NORM = _norm_cypher(ENTITY_LIST_BY_TYPE_PAGE_CYPHER)
+_COUNT_BY_TYPE_SINGLE_NORM = _norm_cypher(ENTITY_COUNT_BY_TYPE_CYPHER)
+_COUNT_TOTAL_NORM = _norm_cypher(ENTITY_COUNT_TOTAL_CYPHER)
+_DETAIL_NORM = _norm_cypher(ENTITY_DETAIL_CYPHER)
+_RELS_NORM = _norm_cypher(ENTITY_RELS_CYPHER)
 _ONTO_TYPE_UPSERT_NORM = _norm_cypher(ONTO_TYPE_UPSERT_CYPHER)
 _ONTO_SUBCLASS_SET_NORM = _norm_cypher(ONTO_SUBCLASS_SET_CYPHER)
 _ONTO_SUBCLASS_CLEAR_NORM = _norm_cypher(ONTO_SUBCLASS_CLEAR_CYPHER)
@@ -362,6 +373,19 @@ class MemoryGraphSession:
             return None
         return row.as_record().to_dict()
 
+    async def read_list_entities_by_label(
+        self,
+        label: str,
+        *,
+        after_id: str | None = None,
+        limit: int = 50,
+    ) -> list[GraphRecord]:
+        """List entities carrying a sanitized domain label (E5 explore)."""
+        t, k = self._scope_tk()
+        return self._store._list_entities_by_label(
+            t, k, label, after_id, int(limit)
+        )
+
 
 class MemoryGraphStore:
     """Process-local fake store; not safe for concurrent multi-process use."""
@@ -449,14 +473,20 @@ class MemoryGraphStore:
         entity_id: str,
         safe_labels: Sequence[str],
     ) -> list[GraphRecord]:
+        """Accumulate domain labels (Neo4j ``SET e:Label`` is additive).
+
+        Prior domain labels are kept; only new tokens are appended. ``Entity``
+        is always present as the system label.
+        """
         row = self._entities.get((tenant_id, kg, entity_id))
         if row is None:
             return []
-        labels = ["Entity"]
+        # Union into existing labels — never replace (matches Neo4j SET e:X).
+        if "Entity" not in row.labels:
+            row.labels.insert(0, "Entity")
         for lab in safe_labels:
-            if lab not in labels:
-                labels.append(lab)
-        row.labels = labels
+            if lab not in row.labels:
+                row.labels.append(lab)
         return [
             GraphRecord(
                 data={
@@ -903,6 +933,152 @@ class MemoryGraphStore:
             for pt, n in sorted(counts.items())
         ]
 
+    def _list_entities_by_type_page(
+        self,
+        tenant_id: str,
+        kg: str,
+        primary_type: str,
+        after_id: str | None,
+        limit: int,
+    ) -> list[GraphRecord]:
+        rows = [
+            r
+            for (t, k, _), r in sorted(self._entities.items(), key=lambda x: x[0][2])
+            if t == tenant_id and k == kg and r.primary_type == primary_type
+        ]
+        if after_id is not None:
+            rows = [r for r in rows if r.id > after_id]
+        if limit is not None and limit >= 0:
+            rows = rows[: int(limit)]
+        return [
+            GraphRecord(
+                data={
+                    "id": r.id,
+                    "tenant_id": r.tenant_id,
+                    "kg": r.kg,
+                    "primary_type": r.primary_type,
+                    "name": r.name,
+                    "source": r.source,
+                }
+            )
+            for r in rows
+        ]
+
+    def _list_entities_by_label(
+        self,
+        tenant_id: str,
+        kg: str,
+        label: str,
+        after_id: str | None,
+        limit: int,
+    ) -> list[GraphRecord]:
+        rows = [
+            r
+            for (t, k, _), r in sorted(self._entities.items(), key=lambda x: x[0][2])
+            if t == tenant_id and k == kg and label in (r.labels or [])
+        ]
+        if after_id is not None:
+            rows = [r for r in rows if r.id > after_id]
+        if limit is not None and limit >= 0:
+            rows = rows[: int(limit)]
+        return [
+            GraphRecord(
+                data={
+                    "id": r.id,
+                    "tenant_id": r.tenant_id,
+                    "kg": r.kg,
+                    "primary_type": r.primary_type,
+                    "name": r.name,
+                    "source": r.source,
+                }
+            )
+            for r in rows
+        ]
+
+    def _entity_count_by_type(
+        self, tenant_id: str, kg: str, primary_type: str
+    ) -> list[GraphRecord]:
+        n = sum(
+            1
+            for (t, k, _), r in self._entities.items()
+            if t == tenant_id and k == kg and r.primary_type == primary_type
+        )
+        return [GraphRecord(data={"n": n})]
+
+    def _entity_count_total(self, tenant_id: str, kg: str) -> list[GraphRecord]:
+        n = sum(
+            1 for (t, k, _) in self._entities if t == tenant_id and k == kg
+        )
+        return [GraphRecord(data={"n": n})]
+
+    def _entity_detail(
+        self, tenant_id: str, kg: str, entity_id: str
+    ) -> list[GraphRecord]:
+        row = self._entities.get((tenant_id, kg, entity_id))
+        if row is None:
+            return []
+        props = {
+            "id": row.id,
+            "tenant_id": row.tenant_id,
+            "kg": row.kg,
+            "primary_type": row.primary_type,
+            "name": row.name,
+            "source": row.source,
+            **copy.deepcopy(row.props),
+        }
+        return [
+            GraphRecord(
+                data={
+                    "id": row.id,
+                    "tenant_id": row.tenant_id,
+                    "kg": row.kg,
+                    "primary_type": row.primary_type,
+                    "name": row.name,
+                    "source": row.source,
+                    "labels": list(row.labels),
+                    "props": props,
+                }
+            )
+        ]
+
+    def _entity_rels(
+        self, tenant_id: str, kg: str, entity_id: str
+    ) -> list[GraphRecord]:
+        out: list[GraphRecord] = []
+        for r in self._rels.values():
+            if r.tenant_id != tenant_id or r.kg != kg:
+                continue
+            if r.start_id == entity_id:
+                other = self._entities.get((tenant_id, kg, r.end_id))
+                out.append(
+                    GraphRecord(
+                        data={
+                            "attr": r.attr,
+                            "rel_type": r.rel_type,
+                            "other_id": r.end_id,
+                            "other_name": other.name if other else None,
+                            "other_type": other.primary_type if other else None,
+                            "direction": "out",
+                        }
+                    )
+                )
+            if r.end_id == entity_id:
+                other = self._entities.get((tenant_id, kg, r.start_id))
+                out.append(
+                    GraphRecord(
+                        data={
+                            "attr": r.attr,
+                            "rel_type": r.rel_type,
+                            "other_id": r.start_id,
+                            "other_name": other.name if other else None,
+                            "other_type": other.primary_type if other else None,
+                            "direction": "in",
+                        }
+                    )
+                )
+        out.sort(key=lambda rec: (rec.get("direction"), rec.get("attr"), rec.get("other_id")))
+        return out
+
     def _execute(
         self,
         cypher: str,
@@ -943,6 +1119,35 @@ class MemoryGraphStore:
                 if t == tenant_id and k == kg and r.primary_type == primary_type
             ]
             return rows
+
+        if norm == _LIST_PAGE_NORM:
+            return self._list_entities_by_type_page(
+                tenant_id,
+                kg,
+                str(params.get("primary_type") or ""),
+                params.get("after_id"),
+                int(params.get("limit") if params.get("limit") is not None else 50),
+            )
+
+        if norm == _COUNT_BY_TYPE_SINGLE_NORM:
+            return self._entity_count_by_type(
+                tenant_id, kg, str(params.get("primary_type") or "")
+            )
+
+        if norm == _COUNT_TOTAL_NORM:
+            return self._entity_count_total(tenant_id, kg)
+
+        if norm == _DETAIL_NORM:
+            entity_id = params.get("id")
+            if entity_id is None:
+                return []
+            return self._entity_detail(tenant_id, kg, str(entity_id))
+
+        if norm == _RELS_NORM:
+            entity_id = params.get("id")
+            if entity_id is None:
+                return []
+            return self._entity_rels(tenant_id, kg, str(entity_id))
 
         # --- Ontology catalog templates ------------------------------------
         if norm == _ONTO_TYPE_UPSERT_NORM:

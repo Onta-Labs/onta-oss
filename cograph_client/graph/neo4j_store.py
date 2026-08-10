@@ -347,35 +347,112 @@ class Neo4jGraphSession:
         return int(rows[0].get("n") or 0)
 
     async def write_rewrite_entity_id(self, old_id: str, new_id: str) -> None:
+        """Re-key Entity ``id``; rebind incident rels + ProvEvent (ADR 0007).
+
+        * **Free ``new_id``:** ``SET old.id = new_id`` (relationships stay on the
+          same node). ``ProvEvent.subject_id`` is rewritten to match.
+        * **``new_id`` already exists (ER merge):** rebind every incident
+          relationship onto the survivor, re-point ``:ABOUT`` / ``subject_id``
+          on ``:ProvEvent``, coalesce display props onto survivor, then
+          ``DETACH DELETE`` the loser — never drop edges with the node.
+        """
         require_entity_write_identity({"id": old_id})
         require_entity_write_identity({"id": new_id})
         if old_id == new_id:
             return
-        # Re-key id property; relationships stay bound to the node when target
-        # id is free. If new_id already exists, merge display props then
-        # DETACH DELETE old (Wave-1 best-effort; full rel rebind → E7/ER).
-        simple = (
-            "MATCH (old:Entity {tenant_id: $tenant_id, kg: $kg, id: $old_id})\n"
-            "OPTIONAL MATCH (neu:Entity {tenant_id: $tenant_id, kg: $kg, id: $new_id})\n"
-            "WITH old, neu\n"
-            "FOREACH (_ IN CASE WHEN neu IS NULL THEN [1] ELSE [] END |\n"
-            "  SET old.id = $new_id\n"
-            ")\n"
-            "FOREACH (_ IN CASE WHEN neu IS NOT NULL THEN [1] ELSE [] END |\n"
-            "  SET neu.primary_type = coalesce(neu.primary_type, old.primary_type),\n"
-            "      neu.name = coalesce(neu.name, old.name),\n"
-            "      neu.source = coalesce(neu.source, old.source)\n"
-            ")\n"
-            "WITH old, neu WHERE neu IS NOT NULL\n"
-            "DETACH DELETE old\n"
-            "RETURN $new_id AS id"
+
+        old_rows = await self.execute_read(
+            "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg, id: $old_id})\n"
+            "RETURN e.id AS id",
+            {"old_id": old_id},
         )
+        if not old_rows:
+            return
+
+        neu_rows = await self.execute_read(
+            "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg, id: $new_id})\n"
+            "RETURN e.id AS id",
+            {"new_id": new_id},
+        )
+        if not neu_rows:
+            # Free id: re-key in place; relationships stay bound to the node.
+            await self.execute_write(
+                "MATCH (old:Entity {tenant_id: $tenant_id, kg: $kg, id: $old_id})\n"
+                "SET old.id = $new_id\n"
+                "RETURN old.id AS id",
+                {"old_id": old_id, "new_id": new_id},
+            )
+            await self._rebind_prov_subject_ids(old_id, new_id)
+            return
+
+        # Target exists — rebind endpoints onto survivor, then drop loser.
+        # List outbound + inbound (self-loops only once via outbound arm).
+        rel_rows = await self.execute_read(
+            "MATCH (a:Entity {tenant_id: $tenant_id, kg: $kg, id: $old_id})"
+            "-[r]->(b:Entity {tenant_id: $tenant_id, kg: $kg})\n"
+            "RETURN a.id AS start_id, b.id AS end_id, type(r) AS rel_type, "
+            "coalesce(r.attr, '') AS attr\n"
+            "UNION\n"
+            "MATCH (a:Entity {tenant_id: $tenant_id, kg: $kg})"
+            "-[r]->(b:Entity {tenant_id: $tenant_id, kg: $kg, id: $old_id})\n"
+            "WHERE a.id <> $old_id\n"
+            "RETURN a.id AS start_id, b.id AS end_id, type(r) AS rel_type, "
+            "coalesce(r.attr, '') AS attr",
+            {"old_id": old_id},
+        )
+        for row in rel_rows:
+            start = str(row.get("start_id") or "")
+            end = str(row.get("end_id") or "")
+            rel_type = str(row.get("rel_type") or "")
+            attr = str(row.get("attr") or "")
+            if not start or not end or not rel_type:
+                continue
+            new_start = new_id if start == old_id else start
+            new_end = new_id if end == old_id else end
+            # Prefer original attr leaf when present so sanitize_rel_type is stable.
+            attr_leaf = attr if attr else rel_type.lower()
+            await self.write_merge_rel(new_start, new_end, rel_type, attr_leaf)
+
+        # Re-point :ABOUT edges and subject_id before DETACH DELETE removes them.
         await self.execute_write(
-            simple, {"old_id": old_id, "new_id": new_id}
+            "MATCH (p:ProvEvent {tenant_id: $tenant_id, kg: $kg})"
+            "-[a:ABOUT]->(old:Entity {tenant_id: $tenant_id, kg: $kg, id: $old_id})\n"
+            "MATCH (neu:Entity {tenant_id: $tenant_id, kg: $kg, id: $new_id})\n"
+            "SET p.subject_id = $new_id\n"
+            "CREATE (p)-[:ABOUT]->(neu)\n"
+            "DELETE a\n"
+            "RETURN p.subject_id AS subject_id",
+            {"old_id": old_id, "new_id": new_id},
         )
-        # When target was free, relationships stay on the same node (id changed).
-        # When target existed, outbound/inbound of old are dropped with DETACH —
-        # Wave-1 best-effort; full rel rebind for merge-into-existing is E7/ER.
+        await self._rebind_prov_subject_ids(old_id, new_id)
+
+        # Survivor wins on conflict; fill gaps from loser (display props).
+        await self.execute_write(
+            "MATCH (old:Entity {tenant_id: $tenant_id, kg: $kg, id: $old_id})\n"
+            "MATCH (neu:Entity {tenant_id: $tenant_id, kg: $kg, id: $new_id})\n"
+            "SET neu.primary_type = coalesce(neu.primary_type, old.primary_type),\n"
+            "    neu.name = coalesce(neu.name, old.name),\n"
+            "    neu.source = coalesce(neu.source, old.source)\n"
+            "RETURN neu.id AS id",
+            {"old_id": old_id, "new_id": new_id},
+        )
+        # DETACH DELETE only after rebind — edges already live on survivor.
+        await self.execute_write(
+            "MATCH (old:Entity {tenant_id: $tenant_id, kg: $kg, id: $old_id})\n"
+            "DETACH DELETE old\n"
+            "RETURN $new_id AS id",
+            {"old_id": old_id, "new_id": new_id},
+        )
+
+    async def _rebind_prov_subject_ids(self, old_id: str, new_id: str) -> None:
+        """Rewrite ``ProvEvent.subject_id`` (and leave ABOUT for free-id path)."""
+        await self.execute_write(
+            "MATCH (p:ProvEvent {tenant_id: $tenant_id, kg: $kg})\n"
+            "WHERE p.subject_id = $old_id\n"
+            "SET p.subject_id = $new_id\n"
+            "RETURN count(p) AS n",
+            {"old_id": old_id, "new_id": new_id},
+        )
 
     async def write_prov_event(
         self,
@@ -422,6 +499,33 @@ class Neo4jGraphSession:
         if not rows:
             return None
         return rows[0].to_dict()
+
+    async def read_list_entities_by_label(
+        self,
+        label: str,
+        *,
+        after_id: str | None = None,
+        limit: int = 50,
+    ) -> list[GraphRecord]:
+        """List entities carrying a sanitized domain label (E5 explore).
+
+        Label tokens are re-validated via :func:`sanitize_domain_label` before
+        interpolation — Neo4j cannot parameterize labels.
+        """
+        from cograph_client.graph.labels import sanitize_domain_label
+
+        safe = sanitize_domain_label(label)
+        cypher = (
+            f"MATCH (e:Entity:`{safe}` {{tenant_id: $tenant_id, kg: $kg}})\n"
+            "WHERE $after_id IS NULL OR e.id > $after_id\n"
+            "RETURN e.id AS id, e.tenant_id AS tenant_id, e.kg AS kg,\n"
+            "       e.primary_type AS primary_type, e.name AS name, e.source AS source\n"
+            "ORDER BY e.id\n"
+            "LIMIT $limit"
+        )
+        return await self.execute_read(
+            cypher, {"after_id": after_id, "limit": int(limit)}
+        )
 
 
 class Neo4jGraphStore:
