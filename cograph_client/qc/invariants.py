@@ -227,23 +227,66 @@ _SEVERITY_RANK = {"error": 0, "warn": 1}
 
 
 async def check_invariants(
-    neptune,
+    neptune=None,
     graph_uri: Optional[str] = None,
     *,
     onto_graph_uri: Optional[str] = None,
     include: Optional[set[str]] = None,
+    store=None,
+    session=None,
+    tenant_id: Optional[str] = None,
+    kg_name: Optional[str] = None,
 ) -> list[Violation]:
-    """Run the deterministic invariants over ``graph_uri`` (the instance graph, or the
-    whole store / default graph if ``None``) and return every violation, most-severe first.
+    """Run the deterministic invariants and return every violation, most-severe first.
+
+    **Dual-backend (E8):**
+
+    * When ``session`` / ``store`` is provided (or both + tenant/kg), run the
+      property-graph structural suite
+      (:func:`cograph_client.qc.invariants_store.check_store_invariants`) —
+      missing ``primary_type``, unscoped rels, orphan endpoints.
+    * Otherwise run the legacy SPARQL suite over ``neptune`` + ``graph_uri``.
+
+    The SPARQL path is **not** deleted: RDFUnit-style ontology-aware checks stay
+    available for Neptune / pyoxigraph until cutover.
 
     ``neptune`` is any client exposing ``async query(sparql) -> dict`` returning SPARQL-1.1
-    JSON (the production NeptuneClient, the harness store, and the pyoxigraph test shim all
-    satisfy this). ``onto_graph_uri`` is the graph holding the ontology DECLARATIONS
-    (``attrs/<leaf> rdfs:range …``); invariants that need it (``needs_onto=True``, e.g.
-    ``relationship_edge_points_at_literal``) are SKIPPED when it is ``None`` — pass it (or,
-    on a union-of-named-graphs store, the tenant graph) to get their coverage. ``include``
-    optionally restricts to a subset of invariant names.
+    JSON. ``onto_graph_uri`` is the graph holding the ontology DECLARATIONS; invariants
+    that need it (``needs_onto=True``) are SKIPPED when it is ``None``. ``include``
+    optionally restricts to a subset of invariant names (SPARQL names **or** store
+    names such as ``entity_missing_primary_type``).
     """
+    # --- Property-graph / GraphStore path ------------------------------------
+    if session is not None or store is not None:
+        from cograph_client.qc.invariants_store import (
+            check_invariants_for_store,
+            check_store_invariants,
+        )
+
+        if session is not None:
+            return await check_store_invariants(session, include=include)
+        if tenant_id is None or kg_name is None:
+            # Derive from graph_uri when possible.
+            if graph_uri:
+                from cograph_client.graph.queries import parse_kg_graph_uri
+
+                parsed = parse_kg_graph_uri(graph_uri)
+                if parsed:
+                    tenant_id, kg_name = parsed
+            if tenant_id is None or kg_name is None:
+                raise ValueError(
+                    "store-path check_invariants requires session, or store + "
+                    "tenant_id/kg_name (or a parseable graph_uri)"
+                )
+        return await check_invariants_for_store(
+            store, tenant_id, kg_name, include=include
+        )
+
+    # --- SPARQL / Neptune path (unchanged) -----------------------------------
+    if neptune is None:
+        raise ValueError(
+            "check_invariants requires neptune (SPARQL) or store/session (GraphStore)"
+        )
     selected = [inv for inv in INVARIANTS if include is None or inv.name in include]
     violations: list[Violation] = []
     for inv in selected:

@@ -136,14 +136,23 @@ def _semantic_hook_max_entities() -> int:
         return 500
 
 
-def _provenance_enabled() -> bool:
+def _provenance_enabled(*, store_path: bool = False) -> bool:
     """Whether removal/rename primitives write companion-graph provenance events.
 
     Gated by the same ``COGRAPH_PROVENANCE_ENABLED`` env var the ingest path uses
     for assertion provenance (default OFF), so tombstone/rewrite events only land
     when governance/undo is switched on.
+
+    E8 store-path optional always-on: when ``store_path=True`` and
+    ``COGRAPH_PROVENANCE_STORE_ALWAYS=1``, provenance events fire on the
+    property-graph path even if the global flag is off (useful for hermetic
+    isolation QC / Neo4j local without enabling Neptune companion graphs).
     """
-    return os.environ.get("COGRAPH_PROVENANCE_ENABLED", "0") == "1"
+    if os.environ.get("COGRAPH_PROVENANCE_ENABLED", "0") == "1":
+        return True
+    if store_path and os.environ.get("COGRAPH_PROVENANCE_STORE_ALWAYS", "0") == "1":
+        return True
+    return False
 
 
 def graph_backend() -> str:
@@ -531,8 +540,23 @@ async def _insert_facts_store(
         fact_list.extend(triples_to_facts(instance_triples))
     if fact_list:
         await pg_ops.apply_facts(
-            session, fact_list, provenance_enabled=_provenance_enabled()
+            session,
+            fact_list,
+            provenance_enabled=_provenance_enabled(store_path=True),
         )
+    # Attr_meta display companions → :AttrCitation (model §4.2). Best-effort;
+    # domain Facts are written above; citations ride the same insert call.
+    if instance_triples:
+        try:
+            citations = pg_ops.parse_attr_meta_citations(instance_triples)
+            if citations:
+                await pg_ops.apply_attr_citations(session, citations)
+        except Exception:  # noqa: BLE001 — companions never fail the write
+            logger.warning(
+                "insert_facts_store_attr_citation_failed",
+                instance_graph=instance_graph,
+                exc_info=True,
+            )
     # Secondary indexes still key off graph URI + triple-shaped payloads when
     # available (best-effort; same as Neptune path).
     if instance_triples:
@@ -900,6 +924,8 @@ async def _delete_facts_store(
     from cograph_client.graph.iri import ONTO_PRED_PREFIX
 
     removed = 0
+    prov_on = _provenance_enabled(store_path=True)
+
     # Concrete (s,p,o) — map to prop/rel deletes.
     for s, p, o in concrete:
         fact = classify_triple(s, p, o)
@@ -914,6 +940,23 @@ async def _delete_facts_store(
         elif fact.kind == "type":
             # Domain labels: Wave-1 best-effort — full entity delete covers multi-type cleanup.
             pass
+        if prov_on and fact.kind in ("rel", "literal"):
+            try:
+                obj_repr = str(o) if o is not None else None
+                await pg_ops.create_prov_event(
+                    session,
+                    event_type="tombstone",
+                    subject_id=s,
+                    attr=fact.key,
+                    object_repr=obj_repr,
+                    reason=reason,
+                )
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "delete_facts_store_tombstone_failed",
+                    instance_graph=instance_graph,
+                    exc_info=True,
+                )
 
     # Predicate-scoped clears.
     for s, p in sp_pairs:
@@ -931,11 +974,28 @@ async def _delete_facts_store(
             if leaf and "/" not in leaf:
                 removed += await pg_ops.delete_literals(session, s, [leaf])
         elif p.endswith("label") or p.endswith("#label"):
+            leaf = "name"
             removed += await pg_ops.delete_literals(session, s, ["name"])
+        if prov_on and leaf:
+            try:
+                await pg_ops.create_prov_event(
+                    session,
+                    event_type="tombstone",
+                    subject_id=s,
+                    attr=leaf,
+                    reason=reason,
+                )
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "delete_facts_store_tombstone_failed",
+                    instance_graph=instance_graph,
+                    exc_info=True,
+                )
 
     for sid in subjects:
-        removed += await pg_ops.delete_entity(session, sid)
-        if _provenance_enabled():
+        # Record tombstone first (subject_id is the durable address; ABOUT links
+        # while the Entity still exists when the store implements it).
+        if prov_on:
             try:
                 await pg_ops.create_prov_event(
                     session,
@@ -949,6 +1009,7 @@ async def _delete_facts_store(
                     instance_graph=instance_graph,
                     exc_info=True,
                 )
+        removed += await pg_ops.delete_entity(session, sid)
     return removed
 
 
@@ -1055,7 +1116,7 @@ async def rewrite_subject(
         from cograph_client.graph import pg_ops
 
         await pg_ops.rewrite_entity_id(gs, old_uri, new_uri)
-        if _provenance_enabled():
+        if _provenance_enabled(store_path=True):
             try:
                 await pg_ops.create_prov_event(
                     gs,
