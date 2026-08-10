@@ -1673,6 +1673,8 @@ class NLQueryPipeline:
                 ontology = ""
         timing["ontology_fetch_ms"] = round((time.time() - t0) * 1000, 1)
 
+        # Cypher mode: only inject examples that carry a cypher field.
+        # SPARQL-only bank rows format to "" — never teach SPARQL on this path.
         examples_text = ""
         try:
             from infona_client.nlp.example_bank import (
@@ -1693,7 +1695,14 @@ class NLQueryPipeline:
                     examples_text = format_examples_for_prompt(
                         examples, language="cypher"
                     )
-                    timing["examples_retrieved"] = len(examples)
+                    # Count only rows that actually contributed Cypher text.
+                    cypher_n = sum(
+                        1 for ex in examples if (getattr(ex, "cypher", None) or "").strip()
+                    )
+                    timing["examples_retrieved"] = float(cypher_n)
+                    if not examples_text:
+                        # Prefer empty over a header-only / SPARQL leak.
+                        examples_text = ""
         except Exception:
             pass
 

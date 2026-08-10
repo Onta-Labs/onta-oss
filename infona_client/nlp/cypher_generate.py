@@ -206,6 +206,47 @@ _LIST_RE = re.compile(
     r"$"
 )
 
+# "top 5 books" / "first 10 authors" / "show me the top 3 books"
+_TOP_N_LIST_RE = re.compile(
+    r"(?ix)^"
+    r"(?:(?:list|show(?:\s+me)?|get|find)\s+)?"
+    r"(?:the\s+)?"
+    r"(?:top|first|last)\s+"
+    r"(?P<limit>\d+)\s+"
+    r"(?P<label>.+?)"
+    r"$"
+)
+
+# "list N books" / "show 10 books"
+_N_PREFIX_LIST_RE = re.compile(
+    r"(?ix)^"
+    r"(?:list|show(?:\s+me)?|get|find)\s+"
+    r"(?P<limit>\d+)\s+"
+    r"(?P<label>.+?)"
+    r"$"
+)
+
+# Strip trailing ORDER BY / sorted-by so list/filter still match hermetic templates
+# (allowlisted entities_of_type already ORDER BY e.id; property ORDER BY is LLM path).
+_ORDER_BY_SUFFIX_RE = re.compile(
+    r"(?ix)\s+"
+    r"(?:ordered|sorted)\s+by\s+"
+    r"(?P<order_prop>[A-Za-z_][A-Za-z0-9_]*)"
+    r"(?:\s+(?P<order_dir>asc|desc|ascending|descending))?"
+    r"$"
+)
+
+# Optional trailing LIMIT on filter / hop (and list after order-by strip).
+_LIMIT_SUFFIX_RE = re.compile(
+    r"(?ix)\s+(?:with\s+)?limit\s+(?P<limit>\d+)$"
+)
+
+# Safe Entity properties for ORDER BY annotations (params only; template still
+# orders by e.id — free-form property ORDER BY is not in the Memory allowlist).
+_SAFE_ORDER_PROPS = frozenset(
+    {"id", "name", "title", "primary_type", "source", "label"}
+)
+
 # "books where title is Dune" / "list books with status equals published"
 _FILTER_RE = re.compile(
     r"(?ix)^"
@@ -241,6 +282,40 @@ _HOP_THEIR_RE = re.compile(
 _VIA_REL_RE = re.compile(
     r"(?ix)\s+via\s+(?P<rel>[A-Za-z_][A-Za-z0-9_]*)$"
 )
+
+
+def _strip_order_by_suffix(text: str) -> tuple[str, str | None, str | None]:
+    """Return (text_without_order_by, order_prop|None, order_dir|None)."""
+    m = _ORDER_BY_SUFFIX_RE.search(text or "")
+    if not m:
+        return text, None, None
+    prop = (m.group("order_prop") or "").strip()
+    direction = (m.group("order_dir") or "").strip().lower() or None
+    if direction in ("ascending",):
+        direction = "asc"
+    elif direction in ("descending",):
+        direction = "desc"
+    if prop and not _SAFE_PROP_RE.match(prop):
+        prop = None
+        direction = None
+    elif prop and prop.lower() not in _SAFE_ORDER_PROPS:
+        # Unknown prop — still strip the suffix so the list fixture can match;
+        # do not annotate an unsafe order key.
+        prop = None
+        direction = None
+    else:
+        prop = prop.lower() if prop else None
+        if prop == "label":
+            prop = "name"
+    return text[: m.start()].strip(), prop, direction
+
+
+def _strip_limit_suffix(text: str) -> tuple[str, int | None]:
+    """Return (text_without_limit, limit|None)."""
+    m = _LIMIT_SUFFIX_RE.search(text or "")
+    if not m:
+        return text, None
+    return text[: m.start()].strip(), _clamp_limit(m.group("limit"))
 
 
 def _clamp_limit(raw: str | int | None) -> int:
@@ -334,27 +409,77 @@ def try_list_query(
     *,
     type_names: list[str] | None = None,
 ) -> dict[str, Any] | None:
-    """List entities of a type with LIMIT (allowlisted page template)."""
+    """List entities of a type with LIMIT (allowlisted page template).
+
+    Also matches ORDER BY / sorted-by suffixes and top-N / first-N variants.
+    Templates still ``ORDER BY e.id`` (Memory allowlist / ADR 0013 helpers);
+    recognized order props are noted in the explanation only.
+    """
     q = _TRAILING_PUNCT_RE.sub("", (question or "").strip())
     if not q:
         return None
-    # Do not steal count / filter questions.
-    if _COUNT_RE.match(q) or _FILTER_RE.match(q):
+    if _COUNT_RE.match(q):
         return None
-    m = _LIST_RE.match(q)
-    if not m:
+
+    order_prop: str | None = None
+    order_dir: str | None = None
+    limit: int | None = None
+    label: str | None = None
+
+    # top/first/last N <type>
+    m = _TOP_N_LIST_RE.match(q)
+    if m:
+        label = (m.group("label") or "").strip()
+        limit = _clamp_limit(m.group("limit"))
+    else:
+        # list/show N <type>
+        m = _N_PREFIX_LIST_RE.match(q)
+        if m:
+            label = (m.group("label") or "").strip()
+            limit = _clamp_limit(m.group("limit"))
+        else:
+            # Strip ORDER BY / LIMIT then match core list pattern.
+            q_core, order_prop, order_dir = _strip_order_by_suffix(q)
+            q_core, lim_suffix = _strip_limit_suffix(q_core)
+            # Do not steal filter questions after cleanup.
+            if _FILTER_RE.match(q_core) or _FILTER_RE.match(q):
+                return None
+            m = _LIST_RE.match(q_core) or _LIST_RE.match(q)
+            if not m:
+                return None
+            label = (m.group("label") or "").strip()
+            label, op2, od2 = _strip_order_by_suffix(label)
+            if op2:
+                order_prop, order_dir = op2, od2
+            limit = _clamp_limit(m.group("limit") or lim_suffix)
+
+    if not label:
         return None
-    label = (m.group("label") or "").strip()
+    # Label may still carry order/limit fragments (top-N branch).
+    label, op3, od3 = _strip_order_by_suffix(label)
+    if op3:
+        order_prop, order_dir = op3, od3
+    label, lim_label = _strip_limit_suffix(label)
+    if lim_label is not None:
+        limit = lim_label
+
     # "list authors of books" is a hop — leave for hop fixture.
     if re.search(r"(?i)\b(?:of|for|related\s+to|and\s+their)\b", label):
         return None
-    limit = _clamp_limit(m.group("limit"))
+    if limit is None:
+        limit = DEFAULT_LIST_LIMIT
     matched = resolve_type_name(label, type_names, ontology_summary)
     if matched is None:
         return None
     expanded = type_names_with_subclasses(
         matched, ontology_summary=ontology_summary, include_subclasses=True
     )
+    expl = f"List up to {limit} entities of type {matched} via entities_of_type"
+    if order_prop:
+        expl += f" (requested order by {order_prop}"
+        if order_dir:
+            expl += f" {order_dir}"
+        expl += "; template orders by id)"
     return _fixture(
         cypher=LIST_BY_TYPE_CYPHER,
         params={
@@ -362,9 +487,7 @@ def try_list_query(
             "after_id": None,
             "limit": limit,
         },
-        explanation=(
-            f"List up to {limit} entities of type {matched} via entities_of_type."
-        ),
+        explanation=expl + ".",
         template=TEMPLATE_LIST_BY_TYPE,
     )
 
@@ -375,10 +498,12 @@ def try_filter_query(
     *,
     type_names: list[str] | None = None,
 ) -> dict[str, Any] | None:
-    """Filter entities of a type by property equality."""
+    """Filter entities of a type by property equality (optional LIMIT suffix)."""
     q = _TRAILING_PUNCT_RE.sub("", (question or "").strip())
     if not q:
         return None
+    q, _order_prop, _order_dir = _strip_order_by_suffix(q)
+    q, limit = _strip_limit_suffix(q)
     m = _FILTER_RE.match(q)
     if not m:
         return None
@@ -386,6 +511,10 @@ def try_filter_query(
     prop = (m.group("prop") or "").strip()
     value = (m.group("value") or "").strip()
     value = _TRAILING_PUNCT_RE.sub("", value)
+    # Value group may have swallowed "limit N" before strip; re-strip value.
+    value, lim_from_value = _strip_limit_suffix(value)
+    if lim_from_value is not None:
+        limit = lim_from_value
     if not _SAFE_PROP_RE.match(prop):
         return None
     if not value:
@@ -413,7 +542,7 @@ def try_filter_query(
             "type_names": expanded,
             "prop_key": prop_key,
             "prop_value": value,
-            "limit": DEFAULT_LIST_LIMIT,
+            "limit": limit if limit is not None else DEFAULT_LIST_LIMIT,
         },
         explanation=(
             f"Find {matched} entities where {prop_key} equals {value!r} "
@@ -429,10 +558,13 @@ def try_hop_query(
     *,
     type_names: list[str] | None = None,
 ) -> dict[str, Any] | None:
-    """Simple 1-hop outbound traversal between two types (optional rel attr)."""
+    """Simple 1-hop outbound traversal between two types (optional rel attr / LIMIT)."""
     q = _TRAILING_PUNCT_RE.sub("", (question or "").strip())
     if not q:
         return None
+
+    q, _order_prop, _order_dir = _strip_order_by_suffix(q)
+    q, limit = _strip_limit_suffix(q)
 
     rel_attr: str | None = None
     via = _VIA_REL_RE.search(q)
@@ -456,6 +588,16 @@ def try_hop_query(
     if not source_label or not target_label:
         return None
 
+    # Source/target may still carry limit/order fragments from sloppy NL.
+    source_label, lim_s = _strip_limit_suffix(source_label)
+    target_label, lim_t = _strip_limit_suffix(target_label)
+    if lim_s is not None:
+        limit = lim_s
+    if lim_t is not None:
+        limit = lim_t
+    source_label, _, _ = _strip_order_by_suffix(source_label)
+    target_label, _, _ = _strip_order_by_suffix(target_label)
+
     from_type = resolve_type_name(source_label, type_names, ontology_summary)
     to_type = resolve_type_name(target_label, type_names, ontology_summary)
     if from_type is None or to_type is None:
@@ -474,7 +616,7 @@ def try_hop_query(
         "from_types": from_types,
         "to_types": to_types,
         "rel_attr": rel_attr,
-        "limit": DEFAULT_LIST_LIMIT,
+        "limit": limit if limit is not None else DEFAULT_LIST_LIMIT,
     }
     expl = f"1-hop relationships from {from_type} to {to_type} via related_entities"
     if rel_attr:

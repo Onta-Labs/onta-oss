@@ -63,6 +63,59 @@ def test_list_fixture_with_limit():
     assert payload["params"]["limit"] == 5
 
 
+def test_list_fixture_top_n():
+    payload = try_list_query("top 3 books", ONTOLOGY)
+    assert payload is not None
+    assert payload["template"] == "entities_of_type"
+    assert payload["params"]["limit"] == 3
+    assert payload["params"]["type_names"] == ["Book"]
+
+
+def test_list_fixture_first_n_with_verb():
+    payload = try_list_query("show me the first 2 authors", ONTOLOGY)
+    assert payload is not None
+    assert payload["params"]["limit"] == 2
+    assert payload["params"]["type_names"] == ["Author"]
+
+
+def test_list_fixture_n_prefix():
+    payload = try_list_query("list 10 books", ONTOLOGY)
+    assert payload is not None
+    assert payload["params"]["limit"] == 10
+
+
+def test_list_fixture_ordered_by_name():
+    payload = try_list_query("list books ordered by name", ONTOLOGY)
+    assert payload is not None
+    assert payload["template"] == "entities_of_type"
+    assert payload["params"]["type_names"] == ["Book"]
+    assert "order by name" in payload["explanation"].lower()
+    # Template params stay allowlisted (no free-form order_prop leakage).
+    assert "order_prop" not in payload["params"]
+
+
+def test_list_fixture_ordered_by_with_limit():
+    payload = try_list_query("list books sorted by name limit 5", ONTOLOGY)
+    assert payload is not None
+    assert payload["params"]["limit"] == 5
+    assert payload["params"]["type_names"] == ["Book"]
+
+
+def test_filter_fixture_with_limit():
+    payload = try_filter_query(
+        "books where status equals published limit 2", ONTOLOGY
+    )
+    assert payload is not None
+    assert payload["params"]["limit"] == 2
+    assert payload["params"]["prop_value"] == "published"
+
+
+def test_hop_fixture_with_limit():
+    payload = try_hop_query("authors of books limit 1", ONTOLOGY)
+    assert payload is not None
+    assert payload["params"]["limit"] == 1
+
+
 def test_filter_fixture_shape():
     payload = try_filter_query("books where name is Dune", ONTOLOGY)
     assert payload is not None
@@ -289,6 +342,27 @@ async def test_ask_cypher_list_e2e_memory_store():
 
 
 @pytest.mark.asyncio
+async def test_ask_cypher_top_n_list_e2e_memory_store():
+    store = MemoryGraphStore()
+    await _seed_bookstore(store)
+    neptune = MagicMock()
+    neptune.query = AsyncMock(side_effect=AssertionError("no sparql"))
+    pipe = NLQueryPipeline(neptune, anthropic_key="", graph_store=store)
+    pipe._fetch_ontology = AsyncMock(return_value=ONTOLOGY)  # type: ignore[method-assign]
+
+    result = await pipe.ask(
+        "top 2 books",
+        graph_uri=f"{IRI_BASE}/graphs/demo-tenant",
+        instance_graph=_kg_uri(),
+        use_cypher=True,
+    )
+    assert result.timing.get("cypher_exec_path") == "template:entities_of_type"
+    assert result.timing.get("cypher_stub") == 1.0
+    # Bookstore seed has 3 books; limit 2 returns first two by id order.
+    assert result.timing.get("rows") == 2
+
+
+@pytest.mark.asyncio
 async def test_ask_cypher_filter_e2e_memory_store():
     store = MemoryGraphStore()
     await _seed_bookstore(store)
@@ -460,6 +534,85 @@ async def test_ask_default_path_does_not_enter_cypher_when_disabled(monkeypatch)
     assert called["cypher"] is False
     assert result.timing.get("query_language") != "cypher"
     assert "9" in result.answer or "count" in result.explanation.lower() or result.answer
+
+
+def test_graph_backend_default_neptune(monkeypatch):
+    """INFONA_GRAPH_BACKEND defaults to neptune (SPARQL /ask path)."""
+    from infona_client.graph.kg_writer import graph_backend
+    from infona_client.nlp.cypher_generate import neo4j_ask_enabled
+
+    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
+    assert graph_backend() == "neptune"
+    assert neo4j_ask_enabled() is False
+    assert neo4j_ask_enabled(explicit=None) is False
+    assert neo4j_ask_enabled(explicit=False) is False
+    assert neo4j_ask_enabled(explicit=True) is True
+
+
+def test_neo4j_ask_enabled_only_when_backend_or_flag(monkeypatch):
+    from infona_client.nlp.cypher_generate import neo4j_ask_enabled
+
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
+    assert neo4j_ask_enabled() is False
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neo4j")
+    assert neo4j_ask_enabled() is True
+    # Explicit False wins even if backend is neo4j.
+    assert neo4j_ask_enabled(explicit=False) is False
+
+
+@pytest.mark.asyncio
+async def test_neptune_default_ask_unchanged(monkeypatch):
+    """Default ask (use_cypher unset, backend=neptune) must stay on SPARQL.
+
+    Regression guard: _ask_cypher only when backend is neo4j OR use_cypher=True.
+    """
+    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
+
+    neptune = MagicMock()
+    pipe = NLQueryPipeline(neptune, anthropic_key="test-key", graph_store=None)
+    called = {"cypher": False}
+
+    async def _boom(*_a, **_k):
+        called["cypher"] = True
+        raise AssertionError(
+            "_ask_cypher must not run on default Neptune SPARQL ask"
+        )
+
+    pipe._ask_cypher = _boom  # type: ignore[method-assign]
+    pipe._fetch_ontology = AsyncMock(return_value="Type: Movie")  # type: ignore[method-assign]
+    pipe._generate_sparql = AsyncMock(  # type: ignore[method-assign]
+        return_value={
+            "sparql": (
+                f"SELECT (COUNT(?m) AS ?n) FROM <{_kg_uri('demo-tenant', 'imdb')}> "
+                "WHERE { ?m <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> "
+                f"<{IRI_BASE}/types/Movie> }}"
+            ),
+            "explanation": "count movies",
+            "functions_needed": [],
+        }
+    )
+    neptune.query = AsyncMock(
+        return_value={
+            "head": {"vars": ["n"]},
+            "results": {"bindings": [{"n": {"type": "literal", "value": "42"}}]},
+        }
+    )
+    pipe._rephrase_via_openrouter = AsyncMock(return_value="")  # type: ignore[method-assign]
+    pipe._resolve_uri_labels = AsyncMock(return_value={})  # type: ignore[method-assign]
+
+    # Default: use_cypher is None — must not enter Cypher.
+    result = await pipe.ask(
+        "How many movies?",
+        graph_uri=f"{IRI_BASE}/graphs/demo-tenant",
+        instance_graph=_kg_uri("demo-tenant", "imdb"),
+    )
+    assert called["cypher"] is False
+    assert result.timing.get("query_language") != "cypher"
+    assert result.timing.get("graph_backend") != "neo4j"
+    pipe._generate_sparql.assert_awaited()
+    neptune.query.assert_awaited()
+    assert "42" in result.answer or result.answer
 
 
 @pytest.mark.asyncio
