@@ -164,10 +164,33 @@ def test_format_examples_cypher_mode_skips_sparql_only():
     assert "How many books?" in text
     assert "Q1" not in text
     assert "SPARQL:" not in text
+    # No SPARQL query body in the few-shot block (header may mention the word).
+    assert "WHERE {" not in text
+    assert "FROM <" not in text
     # Literals rewritten to params
     assert "demo-tenant" not in text
     assert "$tenant_id" in text
     assert "$kg" in text
+
+
+def test_format_examples_cypher_mode_empty_when_all_sparql():
+    """Cypher mode must prefer empty few-shot over injecting SPARQL examples."""
+    examples = [
+        Example(
+            question="Q1",
+            sparql="SELECT ?s FROM <https://graph.infona.ai/graphs/t/kg/x> WHERE { ?s ?p ?o }",
+            kg_name="x",
+            ontology_context="",
+        ),
+        Example(
+            question="Q2",
+            sparql="SELECT (COUNT(?m) AS ?c) WHERE { ?m a <Movie> }",
+            kg_name="imdb",
+            ontology_context="",
+        ),
+    ]
+    text = format_examples_for_prompt(examples, language="cypher")
+    assert text == ""
 
 
 def test_sanitize_example_cypher_rewrites_literals():
