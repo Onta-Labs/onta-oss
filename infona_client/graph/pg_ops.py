@@ -431,7 +431,12 @@ async def apply_attr_citations(
     session: "GraphSession",
     citations: Sequence[AttrCitationSpec],
 ) -> int:
-    """Write a batch of :class:`AttrCitationSpec` via :func:`upsert_attr_citation`."""
+    """Write a batch of :class:`AttrCitationSpec` via :func:`upsert_attr_citation`.
+
+    Secondary companion only (model §4.2 residual). Primary enrichment
+    citations fold onto Assertion provenance via
+    :func:`fold_attr_citations_onto_facts` on the store path.
+    """
     n = 0
     for c in citations:
         await upsert_attr_citation(
@@ -446,6 +451,64 @@ async def apply_attr_citations(
         )
         n += 1
     return n
+
+
+def fold_attr_citations_onto_facts(
+    facts: Sequence[Fact],
+    citations: Sequence[AttrCitationSpec],
+) -> list[Fact]:
+    """Fold attr_meta enrichment citations onto matching domain Facts (ADR 0013).
+
+    Primary store-path destination for ``source_url`` / ``verified_at`` /
+    ``provenance`` is the Assertion for the domain attribute — not a sibling
+    :AttrCitation node alone. Matching key is ``(entity_id, attr leaf)``.
+    Existing non-empty Fact provenance fields win over citation fields.
+    """
+    if not facts or not citations:
+        return list(facts)
+    by_key: dict[tuple[str, str], AttrCitationSpec] = {}
+    for c in citations:
+        if not c.entity_id or not c.attr:
+            continue
+        by_key[(c.entity_id, c.attr)] = c
+    if not by_key:
+        return list(facts)
+
+    out: list[Fact] = []
+    for f in facts:
+        if f.kind not in ("literal", "rel"):
+            out.append(f)
+            continue
+        c = by_key.get((f.subject_id, f.key))
+        if c is None:
+            out.append(f)
+            continue
+        # Prefer Fact-side values when already set (structured Fact IR path).
+        source_url = f.source_url or c.source_url or f.source
+        verified_at = f.verified_at or c.verified_at
+        provenance = f.provenance or c.provenance
+        if (
+            source_url == f.source_url
+            and verified_at == f.verified_at
+            and provenance == f.provenance
+        ):
+            out.append(f)
+            continue
+        out.append(
+            Fact(
+                subject_id=f.subject_id,
+                kind=f.kind,
+                key=f.key,
+                value=f.value,
+                source=source_url,
+                source_url=source_url,
+                verified_at=verified_at,
+                run_id=f.run_id,
+                confidence=f.confidence,
+                provenance=provenance,
+            )
+        )
+    return out
 
 
 async def apply_facts(
@@ -519,6 +582,7 @@ async def apply_facts(
             verified_at=f.verified_at,
             run_id=f.run_id,
             confidence=f.confidence,
+            provenance=f.provenance,
         )
         await assert_fact(session, af, dual_write_cache=True)
         applied += 1
@@ -570,6 +634,7 @@ __all__ = [
     "delete_entity",
     "delete_literals",
     "delete_rels",
+    "fold_attr_citations_onto_facts",
     "get_entity",
     "merge_entity",
     "merge_rel",

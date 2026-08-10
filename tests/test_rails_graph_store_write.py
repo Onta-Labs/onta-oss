@@ -306,7 +306,7 @@ def test_er_rebuild_rewrite_subject_with_memory_store(memory_store, monkeypatch)
 
     # Blocker returns signals that force a merge (same email).
     class _FakeBlocker:
-        def __init__(self, client):
+        def __init__(self, client, store=None):
             pass
 
         async def all_entities_with_signals(self, instance_graph, type_uri):

@@ -19,6 +19,7 @@ from typing import Any, Iterable, Literal, Sequence
 
 from infona_client.graph.iri import (
     ENTITY_URI_PREFIX,
+    ER_NS,
     IRI_BASE,
     ONTO_PRED_PREFIX,
     TYPE_URI_PREFIX,
@@ -43,6 +44,11 @@ RESERVED_ENTITY_PROPERTY_KEYS: frozenset[str] = frozenset(
         "elementId",
     }
 )
+
+# ER block-index leaves written as literal Assertions on the store path.
+# Must stay findable by GraphStoreBlocker (not dropped as "noise").
+_ER_BLOCK_KEY_LEAF = "blockKey"
+_ER_SIGNAL_PREFIX = "erSignal_"
 
 _UNSAFE = re.compile(r"[^A-Za-z0-9_]")
 _SAFE_TOKEN = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
@@ -78,6 +84,8 @@ class Fact:
         Optional ingest / enrichment run id on the Assertion.
     confidence:
         Optional confidence score on the Assertion.
+    provenance:
+        Optional free-text provenance label on the Assertion (enrichment rail).
     """
 
     subject_id: str
@@ -89,6 +97,7 @@ class Fact:
     verified_at: str | None = None
     run_id: str | None = None
     confidence: float | None = None
+    provenance: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.subject_id, str) or not self.subject_id.strip():
@@ -213,11 +222,48 @@ def _is_entity_ref(value: str) -> bool:
     return "/entities/" in value and value.startswith("http")
 
 
+def _strip_angle_brackets(term: str) -> str:
+    """Drop SPARQL ``<…>`` wrappers (ER ``index_triples`` emits them)."""
+    if (
+        isinstance(term, str)
+        and len(term) >= 2
+        and term.startswith("<")
+        and term.endswith(">")
+    ):
+        return term[1:-1]
+    return term
+
+
+def _er_leaf(predicate: str) -> str | None:
+    """``…/er/blockKey`` or ``…/er/erSignal_email`` → leaf (cross-host safe)."""
+    if not isinstance(predicate, str) or not predicate:
+        return None
+    if predicate.startswith(ER_NS):
+        leaf = predicate[len(ER_NS) :]
+        return leaf if leaf and "/" not in leaf else None
+    if predicate.startswith("http") and "/er/" in predicate:
+        tail = predicate.rsplit("/er/", 1)[-1]
+        if tail and "/" not in tail:
+            return tail
+    return None
+
+
+def is_er_index_leaf(leaf: str) -> bool:
+    """True for ER block-index property leaves (blockKey / erSignal_*)."""
+    if not leaf:
+        return False
+    return leaf == _ER_BLOCK_KEY_LEAF or leaf.startswith(_ER_SIGNAL_PREFIX)
+
+
 def classify_triple(s: str, p: str, o: str) -> Fact | None:
     """Map one RDF-era triple to a :class:`Fact`, or ``None`` if skipped.
 
     Skipped: empty terms, pure bookkeeping that is not Entity ``source`` /
-    display ``name``, attr_meta companions (not Fact kinds in Wave 1).
+    display ``name``, attr_meta companions (folded onto Assertion provenance
+    separately on the store path — not Fact kinds here).
+
+    ER block-index triples (``er/blockKey``, ``er/erSignal_*``) map to literal
+    Facts so GraphStore ER can find them after ``insert_facts``.
 
     ``kind=type``: ``key`` is the type leaf; ``value`` is the **original Class
     IRI** when the object is an HTTP IRI (ADR 0013 — keep RDF IRIs as ids),
@@ -226,6 +272,16 @@ def classify_triple(s: str, p: str, o: str) -> Fact | None:
     """
     if not s or not p:
         return None
+
+    s = _strip_angle_brackets(s)
+    p = _strip_angle_brackets(p)
+    if isinstance(o, str):
+        # Only strip angle brackets when the object is a URI-shaped term, not
+        # a literal that happens to contain ``<>`` (block-key values never do).
+        if o.startswith("<") and o.endswith(">") and (
+            o[1:].startswith("http://") or o[1:].startswith("https://")
+        ):
+            o = o[1:-1]
 
     if p == RDF_TYPE:
         tleaf = _type_leaf_from_object(o) if o else None
@@ -238,6 +294,10 @@ def classify_triple(s: str, p: str, o: str) -> Fact | None:
     if p == _RDFS_LABEL:
         # Display property is ``name`` only (B2).
         return Fact(subject_id=s, kind="literal", key="name", value=o)
+
+    er_leaf = _er_leaf(p)
+    if er_leaf is not None and is_er_index_leaf(er_leaf):
+        return Fact(subject_id=s, kind="literal", key=er_leaf, value=o)
 
     attrs_leaf = _attrs_leaf(p)
     if attrs_leaf is not None:
@@ -298,6 +358,7 @@ __all__ = [
     "FactKind",
     "classify_triple",
     "group_facts_by_subject",
+    "is_er_index_leaf",
     "primary_type_from_facts",
     "sanitize_prop_key",
     "sanitize_rel_type",

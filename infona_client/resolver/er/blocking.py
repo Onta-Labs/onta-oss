@@ -1,27 +1,45 @@
-"""SPARQL-backed block index for entity resolution candidate lookup.
+"""Block index for entity resolution candidate lookup (SPARQL + GraphStore).
 
-Block keys are stored as literal-valued triples next to each entity:
-    <entity_uri> cog:blockKey "email_local:johnsmith" .
-    <entity_uri> cog:blockKey "lastname3_phone4:smi5506" .
+Block keys are stored as literal-valued facts next to each entity:
+
+    <entity_uri> er:blockKey "email_local:johnsmith" .
+    <entity_uri> er:blockKey "lastname3_phone4:smi5506" .
 
 Normalized signals are also persisted alongside so a candidate can be
 scored without a second round-trip to fetch attributes:
-    <entity_uri> cog:erSignal_email "john.smith@gmail.com" .
-    <entity_uri> cog:erSignal_phone "+12005551234" .
+
+    <entity_uri> er:erSignal_email "john.smith@gmail.com" .
+    <entity_uri> er:erSignal_phone "+12005551234" .
     ...
 
-This denormalization costs ~5 triples per ER-enabled entity. The payoff is
-one SPARQL query per ingest row instead of N.
+**Dual-backend (Neo4j migration):**
+
+* Neptune path — :class:`SparqlBlocker` (SPARQL SELECT over the instance graph).
+* Store path — :class:`GraphStoreBlocker` (Assertion / GraphSession reads when
+  ``INFONA_GRAPH_BACKEND=neo4j`` or an explicit store is supplied).
+
+Index **writes** still go through ``index_triples`` → shared ``insert_facts``
+(store maps ER leaves to literal Assertions; Neptune keeps RDF triples).
+
+This denormalization costs ~5 facts per ER-enabled entity. The payoff is
+one query per ingest row instead of N.
 """
 
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any, Optional
+
 from infona_client.graph.iri import ER_NS
 from infona_client.resolver.er.types import BlockKey, NormalizedSignals
 
+if TYPE_CHECKING:
+    from infona_client.graph.store import GraphSession, GraphStore
+
 BLOCK_KEY_PRED = f"<{ER_NS}blockKey>"
 SIGNAL_PRED_PREFIX = f"<{ER_NS}erSignal_"
+BLOCK_KEY_LEAF = "blockKey"
+SIGNAL_LEAF_PREFIX = "erSignal_"
 
 # Maximum candidates a single block lookup may return. Anything more than
 # this is a sign of a degenerate block key (e.g., a phone number used by
@@ -144,15 +162,215 @@ def _quote_literal(s: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# SparqlBlocker
+# GraphStoreBlocker — Assertion / GraphSession path (Neo4j / Memory)
+# ---------------------------------------------------------------------------
+
+
+def _property_leaf_from_id(property_id: str | None) -> str:
+    if not property_id:
+        return ""
+    return str(property_id).rstrip("/").rsplit("/", 1)[-1]
+
+
+def _signals_from_assertion_rows(
+    rows_by_entity: dict[str, list[dict[str, Any]]],
+) -> dict[str, NormalizedSignals]:
+    """Reassemble Assertion rows into NormalizedSignals per entity.
+
+    Accepts either ``property_id`` IRIs ending in ``erSignal_*`` or a bare
+    ``property_name`` / ``key`` leaf.
+    """
+    per_entity: dict[str, dict[str, list[str]]] = {}
+    for uri, rows in rows_by_entity.items():
+        sig_lists: dict[str, list[str]] = per_entity.setdefault(uri, {})
+        for row in rows:
+            leaf = (
+                row.get("property_name")
+                or row.get("key")
+                or _property_leaf_from_id(row.get("property_id"))
+            )
+            if not leaf or not str(leaf).startswith(SIGNAL_LEAF_PREFIX):
+                continue
+            signal = str(leaf)[len(SIGNAL_LEAF_PREFIX) :]
+            val = row.get("literal_value")
+            if val is None:
+                continue
+            val_s = str(val)
+            bucket = sig_lists.setdefault(signal, [])
+            if val_s not in bucket:
+                bucket.append(val_s)
+    return _signal_maps_to_normalized(per_entity)
+
+
+def _signal_maps_to_normalized(
+    per_entity: dict[str, dict[str, list[str]]],
+) -> dict[str, NormalizedSignals]:
+    """Shared reassembly used by SPARQL bindings + GraphStore assertion rows."""
+    out: dict[str, NormalizedSignals] = {}
+    for uri, sig_map in per_entity.items():
+        emails = sig_map.get("email") or []
+        email_locals = sig_map.get("email_local") or []
+        primary_email = emails[0] if emails else None
+        primary_local = email_locals[0] if email_locals else None
+        aliases = tuple(emails[1:])
+        local_aliases = tuple(email_locals[1:])
+        names = sig_map.get("name") or []
+        name = names[0] if names else None
+        tokens = tuple(name.split()) if name else ()
+        addresses = sig_map.get("address") or []
+        address = addresses[0] if addresses else None
+        addr_tokens = tuple(address.split()) if address else ()
+        phones = sig_map.get("phone_e164") or []
+        dobs = sig_map.get("dob_iso") or []
+        out[uri] = NormalizedSignals(
+            name=name,
+            name_tokens=tokens,
+            email=primary_email,
+            email_local=primary_local,
+            email_aliases=aliases,
+            email_locals=(primary_local,) + local_aliases if primary_local else local_aliases,
+            phone_e164=phones[0] if phones else None,
+            address=address,
+            address_tokens=addr_tokens,
+            dob_iso=dobs[0] if dobs else None,
+        )
+    return out
+
+
+class GraphStoreBlocker:
+    """Blocker that reads ER index facts via GraphStore (Memory / Neo4j).
+
+    Expects block keys and signals to have been written as literal Assertions
+    (via ``index_triples`` → ``insert_facts`` store path).
+    """
+
+    def __init__(self, store: "GraphStore"):
+        self._store = store
+
+    @staticmethod
+    def block_keys(normalized: NormalizedSignals) -> list[BlockKey]:
+        return generate_block_keys(normalized)
+
+    def _session_for_graph(self, instance_graph: str) -> Optional["GraphSession"]:
+        from infona_client.graph.queries import parse_kg_graph_uri
+        from infona_client.graph.scope import GraphScope
+
+        scope = parse_kg_graph_uri(instance_graph)
+        if scope is None:
+            return None
+        tenant_id, kg = scope
+        return self._store.session(GraphScope.for_instance(tenant_id, kg))
+
+    async def candidates_with_signals(
+        self,
+        instance_graph: str,
+        type_uri: str,
+        keys: list[BlockKey],
+    ) -> dict[str, NormalizedSignals]:
+        if not keys:
+            return {}
+        session = self._session_for_graph(instance_graph)
+        if session is None:
+            return {}
+        key_values = {f"{k.kind}:{k.value}" for k in keys}
+        entity_ids = await self._entities_of_type(session, type_uri)
+        if not entity_ids:
+            return {}
+
+        matched: list[str] = []
+        signal_rows: dict[str, list[dict[str, Any]]] = {}
+        for eid in entity_ids:
+            rows = await self._assertions_for(session, eid)
+            if not rows:
+                continue
+            entity_keys = {
+                str(r.get("literal_value"))
+                for r in rows
+                if _property_leaf_from_id(r.get("property_id")) == BLOCK_KEY_LEAF
+                and r.get("literal_value") is not None
+            }
+            if not entity_keys & key_values:
+                continue
+            matched.append(eid)
+            signal_rows[eid] = rows
+            if len(matched) >= MAX_CANDIDATES:
+                break
+        return _signals_from_assertion_rows(signal_rows)
+
+    async def all_entities_with_signals(
+        self,
+        instance_graph: str,
+        type_uri: str,
+    ) -> dict[str, NormalizedSignals]:
+        session = self._session_for_graph(instance_graph)
+        if session is None:
+            return {}
+        entity_ids = await self._entities_of_type(session, type_uri)
+        signal_rows: dict[str, list[dict[str, Any]]] = {}
+        for eid in entity_ids:
+            rows = await self._assertions_for(session, eid)
+            if rows:
+                signal_rows[eid] = rows
+        return _signals_from_assertion_rows(signal_rows)
+
+    @staticmethod
+    async def _entities_of_type(session: "GraphSession", type_uri: str) -> list[str]:
+        native = getattr(session, "read_entities_of_type", None)
+        if not callable(native):
+            return []
+        return list(await native([type_uri]) or [])
+
+    @staticmethod
+    async def _assertions_for(
+        session: "GraphSession", entity_id: str
+    ) -> list[dict[str, Any]]:
+        native = getattr(session, "read_assertions_for_subject", None)
+        if not callable(native):
+            return []
+        return list(await native(entity_id) or [])
+
+    @staticmethod
+    def index_triples(
+        entity_uri: str,
+        normalized: NormalizedSignals,
+        keys: list[BlockKey],
+    ) -> list[tuple[str, str, str]]:
+        """Same shape as :meth:`SparqlBlocker.index_triples` (shared writer)."""
+        return SparqlBlocker.index_triples(entity_uri, normalized, keys)
+
+
+# ---------------------------------------------------------------------------
+# SparqlBlocker (+ dual-path when GraphStore is active)
 # ---------------------------------------------------------------------------
 
 
 class SparqlBlocker:
-    """Concrete Blocker that uses the project's NeptuneClient."""
+    """Neptune SPARQL blocker; dual-paths to GraphStore when neo4j backend is on.
 
-    def __init__(self, neptune):
+    When ``store`` is passed or ``INFONA_GRAPH_BACKEND=neo4j``, candidate and
+    rebuild lookups use :class:`GraphStoreBlocker`. Index triple shape is
+    identical for both backends (``insert_facts`` maps ER leaves on store).
+    """
+
+    def __init__(self, neptune, store: Optional["GraphStore"] = None):
         self._neptune = neptune
+        self._store = store
+
+    def _resolve_store(self) -> Optional["GraphStore"]:
+        if self._store is not None:
+            return self._store
+        try:
+            from infona_client.graph.store import resolve_optional_graph_store
+
+            return resolve_optional_graph_store()
+        except Exception:  # noqa: BLE001 — ER is best-effort
+            return None
+
+    def _store_blocker(self) -> Optional[GraphStoreBlocker]:
+        store = self._resolve_store()
+        if store is None:
+            return None
+        return GraphStoreBlocker(store)
 
     @staticmethod
     def block_keys(normalized: NormalizedSignals) -> list[BlockKey]:
@@ -172,20 +390,28 @@ class SparqlBlocker:
         if not keys:
             return {}
 
+        store_blocker = self._store_blocker()
+        if store_blocker is not None:
+            return await store_blocker.candidates_with_signals(
+                instance_graph, type_uri, keys
+            )
+
         key_values = ",".join(_quote_literal(f"{k.kind}:{k.value}") for k in keys)
-        sparql = """
-PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-SELECT DISTINCT ?entity ?p ?o
-FROM <{instance_graph}>
-WHERE {{
-  ?entity rdf:type <{type_uri}> ;
-          {BLOCK_KEY_PRED} ?key .
-  FILTER(?key IN ({key_values}))
-  ?entity ?p ?o .
-  FILTER(STRSTARTS(STR(?p), "{ER_NS}erSignal_"))
-}}
-LIMIT {MAX_CANDIDATES * 8}
-"""
+        # Interpolate placeholders (the historical template never .format()'d
+        # them — every Neptune lookup ran with literal "{instance_graph}" etc.).
+        sparql = (
+            "PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>\n"
+            f"SELECT DISTINCT ?entity ?p ?o\n"
+            f"FROM <{instance_graph}>\n"
+            "WHERE {\n"
+            f"  ?entity rdf:type <{type_uri}> ;\n"
+            f"          {BLOCK_KEY_PRED} ?key .\n"
+            f"  FILTER(?key IN ({key_values}))\n"
+            "  ?entity ?p ?o .\n"
+            f'  FILTER(STRSTARTS(STR(?p), "{ER_NS}erSignal_"))\n'
+            "}\n"
+            f"LIMIT {MAX_CANDIDATES * 8}\n"
+        )
         data = await self._neptune.query(sparql)
         rows = data.get("results", {}).get("bindings", [])
         out = _bindings_to_signals(rows)
@@ -206,6 +432,12 @@ LIMIT {MAX_CANDIDATES * 8}
         lookups, the rebuild needs the whole population at once so it can
         re-block and collapse intra-batch fragments that ingest couldn't see.
         """
+        store_blocker = self._store_blocker()
+        if store_blocker is not None:
+            return await store_blocker.all_entities_with_signals(
+                instance_graph, type_uri
+            )
+
         sparql = f"""
 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 SELECT ?entity ?p ?o
@@ -257,6 +489,11 @@ WHERE {{
             if value:
                 pred = f"<{ER_NS}erSignal_{name}>"
                 triples.append((s, pred, value))
+        # Also emit alias emails as erSignal_email so merge-expansion aliases
+        # survive GraphStore reassembly (same as multi-value Neptune triples).
+        for alias in getattr(normalized, "email_aliases", ()) or ():
+            if alias and alias != normalized.email:
+                triples.append((s, f"<{ER_NS}erSignal_email>", alias))
         return triples
 
 
@@ -277,38 +514,14 @@ def _bindings_to_signals(rows: list[dict]) -> dict[str, NormalizedSignals]:
         pred = row["p"]["value"]
         val = row["o"]["value"]
         signal = pred.replace(f"{ER_NS}erSignal_", "")
+        # Cross-host ER_NS: strip any …/er/erSignal_ prefix.
+        if "/er/erSignal_" in pred and not signal.startswith("erSignal_"):
+            signal = pred.rsplit("/er/erSignal_", 1)[-1]
+        elif signal.startswith("erSignal_"):
+            signal = signal[len("erSignal_") :]
         sig_lists = per_entity.setdefault(uri, {})
         sig_lists.setdefault(signal, [])
         if val not in sig_lists[signal]:
             sig_lists[signal].append(val)
 
-    out: dict[str, NormalizedSignals] = {}
-    for uri, sig_map in per_entity.items():
-        emails = sig_map.get("email") or []
-        email_locals = sig_map.get("email_local") or []
-        # First-encountered values become the "primary"; the rest become aliases.
-        primary_email = emails[0] if emails else None
-        primary_local = email_locals[0] if email_locals else None
-        aliases = tuple(emails[1:])
-        local_aliases = tuple(email_locals[1:])
-        names = sig_map.get("name") or []
-        name = names[0] if names else None
-        tokens = tuple(name.split()) if name else ()
-        addresses = sig_map.get("address") or []
-        address = addresses[0] if addresses else None
-        addr_tokens = tuple(address.split()) if address else ()
-        phones = sig_map.get("phone_e164") or []
-        dobs = sig_map.get("dob_iso") or []
-        out[uri] = NormalizedSignals(
-            name=name,
-            name_tokens=tokens,
-            email=primary_email,
-            email_local=primary_local,
-            email_aliases=aliases,
-            email_locals=(primary_local,) + local_aliases if primary_local else local_aliases,
-            phone_e164=phones[0] if phones else None,
-            address=address,
-            address_tokens=addr_tokens,
-            dob_iso=dobs[0] if dobs else None,
-        )
-    return out
+    return _signal_maps_to_normalized(per_entity)

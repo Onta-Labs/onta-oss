@@ -347,13 +347,15 @@ class Neo4jGraphSession:
         return int(rows[0].get("n") or 0)
 
     async def write_rewrite_entity_id(self, old_id: str, new_id: str) -> None:
-        """Re-key Entity ``id``; rebind incident rels + ProvEvent (ADR 0007).
+        """Re-key Entity ``id``; rebind incident rels + Assertion + ProvEvent.
 
         * **Free ``new_id``:** ``SET old.id = new_id`` (relationships stay on the
-          same node). ``ProvEvent.subject_id`` is rewritten to match.
+          same node). ``Assertion.subject_id`` / ``object_id`` and
+          ``ProvEvent.subject_id`` are rewritten to match.
         * **``new_id`` already exists (ER merge):** rebind every incident
-          relationship onto the survivor, re-point ``:ABOUT`` / ``subject_id``
-          on ``:ProvEvent``, coalesce display props onto survivor, then
+          relationship onto the survivor, re-point Assertion SUBJECT/OBJECT
+          edges + denormalized ids, re-point ``:ABOUT`` / ``subject_id`` on
+          ``:ProvEvent``, coalesce display props onto survivor, then
           ``DETACH DELETE`` the loser — never drop edges with the node.
         """
         require_entity_write_identity({"id": old_id})
@@ -383,6 +385,7 @@ class Neo4jGraphSession:
                 {"old_id": old_id, "new_id": new_id},
             )
             await self._rebind_prov_subject_ids(old_id, new_id)
+            await self._rebind_assertion_ids(old_id, new_id)
             return
 
         # Target exists — rebind endpoints onto survivor, then drop loser.
@@ -412,6 +415,9 @@ class Neo4jGraphSession:
             # Prefer original attr leaf when present so sanitize_rel_type is stable.
             attr_leaf = attr if attr else rel_type.lower()
             await self.write_merge_rel(new_start, new_end, rel_type, attr_leaf)
+
+        # Re-point Assertions BEFORE DETACH DELETE (SUBJECT/OBJECT + denorm ids).
+        await self._rebind_assertions_merge_into(old_id, new_id)
 
         # Re-point :ABOUT edges and subject_id before DETACH DELETE removes them.
         await self.execute_write(
@@ -477,6 +483,59 @@ class Neo4jGraphSession:
             "WHERE c.entity_id = $old_id\n"
             "SET c.entity_id = $new_id\n"
             "RETURN count(c) AS n",
+            {"old_id": old_id, "new_id": new_id},
+        )
+
+    async def _rebind_assertion_ids(self, old_id: str, new_id: str) -> None:
+        """Free-id path: rewrite denormalized Assertion subject_id / object_id.
+
+        SUBJECT/OBJECT edges stay attached to the re-keyed Entity node; only
+        the denormalized properties need updating.
+        """
+        await self.execute_write(
+            "MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg})\n"
+            "WHERE a.subject_id = $old_id\n"
+            "SET a.subject_id = $new_id\n"
+            "RETURN count(a) AS n",
+            {"old_id": old_id, "new_id": new_id},
+        )
+        await self.execute_write(
+            "MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg})\n"
+            "WHERE a.object_id = $old_id\n"
+            "SET a.object_id = $new_id\n"
+            "RETURN count(a) AS n",
+            {"old_id": old_id, "new_id": new_id},
+        )
+
+    async def _rebind_assertions_merge_into(self, old_id: str, new_id: str) -> None:
+        """ER merge: move Assertion SUBJECT/OBJECT links + denorm ids to survivor.
+
+        Runs before DETACH DELETE of the loser so Assertions are not orphaned.
+        """
+        # SUBJECT side: denorm + edge
+        await self.execute_write(
+            "MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg})\n"
+            "WHERE a.subject_id = $old_id\n"
+            "MATCH (neu:Entity {tenant_id: $tenant_id, kg: $kg, id: $new_id})\n"
+            "OPTIONAL MATCH (a)-[old_s:SUBJECT]->"
+            "(:Entity {tenant_id: $tenant_id, kg: $kg, id: $old_id})\n"
+            "DELETE old_s\n"
+            "SET a.subject_id = $new_id\n"
+            "MERGE (a)-[:SUBJECT]->(neu)\n"
+            "RETURN count(a) AS n",
+            {"old_id": old_id, "new_id": new_id},
+        )
+        # OBJECT side (object properties + reverse refs)
+        await self.execute_write(
+            "MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg})\n"
+            "WHERE a.object_id = $old_id\n"
+            "MATCH (neu:Entity {tenant_id: $tenant_id, kg: $kg, id: $new_id})\n"
+            "OPTIONAL MATCH (a)-[old_o:OBJECT]->"
+            "(:Entity {tenant_id: $tenant_id, kg: $kg, id: $old_id})\n"
+            "DELETE old_o\n"
+            "SET a.object_id = $new_id\n"
+            "MERGE (a)-[:OBJECT]->(neu)\n"
+            "RETURN count(a) AS n",
             {"old_id": old_id, "new_id": new_id},
         )
 

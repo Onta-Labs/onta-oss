@@ -538,19 +538,34 @@ async def _insert_facts_store(
     fact_list: list[Fact] = list(facts) if facts else []
     if instance_triples:
         fact_list.extend(triples_to_facts(instance_triples))
+    # ADR 0013: fold attr_meta enrichment companions onto Assertion provenance
+    # (source_url / verified_at / provenance) BEFORE apply_facts. Neptune keeps
+    # the RDF companions as instance triples; the store path does not reify them
+    # as domain Facts (classify_triple skips attr_meta).
+    citations: list = []
+    if instance_triples:
+        try:
+            citations = pg_ops.parse_attr_meta_citations(instance_triples)
+            if citations:
+                fact_list = pg_ops.fold_attr_citations_onto_facts(fact_list, citations)
+        except Exception:  # noqa: BLE001 — fold is best-effort
+            logger.warning(
+                "insert_facts_store_attr_citation_fold_failed",
+                instance_graph=instance_graph,
+                exc_info=True,
+            )
+            citations = []
     if fact_list:
         await pg_ops.apply_facts(
             session,
             fact_list,
             provenance_enabled=_provenance_enabled(store_path=True),
         )
-    # Attr_meta display companions → :AttrCitation (model §4.2). Best-effort;
-    # domain Facts are written above; citations ride the same insert call.
-    if instance_triples:
+    # Residual :AttrCitation nodes for citation-only attrs (no domain Fact in
+    # this batch) or multi-value slots — secondary to Assertion provenance.
+    if citations:
         try:
-            citations = pg_ops.parse_attr_meta_citations(instance_triples)
-            if citations:
-                await pg_ops.apply_attr_citations(session, citations)
+            await pg_ops.apply_attr_citations(session, citations)
         except Exception:  # noqa: BLE001 — companions never fail the write
             logger.warning(
                 "insert_facts_store_attr_citation_failed",
