@@ -91,28 +91,28 @@ NAMES, is not available in a background worker). Verdicts are written via the
 canonical ``upsert_attribute_text_kind`` so they are durable and visible to
 every other consumer.
 
-Env knobs (all raw environment variables, the ``COGRAPH_*`` convention used by
+Env knobs (all raw environment variables, the ``INFONA_*`` convention used by
 ``kg_writer`` / ``text_markers`` / the schedule runner; read per call so tests
 and ops can tune without re-import):
 
-* ``COGRAPH_SEMANTIC_INDEX_ENABLED`` — master gate for the write hook AND this
+* ``INFONA_SEMANTIC_INDEX_ENABLED`` — master gate for the write hook AND this
   reconciler (default **false**: cost/rollout control — embedding spend and
   index growth are opt-in).
-* ``COGRAPH_SEMANTIC_EMBED_FILL_INTERVAL_S`` — embed-fill cadence (default 300).
-* ``COGRAPH_SEMANTIC_RECONCILE_INTERVAL_S`` — per-KG reconcile cadence
+* ``INFONA_SEMANTIC_EMBED_FILL_INTERVAL_S`` — embed-fill cadence (default 300).
+* ``INFONA_SEMANTIC_RECONCILE_INTERVAL_S`` — per-KG reconcile cadence
   (default 3600).
-* ``COGRAPH_SEMANTIC_EMBED_MAX_ATTEMPTS`` — dead-letter cutoff for embed
+* ``INFONA_SEMANTIC_EMBED_MAX_ATTEMPTS`` — dead-letter cutoff for embed
   failures (default 5).
-* ``COGRAPH_SEMANTIC_SCAN_PAGE_SIZE`` — Neptune scan page size (default 10000).
-* ``COGRAPH_SEMANTIC_IDENTITY_INDEX`` — the ONTA-421 identity arm (default
+* ``INFONA_SEMANTIC_SCAN_PAGE_SIZE`` — Neptune scan page size (default 10000).
+* ``INFONA_SEMANTIC_IDENTITY_INDEX`` — the ONTA-421 identity arm (default
   **on**, read in ``semantic/extract.py``; listed here for one-stop docs).
   Setting it to ``0`` makes the NEXT reconcile of every KG treat every identity
   doc as a ghost and batch-delete it — self-healing when flipped back, but a
   mass delete an operator should expect rather than discover.
-* ``COGRAPH_SEMANTIC_ENSURE_MEMO_TTL_S`` — TTL of the write hook's
+* ``INFONA_SEMANTIC_ENSURE_MEMO_TTL_S`` — TTL of the write hook's
   ensure-schedule memo (default 600; see
   :func:`ensure_reconcile_schedule_from_hook`).
-* ``COGRAPH_SEMANTIC_UPSERT_TIMEOUT_S`` — the WRITE HOOK's timeout (read in
+* ``INFONA_SEMANTIC_UPSERT_TIMEOUT_S`` — the WRITE HOOK's timeout (read in
   ``graph/kg_writer.py``, listed here for one-stop docs).
 
 Vendor-neutral by construction (OSS boundary): no cloud identifiers, ARNs, or
@@ -149,7 +149,7 @@ from infona_client.semantic.protocol import (
 )
 from infona_client.semantic.registry import get_semantic_index
 
-logger = structlog.stdlib.get_logger("cograph.semantic.reconciler")
+logger = structlog.stdlib.get_logger("infona.semantic.reconciler")
 
 Triple = tuple[str, str, str]
 
@@ -172,7 +172,7 @@ EMBED_FILL_SCHEDULE_ID = "semantic-embed-fill"
 _SYSTEM_TENANT = "_system"
 _GLOBAL_KG = "*"
 
-#: ``https://graph.onta.sh/types/{Type}/attrs/{name}`` — the only predicate
+#: ``https://graph.infona.ai/types/{Type}/attrs/{name}`` — the only predicate
 #: shape the candidacy heuristic may classify (system predicates like
 #: ``rdfs:label`` / ``onto/ingested_at`` never carry a textKind verdict).
 _ATTR_URI_RE = re.compile(
@@ -217,7 +217,7 @@ def semantic_index_enabled() -> bool:
     deployment opts in explicitly. Gates the ``kg_writer`` hook, both
     reconciler duties, the schedule seeding, and the reindex route.
     """
-    raw = os.environ.get("COGRAPH_SEMANTIC_INDEX_ENABLED", "").strip().lower()
+    raw = os.environ.get("INFONA_SEMANTIC_INDEX_ENABLED", "").strip().lower()
     return raw in ("1", "true", "yes", "on")
 
 
@@ -233,23 +233,23 @@ def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
 
 
 def embed_fill_interval_s() -> int:
-    return _int_env("COGRAPH_SEMANTIC_EMBED_FILL_INTERVAL_S", 300)
+    return _int_env("INFONA_SEMANTIC_EMBED_FILL_INTERVAL_S", 300)
 
 
 def reconcile_interval_s() -> int:
-    return _int_env("COGRAPH_SEMANTIC_RECONCILE_INTERVAL_S", 3600)
+    return _int_env("INFONA_SEMANTIC_RECONCILE_INTERVAL_S", 3600)
 
 
 def embed_max_attempts() -> int:
-    return _int_env("COGRAPH_SEMANTIC_EMBED_MAX_ATTEMPTS", 5)
+    return _int_env("INFONA_SEMANTIC_EMBED_MAX_ATTEMPTS", 5)
 
 
 def _scan_page_size() -> int:
-    return _int_env("COGRAPH_SEMANTIC_SCAN_PAGE_SIZE", 10000)
+    return _int_env("INFONA_SEMANTIC_SCAN_PAGE_SIZE", 10000)
 
 
 def _ensure_memo_ttl_s() -> int:
-    return _int_env("COGRAPH_SEMANTIC_ENSURE_MEMO_TTL_S", 600)
+    return _int_env("INFONA_SEMANTIC_ENSURE_MEMO_TTL_S", 600)
 
 
 def _now() -> datetime:
@@ -364,7 +364,7 @@ async def remove_reconcile_schedule(store: Any, tenant_id: str, kg_name: str) ->
 # the runner's: Postgres when a DSN is configured — same table, so rows are
 # shared — else the process-wide in-memory singleton) plus a TTL memo so the
 # hook pays the ensure round-trip once per (tenant, kg) per TTL window
-# (COGRAPH_SEMANTIC_ENSURE_MEMO_TTL_S, default 600s), not once per write.
+# (INFONA_SEMANTIC_ENSURE_MEMO_TTL_S, default 600s), not once per write.
 #
 # Why a TTL and not a process-lifetime memo: the schedules CRUD routes can
 # DELETE the auto-created reconcile row without this module ever hearing about
@@ -388,10 +388,10 @@ async def ensure_reconcile_schedule_from_hook(tenant_id: str, kg_name: str) -> N
     retries).
 
     **Deleting the auto-created schedule row is NOT a durable opt-out.** As
-    long as the feature gate (``COGRAPH_SEMANTIC_INDEX_ENABLED``) is on and the
+    long as the feature gate (``INFONA_SEMANTIC_INDEX_ENABLED``) is on and the
     KG keeps receiving writes, this hook resurrects a deleted
     ``semantic-reconcile:{tenant}:{kg}`` row within one memo TTL
-    (``COGRAPH_SEMANTIC_ENSURE_MEMO_TTL_S``, default 600s) — by design, so a
+    (``INFONA_SEMANTIC_ENSURE_MEMO_TTL_S``, default 600s) — by design, so a
     stray CRUD delete can't silently disable correctness maintenance for a
     live KG. The durable off-switch is the env gate itself (flip it off and
     stale rows become logged no-ops — see :func:`dispatch_semantic_schedule`).
@@ -1095,7 +1095,7 @@ async def reconcile_kg(
             reason=(
                 "the Neptune scan hit the page cap; the expected set is "
                 "partial, so ghost deletion is skipped this run (raise "
-                "COGRAPH_SEMANTIC_SCAN_PAGE_SIZE for KGs this large)"
+                "INFONA_SEMANTIC_SCAN_PAGE_SIZE for KGs this large)"
             ),
         )
     else:

@@ -48,7 +48,7 @@ from infona_client.resolver.verdict_cache import JsonVerdictCache
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
 PHYS_URI = entity_uri("Physician", "p1")
-LOCATED_IN = "https://graph.onta.sh/onto/located_in"
+LOCATED_IN = "https://graph.infona.ai/onto/located_in"
 
 # Plan attrs from the dogfood: {name, city, website, address}.
 _PLAN = {"Institution": ["name", "city", "website", "address"]}
@@ -249,7 +249,7 @@ async def _drive_promotion(tmp_path, value: str, *, city_exists: bool):
         resolved_type="Physician",
         entity_uri=PHYS_URI,
         is_duplicate=False,
-        graph_uri="https://omnix.dev/graphs/test",
+        graph_uri="https://graph.infona.ai/graphs/test",
         existing_types=existing_types,
         existing_attrs=existing_attrs,
         source="test",

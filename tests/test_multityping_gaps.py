@@ -48,7 +48,7 @@ def resolver(mock_neptune):
     with patch.dict("os.environ", {
         "ANTHROPIC_API_KEY": "test-key",
         "OPENROUTER_API_KEY": "test-or-key",
-        "COGRAPH_ER_ENABLED": "0",
+        "INFONA_ER_ENABLED": "0",
     }):
         return SchemaResolver(
             neptune=mock_neptune,
@@ -131,7 +131,7 @@ async def test_also_types_emit_extra_rdf_type(resolver):
     entity = ExtractedEntity(type_name="Employee", id="emp-1")
     collected: list[tuple[str, str, str]] = []
     result = IngestResult(entities_extracted=1)
-    uri = "https://graph.onta.sh/entities/Employee/emp-1"
+    uri = "https://graph.infona.ai/entities/Employee/emp-1"
 
     await resolver._resolve_and_insert_entity(
         entity, "Employee", uri, is_duplicate=False,
@@ -182,7 +182,7 @@ async def test_single_type_unchanged_no_extra_triples(resolver):
     entity = ExtractedEntity(type_name="Guest", id="g9")
     collected: list[tuple[str, str, str]] = []
     result = IngestResult(entities_extracted=1)
-    uri = "https://graph.onta.sh/entities/Guest/g9"
+    uri = "https://graph.infona.ai/entities/Guest/g9"
 
     await resolver._resolve_and_insert_entity(
         entity, "Guest", uri, is_duplicate=False,
@@ -199,7 +199,7 @@ async def test_single_type_unchanged_no_extra_triples(resolver):
 
 
 CLOSURE = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>/<http://www.w3.org/2000/01/rdf-schema#subClassOf>*"
-PERSON = "<https://graph.onta.sh/types/Person>"
+PERSON = "<https://graph.infona.ai/types/Person>"
 
 
 @pytest.mark.parametrize("query_fragment", [
@@ -224,5 +224,5 @@ def test_closure_rewrite_is_idempotent():
 def test_closure_rewrite_leaves_non_type_triples_alone():
     from infona_client.graph.ontology_queries import rewrite_type_predicate_to_closure
     # A normal predicate whose object is a types URI must NOT be rewritten.
-    q = "SELECT ?p WHERE { ?p <https://graph.onta.sh/onto/works_at> ?c }"
+    q = "SELECT ?p WHERE { ?p <https://graph.infona.ai/onto/works_at> ?c }"
     assert rewrite_type_predicate_to_closure(q) == q

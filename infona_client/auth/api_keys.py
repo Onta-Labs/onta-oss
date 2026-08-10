@@ -99,7 +99,7 @@ def register_external_verifier(verifier: Optional[ExternalVerifier]) -> None:
 
     Downstream deployments can use this to plug in a third-party auth
     provider (Clerk, WorkOS, a custom keystore, etc.) without forking
-    omnix-oss. Pass None to clear.
+    infona-oss. Pass None to clear.
     """
     global _external_verifier
     _external_verifier = verifier
@@ -159,7 +159,7 @@ def _resolve_allowed(
         detail=(
             f"API key does not grant access to tenant '{requested}'. "
             f"This key can access: {allowed_hint}. "
-            f"Set ONTA_TENANT to one of those workspace ids "
+            f"Set INFONA_TENANT to one of those workspace ids "
             f"(or create an unscoped key for all workspaces)."
         ),
     )

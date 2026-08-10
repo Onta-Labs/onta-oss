@@ -1,7 +1,7 @@
 {
   "version": "2.0",
   "frozen_at": "2026-04-15T07:52:11Z",
-  "frozen_by": "moeen@cograph.cloud",
+  "frozen_by": "moeen@infona.cloud",
   "manifest_sha256": "f8f4a7fcf376853fd7ebd717d46f42fda650c841534213f33c9cfaf6ba2880dd",
   "llm": {
     "model": "google/gemini-3-flash-preview",
@@ -2223,7 +2223,7 @@
         "rel_overlap": 0,
         "max_jaccard_vs_training": 0.0,
         "verdict": "PASS",
-        "notes": "Ingested 2026-04-14 via scripts/ingest_multitable.py (native multi-table, Path B). State=TX slice. KG-scoped URIs under https://omnix.dev/holdout-v2/<kg>/... ensure zero overlap with training ontology."
+        "notes": "Ingested 2026-04-14 via scripts/ingest_multitable.py (native multi-table, Path B). State=TX slice. KG-scoped URIs under https://graph.infona.ai/holdout-v2/<kg>/... ensure zero overlap with training ontology."
       },
       "schema_size": {
         "entity_types": 7,

@@ -28,8 +28,8 @@ import pytest
 from infona_client.models.query import FactCitation
 from infona_client.nlp.answer_meta import build_citations, build_coverage_caveat
 
-ACME = "https://graph.onta.sh/entities/Company/acme"
-HAS_CEO = "https://graph.onta.sh/onto/hasCEO"
+ACME = "https://graph.infona.ai/entities/Company/acme"
+HAS_CEO = "https://graph.infona.ai/onto/hasCEO"
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 
 
@@ -105,7 +105,7 @@ async def test_build_citations_unit_carries_verdict_confidence_recency():
         {"s": ACME, "p": HAS_CEO, "o": "Bob"},
     ]
 
-    citations = await build_citations(neptune, "https://graph.onta.sh/graphs/t/kg/corp", variables, bindings)
+    citations = await build_citations(neptune, "https://graph.infona.ai/graphs/t/kg/corp", variables, bindings)
     assert len(citations) == 2
     by_obj = {c.object: c for c in citations}
 
@@ -153,7 +153,7 @@ async def test_build_citations_skips_non_keyable_and_internal_rows():
     # rdf:type is keyable-shaped but skipped as bookkeeping.
     out = await build_citations(
         _Boom(), "g", ["s", "p", "o"],
-        [{"s": ACME, "p": RDF_TYPE, "o": "https://graph.onta.sh/types/Company"}],
+        [{"s": ACME, "p": RDF_TYPE, "o": "https://graph.infona.ai/types/Company"}],
     )
     assert out == []
 
@@ -235,7 +235,7 @@ async def _seed_two_ceos(n: PyoxiNeptune) -> None:
     """acme hasCEO Bob (current/open) + hasCEO Alice (superseded/closed), each with
     provenance — exactly how a supersede would leave the graph."""
     instance = [
-        (ACME, RDF_TYPE, "https://graph.onta.sh/types/Company"),
+        (ACME, RDF_TYPE, "https://graph.infona.ai/types/Company"),
         (ACME, HAS_CEO, "Bob"),
         (ACME, HAS_CEO, "Alice"),
     ]
@@ -311,7 +311,7 @@ async def test_control_current_only_fact_is_current_and_no_stale_caveat():
     await insert_facts(
         n, INSTANCE_GRAPH,
         [
-            (ACME, RDF_TYPE, "https://graph.onta.sh/types/Company"),
+            (ACME, RDF_TYPE, "https://graph.infona.ai/types/Company"),
             (ACME, HAS_CEO, "Bob"),
         ],
         validity_triples=build_open_interval_triples(
@@ -345,7 +345,7 @@ async def test_fact_with_no_validity_node_is_current_by_convention():
     await insert_facts(
         n, INSTANCE_GRAPH,
         [
-            (ACME, RDF_TYPE, "https://graph.onta.sh/types/Company"),
+            (ACME, RDF_TYPE, "https://graph.infona.ai/types/Company"),
             (ACME, HAS_CEO, "Bob"),
         ],
     )

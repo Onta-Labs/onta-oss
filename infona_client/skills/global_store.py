@@ -26,7 +26,7 @@ durable mirror (this store's in-process write-through cache) so both
 file-seeded and store-authored Enhanced skills appear to sync consumers
 (operator Global Ontology browser) without making that path async.
 
-Boundary: OSS. Pure ``infona_client.*`` / stdlib — no ``from cograph.*``.
+Boundary: OSS. Pure ``infona_client.*`` / stdlib — no ``from infona.*``.
 Enhanced *content* is premium; this *mechanism* is OSS.
 """
 

@@ -11,7 +11,7 @@
         "10000"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?stormEvent) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?stormEvent) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -107,7 +107,7 @@
         "Heat"
       ],
       "full_result_count": 45,
-      "gold_sparql": "SELECT DISTINCT ?eventTypeLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?eventType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/EventType> .\n  ?eventType <http://www.w3.org/2000/01/rdf-schema#label> ?eventTypeLabel .\n}",
+      "gold_sparql": "SELECT DISTINCT ?eventTypeLabel FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?eventType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/EventType> .\n  ?eventType <http://www.w3.org/2000/01/rdf-schema#label> ?eventTypeLabel .\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -159,7 +159,7 @@
         "64"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?state) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/State> .\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?state) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/State> .\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -222,7 +222,7 @@
         "June"
       ],
       "full_result_count": 12,
-      "gold_sparql": "SELECT DISTINCT ?monthName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?month <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/Month> .\n  ?month <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/month_name> ?monthName .\n}",
+      "gold_sparql": "SELECT DISTINCT ?monthName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?month <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/Month> .\n  ?month <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/month_name> ?monthName .\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -274,7 +274,7 @@
         "7"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(?event) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?event <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?event <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/deaths_direct> ?deaths_direct .\n  FILTER (xsd:integer(?deaths_direct) > 5)\n}",
+      "gold_sparql": "SELECT (COUNT(?event) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?event <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?event <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/deaths_direct> ?deaths_direct .\n  FILTER (xsd:integer(?deaths_direct) > 5)\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -326,7 +326,7 @@
         "33"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(?event) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?event <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?event <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/damage_crops> ?damage_crops .\n  FILTER (xsd:integer(?damage_crops) > 100000)\n}",
+      "gold_sparql": "SELECT (COUNT(?event) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?event <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?event <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/damage_crops> ?damage_crops .\n  FILTER (xsd:integer(?damage_crops) > 100000)\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -378,7 +378,7 @@
         "7"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(?stormEvent) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?stormEvent <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/deaths_direct> ?deaths_direct .\n  FILTER (xsd:integer(?deaths_direct) > 5)\n}",
+      "gold_sparql": "SELECT (COUNT(?stormEvent) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?stormEvent <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/deaths_direct> ?deaths_direct .\n  FILTER (xsd:integer(?deaths_direct) > 5)\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -430,7 +430,7 @@
         "3590010"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (SUM(xsd:integer(?damage_property)) AS ?total_damage) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?stormEvent <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/source> ?source .\n  ?stormEvent <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/damage_property> ?damage_property .\n  FILTER (?source = \"Newspaper\")\n}",
+      "gold_sparql": "SELECT (SUM(xsd:integer(?damage_property)) AS ?total_damage) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?stormEvent <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/source> ?source .\n  ?stormEvent <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/damage_property> ?damage_property .\n  FILTER (?source = \"Newspaper\")\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -545,7 +545,7 @@
         "Virgin Islands | 1"
       ],
       "full_result_count": 64,
-      "gold_sparql": "SELECT ?stateName (COUNT(?stormEvent) AS ?numberOfStormEvents) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?stormEvent <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/event_in_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/state_name> ?stateName .\n} GROUP BY ?stateName ORDER BY DESC(?numberOfStormEvents)",
+      "gold_sparql": "SELECT ?stateName (COUNT(?stormEvent) AS ?numberOfStormEvents) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?stormEvent <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/event_in_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/State> .\n  ?state <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/state_name> ?stateName .\n} GROUP BY ?stateName ORDER BY DESC(?numberOfStormEvents)",
       "per_seed": [
         {
           "seed": 1,
@@ -610,7 +610,7 @@
         "Strong Wind"
       ],
       "full_result_count": 14,
-      "gold_sparql": "SELECT DISTINCT ?eventTypeLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?stormEvent <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/event_of_type> ?eventType .\n  ?eventType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/EventType> .\n  ?eventType <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/event_type> ?eventTypeLabel .\n  ?stormEvent <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/deaths_direct> ?deathsDirect .\n  FILTER (xsd:integer(?deathsDirect) > 0)\n}",
+      "gold_sparql": "SELECT DISTINCT ?eventTypeLabel FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?stormEvent <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/event_of_type> ?eventType .\n  ?eventType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/EventType> .\n  ?eventType <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/event_type> ?eventTypeLabel .\n  ?stormEvent <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/deaths_direct> ?deathsDirect .\n  FILTER (xsd:integer(?deathsDirect) > 0)\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -673,7 +673,7 @@
         "November | 12"
       ],
       "full_result_count": 12,
-      "gold_sparql": "SELECT ?monthName (COUNT(?stormEvent) AS ?totalStormEvents) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?stormEvent <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/event_in_month> ?month .\n  ?month <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/Month> .\n  ?month <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/month_name> ?monthName .\n  ?stormEvent <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/damage_property> ?damageProperty .\n  FILTER (xsd:integer(?damageProperty) > 1000)\n} GROUP BY ?monthName ORDER BY DESC(?totalStormEvents)",
+      "gold_sparql": "SELECT ?monthName (COUNT(?stormEvent) AS ?totalStormEvents) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?stormEvent <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/event_in_month> ?month .\n  ?month <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/type/Month> .\n  ?month <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/month_name> ?monthName .\n  ?stormEvent <https://graph.infona.ai/holdout-v2/holdout-v2-noaa-storm-events/pred/damage_property> ?damageProperty .\n  FILTER (xsd:integer(?damageProperty) > 1000)\n} GROUP BY ?monthName ORDER BY DESC(?totalStormEvents)",
       "per_seed": [
         {
           "seed": 1,

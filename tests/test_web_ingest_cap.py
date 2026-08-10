@@ -720,14 +720,14 @@ def test_default_cap_is_env_overridable(monkeypatch):
     deployment that also raises _RUN_TIMEOUT_S and wants the old 200)."""
     import importlib
 
-    monkeypatch.setenv("COGRAPH_DISCOVERY_DEFAULT_CAP", "37")
+    monkeypatch.setenv("INFONA_DISCOVERY_DEFAULT_CAP", "37")
     try:
         importlib.reload(web_ingest_cap)
         assert web_ingest_cap._DEFAULT_PLAN_CAP == 37
     finally:
         # Restore the module to its env-free default so later tests see the real
         # constant (reload rebinds the module-level symbol).
-        monkeypatch.delenv("COGRAPH_DISCOVERY_DEFAULT_CAP", raising=False)
+        monkeypatch.delenv("INFONA_DISCOVERY_DEFAULT_CAP", raising=False)
         importlib.reload(web_ingest_cap)
 
 
@@ -1095,7 +1095,7 @@ async def test_run_logs_resolved_write_target(monkeypatch):
         await cap.execute(_ctx_with_store(store), step)
         await spawned["task"]
 
-    want_graph = "https://graph.onta.sh/graphs/demo-tenant/kg/models"
+    want_graph = "https://graph.infona.ai/graphs/demo-tenant/kg/models"
     start = [e for e in logs if e.get("event") == "web_ingest_run_start"]
     assert start, "run must log its write target up front"
     assert start[0]["kg_name"] == "models"

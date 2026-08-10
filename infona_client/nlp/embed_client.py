@@ -26,13 +26,13 @@ from infona_client.offline import assert_online_url
 def _embeddings_url() -> str:
     """OpenAI-compatible embeddings endpoint.
 
-    Honors ``OMNIX_EMBED_BASE_URL`` / ``OMNIX_LLM_BASE_URL`` so self-hosted
+    Honors ``INFONA_EMBED_BASE_URL`` / ``INFONA_LLM_BASE_URL`` so self-hosted
     stacks (OSS dogfood S8) can keep embeddings on-prem with chat.
     """
     base = (
-        os.environ.get("OMNIX_EMBED_BASE_URL")
-        or os.environ.get("OMNIX_LLM_BASE_URL")
-        or os.environ.get("OMNIX_OPENROUTER_BASE_URL")
+        os.environ.get("INFONA_EMBED_BASE_URL")
+        or os.environ.get("INFONA_LLM_BASE_URL")
+        or os.environ.get("INFONA_OPENROUTER_BASE_URL")
         or "https://openrouter.ai/api/v1"
     ).rstrip("/")
     return f"{base}/embeddings"
@@ -40,7 +40,7 @@ def _embeddings_url() -> str:
 
 OPENROUTER_EMBEDDINGS_URL = _embeddings_url()  # back-compat name; re-read at call time
 EMBEDDING_MODEL = os.environ.get(
-    "OMNIX_EMBED_MODEL", "openai/text-embedding-3-small"
+    "INFONA_EMBED_MODEL", "openai/text-embedding-3-small"
 )
 EMBEDDING_DIM = 1536
 EMBEDDING_BATCH_SIZE = 100
@@ -65,8 +65,8 @@ async def embed_texts(
     """
     all_embeddings: list[list[float]] = []
     embeddings_url = _embeddings_url()
-    model = os.environ.get("OMNIX_EMBED_MODEL", EMBEDDING_MODEL)
-    # Fail closed under OMNIX_OFFLINE=1 unless the embed host is allowlisted
+    model = os.environ.get("INFONA_EMBED_MODEL", EMBEDDING_MODEL)
+    # Fail closed under INFONA_OFFLINE=1 unless the embed host is allowlisted
     # (localhost by default). Cloud openrouter.ai is blocked.
     assert_online_url(embeddings_url, purpose="embedding API")
 

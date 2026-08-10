@@ -48,7 +48,7 @@ def test_companions_mint_on_attr_meta_namespace():
         f"{ATTR_META_NS}Widget/sku/verified_at",
     }
     # No companion ever lands on the attribute namespace.
-    assert not any(p.startswith("https://graph.onta.sh/types/") for p in preds)
+    assert not any(p.startswith("https://graph.infona.ai/types/") for p in preds)
 
 
 def test_attr_meta_namespace_is_internal_everywhere():
@@ -58,12 +58,12 @@ def test_attr_meta_namespace_is_internal_everywhere():
     assert is_internal_predicate(p) is True
     assert is_internal_predicate(p, is_relationship=True) is True
     # Sanity: a real attribute predicate is NOT internal.
-    assert is_internal_predicate("https://graph.onta.sh/types/Widget/attrs/sku") is False
+    assert is_internal_predicate("https://graph.infona.ai/types/Widget/attrs/sku") is False
 
 
 def test_legacy_helper_still_builds_old_shape():
     assert legacy_attr_companion_uri("Widget", "sku", "verified_at") == (
-        "https://graph.onta.sh/types/Widget/attrs/sku_verified_at"
+        "https://graph.infona.ai/types/Widget/attrs/sku_verified_at"
     )
 
 
@@ -95,8 +95,8 @@ def test_companion_leaves_handles_chained_source_url():
 def test_assemble_summary_drops_legacy_companions_keeps_real_fields():
     from infona_client.api.routes.explore import _assemble_summary
 
-    attrs = "https://graph.onta.sh/types/Widget/attrs/"
-    onto = "https://graph.onta.sh/onto/"
+    attrs = "https://graph.infona.ai/types/Widget/attrs/"
+    onto = "https://graph.infona.ai/onto/"
     pred_records = [
         {"p": f"{attrs}sku", "cnt": 10, "rel": 0},
         {"p": f"{attrs}sku_provenance", "cnt": 10, "rel": 0},
@@ -148,14 +148,14 @@ def test_applied_attribute_values_excludes_companions():
 def test_plan_migration_maps_only_base_present_companions():
     from infona_client.graph.attr_meta_migration import plan_migration
 
-    attrs = "https://graph.onta.sh/types/Gadget/attrs/"
+    attrs = "https://graph.infona.ai/types/Gadget/attrs/"
     preds = [
         f"{attrs}material",
         f"{attrs}material_provenance",
         f"{attrs}material_verified_at",
         f"{attrs}orphan_source_url",      # base absent → stays
         f"{attrs}weight_kg",              # plain attr → stays
-        "https://graph.onta.sh/onto/city", # relationship pred → not attrs-shaped
+        "https://graph.infona.ai/onto/city", # relationship pred → not attrs-shaped
     ]
     mapping = plan_migration(preds)
     assert set(mapping) == {
@@ -177,7 +177,7 @@ def test_predicate_rewrite_preserves_typed_datetime_on_real_engine():
     from infona_client.graph.queries import rewrite_predicate_update
 
     store = Store()
-    graph = "https://graph.onta.sh/graphs/test-tenant/kg/kg"
+    graph = "https://graph.infona.ai/graphs/test-tenant/kg/kg"
     old = legacy_attr_companion_uri("Widget", "sku", "verified_at")
     new = attr_provenance_companion_uri("Widget", "sku", "verified_at")
     store.update(
@@ -242,7 +242,7 @@ def test_migrate_kg_end_to_end_on_real_engine(monkeypatch):
     tenant, kg = "test-tenant", "kg"
     n = PyoxiNeptune()
     kgg, onto = kg_graph_uri(tenant, kg), tenant_graph_uri(tenant)
-    attrs = "https://graph.onta.sh/types/Widget/attrs/"
+    attrs = "https://graph.infona.ai/types/Widget/attrs/"
     rdf = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 
     async def run():
@@ -304,10 +304,10 @@ def test_delete_attribute_declaration_targets_schema_subject_only():
     from infona_client.graph.ontology_queries import delete_attribute_declaration
 
     sparql = delete_attribute_declaration(
-        "https://graph.onta.sh/graphs/tenant", "Widget", "sku_verified_at"
+        "https://graph.infona.ai/graphs/tenant", "Widget", "sku_verified_at"
     )
-    assert "https://graph.onta.sh/types/Widget/attrs/sku_verified_at" in sparql
-    assert sparql.startswith("WITH <https://graph.onta.sh/graphs/tenant>")
+    assert "https://graph.infona.ai/types/Widget/attrs/sku_verified_at" in sparql
+    assert sparql.startswith("WITH <https://graph.infona.ai/graphs/tenant>")
     assert "DELETE" in sparql and "WHERE" in sparql
 
 
@@ -337,11 +337,11 @@ def test_uri_repair_never_rewrites_constructed_attr_meta_predicates():
     # An ontology summary carrying tempting fuzzy-match bait, including a legacy
     # declared companion from an un-migrated KG.
     summary = (
-        "Type: Physician — URI: <https://graph.onta.sh/types/Physician>\n"
-        "  - bio (string) URI: <https://graph.onta.sh/types/Physician/attrs/bio>\n"
-        "  - fax (string) URI: <https://graph.onta.sh/types/Physician/attrs/fax>\n"
+        "Type: Physician — URI: <https://graph.infona.ai/types/Physician>\n"
+        "  - bio (string) URI: <https://graph.infona.ai/types/Physician/attrs/bio>\n"
+        "  - fax (string) URI: <https://graph.infona.ai/types/Physician/attrs/fax>\n"
         "  - fax_verified_at (datetime) URI: "
-        "<https://graph.onta.sh/types/Physician/attrs/fax_verified_at>\n"
+        "<https://graph.infona.ai/types/Physician/attrs/fax_verified_at>\n"
     )
     sparql = (
         f"SELECT ?e FROM <urn:g> WHERE {{ ?e <{stamp}> ?ts . "
@@ -350,6 +350,6 @@ def test_uri_repair_never_rewrites_constructed_attr_meta_predicates():
     fixed = NLQueryPipeline._fix_attribute_uris(sparql, summary)
     assert f"<{stamp}>" in fixed, fixed
     # And a genuinely-wrong attrs/ URI is still repaired (the net stays).
-    typo = sparql.replace(f"<{stamp}>", "<https://graph.onta.sh/types/Physician/attrs/fx>")
+    typo = sparql.replace(f"<{stamp}>", "<https://graph.infona.ai/types/Physician/attrs/fx>")
     refixed = NLQueryPipeline._fix_attribute_uris(typo, summary)
     assert "attrs/fax>" in refixed, refixed

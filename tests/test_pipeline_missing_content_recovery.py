@@ -288,7 +288,7 @@ async def test_ask_recovers_from_length_truncation_with_bigger_budget():
     ])
     embed, fetch, generate = _ask_ctx(p, gen)
     with embed, fetch, generate:
-        result = await p.ask("hard reasoning question zzqx", "https://graph.onta.sh/graphs/t1")
+        result = await p.ask("hard reasoning question zzqx", "https://graph.infona.ai/graphs/t1")
 
     assert "Could not answer" not in result.answer
     assert "widget-omega" in result.answer
@@ -320,7 +320,7 @@ async def test_ask_falls_back_to_non_reasoning_provider_after_two_truncations():
     ])
     embed, fetch, generate = _ask_ctx(p, gen)
     with embed, fetch, generate:
-        result = await p.ask("very hard reasoning question", "https://graph.onta.sh/graphs/t1")
+        result = await p.ask("very hard reasoning question", "https://graph.infona.ai/graphs/t1")
 
     assert "Could not answer" not in result.answer
     assert "row-fallback" in result.answer
@@ -349,7 +349,7 @@ async def test_ask_empty_without_length_does_not_bump_budget():
     ])
     embed, fetch, generate = _ask_ctx(p, gen)
     with embed, fetch, generate:
-        result = await p.ask("q", "https://graph.onta.sh/graphs/t1")
+        result = await p.ask("q", "https://graph.infona.ai/graphs/t1")
 
     assert "Could not answer" not in result.answer
     assert "max_completion_tokens" not in gen.call_args_list[1].kwargs
@@ -371,7 +371,7 @@ async def test_ask_happy_path_passes_no_recovery_kwargs():
     })
     embed, fetch, generate = _ask_ctx(p, gen)
     with embed, fetch, generate:
-        result = await p.ask("easy question", "https://graph.onta.sh/graphs/t1")
+        result = await p.ask("easy question", "https://graph.infona.ai/graphs/t1")
 
     assert "Could not answer" not in result.answer
     assert result.timing.get("attempts") == 1

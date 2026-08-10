@@ -1,7 +1,7 @@
 """Operator-only Global ontology browser — GET /operator/ontology/global.
 
 The fixtures below are the triple shapes
-``cograph/governance/writer.py::GlobalShapeWriter.write_approved_shape`` emits
+``infona/governance/writer.py::GlobalShapeWriter.write_approved_shape`` emits
 (``rdf:type rdfs:Class`` + ``rdfs:label`` + optional type ``rdfs:comment``; per
 slot ``rdf:Property`` + ``rdfs:label`` + ``rdfs:domain`` + ``rdfs:range`` +
 ``onto/coreSlot "true"^^xsd:boolean`` + ``rdfs:comment`` = the slot rationale,
@@ -36,9 +36,9 @@ from infona_client.graph.layers import enhanced_graph_uri, public_graph_uri
 RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns"
 RDFS = "http://www.w3.org/2000/01/rdf-schema"
 XSD = "http://www.w3.org/2001/XMLSchema"
-ONTO = "https://graph.onta.sh/onto"
-PUB = "https://graph.onta.sh/types/public"
-ENH = "https://graph.onta.sh/types/x"
+ONTO = "https://graph.infona.ai/onto"
+PUB = "https://graph.infona.ai/types/public"
+ENH = "https://graph.infona.ai/types/x"
 
 
 # --- writer-shaped fixture builders -----------------------------------------
@@ -96,7 +96,7 @@ def function_triples(
     """The triples ``queries.register_function_triple`` writes when attached to a
     LAYER-QUALIFIED type URI (ONTA-399: Enhanced uses ``types/x/<T>``). Tenant
     bare-name attachments still mint ``types/<T>``; Public is refused."""
-    f_uri = f"https://graph.onta.sh/functions/{name}"
+    f_uri = f"https://graph.infona.ai/functions/{name}"
     t_uri = f"{type_ns}/{type_name}"
     triples = [
         (f_uri, f"{ONTO}/attachedTo", t_uri),
@@ -636,11 +636,11 @@ def test_query_builders_default_to_tenant_namespace():
         get_type_detail_query,
     )
 
-    g = "https://omnix.dev/graphs/t"
-    assert "<https://graph.onta.sh/types/Place>" in get_type_detail_query(g, "Place")
-    assert "<https://graph.onta.sh/types/Place>" in get_type_attributes_query(g, "Place")
-    assert "<https://graph.onta.sh/types/Place>" in get_subtypes_query(g, "Place")
-    assert "<https://graph.onta.sh/types/Place/attrs/city>" in get_attribute_range_query(
+    g = "https://graph.infona.ai/graphs/t"
+    assert "<https://graph.infona.ai/types/Place>" in get_type_detail_query(g, "Place")
+    assert "<https://graph.infona.ai/types/Place>" in get_type_attributes_query(g, "Place")
+    assert "<https://graph.infona.ai/types/Place>" in get_subtypes_query(g, "Place")
+    assert "<https://graph.infona.ai/types/Place/attrs/city>" in get_attribute_range_query(
         g, "Place", "city"
     )
 
@@ -668,8 +668,8 @@ def test_oss_boundary_no_proprietary_import():
     import infona_client.graph.global_ontology as mod
 
     src = Path(mod.__file__).read_text()
-    assert "from cograph." not in src
-    assert "import cograph." not in src
+    assert "from infona." not in src
+    assert "import infona." not in src
 
 
 # ============================================================================
@@ -1056,7 +1056,7 @@ def test_function_writer_mints_layer_qualified_enhanced_attachment():
     assert f"<{ENH}/Place>" not in tenant_sparql
 
     enh_sparql = register_function_triple(
-        "https://graph.onta.sh/graphs/unused",
+        "https://graph.infona.ai/graphs/unused",
         entity_type="Place",
         function_name="premium_fn",
         endpoint_url="https://fn/b",
@@ -1074,7 +1074,7 @@ def test_a_function_attached_to_the_BARE_tenant_uri_does_not_surface():
     neptune = FakeNeptune({
         public_graph_uri(): (
             shape_triples(PUB, "Place")
-            + function_triples("https://graph.onta.sh/types", "Place", "legacy_fn")
+            + function_triples("https://graph.infona.ai/types", "Place", "legacy_fn")
         ),
         enhanced_graph_uri(): [],
     })
@@ -1085,7 +1085,7 @@ def test_query_builder_joins_attached_functions():
     from infona_client.graph.ontology_queries import full_ontology_detail_query
 
     sparql = full_ontology_detail_query(public_graph_uri())
-    assert "https://graph.onta.sh/onto/attachedTo" in sparql
+    assert "https://graph.infona.ai/onto/attachedTo" in sparql
     assert "?funcName" in sparql
     assert "?funcEndpoint" in sparql
 

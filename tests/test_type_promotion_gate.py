@@ -10,7 +10,7 @@ default (``_DISCOVERY_COLLAPSE_SUBTYPES=1``) instead of being anchored as
 subtypes — so University / College / PublicInstitution under an Institution focus
 all resolve to Institution and NO unconfirmed subtype collection is minted. The
 ONTA-383 anchor-as-subtype behavior is preserved behind
-``COGRAPH_DISCOVERY_COLLAPSE_SUBTYPES=0`` and covered by the flag-off tests below.
+``INFONA_DISCOVERY_COLLAPSE_SUBTYPES=0`` and covered by the flag-off tests below.
 
 All mocked — no live Neptune, no LLM. A FakeTypeMatcher returns DIFFERENT for
 any proposed type not already in existing_types so the focus-seed + parent-
@@ -226,7 +226,7 @@ async def test_primary_new_subtype_collapses_to_focus(resolver, mock_neptune):
 async def test_primary_without_parent_anchors_under_focus_when_collapse_off(
     resolver, mock_neptune, monkeypatch
 ):
-    """ONTA-383 fallback (COGRAPH_DISCOVERY_COLLAPSE_SUBTYPES=0): University with
+    """ONTA-383 fallback (INFONA_DISCOVERY_COLLAPSE_SUBTYPES=0): University with
     no parent under focus=Institution is anchored as a subtype of it."""
     monkeypatch.setattr(schema_resolver, "_DISCOVERY_COLLAPSE_SUBTYPES", False)
     existing_types: dict[str, str] = {"Institution": ""}

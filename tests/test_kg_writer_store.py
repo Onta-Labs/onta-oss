@@ -45,7 +45,7 @@ def _graph(tenant: str = "demo-tenant", kg: str = "bookstore") -> str:
 
 
 def test_graph_backend_default_neptune(monkeypatch):
-    monkeypatch.delenv("COGRAPH_GRAPH_BACKEND", raising=False)
+    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
     assert graph_backend() == "neptune"
 
 
@@ -221,7 +221,7 @@ def test_rewrite_subject_free_id_rekeys_entity_and_rel(store):
 def test_rewrite_subject_into_existing_rebinds_rels_and_prov(store, monkeypatch):
     """P0: new_id already exists — rebind outbound+inbound onto survivor, drop loser."""
 
-    monkeypatch.setenv("COGRAPH_PROVENANCE_ENABLED", "1")
+    monkeypatch.setenv("INFONA_PROVENANCE_ENABLED", "1")
 
     async def run():
         loser = entity_uri("Person", "loser")
@@ -348,7 +348,7 @@ def test_refresh_after_write_store_skips_neptune_registration(store, monkeypatch
 
 
 def test_provenance_assert_when_enabled(store, monkeypatch):
-    monkeypatch.setenv("COGRAPH_PROVENANCE_ENABLED", "1")
+    monkeypatch.setenv("INFONA_PROVENANCE_ENABLED", "1")
 
     async def run():
         sid = entity_uri("Person", "prov1")

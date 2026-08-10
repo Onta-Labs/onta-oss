@@ -3,10 +3,10 @@
 Tenants belong to USERS (see auth/api_keys.py): a user owns N tenants and every
 API key they create works for all of them. *Reading and mutating* that ownership
 list (list/add/remove tenants) is identity-provider specific — it lives in the
-user's Clerk/WorkOS/... profile — so cograph-oss does not implement it directly.
+user's Clerk/WorkOS/... profile — so infona-oss does not implement it directly.
 Instead a deployment registers a provider here, exactly as it registers an API
 key verifier via ``register_external_verifier``. The premium Clerk integration
-(``cograph.auth.clerk``) registers one; without a provider the ``/v1/me/tenants``
+(``infona.auth.clerk``) registers one; without a provider the ``/v1/me/tenants``
 routes report 501.
 
 The provider authenticates the caller from their own API key (the same key used

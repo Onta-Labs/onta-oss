@@ -1,4 +1,4 @@
-"""Unit tests for OMNIX_OFFLINE / COGRAPH_OFFLINE fail-closed network guard.
+"""Unit tests for INFONA_OFFLINE fail-closed network guard.
 
 Covers infona_client/offline.py and its wiring at the main outbound
 entrypoints (LLM router, embed client, Wikidata). Default is OFF — no behavior
@@ -27,26 +27,18 @@ from infona_client.offline import (
 
 class TestOfflineEnabled:
     def test_default_off(self, monkeypatch):
-        monkeypatch.delenv("OMNIX_OFFLINE", raising=False)
-        monkeypatch.delenv("COGRAPH_OFFLINE", raising=False)
+        monkeypatch.delenv("INFONA_OFFLINE", raising=False)
         assert offline_enabled() is False
 
     @pytest.mark.parametrize("val", ["1", "true", "TRUE", "yes", "on"])
-    def test_omnix_truthy(self, monkeypatch, val):
-        monkeypatch.delenv("COGRAPH_OFFLINE", raising=False)
-        monkeypatch.setenv("OMNIX_OFFLINE", val)
+    def test_truthy(self, monkeypatch, val):
+        monkeypatch.setenv("INFONA_OFFLINE", val)
         assert offline_enabled() is True
 
     @pytest.mark.parametrize("val", ["0", "false", "no", "off", ""])
-    def test_omnix_falsy(self, monkeypatch, val):
-        monkeypatch.delenv("COGRAPH_OFFLINE", raising=False)
-        monkeypatch.setenv("OMNIX_OFFLINE", val)
+    def test_falsy(self, monkeypatch, val):
+        monkeypatch.setenv("INFONA_OFFLINE", val)
         assert offline_enabled() is False
-
-    def test_cograph_alias(self, monkeypatch):
-        monkeypatch.delenv("OMNIX_OFFLINE", raising=False)
-        monkeypatch.setenv("COGRAPH_OFFLINE", "1")
-        assert offline_enabled() is True
 
 
 # ---------------------------------------------------------------------------
@@ -56,26 +48,26 @@ class TestOfflineEnabled:
 
 class TestAllowlist:
     def test_default_loopback(self, monkeypatch):
-        monkeypatch.delenv("OMNIX_OFFLINE_ALLOW_HOSTS", raising=False)
+        monkeypatch.delenv("INFONA_OFFLINE_ALLOW_HOSTS", raising=False)
         hosts = offline_allow_hosts()
         assert "localhost" in hosts
         assert "127.0.0.1" in hosts
         assert "::1" in hosts
 
     def test_extra_hosts_env(self, monkeypatch):
-        monkeypatch.setenv("OMNIX_OFFLINE_ALLOW_HOSTS", "ollama.local, My-VLLM.Internal ")
+        monkeypatch.setenv("INFONA_OFFLINE_ALLOW_HOSTS", "ollama.local, My-VLLM.Internal ")
         hosts = offline_allow_hosts()
         assert "ollama.local" in hosts
         assert "my-vllm.internal" in hosts
         assert "localhost" in hosts  # defaults still present
 
     def test_host_allowed_case_insensitive(self, monkeypatch):
-        monkeypatch.delenv("OMNIX_OFFLINE_ALLOW_HOSTS", raising=False)
+        monkeypatch.delenv("INFONA_OFFLINE_ALLOW_HOSTS", raising=False)
         assert host_allowed_offline("LocalHost") is True
         assert host_allowed_offline("127.0.0.1") is True
 
     def test_host_blocked_when_not_listed(self, monkeypatch):
-        monkeypatch.delenv("OMNIX_OFFLINE_ALLOW_HOSTS", raising=False)
+        monkeypatch.delenv("INFONA_OFFLINE_ALLOW_HOSTS", raising=False)
         assert host_allowed_offline("openrouter.ai") is False
         assert host_allowed_offline("api.cerebras.ai") is False
         assert host_allowed_offline("www.wikidata.org") is False
@@ -88,15 +80,15 @@ class TestAllowlist:
 
 class TestAssertOnline:
     def test_noop_when_offline_off(self, monkeypatch):
-        monkeypatch.delenv("OMNIX_OFFLINE", raising=False)
-        monkeypatch.delenv("COGRAPH_OFFLINE", raising=False)
+        monkeypatch.delenv("INFONA_OFFLINE", raising=False)
+        monkeypatch.delenv("INFONA_OFFLINE", raising=False)
         # Must not raise for any host when offline is off.
         assert_online_url("https://openrouter.ai/api/v1/chat/completions")
         assert_online_host("api.cerebras.ai")
 
     def test_blocks_openrouter(self, monkeypatch):
-        monkeypatch.setenv("OMNIX_OFFLINE", "1")
-        monkeypatch.delenv("OMNIX_OFFLINE_ALLOW_HOSTS", raising=False)
+        monkeypatch.setenv("INFONA_OFFLINE", "1")
+        monkeypatch.delenv("INFONA_OFFLINE_ALLOW_HOSTS", raising=False)
         with pytest.raises(OfflineModeError) as ei:
             assert_online_url(
                 "https://openrouter.ai/api/v1/chat/completions",
@@ -104,11 +96,11 @@ class TestAssertOnline:
             )
         msg = str(ei.value)
         assert "openrouter.ai" in msg
-        assert "OMNIX_OFFLINE" in msg
-        assert "OMNIX_LLM_BASE_URL" in msg  # LLM purpose → local-endpoint hint
+        assert "INFONA_OFFLINE" in msg
+        assert "INFONA_LLM_BASE_URL" in msg  # LLM purpose → local-endpoint hint
 
     def test_blocks_cerebras(self, monkeypatch):
-        monkeypatch.setenv("OMNIX_OFFLINE", "1")
+        monkeypatch.setenv("INFONA_OFFLINE", "1")
         with pytest.raises(OfflineModeError) as ei:
             assert_online_url(
                 "https://api.cerebras.ai/v1/chat/completions",
@@ -117,7 +109,7 @@ class TestAssertOnline:
         assert "cerebras.ai" in str(ei.value)
 
     def test_blocks_wikidata(self, monkeypatch):
-        monkeypatch.setenv("OMNIX_OFFLINE", "1")
+        monkeypatch.setenv("INFONA_OFFLINE", "1")
         with pytest.raises(OfflineModeError) as ei:
             assert_online_url(
                 "https://www.wikidata.org/w/api.php",
@@ -126,8 +118,8 @@ class TestAssertOnline:
         assert "wikidata.org" in str(ei.value)
 
     def test_allows_localhost_llm(self, monkeypatch):
-        monkeypatch.setenv("OMNIX_OFFLINE", "1")
-        monkeypatch.delenv("OMNIX_OFFLINE_ALLOW_HOSTS", raising=False)
+        monkeypatch.setenv("INFONA_OFFLINE", "1")
+        monkeypatch.delenv("INFONA_OFFLINE_ALLOW_HOSTS", raising=False)
         assert_online_url(
             "http://127.0.0.1:11434/v1/chat/completions",
             purpose="LLM chat completion",
@@ -138,12 +130,12 @@ class TestAssertOnline:
         )
 
     def test_allows_extra_host(self, monkeypatch):
-        monkeypatch.setenv("OMNIX_OFFLINE", "1")
-        monkeypatch.setenv("OMNIX_OFFLINE_ALLOW_HOSTS", "ollama.local")
+        monkeypatch.setenv("INFONA_OFFLINE", "1")
+        monkeypatch.setenv("INFONA_OFFLINE_ALLOW_HOSTS", "ollama.local")
         assert_online_url("http://ollama.local:11434/v1/chat/completions")
 
     def test_filter_urls_online(self, monkeypatch):
-        monkeypatch.setenv("OMNIX_OFFLINE", "1")
+        monkeypatch.setenv("INFONA_OFFLINE", "1")
         urls = [
             "https://example.com/a",
             "http://127.0.0.1/local",
@@ -160,10 +152,10 @@ class TestAssertOnline:
 class TestEntrypointWiring:
     @pytest.mark.asyncio
     async def test_llm_router_blocks_cloud(self, monkeypatch):
-        monkeypatch.setenv("OMNIX_OFFLINE", "1")
-        monkeypatch.delenv("OMNIX_LLM_BASE_URL", raising=False)
-        monkeypatch.delenv("OMNIX_OPENROUTER_BASE_URL", raising=False)
-        monkeypatch.delenv("OMNIX_LLM_PROVIDER", raising=False)
+        monkeypatch.setenv("INFONA_OFFLINE", "1")
+        monkeypatch.delenv("INFONA_LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("INFONA_OPENROUTER_BASE_URL", raising=False)
+        monkeypatch.delenv("INFONA_LLM_PROVIDER", raising=False)
 
         from infona_client.resolver import llm_router
 
@@ -184,8 +176,8 @@ class TestEntrypointWiring:
 
     @pytest.mark.asyncio
     async def test_llm_router_allows_local_base(self, monkeypatch):
-        monkeypatch.setenv("OMNIX_OFFLINE", "1")
-        monkeypatch.setenv("OMNIX_LLM_BASE_URL", "http://127.0.0.1:11434/v1")
+        monkeypatch.setenv("INFONA_OFFLINE", "1")
+        monkeypatch.setenv("INFONA_LLM_BASE_URL", "http://127.0.0.1:11434/v1")
 
         from infona_client.resolver import llm_router
 
@@ -219,10 +211,10 @@ class TestEntrypointWiring:
 
     @pytest.mark.asyncio
     async def test_embed_client_blocks_cloud(self, monkeypatch):
-        monkeypatch.setenv("OMNIX_OFFLINE", "1")
-        monkeypatch.delenv("OMNIX_EMBED_BASE_URL", raising=False)
-        monkeypatch.delenv("OMNIX_LLM_BASE_URL", raising=False)
-        monkeypatch.delenv("OMNIX_OPENROUTER_BASE_URL", raising=False)
+        monkeypatch.setenv("INFONA_OFFLINE", "1")
+        monkeypatch.delenv("INFONA_EMBED_BASE_URL", raising=False)
+        monkeypatch.delenv("INFONA_LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("INFONA_OPENROUTER_BASE_URL", raising=False)
 
         from infona_client.nlp import embed_client
 
@@ -237,7 +229,7 @@ class TestEntrypointWiring:
 
     @pytest.mark.asyncio
     async def test_wikidata_lookup_blocks(self, monkeypatch):
-        monkeypatch.setenv("OMNIX_OFFLINE", "1")
+        monkeypatch.setenv("INFONA_OFFLINE", "1")
 
         from infona_client.enrichment.sources.wikidata import WikidataAdapter
 
@@ -248,7 +240,7 @@ class TestEntrypointWiring:
 
     @pytest.mark.asyncio
     async def test_page_fetch_degrades_offline(self, monkeypatch):
-        monkeypatch.setenv("OMNIX_OFFLINE", "1")
+        monkeypatch.setenv("INFONA_OFFLINE", "1")
 
         from infona_client.retrieval.fetch import StaticHttpFetcher
 
@@ -258,7 +250,7 @@ class TestEntrypointWiring:
 
 
 def test_offline_blocks_anthropic_host(monkeypatch):
-    monkeypatch.setenv("OMNIX_OFFLINE", "1")
+    monkeypatch.setenv("INFONA_OFFLINE", "1")
     from infona_client.offline import OfflineModeError, assert_online_host
     with pytest.raises(OfflineModeError):
         assert_online_host("api.anthropic.com", purpose="Anthropic extract")

@@ -53,7 +53,7 @@ SecretResolver = Callable[[str], Awaitable[Optional[str]]]
 _DEFAULT_TIMEOUT = 20.0
 _MAX_BYTES = 2_000_000
 _MAX_REDIRECTS = 5
-_UA = "Mozilla/5.0 (compatible; OntaApiRegistry/1.0; +https://onta.sh/bot)"
+_UA = "Mozilla/5.0 (compatible; InfonaApiRegistry/1.0; +https://infona.ai/bot)"
 _BASE_HEADERS = {"User-Agent": _UA, "Accept": "application/json, */*"}
 
 

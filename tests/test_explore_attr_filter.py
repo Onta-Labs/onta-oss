@@ -27,8 +27,8 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi.testclient import TestClient
 
-os.environ["OMNIX_API_KEYS"] = '{"test-key": "test-tenant"}'
-os.environ["OMNIX_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
+os.environ["INFONA_API_KEYS"] = '{"test-key": "test-tenant"}'
+os.environ["INFONA_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
 
 from infona_client.api.app import create_app
 from infona_client.api.routes.explore import (
@@ -42,10 +42,10 @@ TENANT = "test-tenant"
 KG = "web"
 TYPE = "TTSModel"
 
-TYPES = "https://graph.onta.sh/types/"
-ENTITIES = "https://graph.onta.sh/entities/"
-ONTO = "https://graph.onta.sh/onto/"
-ER = "https://graph.onta.sh/er/"
+TYPES = "https://graph.infona.ai/types/"
+ENTITIES = "https://graph.infona.ai/entities/"
+ONTO = "https://graph.infona.ai/onto/"
+ER = "https://graph.infona.ai/er/"
 RDFS = "http://www.w3.org/2000/01/rdf-schema"
 
 # Real domain attribute: instance predicate …/onto/score ← attrs/score

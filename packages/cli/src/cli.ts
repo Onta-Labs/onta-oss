@@ -3,13 +3,13 @@ import { readFileSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
-import { Client, OntaError } from "./client.js";
+import { Client, InfonaError } from "./client.js";
 import { renderAgentResult } from "./agentRender.js";
 import { readConfig, writeConfig, configPathForDisplay } from "./config.js";
 
 // Read version from package.json at runtime so we never drift again.
 // dist/cli.js sits next to package.json once published; in dev (`npm link`)
-// dist/cli.js sits inside packages/cograph/dist/, so the parent dir is the
+// dist/cli.js sits inside packages/cli/dist/, so the parent dir is the
 // package root either way.
 function pkgVersion(): string {
   try {
@@ -24,7 +24,7 @@ function pkgVersion(): string {
 function client(): Client {
   // Honor the global flags: --tenant overrides the saved default for this
   // command; --local points at a self-hosted backend. Both fall through to
-  // env / ~/.onta/config.json when not passed.
+  // env / ~/.infona/config.json when not passed.
   const g = program.opts() as { tenant?: string; local?: boolean };
   return new Client({
     ...(g.tenant ? { tenant: g.tenant } : {}),
@@ -50,7 +50,7 @@ async function withErrors<T>(fn: () => Promise<T>): Promise<T | void> {
   try {
     return await fn();
   } catch (err) {
-    if (err instanceof OntaError) {
+    if (err instanceof InfonaError) {
       fail(`Error: ${err.message}`);
     }
     fail(`Error: ${err instanceof Error ? err.message : String(err)}`);
@@ -273,7 +273,7 @@ program
   .description("Infona Context Graph CLI")
   .version(pkgVersion())
   // Default action when no subcommand is given: drop into the interactive
-  // shell. So `infona` / `onta` (compat alias) Just Works for the common case;
+  // shell. So `infona` / `infona` (compat alias) Just Works for the common case;
   // subcommands like `infona ingest <file>` still route to their own
   // actions because commander dispatches subcommands first.
   .option("--local", "Use http://localhost:8000 and skip login (self-hosted)")
@@ -304,7 +304,7 @@ kg.command("list")
       const kgs = await client().listKgs();
       if (!kgs.length) {
         process.stdout.write(
-          "No context graphs. Create one with: onta kg create <name>\n",
+          "No context graphs. Create one with: infona kg create <name>\n",
         );
         return;
       }
@@ -349,7 +349,7 @@ program
     await withErrors(async () => {
       if (!kg) {
         const cur = readConfig().defaultKg;
-        process.stdout.write(cur ? `context graph: ${cur}\n` : "no context graph set — onta use <kg>\n");
+        process.stdout.write(cur ? `context graph: ${cur}\n` : "no context graph set — infona use <kg>\n");
         return;
       }
       writeConfig({ defaultKg: kg });
@@ -371,7 +371,7 @@ tenantCmd
     process.stdout.write(
       saved
         ? dim(`  saved default in ${configPathForDisplay()}\n`)
-        : dim(`  (built-in default — set one with: onta tenant use <id>)\n`),
+        : dim(`  (built-in default — set one with: infona tenant use <id>)\n`),
     );
   });
 
@@ -385,7 +385,7 @@ tenantCmd
       try {
         tenants = await c.listTenants();
       } catch (err) {
-        if (err instanceof OntaError && err.status === 501) {
+        if (err instanceof InfonaError && err.status === 501) {
           fail(
             "This backend doesn't support tenant management (no tenant provider configured).",
           );
@@ -401,13 +401,13 @@ tenantCmd
         const marker = t.id === active ? "*" : " ";
         process.stdout.write(`  ${marker} ${t.id.padEnd(24)} ${dim(t.label)}\n`);
       }
-      process.stdout.write(dim(`\nSwitch with: onta tenant use <id>\n`));
+      process.stdout.write(dim(`\nSwitch with: infona tenant use <id>\n`));
     });
   });
 
 tenantCmd
   .command("use <id>")
-  .description("Set the active tenant (saved to ~/.onta/config.json)")
+  .description("Set the active tenant (saved to ~/.infona/config.json)")
   .action((id: string) => {
     writeConfig({ tenant: id });
     process.stdout.write(`${bold("✓")} Active tenant set to ${bold(id)}\n`);
@@ -926,7 +926,7 @@ program
           );
           process.stdout.write(
             `it runs in the background — check on it any time:\n` +
-              `  onta jobs ${jobId.slice(0, 8)}    (or: onta jobs last)\n`,
+              `  infona jobs ${jobId.slice(0, 8)}    (or: infona jobs last)\n`,
           );
           return;
         }
@@ -972,7 +972,7 @@ program
           );
         } else {
           process.stdout.write(
-            `Job status: ${job.status} (still running or unknown — check: onta jobs ${jobId.slice(0, 8)}).\n`,
+            `Job status: ${job.status} (still running or unknown — check: infona jobs ${jobId.slice(0, 8)}).\n`,
           );
         }
       });
@@ -1019,7 +1019,7 @@ program
             `  ${j.id.slice(0, 8)}  ${String(j.status).padEnd(10)} ${what} · ${j.kg_name}\n`,
           );
         }
-        process.stdout.write("\nInspect one:  onta jobs <id>   (or: onta jobs last)\n");
+        process.stdout.write("\nInspect one:  infona jobs <id>   (or: infona jobs last)\n");
         return;
       }
 
@@ -1248,10 +1248,10 @@ program
         }
         if (!opts.all && counts.length > shown.length) {
           process.stdout.write(
-            `  … ${counts.length - shown.length} more — onta vis --all\n`,
+            `  … ${counts.length - shown.length} more — infona vis --all\n`,
           );
         }
-        process.stdout.write(`\nDrill in:  onta vis <Type>\n`);
+        process.stdout.write(`\nDrill in:  infona vis <Type>\n`);
         return;
       }
 
@@ -1350,7 +1350,7 @@ program
         const filters = opts.includeOntology
           ? ""
           : `FILTER(CONTAINS(STR(?s), '/entities/') || CONTAINS(STR(?s), '/onto/') || CONTAINS(STR(?s), '/kgs/'))`;
-        const query = `SELECT ?s ?p ?o FROM <${process.env.INFONA_IRI_BASE || process.env.ONTA_IRI_BASE || process.env.COGRAPH_IRI_BASE || "https://graph.onta.sh"}/graphs/${tenant}> WHERE { ?s ?p ?o . ${filters} } LIMIT 1000`;
+        const query = `SELECT ?s ?p ?o FROM <${process.env.INFONA_IRI_BASE || "https://graph.infona.ai"}/graphs/${tenant}> WHERE { ?s ?p ?o . ${filters} } LIMIT 1000`;
 
         process.stdout.write("Clearing...\n");
         let deleted = 0;
@@ -1434,7 +1434,7 @@ program
  *  when it's imported (e.g. by the unit tests that exercise `runAgentCommand`).
  *  Guards the auto-parse so importing the module has no side effects.
  *
- *  npm installs the `bin` as a SYMLINK (node_modules/.bin/onta →
+ *  npm installs the `bin` as a SYMLINK (node_modules/.bin/infona →
  *  dist/cli.js). Node sets import.meta.url to the *realpath* of the entry file
  *  while process.argv[1] keeps the *symlink* path, so a naive href comparison
  *  never matches and the CLI silently does nothing. Resolve the symlink first:

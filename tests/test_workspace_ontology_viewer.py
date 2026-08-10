@@ -55,7 +55,7 @@ RDFS = "http://www.w3.org/2000/01/rdf-schema"
 XSD = "http://www.w3.org/2001/XMLSchema"
 TENANT_A = "acme"
 TENANT_B = "globex"
-TENANT_NS = "https://graph.onta.sh/types"
+TENANT_NS = "https://graph.infona.ai/types"
 GRAPH_A = tenant_graph_uri(TENANT_A)
 GRAPH_B = tenant_graph_uri(TENANT_B)
 

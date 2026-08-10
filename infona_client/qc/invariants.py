@@ -6,7 +6,7 @@ so they generalize across domains instead of overfitting to fixtures. Cheap enou
 run per-PR as a hard gate and per-domain in the nightly loop.
 
 ONTA-208: the instance-edge predicate convention + node completeness — the exact bug
-class fixed in onta-oss #123/#125/#126/#127:
+class fixed in infona-oss #123/#125/#126/#127:
   * a node-valued relationship edge written on the ``attrs/<leaf>`` DECLARATION
     predicate instead of ``onto/<leaf>`` (the instance-edge predicate the NL planner
     queries) — invisible to natural-language queries (#123/#127);
@@ -92,7 +92,7 @@ INVARIANTS: list[Invariant] = [
             "A node-valued relationship edge is written on the attrs/<leaf> DECLARATION "
             "predicate instead of onto/<leaf>. The NL planner queries relationships only "
             "on onto/<leaf> (no attrs/ fallback), so the edge is invisible to NL "
-            "(onta-oss #123/#127)."
+            "(infona-oss #123/#127)."
         ),
         sparql_fn=lambda g, og: (
             "SELECT ?s ?p ?o WHERE { "
@@ -195,7 +195,7 @@ INVARIANTS: list[Invariant] = [
         severity="error",
         description=(
             "An entity node referenced by an edge has no rdf:type — a bare/untyped node, "
-            "invisible to 'list all <Type>' (onta-oss #125 bare-node class)."
+            "invisible to 'list all <Type>' (infona-oss #125 bare-node class)."
         ),
         sparql_fn=lambda g, og: (
             "SELECT DISTINCT ?node WHERE { "

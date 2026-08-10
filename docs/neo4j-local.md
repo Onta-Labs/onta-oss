@@ -29,13 +29,13 @@ Compose service.
 ## Quick start
 
 ```bash
-# From cograph-oss (this repo)
+# From infona-oss (this repo)
 docker compose up -d neo4j
 pip install -e ".[neo4j]"
 
 export NEO4J_URI=bolt://localhost:7687
 export NEO4J_USER=neo4j
-export NEO4J_PASSWORD=onta-dev-password
+export NEO4J_PASSWORD=infona-dev-password
 ```
 
 Wait until healthy (`docker compose ps` shows `neo4j` healthy, or open
@@ -155,7 +155,7 @@ if they collide with reserved system labels (`Entity`, `OntoType`, …).
 
 Module: `infona_client.graph.explore_store`. Dual-backend like `kg_writer` /
 `ontology_catalog`: pass `store=` / `session=` or set
-`COGRAPH_GRAPH_BACKEND=neo4j`; otherwise helpers return `None` so SPARQL explore
+`INFONA_GRAPH_BACKEND=neo4j`; otherwise helpers return `None` so SPARQL explore
 routes stay the default.
 
 ```python
@@ -202,7 +202,7 @@ Instance writers resolve the store once per write batch via
 | Normalization (promote_to_node, list_explode, strip_emoji) | `normalization/execute.py` |
 | ER rebuild / merge | `resolver/er/rebuild.py` |
 
-When `COGRAPH_GRAPH_BACKEND` is unset or `neptune`, the helper returns `None`
+When `INFONA_GRAPH_BACKEND` is unset or `neptune`, the helper returns `None`
 and rails keep the Neptune SPARQL path (no Neo4j credentials required). When
 backend is `neo4j`, missing store config fails closed (`GraphConfigError`).
 
@@ -215,7 +215,7 @@ Hermetic tests: `tests/test_rails_graph_store_write.py` (MemoryGraphStore).
 
 ## NL → Cypher /ask (ADR 0013 semantic helpers)
 
-When `COGRAPH_GRAPH_BACKEND=neo4j`, `POST /graphs/{tenant}/ask` (and
+When `INFONA_GRAPH_BACKEND=neo4j`, `POST /graphs/{tenant}/ask` (and
 `NLQueryPipeline.ask`) generate **Cypher over the RDF-semantic model** instead
 of SPARQL and execute via GraphStore. **Default remains Neptune SPARQL** when
 the env var is unset or `neptune`.
@@ -227,10 +227,10 @@ Do **not** build SPARQL→Cypher translators; fixtures and the LLM compose
 allowlisted semantic helpers.
 
 ```bash
-export COGRAPH_GRAPH_BACKEND=neo4j
+export INFONA_GRAPH_BACKEND=neo4j
 export NEO4J_URI=bolt://localhost:7687
 export NEO4J_USER=neo4j
-export NEO4J_PASSWORD=onta-dev-password
+export NEO4J_PASSWORD=infona-dev-password
 # optional: OPENROUTER_API_KEY for full LLM Cypher; without it, hermetic
 # deterministic fixtures answer count / list / property-eq / 1-hop.
 ```
@@ -273,7 +273,7 @@ pytest tests/test_graph_store.py tests/test_explore_store.py \
   tests/test_example_bank_cypher.py tests/test_ask_cypher_pipeline.py -q
 
 # Live Neo4j smoke (compose up first)
-NEO4J_URI=bolt://localhost:7687 NEO4J_USER=neo4j NEO4J_PASSWORD=onta-dev-password \
+NEO4J_URI=bolt://localhost:7687 NEO4J_USER=neo4j NEO4J_PASSWORD=infona-dev-password \
   pytest -m neo4j -q
 ```
 
@@ -285,13 +285,13 @@ NEO4J_URI=bolt://localhost:7687 NEO4J_USER=neo4j NEO4J_PASSWORD=onta-dev-passwor
 | `NEO4J_USER` | `neo4j` | Username |
 | `NEO4J_PASSWORD` | — | Password (required with URI) |
 | `NEO4J_DATABASE` | driver default | Optional DB name (Wave 1: single DB) |
-| `COGRAPH_GRAPH_BACKEND` | `neptune` | Set to `neo4j` to enable GraphStore writers/readers and NL→Cypher `/ask` |
+| `INFONA_GRAPH_BACKEND` | `neptune` | Set to `neo4j` to enable GraphStore writers/readers and NL→Cypher `/ask` |
 
 No platform or AWS-managed credentials are embedded in this package.
 
 ## Public SPARQL hard-break (E9 / ADR 0012 L2)
 
-When `COGRAPH_GRAPH_BACKEND=neo4j`, the **public** raw SPARQL HTTP surfaces are
+When `INFONA_GRAPH_BACKEND=neo4j`, the **public** raw SPARQL HTTP surfaces are
 **gone** — not shimmed:
 
 | Route | Neptune (default) | Neo4j |

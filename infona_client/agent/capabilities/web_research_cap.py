@@ -38,7 +38,7 @@ from infona_client.research.types import (
 from infona_client.web_sources.base import get_web_source, provider_cost
 from infona_client.web_sources.url_extract import extract_urls
 
-logger = structlog.stdlib.get_logger("cograph.agent.web_research")
+logger = structlog.stdlib.get_logger("infona.agent.web_research")
 
 # Default per-request caps for a research run — kept modest so an interactive
 # turn stays bounded and cheap; user/deployment can widen later.

@@ -12,7 +12,7 @@
     {
       "id": "q-001",
       "question": "How many weekly reports are there in total?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?report) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE { ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> . }",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?report) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE { ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> . }",
       "full_expected_items": [
         "18122"
       ],
@@ -27,7 +27,7 @@
     {
       "id": "q-002",
       "question": "List all available region names.",
-      "gold_sparql": "SELECT DISTINCT ?region_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE { ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/Region> . ?region <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/region_name> ?region_name . }",
+      "gold_sparql": "SELECT DISTINCT ?region_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE { ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/type/Region> . ?region <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/pred/region_name> ?region_name . }",
       "full_expected_items": [
         "CT",
         "MI",
@@ -103,7 +103,7 @@
     {
       "id": "q-003",
       "question": "How many distinct age groups are recorded?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?age_group) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE { ?age_group <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/AgeGroup> . }",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?age_group) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE { ?age_group <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/type/AgeGroup> . }",
       "full_expected_items": [
         "6"
       ],
@@ -118,7 +118,7 @@
     {
       "id": "q-004",
       "question": "What are the different types of regions available?",
-      "gold_sparql": "SELECT DISTINCT ?region_type_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE { ?region_type <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/RegionType> . ?region_type <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/region_type_name> ?region_type_name . }",
+      "gold_sparql": "SELECT DISTINCT ?region_type_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE { ?region_type <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/type/RegionType> . ?region_type <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/pred/region_type_name> ?region_type_name . }",
       "full_expected_items": [
         "National",
         "State",
@@ -135,7 +135,7 @@
     {
       "id": "q-005",
       "question": "What is the average number of patients reported in weekly reports where the number of providers is greater than 100?",
-      "gold_sparql": "SELECT (AVG(xsd:integer(?numPatients)) AS ?averageNumPatients) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE {\n  ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/num_providers> ?numProviders .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/num_patients> ?numPatients .\n  FILTER (xsd:integer(?numProviders) > 100) .\n}",
+      "gold_sparql": "SELECT (AVG(xsd:integer(?numPatients)) AS ?averageNumPatients) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE {\n  ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> .\n  ?report <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/pred/num_providers> ?numProviders .\n  ?report <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/pred/num_patients> ?numPatients .\n  FILTER (xsd:integer(?numProviders) > 100) .\n}",
       "full_expected_items": [
         "242669.82645850451930977814"
       ],
@@ -150,7 +150,7 @@
     {
       "id": "q-006",
       "question": "List the epiweeks of weekly reports that have a weighted ILI percentage greater than 2.0.",
-      "gold_sparql": "SELECT DISTINCT ?epiweek FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE {\n  ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/epiweek> ?epiweek .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/weighted_ili_pct> ?weightedIliPct .\n  FILTER (xsd:float(?weightedIliPct) > 2.0) .\n}",
+      "gold_sparql": "SELECT DISTINCT ?epiweek FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE {\n  ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> .\n  ?report <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/pred/epiweek> ?epiweek .\n  ?report <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/pred/weighted_ili_pct> ?weightedIliPct .\n  FILTER (xsd:float(?weightedIliPct) > 2.0) .\n}",
       "full_expected_items": [
         "202244",
         "202245",
@@ -457,7 +457,7 @@
     {
       "id": "q-007",
       "question": "How many weekly reports have an epiweek that contains '2022'?",
-      "gold_sparql": "SELECT (COUNT(?report) AS ?reportCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE {\n  ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/epiweek> ?epiweek .\n  FILTER (CONTAINS(STR(?epiweek), \"2022\")) .\n}",
+      "gold_sparql": "SELECT (COUNT(?report) AS ?reportCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE {\n  ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> .\n  ?report <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/pred/epiweek> ?epiweek .\n  FILTER (CONTAINS(STR(?epiweek), \"2022\")) .\n}",
       "full_expected_items": [
         "3284"
       ],
@@ -472,7 +472,7 @@
     {
       "id": "q-008",
       "question": "Which regions have the most weekly reports in the year 2022?",
-      "gold_sparql": "SELECT ?region_name (COUNT(?report) AS ?report_count)\nFROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-fluview>\nWHERE {\n  ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/reported_in_region> ?region .\n  ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/Region> .\n  ?region <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/region_name> ?region_name .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/year> \"2022\" .\n}\nGROUP BY ?region_name\nORDER BY DESC(?report_count)\nLIMIT 10",
+      "gold_sparql": "SELECT ?region_name (COUNT(?report) AS ?report_count)\nFROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cdc-fluview>\nWHERE {\n  ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> .\n  ?report <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/pred/reported_in_region> ?region .\n  ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/type/Region> .\n  ?region <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/pred/region_name> ?region_name .\n  ?report <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/pred/year> \"2022\" .\n}\nGROUP BY ?region_name\nORDER BY DESC(?report_count)\nLIMIT 10",
       "full_expected_items": [
         "FL | 52",
         "HHS Region 2 (NJ, NY) | 52",
@@ -496,7 +496,7 @@
     {
       "id": "q-009",
       "question": "What are the names of regions that belong to a region type containing 'National' in its name?",
-      "gold_sparql": "SELECT DISTINCT ?region_name\nFROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-fluview>\nWHERE {\n  ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/Region> .\n  ?region <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/region_name> ?region_name .\n  ?region <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/has_region_type> ?region_type .\n  ?region_type <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/RegionType> .\n  ?region_type <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/region_type_name> ?region_type_name .\n  FILTER (CONTAINS(?region_type_name, \"National\"))\n}",
+      "gold_sparql": "SELECT DISTINCT ?region_name\nFROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cdc-fluview>\nWHERE {\n  ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/type/Region> .\n  ?region <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/pred/region_name> ?region_name .\n  ?region <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/pred/has_region_type> ?region_type .\n  ?region_type <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/type/RegionType> .\n  ?region_type <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/pred/region_type_name> ?region_type_name .\n  FILTER (CONTAINS(?region_type_name, \"National\"))\n}",
       "full_expected_items": [
         "National"
       ],
@@ -511,7 +511,7 @@
     {
       "id": "q-010",
       "question": "How many weekly reports are associated with each season?",
-      "gold_sparql": "SELECT ?season_label (COUNT(?report) AS ?report_count)\nFROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-fluview>\nWHERE {\n  ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/in_season> ?season .\n  ?season <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/Season> .\n  ?season <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/season_label> ?season_label .\n}\nGROUP BY ?season_label\nORDER BY DESC(?report_count)",
+      "gold_sparql": "SELECT ?season_label (COUNT(?report) AS ?report_count)\nFROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cdc-fluview>\nWHERE {\n  ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> .\n  ?report <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/pred/in_season> ?season .\n  ?season <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/type/Season> .\n  ?season <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/pred/season_label> ?season_label .\n}\nGROUP BY ?season_label\nORDER BY DESC(?report_count)",
       "full_expected_items": [
         "2020-2021 | 3233",
         "2022-2023 | 3224",
@@ -531,7 +531,7 @@
     {
       "id": "q-011",
       "question": "What are the region types and the number of distinct seasons associated with regions of that type?",
-      "gold_sparql": "SELECT ?regionTypeName (COUNT(DISTINCT ?season) AS ?numberOfSeasons) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE {\n  ?regionType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/RegionType> .\n  ?regionType <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/region_type_name> ?regionTypeName .\n  ?regionType <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/region_type_includes> ?region .\n  ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/Region> .\n  ?region <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/region_has_report> ?report .\n  ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/in_season> ?season .\n  ?season <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/Season> .\n} GROUP BY ?regionTypeName ORDER BY DESC(?numberOfSeasons)",
+      "gold_sparql": "SELECT ?regionTypeName (COUNT(DISTINCT ?season) AS ?numberOfSeasons) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE {\n  ?regionType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/type/RegionType> .\n  ?regionType <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/pred/region_type_name> ?regionTypeName .\n  ?regionType <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/pred/region_type_includes> ?region .\n  ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/type/Region> .\n  ?region <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/pred/region_has_report> ?report .\n  ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> .\n  ?report <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/pred/in_season> ?season .\n  ?season <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/type/Season> .\n} GROUP BY ?regionTypeName ORDER BY DESC(?numberOfSeasons)",
       "full_expected_items": [
         "HHS Region | 6",
         "State | 6",
@@ -548,7 +548,7 @@
     {
       "id": "q-012",
       "question": "Find the age groups that are associated with weekly reports having more than 1000 ILI cases in any region.",
-      "gold_sparql": "SELECT DISTINCT ?ageGroupLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE {\n  ?ageGroup <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/AgeGroup> .\n  ?ageGroup <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/age_group_label> ?ageGroupLabel .\n  ?ageGroup <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/age_group_in_report> ?report .\n  ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/num_ili> ?numIli .\n  FILTER (xsd:integer(?numIli) > 1000) .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/reported_in_region> ?region .\n  ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/Region> .\n}",
+      "gold_sparql": "SELECT DISTINCT ?ageGroupLabel FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE {\n  ?ageGroup <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/type/AgeGroup> .\n  ?ageGroup <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/pred/age_group_label> ?ageGroupLabel .\n  ?ageGroup <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/pred/age_group_in_report> ?report .\n  ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> .\n  ?report <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/pred/num_ili> ?numIli .\n  FILTER (xsd:integer(?numIli) > 1000) .\n  ?report <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/pred/reported_in_region> ?region .\n  ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/type/Region> .\n}",
       "full_expected_items": [
         "0-4 years",
         "5-24 years",
@@ -567,7 +567,7 @@
     {
       "id": "q-013",
       "question": "What are the labels of regions that reported weekly reports in the year 2022, and what is the count of distinct age groups associated with those reports?",
-      "gold_sparql": "SELECT ?regionLabel (COUNT(DISTINCT ?ageGroup) AS ?ageGroupCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE {\n  ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/year> \"2022\" .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/reported_in_region> ?region .\n  ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/Region> .\n  ?region <http://www.w3.org/2000/01/rdf-schema#label> ?regionLabel .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/age_breakdown_for_report> ?ageGroup .\n  ?ageGroup <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/AgeGroup> .\n} GROUP BY ?regionLabel\nORDER BY DESC(?ageGroupCount)",
+      "gold_sparql": "SELECT ?regionLabel (COUNT(DISTINCT ?ageGroup) AS ?ageGroupCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE {\n  ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> .\n  ?report <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/pred/year> \"2022\" .\n  ?report <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/pred/reported_in_region> ?region .\n  ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/type/Region> .\n  ?region <http://www.w3.org/2000/01/rdf-schema#label> ?regionLabel .\n  ?report <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/pred/age_breakdown_for_report> ?ageGroup .\n  ?ageGroup <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cdc-fluview/type/AgeGroup> .\n} GROUP BY ?regionLabel\nORDER BY DESC(?ageGroupCount)",
       "full_expected_items": [
         "HHS Region 3 (DE, DC, MD, PA, VA, WV) | 5",
         "HHS Region 7 (IA, KS, MO, NE) | 5",

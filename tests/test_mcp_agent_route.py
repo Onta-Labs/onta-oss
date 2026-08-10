@@ -1,8 +1,8 @@
 """Contract tests for the MCP ``agent`` tool's backend surface (COG-125).
 
-The OSS MCP server (``packages/cograph-mcp``) is a thin TypeScript client over
+The OSS MCP server (``packages/mcp``) is a thin TypeScript client over
 the HTTP API: its ``agent`` tool calls ``POST /graphs/{tenant}/agent`` via the
-``cograph`` SDK. These tests pin the HTTP contract the tool depends on, through
+``infona`` SDK. These tests pin the HTTP contract the tool depends on, through
 the FastAPI ``TestClient`` (the same path the SDK hits), with the planner stubbed
 so the suite is deterministic and offline:
 
@@ -29,8 +29,8 @@ import pytest
 from fastapi import HTTPException
 
 # Mirror the test.yml env so settings/auth construct the same way as in CI.
-os.environ.setdefault("OMNIX_API_KEYS", '{"test-key": "test-tenant"}')
-os.environ.setdefault("OMNIX_NEPTUNE_ENDPOINT", "http://fake:8182")
+os.environ.setdefault("INFONA_API_KEYS", '{"test-key": "test-tenant"}')
+os.environ.setdefault("INFONA_NEPTUNE_ENDPOINT", "http://fake:8182")
 
 from unittest.mock import AsyncMock  # noqa: E402
 
@@ -115,7 +115,7 @@ def _stub_enrich_extract(monkeypatch, payload: dict):
 def _agent_body(message: str = "", *, confirm_plan_id: str | None = None) -> dict:
     """Build the body the MCP ``agent`` tool sends (message + context, or confirm).
 
-    Mirrors ``packages/cograph/src/client.ts`` ``Client.agent`` exactly: a turn is
+    Mirrors ``packages/cli/src/client.ts`` ``Client.agent`` exactly: a turn is
     either a new ``message`` with ``context`` or a ``confirm`` of a plan_id.
     """
     body: dict = {
@@ -305,7 +305,7 @@ def test_agent_route_uses_same_tenant_dep_as_direct_path():
 @pytest.mark.parametrize(
     "bad_name",
     [
-        "kg1> FROM <https://graph.onta.sh/graphs/other-tenant",
+        "kg1> FROM <https://graph.infona.ai/graphs/other-tenant",
         "kg 1",
         "kg/1",
     ],

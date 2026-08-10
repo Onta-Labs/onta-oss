@@ -12,8 +12,8 @@ This module is the **OSS refuse-without-consent seam**:
 * **Premium determination** (durable store, who/when/what audit, grant UI) plugs
   in via :func:`register_promotion_consent_provider` — same plugin shape as
   :func:`~infona_client.graph.entitlement.register_entitlement_checker` and
-  :func:`register_governance_panel`. Premium code lives in ``cograph/``; this
-  module never imports ``cograph.*``.
+  :func:`register_governance_panel`. Premium code lives in ``infona/``; this
+  module never imports ``infona.*``.
 
 Every path that writes tenant-originated shape/type content into a global
 named graph (``write_governed_type``, premium ``GlobalShapeWriter``) MUST call
@@ -29,7 +29,7 @@ from typing import Optional, Protocol
 
 import structlog
 
-logger = structlog.stdlib.get_logger("cograph.resolver.promotion_consent")
+logger = structlog.stdlib.get_logger("infona.resolver.promotion_consent")
 
 
 class PromotionConsentError(PermissionError):

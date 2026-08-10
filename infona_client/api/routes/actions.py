@@ -53,7 +53,7 @@ from infona_client.pipeline.stage_trace import (
     stamp_enrichment_job_created,
 )
 
-logger = structlog.stdlib.get_logger("cograph.actions")
+logger = structlog.stdlib.get_logger("infona.actions")
 
 router = APIRouter(prefix="/graphs/{tenant}/actions")
 
@@ -75,7 +75,7 @@ def _spawn(coro) -> None:
 # --- Premium recommender seam (COG-99) ----------------------------------------
 # Relationship suggestion is premium. OSS exposes a registration hook (mirroring
 # register_external_verifier / register_adapter) so a downstream deployment can
-# wire a recommender WITHOUT OSS importing any cograph.* module. The hook, when
+# wire a recommender WITHOUT OSS importing any infona.* module. The hook, when
 # present, is awaited with (client, tenant_id, kg_name) and returns a result
 # dict recorded on the job. When absent, the action degrades to a no-op job.
 RelationshipRecommender = Callable[

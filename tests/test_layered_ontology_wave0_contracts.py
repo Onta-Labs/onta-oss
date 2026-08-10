@@ -332,10 +332,10 @@ async def test_commit_ontology_empty_mutations_is_noop_returning_fingerprint():
 
     result = await commit_ontology(
         neptune=_N(),
-        graph_uri="https://graph.onta.sh/graphs/acme",
+        graph_uri="https://graph.infona.ai/graphs/acme",
         mutations=[],
     )
-    assert result.graph_uri == "https://graph.onta.sh/graphs/acme"
+    assert result.graph_uri == "https://graph.infona.ai/graphs/acme"
     assert result.version_before == result.version_after
     assert result.applied == []
     assert result.change_records == []
@@ -360,7 +360,7 @@ def test_ontology_mutation_and_op_kind_vocabulary():
     m = OntologyMutation(op=OntologyOpKind.UPSERT_TYPE, type_name="Person")
     assert m.type_name == "Person"
     result = OntologyCommitResult(
-        graph_uri="https://graph.onta.sh/graphs/acme",
+        graph_uri="https://graph.infona.ai/graphs/acme",
         version_after="deadbeef",
         applied=[m],
         change_records=[ChangeRecord(kind=ChangeKind.ADD_TYPE, type_name="Person")],

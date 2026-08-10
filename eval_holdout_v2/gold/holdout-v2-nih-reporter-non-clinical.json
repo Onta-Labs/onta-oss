@@ -11,7 +11,7 @@
     {
       "id": "q-001",
       "question": "How many projects are there in total?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?project) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-nih-reporter-non-clinical> WHERE {\n  ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-nih-reporter-non-clinical/type/Project> .\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?project) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-nih-reporter-non-clinical> WHERE {\n  ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-nih-reporter-non-clinical/type/Project> .\n}",
       "full_expected_items": [
         "5287"
       ],
@@ -26,7 +26,7 @@
     {
       "id": "q-002",
       "question": "List all the names of the investigators.",
-      "gold_sparql": "SELECT DISTINCT ?investigator_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-nih-reporter-non-clinical> WHERE {\n  ?investigator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-nih-reporter-non-clinical/type/Investigator> .\n  ?investigator <https://omnix.dev/holdout-v2/holdout-v2-nih-reporter-non-clinical/pred/investigator_name> ?investigator_name .\n}",
+      "gold_sparql": "SELECT DISTINCT ?investigator_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-nih-reporter-non-clinical> WHERE {\n  ?investigator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-nih-reporter-non-clinical/type/Investigator> .\n  ?investigator <https://graph.infona.ai/holdout-v2/holdout-v2-nih-reporter-non-clinical/pred/investigator_name> ?investigator_name .\n}",
       "full_expected_items": [
         "ANTIOCHOS, BRENDAN",
         "ANTO-OCRAH, MARTINA",
@@ -2040,7 +2040,7 @@
     {
       "id": "q-003",
       "question": "What are the names of all the study sections?",
-      "gold_sparql": "SELECT DISTINCT ?study_section_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-nih-reporter-non-clinical> WHERE {\n  ?studySection <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-nih-reporter-non-clinical/type/StudySection> .\n  ?studySection <https://omnix.dev/holdout-v2/holdout-v2-nih-reporter-non-clinical/pred/study_section_name> ?study_section_name .\n}",
+      "gold_sparql": "SELECT DISTINCT ?study_section_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-nih-reporter-non-clinical> WHERE {\n  ?studySection <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-nih-reporter-non-clinical/type/StudySection> .\n  ?studySection <https://graph.infona.ai/holdout-v2/holdout-v2-nih-reporter-non-clinical/pred/study_section_name> ?study_section_name .\n}",
       "full_expected_items": [
         "ZAI1-EC-M(S2)",
         "ZHL1-CSR-I(M1)",
@@ -3927,7 +3927,7 @@
     {
       "id": "q-004",
       "question": "How many distinct institutions are recorded?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?institution) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-nih-reporter-non-clinical> WHERE {\n  ?institution <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-nih-reporter-non-clinical/type/Institution> .\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?institution) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-nih-reporter-non-clinical> WHERE {\n  ?institution <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-nih-reporter-non-clinical/type/Institution> .\n}",
       "full_expected_items": [
         "643"
       ],
@@ -3942,7 +3942,7 @@
     {
       "id": "q-005",
       "question": "How many projects have 'cancer' in their title?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?project) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-nih-reporter-non-clinical> WHERE {\n  ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-nih-reporter-non-clinical/type/Project> .\n  ?project <https://omnix.dev/holdout-v2/holdout-v2-nih-reporter-non-clinical/pred/project_title> ?title .\n  FILTER(CONTAINS(LCASE(STR(?title)), \"cancer\"))\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?project) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-nih-reporter-non-clinical> WHERE {\n  ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-nih-reporter-non-clinical/type/Project> .\n  ?project <https://graph.infona.ai/holdout-v2/holdout-v2-nih-reporter-non-clinical/pred/project_title> ?title .\n  FILTER(CONTAINS(LCASE(STR(?title)), \"cancer\"))\n}",
       "full_expected_items": [
         "343"
       ],
@@ -3957,7 +3957,7 @@
     {
       "id": "q-006",
       "question": "How many agencies have an abbreviation starting with 'N'?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?agency) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-nih-reporter-non-clinical> WHERE {\n  ?agency <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-nih-reporter-non-clinical/type/Agency> .\n  ?agency <https://omnix.dev/holdout-v2/holdout-v2-nih-reporter-non-clinical/pred/agency_abbreviation> ?abbreviation .\n  FILTER(STRSTARTS(?abbreviation, \"N\"))\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?agency) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-nih-reporter-non-clinical> WHERE {\n  ?agency <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-nih-reporter-non-clinical/type/Agency> .\n  ?agency <https://graph.infona.ai/holdout-v2/holdout-v2-nih-reporter-non-clinical/pred/agency_abbreviation> ?abbreviation .\n  FILTER(STRSTARTS(?abbreviation, \"N\"))\n}",
       "full_expected_items": [
         "29"
       ],
@@ -3972,7 +3972,7 @@
     {
       "id": "q-007",
       "question": "For each study section, how many projects were reviewed by it that started in the fiscal year '2022'?",
-      "gold_sparql": "SELECT ?study_section_name (COUNT(DISTINCT ?project) AS ?project_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-nih-reporter-non-clinical> WHERE {\n  ?study_section <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-nih-reporter-non-clinical/type/StudySection> .\n  ?study_section <https://omnix.dev/holdout-v2/holdout-v2-nih-reporter-non-clinical/pred/study_section_name> ?study_section_name .\n  ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-nih-reporter-non-clinical/type/Project> .\n  ?project <https://omnix.dev/holdout-v2/holdout-v2-nih-reporter-non-clinical/pred/reviewed_by> ?study_section .\n  ?project <https://omnix.dev/holdout-v2/holdout-v2-nih-reporter-non-clinical/pred/fiscal_year> \"2022\" .\n} GROUP BY ?study_section_name\nORDER BY DESC(?project_count)",
+      "gold_sparql": "SELECT ?study_section_name (COUNT(DISTINCT ?project) AS ?project_count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-nih-reporter-non-clinical> WHERE {\n  ?study_section <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-nih-reporter-non-clinical/type/StudySection> .\n  ?study_section <https://graph.infona.ai/holdout-v2/holdout-v2-nih-reporter-non-clinical/pred/study_section_name> ?study_section_name .\n  ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-nih-reporter-non-clinical/type/Project> .\n  ?project <https://graph.infona.ai/holdout-v2/holdout-v2-nih-reporter-non-clinical/pred/reviewed_by> ?study_section .\n  ?project <https://graph.infona.ai/holdout-v2/holdout-v2-nih-reporter-non-clinical/pred/fiscal_year> \"2022\" .\n} GROUP BY ?study_section_name\nORDER BY DESC(?project_count)",
       "full_expected_items": [
         "NSS | 26",
         "NST-1 Study Section[NST-1] | 16",
@@ -5122,7 +5122,7 @@
     {
       "id": "q-008",
       "question": "List the names of investigators who have worked on projects awarded to institutions in 'UNITED STATES' and reviewed by a study section.",
-      "gold_sparql": "SELECT DISTINCT ?investigator_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-nih-reporter-non-clinical> WHERE {\n  ?investigator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-nih-reporter-non-clinical/type/Investigator> .\n  ?investigator <https://omnix.dev/holdout-v2/holdout-v2-nih-reporter-non-clinical/pred/investigator_name> ?investigator_name .\n  ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-nih-reporter-non-clinical/type/Project> .\n  ?project <https://omnix.dev/holdout-v2/holdout-v2-nih-reporter-non-clinical/pred/has_investigator> ?investigator .\n  ?project <https://omnix.dev/holdout-v2/holdout-v2-nih-reporter-non-clinical/pred/awarded_to_institution> ?institution .\n  ?institution <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-nih-reporter-non-clinical/type/Institution> .\n  ?institution <https://omnix.dev/holdout-v2/holdout-v2-nih-reporter-non-clinical/pred/org_country> \"UNITED STATES\" .\n  ?project <https://omnix.dev/holdout-v2/holdout-v2-nih-reporter-non-clinical/pred/reviewed_by> ?study_section .\n  ?study_section <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-nih-reporter-non-clinical/type/StudySection> .\n}",
+      "gold_sparql": "SELECT DISTINCT ?investigator_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-nih-reporter-non-clinical> WHERE {\n  ?investigator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-nih-reporter-non-clinical/type/Investigator> .\n  ?investigator <https://graph.infona.ai/holdout-v2/holdout-v2-nih-reporter-non-clinical/pred/investigator_name> ?investigator_name .\n  ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-nih-reporter-non-clinical/type/Project> .\n  ?project <https://graph.infona.ai/holdout-v2/holdout-v2-nih-reporter-non-clinical/pred/has_investigator> ?investigator .\n  ?project <https://graph.infona.ai/holdout-v2/holdout-v2-nih-reporter-non-clinical/pred/awarded_to_institution> ?institution .\n  ?institution <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-nih-reporter-non-clinical/type/Institution> .\n  ?institution <https://graph.infona.ai/holdout-v2/holdout-v2-nih-reporter-non-clinical/pred/org_country> \"UNITED STATES\" .\n  ?project <https://graph.infona.ai/holdout-v2/holdout-v2-nih-reporter-non-clinical/pred/reviewed_by> ?study_section .\n  ?study_section <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-nih-reporter-non-clinical/type/StudySection> .\n}",
       "full_expected_items": [
         "ALONSO, ESTELLA M.",
         "ALSHAWI, SARAH ANN",

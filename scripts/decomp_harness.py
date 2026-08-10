@@ -39,7 +39,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 _HERE = Path(__file__).resolve()
-_OSS_ROOT = _HERE.parent.parent  # cograph-oss/
+_OSS_ROOT = _HERE.parent.parent  # infona-oss/
 sys.path.insert(0, str(_OSS_ROOT))
 
 from infona_client.graph.client import NeptuneClient  # noqa: E402
@@ -49,7 +49,7 @@ from infona_client.resolver.verdict_cache import JsonVerdictCache  # noqa: E402
 
 FIXTURES = _OSS_ROOT / "tests" / "fixtures" / "decomp"
 
-TYPES_NS = "https://graph.onta.sh/types/"
+TYPES_NS = "https://graph.infona.ai/types/"
 ENTITIES_NS = "/entities/"
 
 # Upper-ontology parents the extractor synthesizes to close a subclass chain
@@ -442,7 +442,7 @@ async def main() -> None:
     ap.add_argument("--policy", default="A,B", help="comma list of A,B,C")
     args = ap.parse_args()
 
-    if not (os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OMNIX_OPENROUTER_API_KEY")):
+    if not (os.environ.get("OPENROUTER_API_KEY") or os.environ.get("INFONA_OPENROUTER_API_KEY")):
         print("!! OPENROUTER_API_KEY not set — source the repo .env first", file=sys.stderr)
         sys.exit(2)
 

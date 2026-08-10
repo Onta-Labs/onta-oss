@@ -28,7 +28,7 @@ from infona_client.resolver.models import (
 )
 from infona_client.resolver.validator import coerce_value
 
-logger = structlog.stdlib.get_logger("cograph.resolver.attribute")
+logger = structlog.stdlib.get_logger("infona.resolver.attribute")
 
 _ATTR_SIMILARITY_THRESHOLD = 0.85
 _STRIP_ATTR_PREFIXES = (

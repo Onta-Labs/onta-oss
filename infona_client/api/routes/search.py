@@ -9,7 +9,7 @@ name matches even though names are far too short to be marked as free text.
 Substring and fuzzy name matching are still NOT this route's job — the
 index-free ``POST /graphs/{tenant}/grep`` owns those (``routes/grep.py``). Per the
 interface-convergence rule (CLAUDE.md), every client — the Explorer webapp,
-the CLI, the MCP ``search`` tool, the ``cograph`` SDK — rides THIS route;
+the CLI, the MCP ``search`` tool, the ``infona`` SDK — rides THIS route;
 none may mint a bespoke endpoint or re-implement ranking client-side, because
 divergent per-interface search paths are exactly the drift the rule exists to
 prevent (the COG-128 lesson).
@@ -32,7 +32,7 @@ Division of labor (the ONTA-176 locked contract):
 Documented semantics (each is tested in ``tests/test_search_route.py``):
 
 * **Semantic gate off → lexical degrade, NOT 503.** When
-  ``COGRAPH_SEMANTIC_INDEX_ENABLED`` (the master gate for the write hook and
+  ``INFONA_SEMANTIC_INDEX_ENABLED`` (the master gate for the write hook and
   the reconciler) is off, the vector leg simply never populates — but the
   backend's lexical/full-text leg still works, so this read path DEGRADES to
   keyword-only search and returns ``degraded=True`` (an honest "reduced
@@ -90,7 +90,7 @@ from infona_client.auth.api_keys import TenantContext, get_tenant
 from infona_client.config import settings
 from infona_client.semantic.protocol import SemanticHit
 
-logger = structlog.stdlib.get_logger("cograph.api.search")
+logger = structlog.stdlib.get_logger("infona.api.search")
 
 router = APIRouter(prefix="/graphs/{tenant}")
 

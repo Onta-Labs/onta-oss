@@ -12,7 +12,7 @@
     {
       "id": "q-001",
       "question": "How many Public Assistance Projects are there?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?paProject) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE { ?paProject <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> . }",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?paProject) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE { ?paProject <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> . }",
       "full_expected_items": [
         "20000"
       ],
@@ -27,7 +27,7 @@
     {
       "id": "q-002",
       "question": "List all the names of the applicants.",
-      "gold_sparql": "SELECT ?applicantName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE { ?applicant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/Applicant> . ?applicant <http://www.w3.org/2000/01/rdf-schema#label> ?applicantName . }",
+      "gold_sparql": "SELECT ?applicantName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE { ?applicant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/Applicant> . ?applicant <http://www.w3.org/2000/01/rdf-schema#label> ?applicantName . }",
       "full_expected_items": [
         "CAT Z - Management Costs",
         "(PW# 67) PUBLIC BUILDINGS AND FACILITIES",
@@ -2041,7 +2041,7 @@
     {
       "id": "q-003",
       "question": "What are the different incident types recorded?",
-      "gold_sparql": "SELECT DISTINCT ?incidentTypeLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE { ?incidentType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/IncidentType> . ?incidentType <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/incident_type> ?incidentTypeLabel . }",
+      "gold_sparql": "SELECT DISTINCT ?incidentTypeLabel FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE { ?incidentType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/IncidentType> . ?incidentType <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/incident_type> ?incidentTypeLabel . }",
       "full_expected_items": [
         "Winter Storm",
         "Coastal Storm",
@@ -2067,7 +2067,7 @@
     {
       "id": "q-004",
       "question": "How many distinct damage categories are there?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?damageCategory) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE { ?damageCategory <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/DamageCategory> . }",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?damageCategory) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE { ?damageCategory <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/DamageCategory> . }",
       "full_expected_items": [
         "9"
       ],
@@ -2082,7 +2082,7 @@
     {
       "id": "q-005",
       "question": "How many PA Projects have a project amount greater than 5000?",
-      "gold_sparql": "SELECT (COUNT(?project) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .\n  ?project <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/projectamount> ?amount .\n  FILTER (xsd:integer(?amount) > 5000)\n}",
+      "gold_sparql": "SELECT (COUNT(?project) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .\n  ?project <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/projectamount> ?amount .\n  FILTER (xsd:integer(?amount) > 5000)\n}",
       "full_expected_items": [
         "3109"
       ],
@@ -2097,7 +2097,7 @@
     {
       "id": "q-006",
       "question": "List the labels of all Applicants whose application title contains 'School'.",
-      "gold_sparql": "SELECT ?label FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?applicant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/Applicant> .\n  ?applicant <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/application_title> ?title .\n  ?applicant <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n  FILTER (CONTAINS(LCASE(STR(?title)), \"school\"))\n}",
+      "gold_sparql": "SELECT ?label FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?applicant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/Applicant> .\n  ?applicant <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/application_title> ?title .\n  ?applicant <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n  FILTER (CONTAINS(LCASE(STR(?title)), \"school\"))\n}",
       "full_expected_items": [
         "DOC CERT - Food Service Delivery Truck and School Buses",
         "LaMarque Elementary School - Contents",
@@ -2145,7 +2145,7 @@
     {
       "id": "q-007",
       "question": "Find the total obligated amount for PA Projects where the total obligated is less than 1000.",
-      "gold_sparql": "SELECT (SUM(xsd:float(?totalObligated)) AS ?sumTotalObligated) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .\n  ?project <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/totalobligated> ?totalObligated .\n  FILTER (xsd:float(?totalObligated) < 1000)\n}",
+      "gold_sparql": "SELECT (SUM(xsd:float(?totalObligated)) AS ?sumTotalObligated) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .\n  ?project <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/totalobligated> ?totalObligated .\n  FILTER (xsd:float(?totalObligated) < 1000)\n}",
       "full_expected_items": [
         "-2288936.8"
       ],
@@ -2160,7 +2160,7 @@
     {
       "id": "q-008",
       "question": "How many PA Projects are associated with each Applicant?",
-      "gold_sparql": "SELECT ?applicantLabel (COUNT(?paProject) AS ?numberOfPAProjects) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?paProject <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .\n  ?paProject <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/pa_project_has_applicant> ?applicant .\n  ?applicant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/Applicant> .\n  ?applicant <http://www.w3.org/2000/01/rdf-schema#label> ?applicantLabel .\n} GROUP BY ?applicantLabel ORDER BY DESC(?numberOfPAProjects) LIMIT 10",
+      "gold_sparql": "SELECT ?applicantLabel (COUNT(?paProject) AS ?numberOfPAProjects) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?paProject <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .\n  ?paProject <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/pa_project_has_applicant> ?applicant .\n  ?applicant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/Applicant> .\n  ?applicant <http://www.w3.org/2000/01/rdf-schema#label> ?applicantLabel .\n} GROUP BY ?applicantLabel ORDER BY DESC(?numberOfPAProjects) LIMIT 10",
       "full_expected_items": [
         "CVOID-19 | 713",
         "(PW# 3267) EMERGENCY PROTECTIVE MEASURES | 386",
@@ -2184,7 +2184,7 @@
     {
       "id": "q-009",
       "question": "What are the total obligated amounts for PA Projects in each State?",
-      "gold_sparql": "SELECT ?stateName (SUM(xsd:float(?totalObligated)) AS ?totalObligatedAmount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?paProject <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .\n  ?paProject <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/pa_project_in_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/state_name> ?stateName .\n  ?paProject <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/totalobligated> ?totalObligated .\n  FILTER (xsd:float(?totalObligated) > 0)\n} GROUP BY ?stateName ORDER BY DESC(?totalObligatedAmount) LIMIT 10",
+      "gold_sparql": "SELECT ?stateName (SUM(xsd:float(?totalObligated)) AS ?totalObligatedAmount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?paProject <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .\n  ?paProject <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/pa_project_in_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/State> .\n  ?state <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/state_name> ?stateName .\n  ?paProject <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/totalobligated> ?totalObligated .\n  FILTER (xsd:float(?totalObligated) > 0)\n} GROUP BY ?stateName ORDER BY DESC(?totalObligatedAmount) LIMIT 10",
       "full_expected_items": [
         "TX | 1.87847619E10"
       ],
@@ -2199,7 +2199,7 @@
     {
       "id": "q-010",
       "question": "List the incident types and the number of disasters declared for each type.",
-      "gold_sparql": "SELECT ?incidentTypeLabel (COUNT(?disaster) AS ?numberOfDisasters) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?disaster <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/Disaster> .\n  ?disaster <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/has_incident_type> ?incidentType .\n  ?incidentType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/IncidentType> .\n  ?incidentType <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/incident_type> ?incidentTypeLabel .\n} GROUP BY ?incidentTypeLabel ORDER BY DESC(?numberOfDisasters) LIMIT 10",
+      "gold_sparql": "SELECT ?incidentTypeLabel (COUNT(?disaster) AS ?numberOfDisasters) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?disaster <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/Disaster> .\n  ?disaster <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/has_incident_type> ?incidentType .\n  ?incidentType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/IncidentType> .\n  ?incidentType <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/incident_type> ?incidentTypeLabel .\n} GROUP BY ?incidentTypeLabel ORDER BY DESC(?numberOfDisasters) LIMIT 10",
       "full_expected_items": [
         "Fire | 268",
         "Flood | 43",
@@ -2223,7 +2223,7 @@
     {
       "id": "q-011",
       "question": "What are the names of states that have at least 5 disasters with an incident type of 'Hurricane'?",
-      "gold_sparql": "SELECT ?stateName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/state_name> ?stateName .\n  ?disaster <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/Disaster> .\n  ?disaster <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/declared_in_state> ?state .\n  ?disaster <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/has_incident_type> ?incidentType .\n  ?incidentType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/IncidentType> .\n  ?incidentType <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/incident_type> \"Hurricane\" .\n} GROUP BY ?stateName HAVING (COUNT(?disaster) >= 5)",
+      "gold_sparql": "SELECT ?stateName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/State> .\n  ?state <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/state_name> ?stateName .\n  ?disaster <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/Disaster> .\n  ?disaster <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/declared_in_state> ?state .\n  ?disaster <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/has_incident_type> ?incidentType .\n  ?incidentType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/IncidentType> .\n  ?incidentType <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/incident_type> \"Hurricane\" .\n} GROUP BY ?stateName HAVING (COUNT(?disaster) >= 5)",
       "full_expected_items": [
         "TX"
       ],
@@ -2238,7 +2238,7 @@
     {
       "id": "q-012",
       "question": "What is the average federal share obligated for PA Projects associated with each Incident Type?",
-      "gold_sparql": "SELECT ?incidentTypeLabel (AVG(xsd:float(?federalShare)) AS ?averageFederalShare) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?disaster <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/Disaster> .\n  ?disaster <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/has_incident_type> ?incidentType .\n  ?incidentType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/IncidentType> .\n  ?incidentType <http://www.w3.org/2000/01/rdf-schema#label> ?incidentTypeLabel .\n  ?disaster <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/has_pa_project> ?paProject .\n  ?paProject <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .\n  ?paProject <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/federalshareobligated> ?federalShare .\n} GROUP BY ?incidentTypeLabel",
+      "gold_sparql": "SELECT ?incidentTypeLabel (AVG(xsd:float(?federalShare)) AS ?averageFederalShare) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?disaster <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/Disaster> .\n  ?disaster <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/has_incident_type> ?incidentType .\n  ?incidentType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/IncidentType> .\n  ?incidentType <http://www.w3.org/2000/01/rdf-schema#label> ?incidentTypeLabel .\n  ?disaster <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/has_pa_project> ?paProject .\n  ?paProject <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .\n  ?paProject <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/federalshareobligated> ?federalShare .\n} GROUP BY ?incidentTypeLabel",
       "full_expected_items": [
         "Hurricane | 380394.3",
         "Tornado | 36049.375",

@@ -43,9 +43,9 @@ from infona_client.pipeline.mutations import (
 
 TENANT, KG = "onta277", "corp"
 INSTANCE_GRAPH = kg_graph_uri(TENANT, KG)
-ACME = "https://graph.onta.sh/entities/Company/acme"
-HAS_CEO = "https://graph.onta.sh/onto/hasCEO"
-HAS_EMPLOYEE = "https://graph.onta.sh/onto/hasEmployee"
+ACME = "https://graph.infona.ai/entities/Company/acme"
+HAS_CEO = "https://graph.infona.ai/onto/hasCEO"
+HAS_EMPLOYEE = "https://graph.infona.ai/onto/hasEmployee"
 
 
 # --------------------------------------------------------------------------- #
@@ -162,7 +162,7 @@ async def _seed_open_fact(n: PyoxiNeptune, subject: str, predicate: str, value: 
         INSTANCE_GRAPH,
         [
             (subject, "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-             "https://graph.onta.sh/types/Company"),
+             "https://graph.infona.ai/types/Company"),
             (subject, predicate, value),
         ],
     )
@@ -326,7 +326,7 @@ async def test_supersede_closes_a_typed_literal_value():
     (``value^^datatype``) so the "current" FILTER excludes it. A plain-string close
     would never match a typed original."""
     n = PyoxiNeptune()
-    count_pred = "https://graph.onta.sh/onto/employeeCount"
+    count_pred = "https://graph.infona.ai/onto/employeeCount"
     xsd_int = "http://www.w3.org/2001/XMLSchema#integer"
     await insert_facts(n, INSTANCE_GRAPH, [(ACME, count_pred, f"100^^{xsd_int}")])
 

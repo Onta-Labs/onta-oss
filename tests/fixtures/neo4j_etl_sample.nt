@@ -1,20 +1,20 @@
-# Hermetic ETL sample (N-Triples) — entity IRIs use graph.onta.sh default base shape.
-# Pin ONTA_IRI_BASE if classify_triple host-sensitive paths are under test; mapper
+# Hermetic ETL sample (N-Triples) — entity IRIs use graph.infona.ai default base shape.
+# Pin INFONA_IRI_BASE if classify_triple host-sensitive paths are under test; mapper
 # uses package prefixes but attrs/onto/types detection is path-based for most cases.
 # ADR 0013: instance → Assertions; rdf:type → type Assertions + Class; subClassOf
 # → SUBCLASS_OF (original Class IRIs kept as ids).
 
-<https://graph.onta.sh/entities/Person/alice> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.onta.sh/types/Person> .
-<https://graph.onta.sh/entities/Person/alice> <http://www.w3.org/2000/01/rdf-schema#label> "Alice" .
-<https://graph.onta.sh/entities/Person/alice> <https://graph.onta.sh/types/Person/attrs/email> "a@example.com" .
-<https://graph.onta.sh/entities/Person/alice> <https://graph.onta.sh/types/Person/attrs/city_town> "SF" .
-<https://graph.onta.sh/entities/Person/alice> <https://graph.onta.sh/types/Guest/attrs/status> "vip" .
-<https://graph.onta.sh/entities/Person/alice> <https://graph.onta.sh/types/Person/attrs/status> "active" .
-<https://graph.onta.sh/entities/Organization/acme> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.onta.sh/types/Organization> .
-<https://graph.onta.sh/entities/Organization/acme> <http://www.w3.org/2000/01/rdf-schema#label> "Acme" .
-<https://graph.onta.sh/entities/Person/alice> <https://graph.onta.sh/onto/works_at> <https://graph.onta.sh/entities/Organization/acme> .
-<https://graph.onta.sh/entities/Person/alice> <https://graph.onta.sh/onto/source> "csv" .
+<https://graph.infona.ai/entities/Person/alice> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/Person> .
+<https://graph.infona.ai/entities/Person/alice> <http://www.w3.org/2000/01/rdf-schema#label> "Alice" .
+<https://graph.infona.ai/entities/Person/alice> <https://graph.infona.ai/types/Person/attrs/email> "a@example.com" .
+<https://graph.infona.ai/entities/Person/alice> <https://graph.infona.ai/types/Person/attrs/city_town> "SF" .
+<https://graph.infona.ai/entities/Person/alice> <https://graph.infona.ai/types/Guest/attrs/status> "vip" .
+<https://graph.infona.ai/entities/Person/alice> <https://graph.infona.ai/types/Person/attrs/status> "active" .
+<https://graph.infona.ai/entities/Organization/acme> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/Organization> .
+<https://graph.infona.ai/entities/Organization/acme> <http://www.w3.org/2000/01/rdf-schema#label> "Acme" .
+<https://graph.infona.ai/entities/Person/alice> <https://graph.infona.ai/onto/works_at> <https://graph.infona.ai/entities/Organization/acme> .
+<https://graph.infona.ai/entities/Person/alice> <https://graph.infona.ai/onto/source> "csv" .
 # Catalog hierarchy (ontology dump) — not instance Facts
-<https://graph.onta.sh/types/Employee> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://graph.onta.sh/types/Person> .
+<https://graph.infona.ai/types/Employee> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://graph.infona.ai/types/Person> .
 # Skipped companion-style multi-segment attrs tail
-<https://graph.onta.sh/entities/Person/alice> <https://graph.onta.sh/attr_meta/Person/email/source_url> <https://example.com/src> .
+<https://graph.infona.ai/entities/Person/alice> <https://graph.infona.ai/attr_meta/Person/email/source_url> <https://example.com/src> .

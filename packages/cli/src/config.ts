@@ -2,28 +2,28 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from "node:fs";
 
-export interface OntaConfig {
+export interface InfonaConfig {
   apiKey?: string;
   apiUrl?: string;
   tenant?: string;
   email?: string;
-  /** Working context graph, set by `onta use <kg>`; commands fall back to it
+  /** Working context graph, set by `infona use <kg>`; commands fall back to it
    *  when `--kg` is not passed. */
   defaultKg?: string;
 }
 
 /**
  * Clerk user ids look like `user_2abc…`. They are NOT workspace/tenant ids.
- * A historical `onta login` bug wrote `tenant: userId` into config; the API
+ * A historical `infona login` bug wrote `tenant: userId` into config; the API
  * then 403s with "does not grant access to tenant 'user_…'".
  */
 export function isClerkUserId(value: string | undefined | null): boolean {
   return typeof value === "string" && /^user_[A-Za-z0-9]+$/.test(value);
 }
 
-/** Canonical config dir — the write target. */
+/** Canonical config dir. */
 function configDir(): string {
-  return join(homedir(), ".onta");
+  return join(homedir(), ".infona");
 }
 
 function configPath(): string {
@@ -31,33 +31,17 @@ function configPath(): string {
 }
 
 /**
- * Legacy config path (pre-rename `~/.cograph/config.json`). Read-only fallback:
- * a login created under the old brand keeps working until the next
- * {@link writeConfig}, which migrates it forward to `~/.onta`.
+ * Read `~/.infona/config.json`. Returns an empty object if the file is absent
+ * or unreadable — callers should treat fields as optional.
  */
-function legacyConfigPath(): string {
-  return join(homedir(), ".cograph", "config.json");
-}
-
-/**
- * Read `~/.onta/config.json`. If that file is absent but the legacy
- * `~/.cograph/config.json` exists, the legacy file is read transparently so
- * existing logins keep working. Returns an empty object if neither file is
- * present or the chosen file is unreadable — callers should treat fields as
- * optional.
- */
-export function readConfig(): OntaConfig {
-  let path = configPath();
-  if (!existsSync(path)) {
-    const legacy = legacyConfigPath();
-    if (!existsSync(legacy)) return {};
-    path = legacy;
-  }
+export function readConfig(): InfonaConfig {
+  const path = configPath();
+  if (!existsSync(path)) return {};
   try {
     const raw = readFileSync(path, "utf-8");
     const parsed = JSON.parse(raw) as unknown;
     if (parsed && typeof parsed === "object") {
-      return parsed as OntaConfig;
+      return parsed as InfonaConfig;
     }
   } catch {
     // Corrupt or unreadable; behave as if absent so a fresh login can rewrite.
@@ -66,13 +50,11 @@ export function readConfig(): OntaConfig {
 }
 
 /**
- * Write `~/.onta/config.json` with `chmod 600`. Creates the directory (mode
+ * Write `~/.infona/config.json` with `chmod 600`. Creates the directory (mode
  * 0o700) if needed. Merges with the existing config so callers can update one
- * field without clobbering the others — and because the merge reads through
- * {@link readConfig}, a legacy `~/.cograph/config.json` is picked up and
- * migrated forward to `~/.onta` on the first write after the rename.
+ * field without clobbering the others.
  */
-export function writeConfig(patch: OntaConfig): void {
+export function writeConfig(patch: InfonaConfig): void {
   const dir = configDir();
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true, mode: 0o700 });

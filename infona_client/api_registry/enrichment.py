@@ -25,7 +25,7 @@ the registry adapters LEAD every tier chain, and a ``source_of_truth`` entry
 returns a high-confidence verdict that the executor's first-sufficient-verdict
 short-circuit lets win over wikidata and every web adapter.
 
-Boundary: OSS. Imports only ``infona_client.*`` — no ``from cograph.*``.
+Boundary: OSS. Imports only ``infona_client.*`` — no ``from infona.*``.
 """
 
 from __future__ import annotations

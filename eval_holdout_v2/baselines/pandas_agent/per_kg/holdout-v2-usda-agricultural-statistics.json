@@ -4,7 +4,7 @@
     "id": "q-001",
     "tier": "T1",
     "question": "How many distinct commodities are recorded in the dataset?",
-    "gold_sparql": "SELECT (COUNT(DISTINCT ?commodity) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-usda-agricultural-statistics> WHERE {\n  ?commodity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Commodity> .\n}",
+    "gold_sparql": "SELECT (COUNT(DISTINCT ?commodity) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-usda-agricultural-statistics> WHERE {\n  ?commodity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Commodity> .\n}",
     "expected_answer": "58",
     "full_expected_items": [
       "58"
@@ -49,7 +49,7 @@
     "id": "q-002",
     "tier": "T1",
     "question": "List all the available years in the dataset.",
-    "gold_sparql": "SELECT DISTINCT ?year_value FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-usda-agricultural-statistics> WHERE {\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Year> .\n  ?year <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/year> ?year_value .\n}",
+    "gold_sparql": "SELECT DISTINCT ?year_value FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-usda-agricultural-statistics> WHERE {\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Year> .\n  ?year <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/year> ?year_value .\n}",
     "expected_answer": "2018, 2020, 2019, 2021, 2022",
     "full_expected_items": [
       "2018",
@@ -98,7 +98,7 @@
     "id": "q-003",
     "tier": "T1",
     "question": "What are the different unit descriptions present in the data?",
-    "gold_sparql": "SELECT DISTINCT ?unit_desc FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-usda-agricultural-statistics> WHERE {\n  ?unit <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Unit> .\n  ?unit <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/unit_desc> ?unit_desc .\n}",
+    "gold_sparql": "SELECT DISTINCT ?unit_desc FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-usda-agricultural-statistics> WHERE {\n  ?unit <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Unit> .\n  ?unit <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/unit_desc> ?unit_desc .\n}",
     "expected_answer": "LB, PCT OF AREA PLANTED, LB / ACRE / APPLICATION, AVG, NUMBER, AVG, ACRES, OPERATIONS, PCT OF OPERATIONS, LB / ACRE / YEAR, AVG, PCT OF AREA PLANTED, AVG, PCT OF AREA BEARING, AVG ... (11 total)",
     "full_expected_items": [
       "LB",
@@ -153,7 +153,7 @@
     "id": "q-004",
     "tier": "T1",
     "question": "How many unique statistic categories are there?",
-    "gold_sparql": "SELECT (COUNT(DISTINCT ?stat_cat) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-usda-agricultural-statistics> WHERE {\n  ?stat_cat_entity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/type/StatisticCategory> .\n  ?stat_cat_entity <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/stat_cat> ?stat_cat .\n}",
+    "gold_sparql": "SELECT (COUNT(DISTINCT ?stat_cat) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-usda-agricultural-statistics> WHERE {\n  ?stat_cat_entity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/type/StatisticCategory> .\n  ?stat_cat_entity <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/stat_cat> ?stat_cat .\n}",
     "expected_answer": "3",
     "full_expected_items": [
       "3"
@@ -198,7 +198,7 @@
     "id": "q-005",
     "tier": "T2",
     "question": "How many commodities have 'CORN' in their name?",
-    "gold_sparql": "SELECT (COUNT(DISTINCT ?commodity) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-usda-agricultural-statistics> WHERE {\n  ?commodity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Commodity> .\n  ?commodity <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/commodity> ?commodity_name .\n  FILTER(CONTAINS(LCASE(STR(?commodity_name)), \"corn\"))\n}",
+    "gold_sparql": "SELECT (COUNT(DISTINCT ?commodity) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-usda-agricultural-statistics> WHERE {\n  ?commodity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Commodity> .\n  ?commodity <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/commodity> ?commodity_name .\n  FILTER(CONTAINS(LCASE(STR(?commodity_name)), \"corn\"))\n}",
     "expected_answer": "2",
     "full_expected_items": [
       "2"
@@ -243,7 +243,7 @@
     "id": "q-006",
     "tier": "T2",
     "question": "List the labels of all units that have 'ACRES' in their description.",
-    "gold_sparql": "SELECT DISTINCT ?label FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-usda-agricultural-statistics> WHERE {\n  ?unit <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Unit> .\n  ?unit <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/unit_desc> ?unit_desc .\n  ?unit <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n  FILTER(CONTAINS(LCASE(STR(?unit_desc)), \"acres\"))\n}",
+    "gold_sparql": "SELECT DISTINCT ?label FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-usda-agricultural-statistics> WHERE {\n  ?unit <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Unit> .\n  ?unit <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/unit_desc> ?unit_desc .\n  ?unit <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n  FILTER(CONTAINS(LCASE(STR(?unit_desc)), \"acres\"))\n}",
     "expected_answer": "ACRES",
     "full_expected_items": [
       "ACRES"
@@ -288,7 +288,7 @@
     "id": "q-007",
     "tier": "T2",
     "question": "How many states have 'I' in their state name?",
-    "gold_sparql": "SELECT (COUNT(DISTINCT ?state) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-usda-agricultural-statistics> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/state_name> ?state_name .\n  FILTER(CONTAINS(LCASE(STR(?state_name)), \"i\"))\n}",
+    "gold_sparql": "SELECT (COUNT(DISTINCT ?state) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-usda-agricultural-statistics> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/type/State> .\n  ?state <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/state_name> ?state_name .\n  FILTER(CONTAINS(LCASE(STR(?state_name)), \"i\"))\n}",
     "expected_answer": "28",
     "full_expected_items": [
       "28"
@@ -333,7 +333,7 @@
     "id": "q-008",
     "tier": "T2",
     "question": "Find all statistic categories that are exactly 'PEST MGMT'.",
-    "gold_sparql": "SELECT DISTINCT ?label FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-usda-agricultural-statistics> WHERE {\n  ?stat_cat_entity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/type/StatisticCategory> .\n  ?stat_cat_entity <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/stat_cat> ?stat_cat_value .\n  ?stat_cat_entity <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n  FILTER(?stat_cat_value = \"PEST MGMT\")\n}",
+    "gold_sparql": "SELECT DISTINCT ?label FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-usda-agricultural-statistics> WHERE {\n  ?stat_cat_entity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/type/StatisticCategory> .\n  ?stat_cat_entity <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/stat_cat> ?stat_cat_value .\n  ?stat_cat_entity <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n  FILTER(?stat_cat_value = \"PEST MGMT\")\n}",
     "expected_answer": "PEST MGMT",
     "full_expected_items": [
       "PEST MGMT"
@@ -378,7 +378,7 @@
     "id": "q-009",
     "tier": "T3",
     "question": "How many observations are there for each commodity?",
-    "gold_sparql": "SELECT ?commodityLabel (COUNT(?observation) AS ?observationCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-usda-agricultural-statistics> WHERE {\n  ?observation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Observation> .\n  ?observation <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/observation_of_commodity> ?commodity .\n  ?commodity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Commodity> .\n  ?commodity <http://www.w3.org/2000/01/rdf-schema#label> ?commodityLabel .\n} GROUP BY ?commodityLabel ORDER BY DESC(?observationCount)",
+    "gold_sparql": "SELECT ?commodityLabel (COUNT(?observation) AS ?observationCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-usda-agricultural-statistics> WHERE {\n  ?observation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Observation> .\n  ?observation <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/observation_of_commodity> ?commodity .\n  ?commodity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Commodity> .\n  ?commodity <http://www.w3.org/2000/01/rdf-schema#label> ?commodityLabel .\n} GROUP BY ?commodityLabel ORDER BY DESC(?observationCount)",
     "expected_answer": "AG LAND | 3068\nSOYBEANS | 745\nWHEAT | 721\nCORN | 628\nCOTTON | 476\nVEGETABLE TOTALS | 439\nAPPLES | 292\nGRAPES | 285\nCHERRIES | 188\nLETTUCE | 175\n... (58 total rows)",
     "full_expected_items": [
       "AG LAND | 3068",
@@ -480,7 +480,7 @@
     "id": "q-010",
     "tier": "T4",
     "question": "What is the average value of observations for each commodity in the year 2020?",
-    "gold_sparql": "SELECT ?commodityLabel (AVG(xsd:float(?observationValue)) AS ?averageObservationValue) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-usda-agricultural-statistics> WHERE {\n  ?observation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Observation> .\n  ?observation <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/observation_of_commodity> ?commodity .\n  ?commodity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Commodity> .\n  ?commodity <http://www.w3.org/2000/01/rdf-schema#label> ?commodityLabel .\n  ?observation <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/observation_in_year> ?year .\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Year> .\n  ?year <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/year> \"2020\" .\n  ?observation <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/value> ?observationValue .\n} GROUP BY ?commodityLabel",
+    "gold_sparql": "SELECT ?commodityLabel (AVG(xsd:float(?observationValue)) AS ?averageObservationValue) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-usda-agricultural-statistics> WHERE {\n  ?observation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Observation> .\n  ?observation <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/observation_of_commodity> ?commodity .\n  ?commodity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Commodity> .\n  ?commodity <http://www.w3.org/2000/01/rdf-schema#label> ?commodityLabel .\n  ?observation <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/observation_in_year> ?year .\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Year> .\n  ?year <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/year> \"2020\" .\n  ?observation <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/value> ?observationValue .\n} GROUP BY ?commodityLabel",
     "expected_answer": "SOYBEANS | 1384268.5\nCAULIFLOWER | 301.97623\nVEGETABLE TOTALS | 38.41781\nPEAS | 5577.006\nBEANS | 1835.6147\nCELERY | 71.32136\nPUMPKINS | 2069.6313\nLETTUCE | 3382.5762\nCARROTS | 391.0734\nONIONS | 8096.544\n... (21 total rows)",
     "full_expected_items": [
       "SOYBEANS | 1384268.5",
@@ -545,7 +545,7 @@
     "id": "q-011",
     "tier": "T4",
     "question": "List the states and the count of distinct statistic categories observed in each state.",
-    "gold_sparql": "SELECT ?stateName (COUNT(DISTINCT ?statCat) AS ?distinctStatisticCategories) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-usda-agricultural-statistics> WHERE {\n  ?observation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Observation> .\n  ?observation <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/observation_in_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/state_name> ?stateName .\n  ?observation <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/observation_stat_category> ?statisticCategory .\n  ?statisticCategory <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/type/StatisticCategory> .\n  ?statisticCategory <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/stat_cat> ?statCat .\n} GROUP BY ?stateName",
+    "gold_sparql": "SELECT ?stateName (COUNT(DISTINCT ?statCat) AS ?distinctStatisticCategories) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-usda-agricultural-statistics> WHERE {\n  ?observation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Observation> .\n  ?observation <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/observation_in_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/type/State> .\n  ?state <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/state_name> ?stateName .\n  ?observation <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/observation_stat_category> ?statisticCategory .\n  ?statisticCategory <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/type/StatisticCategory> .\n  ?statisticCategory <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/stat_cat> ?statCat .\n} GROUP BY ?stateName",
     "expected_answer": "OREGON | 3\nNEW JERSEY | 3\nCALIFORNIA | 3\nNORTH DAKOTA | 3\nALABAMA | 3\nMONTANA | 3\nWASHINGTON | 3\nWISCONSIN | 3\nPENNSYLVANIA | 3\nINDIANA | 3\n... (50 total rows)",
     "full_expected_items": [
       "OREGON | 3",
@@ -639,7 +639,7 @@
     "id": "q-012",
     "tier": "T4",
     "question": "Which commodities have observations with a 'PRACTICE, SUPPRESSION' domain description, and what are their units?",
-    "gold_sparql": "SELECT DISTINCT ?commodityLabel ?unitDescription FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-usda-agricultural-statistics> WHERE {\n  ?observation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Observation> .\n  ?observation <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/domain_desc> \"PRACTICE, SUPPRESSION\" .\n  ?observation <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/observation_of_commodity> ?commodity .\n  ?commodity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Commodity> .\n  ?commodity <http://www.w3.org/2000/01/rdf-schema#label> ?commodityLabel .\n  ?observation <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/observation_unit> ?unit .\n  ?unit <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Unit> .\n  ?unit <https://omnix.dev/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/unit_desc> ?unitDescription .\n}",
+    "gold_sparql": "SELECT DISTINCT ?commodityLabel ?unitDescription FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-usda-agricultural-statistics> WHERE {\n  ?observation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Observation> .\n  ?observation <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/domain_desc> \"PRACTICE, SUPPRESSION\" .\n  ?observation <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/observation_of_commodity> ?commodity .\n  ?commodity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Commodity> .\n  ?commodity <http://www.w3.org/2000/01/rdf-schema#label> ?commodityLabel .\n  ?observation <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/observation_unit> ?unit .\n  ?unit <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/type/Unit> .\n  ?unit <https://graph.infona.ai/holdout-v2/holdout-v2-usda-agricultural-statistics/pred/unit_desc> ?unitDescription .\n}",
     "expected_answer": "COTTON | PCT OF AREA PLANTED\nPEANUTS | PCT OF AREA PLANTED\nWHEAT | PCT OF AREA PLANTED\nVEGETABLE TOTALS | PCT OF AREA PLANTED\nBARLEY | PCT OF AREA PLANTED\nPOTATOES | PCT OF AREA PLANTED\nCORN | PCT OF AREA PLANTED\nSOYBEANS | PCT OF AREA PLANTED\nRICE | PCT OF AREA PLANTED\nSORGHUM | PCT OF AREA PLANTED\n... (22 total rows)",
     "full_expected_items": [
       "COTTON | PCT OF AREA PLANTED",

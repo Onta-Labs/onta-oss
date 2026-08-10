@@ -2,7 +2,7 @@
 
 Covers the encoding helpers (deterministic statement ids, metadata-node
 triples), the reader round-trip from a mocked SPARQL response, and the
-resolver wiring: COGRAPH_PROVENANCE_ENABLED off (default) must be
+resolver wiring: INFONA_PROVENANCE_ENABLED off (default) must be
 byte-identical to pre-COG-38 behavior; on, statement-metadata triples are
 emitted to the companion provenance graph alongside the attribute triples.
 
@@ -52,7 +52,7 @@ from infona_client.resolver.schema_resolver import SchemaResolver
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 FIXED_TS = datetime(2026, 6, 9, 12, 0, 0, tzinfo=timezone.utc)
 
-SUBJ = "https://graph.onta.sh/entities/Guest/g1"
+SUBJ = "https://graph.infona.ai/entities/Guest/g1"
 PRED = attr_uri("Guest", "email")
 OBJ = "alice@example.com"
 
@@ -73,10 +73,10 @@ def _make_resolver(mock_neptune, provenance: bool) -> SchemaResolver:
     env = {
         "ANTHROPIC_API_KEY": "test-key",
         "OPENROUTER_API_KEY": "test-or-key",
-        "COGRAPH_ER_ENABLED": "0",
+        "INFONA_ER_ENABLED": "0",
     }
     if provenance:
-        env["COGRAPH_PROVENANCE_ENABLED"] = "1"
+        env["INFONA_PROVENANCE_ENABLED"] = "1"
     with patch.dict("os.environ", env):
         return SchemaResolver(
             neptune=mock_neptune,
@@ -102,7 +102,7 @@ def test_statement_id_deterministic():
 def test_build_provenance_triples_fields():
     triples = build_provenance_triples(
         SUBJ, PRED, OBJ, source="crm.csv", confidence=0.9,
-        timestamp=FIXED_TS, graph_uri="https://graph.onta.sh/graphs/t1",
+        timestamp=FIXED_TS, graph_uri="https://graph.infona.ai/graphs/t1",
     )
     nodes = {s for (s, _, _) in triples}
     assert len(nodes) == 1, "all metadata triples share one statement node"
@@ -119,7 +119,7 @@ def test_build_provenance_triples_fields():
     assert by_pred[f"{PROV_NS}timestamp"] == (
         "2026-06-09T12:00:00+00:00^^http://www.w3.org/2001/XMLSchema#dateTime"
     )
-    assert by_pred[f"{PROV_NS}graph"] == "https://graph.onta.sh/graphs/t1"
+    assert by_pred[f"{PROV_NS}graph"] == "https://graph.infona.ai/graphs/t1"
 
 
 def test_assertion_node_distinct_per_source_same_statement_id():
@@ -153,12 +153,12 @@ def test_confidence_out_of_range_raises(bad):
 
 
 def test_provenance_query_scopes_to_companion_graph():
-    q = provenance_query("https://graph.onta.sh/graphs/t1", SUBJ)
-    assert "FROM <https://graph.onta.sh/graphs/t1/provenance>" in q
+    q = provenance_query("https://graph.infona.ai/graphs/t1", SUBJ)
+    assert "FROM <https://graph.infona.ai/graphs/t1/provenance>" in q
     assert f"<{SUBJ}>" in q
     assert "FILTER" not in q  # no predicate narrowing by default
 
-    narrowed = provenance_query("https://graph.onta.sh/graphs/t1", SUBJ, predicate=PRED)
+    narrowed = provenance_query("https://graph.infona.ai/graphs/t1", SUBJ, predicate=PRED)
     assert f"FILTER(?p = <{PRED}>)" in narrowed
 
 
@@ -173,7 +173,7 @@ async def test_fetch_provenance_round_trips_mocked_response(mock_neptune):
             "source": {"type": "literal", "value": source},
             "confidence": {"type": "literal", "value": conf},
             "timestamp": {"type": "literal", "value": ts},
-            "graph": {"type": "uri", "value": "https://graph.onta.sh/graphs/t1"},
+            "graph": {"type": "uri", "value": "https://graph.infona.ai/graphs/t1"},
         }
 
     mock_neptune.query.return_value = {
@@ -184,7 +184,7 @@ async def test_fetch_provenance_round_trips_mocked_response(mock_neptune):
         ]},
     }
 
-    records = await fetch_provenance(mock_neptune, "https://graph.onta.sh/graphs/t1", SUBJ)
+    records = await fetch_provenance(mock_neptune, "https://graph.infona.ai/graphs/t1", SUBJ)
     assert len(records) == 2
     first = records[0]
     assert first.subject == SUBJ
@@ -194,7 +194,7 @@ async def test_fetch_provenance_round_trips_mocked_response(mock_neptune):
     assert first.confidence == 0.97
     assert first.timestamp == "2026-06-09T12:00:00+00:00"
     assert first.statement_id == statement_id(SUBJ, PRED, OBJ)
-    assert first.graph == "https://graph.onta.sh/graphs/t1"
+    assert first.graph == "https://graph.infona.ai/graphs/t1"
     # Malformed confidence degrades to 1.0 instead of failing the read.
     assert records[1].confidence == 1.0
 
@@ -238,8 +238,8 @@ async def test_flag_off_is_byte_identical_regression(mock_neptune):
         RDF_TYPE,
         "http://www.w3.org/2000/01/rdf-schema#label",
         PRED,
-        "https://graph.onta.sh/onto/ingested_at",
-        "https://graph.onta.sh/onto/source",
+        "https://graph.infona.ai/onto/ingested_at",
+        "https://graph.infona.ai/onto/source",
     ]
 
 
@@ -278,7 +278,7 @@ async def test_flag_on_no_attributes_no_provenance_insert(mock_neptune):
     result = IngestResult(entities_extracted=1)
 
     await resolver._resolve_and_insert_entity(
-        entity, "Guest", "https://graph.onta.sh/entities/Guest/g2", is_duplicate=False,
+        entity, "Guest", "https://graph.infona.ai/entities/Guest/g2", is_duplicate=False,
         graph_uri="g", existing_types={"Guest": ""}, existing_attrs={"Guest": {}},
         source="crm.csv", result=result, _collect_triples=[],
     )
@@ -303,20 +303,20 @@ async def test_flag_on_entity_reference_attribute_gets_provenance(mock_neptune):
     result = IngestResult(entities_extracted=1)
 
     await resolver._resolve_and_insert_entity(
-        entity, "Guest", "https://graph.onta.sh/entities/Guest/g3", is_duplicate=False,
+        entity, "Guest", "https://graph.infona.ai/entities/Guest/g3", is_duplicate=False,
         graph_uri="g", existing_types={"Guest": "", "Hotel": ""}, existing_attrs=existing_attrs,
         source="pms", result=result, _collect_triples=[],
     )
 
     sparql = " || ".join(_update_sparql(mock_neptune))
     assert f"GRAPH <{provenance_graph_uri('g')}>" in sparql
-    target = "https://graph.onta.sh/entities/Hotel/Hotel_Zed"
+    target = "https://graph.infona.ai/entities/Hotel/Hotel_Zed"
     # The promotion branch writes the relationship instance edge on onto/<leaf> (the
     # NL-queryable predicate); provenance describes that real edge, so the statement
     # id hashes the onto/<leaf> predicate — not attr_uri (the ontology declaration).
     sid = statement_id(
-        "https://graph.onta.sh/entities/Guest/g3",
-        "https://graph.onta.sh/onto/stays_at", target,
+        "https://graph.infona.ai/entities/Guest/g3",
+        "https://graph.infona.ai/onto/stays_at", target,
     )
     assert sid in sparql
 
@@ -356,7 +356,7 @@ async def test_multi_entity_ingest_flushes_one_batched_provenance_insert(mock_ne
     entity's statement metadata — not one awaited update per entity."""
     resolver = _make_resolver(mock_neptune, provenance=True)
     mock_neptune.batch_exists.return_value = set()
-    graph = "https://graph.onta.sh/graphs/t1"
+    graph = "https://graph.infona.ai/graphs/t1"
     extraction = ExtractionResult(
         entities=[
             ExtractedEntity(
@@ -384,10 +384,10 @@ async def test_multi_entity_ingest_flushes_one_batched_provenance_insert(mock_ne
     prov_calls = [c for c in calls if f"GRAPH <{prov_graph}>" in c]
     assert len(prov_calls) == 1, "ONE batched provenance INSERT per ingest"
     sid1 = statement_id(
-        "https://graph.onta.sh/entities/Guest/g1", PRED, "alice@example.com",
+        "https://graph.infona.ai/entities/Guest/g1", PRED, "alice@example.com",
     )
     sid2 = statement_id(
-        "https://graph.onta.sh/entities/Guest/g2", PRED, "bob@example.com",
+        "https://graph.infona.ai/entities/Guest/g2", PRED, "bob@example.com",
     )
     assert sid1 in prov_calls[0] and sid2 in prov_calls[0]
     # Instance triples still flush in their own batched INSERT, provenance-free.
@@ -398,7 +398,7 @@ async def test_multi_entity_ingest_flushes_one_batched_provenance_insert(mock_ne
 
 # --- Removal / rename events (ADR 0007): tombstone + rewrite builders ----------
 
-_GRAPH = "https://graph.onta.sh/graphs/t/kg/k"
+_GRAPH = "https://graph.infona.ai/graphs/t/kg/k"
 _FIXED = datetime(2026, 7, 1, tzinfo=timezone.utc)
 
 
@@ -410,13 +410,13 @@ def _by_node(triples):
 
 
 def test_build_tombstone_triples_for_subject():
-    subj = "https://graph.onta.sh/entities/E/1"
+    subj = "https://graph.infona.ai/entities/E/1"
     triples = build_tombstone_triples(
         subjects=[subj],
         graph_uri=_GRAPH,
         reason="orphan sweep",
         timestamp=_FIXED,
-        touched_types=["https://graph.onta.sh/types/Language"],
+        touched_types=["https://graph.infona.ai/types/Language"],
     )
     assert triples, "a subject removal must emit a tombstone event"
     node = triples[0][0]

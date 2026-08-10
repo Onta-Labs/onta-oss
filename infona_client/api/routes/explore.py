@@ -53,7 +53,7 @@ from infona_client.spatiotemporal.extract import (
     VALIDITY_BOUND_LOCALS,
 )
 
-logger = structlog.stdlib.get_logger("cograph.explore")
+logger = structlog.stdlib.get_logger("infona.explore")
 
 router = APIRouter(prefix="/graphs/{tenant}/explore")
 
@@ -789,7 +789,7 @@ async def _read_edges_from_stats_drift(
     so the caller can fall back to a live scan (which is unfiltered — a fresh KG
     without materialized stats predates drift control and must not regress).
 
-    Only invoked when the ``OMNIX_DRIFT_CONTROL`` flag is ON; with the flag OFF
+    Only invoked when the ``INFONA_DRIFT_CONTROL`` flag is ON; with the flag OFF
     the caller takes the unchanged :func:`_read_edges_from_stats` path.
     """
     stats = _stats_graph_uri(tenant_id, kg_name)
@@ -1228,7 +1228,7 @@ async def _persist_drift_history(
     node, plus one point node per relationship in ``report["coverages"]`` (the
     full distribution, kept and quarantined alike). APPEND-only — never DROPs the
     graph — so the distribution accumulates across recomputes and tenants/KGs,
-    which is the data ADR 0004 needs to set ``OMNIX_DRIFT_FLOOR_COV`` from a real
+    which is the data ADR 0004 needs to set ``INFONA_DRIFT_FLOOR_COV`` from a real
     histogram instead of the hand-calibrated 20%.
 
     Wrapped in try/except: persistence is observability, so a Neptune write
@@ -1795,7 +1795,7 @@ async def get_type_edges(
     URI (e.g. a predicate first seen as a primitive attribute) is now drawn in
     both places. Returns ``[{source, target, weight}]``.
 
-    ADR 0004 (flag ``OMNIX_DRIFT_CONTROL``): when ON, the stats read also
+    ADR 0004 (flag ``INFONA_DRIFT_CONTROL``): when ON, the stats read also
     respects the support floor — a low-support drift edge (e.g.
     ``ManufacturerPartNumber.issuedby -> Retailer`` at 6% coverage) is excluded
     from the overview, while high-coverage and core-slot edges are kept. With
@@ -1854,7 +1854,7 @@ async def get_drift_history(
     Returns the persisted recompute snapshots (newest first), each with the run's
     effective floors, kept/quarantined totals, and the full per-relationship
     coverage distribution. This is the durable, queryable replacement for
-    log-scraping CloudWatch — the data ADR 0004 sets ``OMNIX_DRIFT_FLOOR_COV``
+    log-scraping CloudWatch — the data ADR 0004 sets ``INFONA_DRIFT_FLOOR_COV``
     from. Raw distribution access only; histogram/floor analysis is done offline.
     """
     hist = _drift_history_graph_uri(tenant.tenant_id, kg_name)
@@ -2285,7 +2285,7 @@ async def search_explorer(
             # These names come back from the ONTOLOGY, not from the caller, and
             # this loop is an ENUMERATION: letting `layer_type_uri` raise on one
             # corrupt stored name would 422 the whole search for every other
-            # type, the all-or-nothing failure onta-oss#274 had to fix for KG
+            # type, the all-or-nothing failure infona-oss#274 had to fix for KG
             # names. Skipping keeps the corruption observable in logs (and the
             # bad type genuinely unqueryable) without taking the listing down.
             if skip_invalid_type_name(type_name, "explore_search"):

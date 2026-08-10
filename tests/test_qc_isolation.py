@@ -41,12 +41,12 @@ from infona_client.qc.isolation import (
     isolated,
 )
 
-ENT = "https://graph.onta.sh/entities/"
-TYPES = "https://graph.onta.sh/types/"
-ONTO = "https://graph.onta.sh/onto/"
+ENT = "https://graph.infona.ai/entities/"
+TYPES = "https://graph.infona.ai/types/"
+ONTO = "https://graph.infona.ai/onto/"
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
-SOURCE = "https://graph.onta.sh/onto/source"
+SOURCE = "https://graph.infona.ai/onto/source"
 
 # Two distinct workspaces (distinct tenants → distinct base graphs), each with its own
 # provenance source and its own KG target — the "two-workspace" contract.

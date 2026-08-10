@@ -39,7 +39,7 @@ import structlog
 
 from infona_client.usage.store import UsageBucket, UsageStore, get_usage_store
 
-logger = structlog.stdlib.get_logger("cograph.usage")
+logger = structlog.stdlib.get_logger("infona.usage")
 
 # Seconds of traffic between opportunistic flushes, and the buffer size that
 # forces one regardless. Tuned for "cheap", not "real-time": the usage panel

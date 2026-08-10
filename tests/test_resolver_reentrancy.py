@@ -56,7 +56,7 @@ from infona_client.resolver.schema_resolver import SchemaResolver  # noqa: E402
 from infona_client.resolver.verdict_cache import JsonVerdictCache  # noqa: E402
 
 RDFS_SUBCLASSOF = "http://www.w3.org/2000/01/rdf-schema#subClassOf"
-TYPES = "https://graph.onta.sh/types/"
+TYPES = "https://graph.infona.ai/types/"
 
 # Two distinct workspaces (distinct tenants → distinct base graphs), each with its
 # own provenance source and its own KG target — the "two-workspace" contract the
@@ -91,7 +91,7 @@ def _make_resolver(neptune, *, ontology_lock=None) -> SchemaResolver:
     fresh per-run verdict cache, no embeddings. ER disabled so URI minting stays
     deterministic (no signal-hash suffixes) and the isolation attribution is
     unambiguous. Optionally shares an ontology-write lock across resolvers."""
-    os.environ["COGRAPH_ER_ENABLED"] = "0"
+    os.environ["INFONA_ER_ENABLED"] = "0"
     cache_path = pathlib.Path(tempfile.gettempdir()) / f"reent_verdicts_{time.time_ns()}.json"
     return SchemaResolver(
         neptune=neptune,

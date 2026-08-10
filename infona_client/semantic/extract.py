@@ -85,7 +85,7 @@ import structlog
 
 from infona_client.semantic.protocol import IDENTITY_ATTR, SemanticChunk
 
-logger = structlog.stdlib.get_logger("cograph.semantic.extract")
+logger = structlog.stdlib.get_logger("infona.semantic.extract")
 
 Triple = tuple[str, str, str]
 
@@ -129,7 +129,7 @@ _LABEL_LOCALS = {"label", "name", "title"}
 _SENTENCE_END_RE = re.compile(r"[.!?][)\"”']*(?:\s|$)")
 
 #: Opt-OUT kill switch for the identity arm (ONTA-421), default **on**. It sits
-#: INSIDE the already-opt-in ``COGRAPH_SEMANTIC_INDEX_ENABLED`` gate, so it can
+#: INSIDE the already-opt-in ``INFONA_SEMANTIC_INDEX_ENABLED`` gate, so it can
 #: only ever narrow an index that is already running. Read per call so ops can
 #: flip it without a re-import, and consulted HERE — inside the one extractor
 #: that BOTH the write hook and the reconciler call — so the two can never
@@ -137,7 +137,7 @@ _SENTENCE_END_RE = re.compile(r"[.!?][)\"”']*(?:\s|$)")
 #: catastrophic in the ordinary way this subsystem is catastrophic: the
 #: reconciler would ghost-delete every identity doc the hook just wrote, every
 #: hour, forever.)
-IDENTITY_INDEX_ENV = "COGRAPH_SEMANTIC_IDENTITY_INDEX"
+IDENTITY_INDEX_ENV = "INFONA_SEMANTIC_IDENTITY_INDEX"
 
 
 def identity_index_enabled() -> bool:
@@ -344,7 +344,7 @@ def extract_semantic_chunks(
     :data:`~infona_client.semantic.protocol.IDENTITY_ATTR` (ONTA-421, see the
     module docstring): the entity's own names, emitted last so a marked
     name-source attribute wins the dedup, exempt from the chunk cap, and never
-    embedded. Suppressed wholesale by ``COGRAPH_SEMANTIC_IDENTITY_INDEX=0``. An
+    embedded. Suppressed wholesale by ``INFONA_SEMANTIC_IDENTITY_INDEX=0``. An
     entity that has a name but NO marked attribute now yields a chunk where it
     previously yielded none — that is the whole point of the fix.
     """

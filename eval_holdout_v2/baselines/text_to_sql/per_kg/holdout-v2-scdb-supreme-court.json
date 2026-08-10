@@ -11,7 +11,7 @@
         "9341"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?case) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Case> .\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?case) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/Case> .\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -67,7 +67,7 @@
         "Roberts"
       ],
       "full_result_count": 5,
-      "gold_sparql": "SELECT ?chiefName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?chiefJustice <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/ChiefJustice> .\n  ?chiefJustice <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/chief_name> ?chiefName .\n}",
+      "gold_sparql": "SELECT ?chiefName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?chiefJustice <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/ChiefJustice> .\n  ?chiefJustice <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/chief_name> ?chiefName .\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -119,7 +119,7 @@
         "14"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?issueArea) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?issueArea <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/IssueArea> .\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?issueArea) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?issueArea <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/IssueArea> .\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -210,7 +210,7 @@
         "FFrankfurter"
       ],
       "full_result_count": 40,
-      "gold_sparql": "SELECT ?justiceName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?justice <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Justice> .\n  ?justice <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/justice_name> ?justiceName .\n}",
+      "gold_sparql": "SELECT ?justiceName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?justice <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/Justice> .\n  ?justice <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/justice_name> ?justiceName .\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -262,7 +262,7 @@
         "HHBurton"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT ?justice_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?justice <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Justice> .\n  ?justice <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/justice_name> ?justice_name .\n  FILTER(CONTAINS(?justice_name, \"Burton\"))\n}",
+      "gold_sparql": "SELECT ?justice_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?justice <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/Justice> .\n  ?justice <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/justice_name> ?justice_name .\n  FILTER(CONTAINS(?justice_name, \"Burton\"))\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -314,7 +314,7 @@
         "34"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(?term_entity) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?term_entity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Term> .\n  ?term_entity <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/term> ?term_year .\n  FILTER(xsd:integer(?term_year) > 1990)\n}",
+      "gold_sparql": "SELECT (COUNT(?term_entity) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?term_entity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/Term> .\n  ?term_entity <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/term> ?term_year .\n  FILTER(xsd:integer(?term_year) > 1990)\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -366,7 +366,7 @@
         "Civil Rights"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT ?issue_area_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?issue_area <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/IssueArea> .\n  ?issue_area <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/issue_area_name> ?issue_area_name .\n  FILTER(?issue_area_name = \"Civil Rights\")\n}",
+      "gold_sparql": "SELECT ?issue_area_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?issue_area <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/IssueArea> .\n  ?issue_area <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/issue_area_name> ?issue_area_name .\n  FILTER(?issue_area_name = \"Civil Rights\")\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -422,7 +422,7 @@
         "Vinson | 812"
       ],
       "full_result_count": 5,
-      "gold_sparql": "SELECT ?chief_name (COUNT(DISTINCT ?case) AS ?case_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Case> .\n  ?case <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/case_under_chief> ?chief .\n  ?chief <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/ChiefJustice> .\n  ?chief <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/chief_name> ?chief_name .\n} GROUP BY ?chief_name ORDER BY DESC(?case_count)",
+      "gold_sparql": "SELECT ?chief_name (COUNT(DISTINCT ?case) AS ?case_count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/Case> .\n  ?case <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/case_under_chief> ?chief .\n  ?chief <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/ChiefJustice> .\n  ?chief <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/chief_name> ?chief_name .\n} GROUP BY ?chief_name ORDER BY DESC(?case_count)",
       "per_seed": [
         {
           "seed": 1,
@@ -517,7 +517,7 @@
         "2024 | 64"
       ],
       "full_result_count": 44,
-      "gold_sparql": "SELECT ?term_name (COUNT(DISTINCT ?case) AS ?case_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Case> .\n  ?case <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/case_decided_in_term> ?term .\n  ?term <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Term> .\n  ?term <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/term> ?term_name .\n  FILTER (xsd:integer(?term_name) > 1980)\n} GROUP BY ?term_name ORDER BY ?term_name",
+      "gold_sparql": "SELECT ?term_name (COUNT(DISTINCT ?case) AS ?case_count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/Case> .\n  ?case <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/case_decided_in_term> ?term .\n  ?term <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/Term> .\n  ?term <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/term> ?term_name .\n  FILTER (xsd:integer(?term_name) > 1980)\n} GROUP BY ?term_name ORDER BY ?term_name",
       "per_seed": [
         {
           "seed": 1,
@@ -573,7 +573,7 @@
         "Warren | 49"
       ],
       "full_result_count": 5,
-      "gold_sparql": "SELECT ?chief_name (COUNT(DISTINCT ?case) AS ?case_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Case> .\n  ?case <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/case_under_chief> ?chief .\n  ?chief <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/ChiefJustice> .\n  ?chief <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/chief_name> ?chief_name .\n  ?case <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/precedent_alteration> \"1\" .\n} GROUP BY ?chief_name ORDER BY ?chief_name",
+      "gold_sparql": "SELECT ?chief_name (COUNT(DISTINCT ?case) AS ?case_count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/Case> .\n  ?case <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/case_under_chief> ?chief .\n  ?chief <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/ChiefJustice> .\n  ?chief <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/chief_name> ?chief_name .\n  ?case <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/precedent_alteration> \"1\" .\n} GROUP BY ?chief_name ORDER BY ?chief_name",
       "per_seed": [
         {
           "seed": 1,
@@ -633,7 +633,7 @@
         "SGBreyer"
       ],
       "full_result_count": 9,
-      "gold_sparql": "SELECT DISTINCT ?justice_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?vote <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Vote> .\n  ?vote <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/vote_by_justice> ?justice .\n  ?justice <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Justice> .\n  ?justice <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/justice_name> ?justice_name .\n  ?vote <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/vote_in_case> ?case .\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Case> .\n  ?case <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/party_winning> \"1\" .\n  ?case <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/case_decided_in_term> ?term .\n  ?term <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Term> .\n  ?term <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/term> \"1996\" .\n}",
+      "gold_sparql": "SELECT DISTINCT ?justice_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?vote <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/Vote> .\n  ?vote <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/vote_by_justice> ?justice .\n  ?justice <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/Justice> .\n  ?justice <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/justice_name> ?justice_name .\n  ?vote <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/vote_in_case> ?case .\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/Case> .\n  ?case <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/party_winning> \"1\" .\n  ?case <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/case_decided_in_term> ?term .\n  ?term <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/Term> .\n  ?term <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/term> \"1996\" .\n}",
       "per_seed": [
         {
           "seed": 1,

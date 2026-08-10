@@ -15,7 +15,7 @@ The eval path for ALL KGs must mirror what production users actually experience.
 - [ ] **Routing split is correct**
   - v1 CSV-ingested KGs → production `/ask` endpoint
   - Multi-table-ingested KGs → `ask_client_side` (or production `/ask` if backend has the ontology fallback deployed)
-  - Detection logic uses ASK SPARQL on `https://omnix.dev/holdout-v2/{kg}/type/*` (commit `55f811d`)
+  - Detection logic uses ASK SPARQL on `https://graph.infona.ai/holdout-v2/{kg}/type/*` (commit `55f811d`)
 
 - [ ] **Both paths use the example bank with anti-cheat**
   - v1 path: production `/ask` accepts `exclude_questions` body parameter ✓
@@ -23,13 +23,13 @@ The eval path for ALL KGs must mirror what production users actually experience.
   - **Symmetric**: if production /ask uses examples, the client-side path MUST use them too. Anything else under-represents Infona's real accuracy.
 
 - [ ] **Both paths have retry-with-error-feedback**
-  - v1 path: production `/ask` retry loop in `omnix-oss/omnix/nlp/pipeline.py` (3 attempts)
+  - v1 path: production `/ask` retry loop in `infona-oss/infona/nlp/pipeline.py` (3 attempts)
   - Multi-table path: `ask_client_side` retry loop (commit `d6759e2`)
   - Retry feedback uses ONLY error messages, HTTP status, prior SPARQL — never gold
 
 - [ ] **Both paths apply identical SPARQL repair**
   - FROM-clause regex repair (Pattern A, commit `a2ffac6`)
-  - Any other syntax repairs production /ask does (read `omnix-oss/omnix/nlp/pipeline.py::_fix_*` to verify)
+  - Any other syntax repairs production /ask does (read `infona-oss/infona/nlp/pipeline.py::_fix_*` to verify)
 
 - [ ] **Both paths use the same ontology source**
   - v1 path: ontology metadata table OR the runtime fallback
@@ -47,13 +47,13 @@ Any single failure here invalidates the entire run.
   - Passed to BOTH the bank retriever AND the eval runner
 
 - [ ] **Same-KG similarity gate is active** (≥0.75 → blocked, per spec §6.1)
-  - Verified in `omnix-oss/omnix/nlp/example_bank.py` constant `SAME_DATASET_MAX_SIM = 0.75`
+  - Verified in `infona-oss/infona/nlp/example_bank.py` constant `SAME_DATASET_MAX_SIM = 0.75`
 
 - [ ] **Cross-KG examples are gated at ≥0.90 similarity** (spec §4.4)
   - Verified in same file: `ANTI_CHEAT_THRESHOLD = 0.90`
 
 - [ ] **`HOLDOUT_V2_KGS` guard is present in bank ingestion**
-  - `omnix-oss/omnix/nlp/example_bank.py::populate_from_eval_reports` skips KGs in the holdout list
+  - `infona-oss/infona/nlp/example_bank.py::populate_from_eval_reports` skips KGs in the holdout list
   - No holdout-v2 KG question or SPARQL has ever entered the bank
 
 - [ ] **No gold field is read inside the retry loop or the prompt builder**
@@ -118,8 +118,8 @@ Mismatches here corrupt every comparison table in the paper.
 Before running the FULL eval, run a 3-question smoke test on ONE rich KG to verify the whole pipe is alive:
 
 ```bash
-set -a && source /Users/moeen/Desktop/omnix/.env && set +a
-/Users/moeen/Desktop/omnix/.venv/bin/python scripts/run_holdout_v2_baseline.py \
+set -a && source /Users/moeen/Desktop/infona/.env && set +a
+/Users/moeen/Desktop/infona/.venv/bin/python scripts/run_holdout_v2_baseline.py \
   --gold-dir eval_holdout_v2/gold \
   --out /tmp/preflight_smoke/ \
   --seeds 1 \

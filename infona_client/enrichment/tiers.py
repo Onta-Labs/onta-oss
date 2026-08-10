@@ -4,7 +4,7 @@ Each tier is an ordered list of adapter names (e.g. ["cache", "wikidata"]).
 At enrichment time, the executor walks the chain in order and stops at the
 first verdict whose confidence >= confidence_min.
 
-OSS ships with a `lite` tier (cache + wikidata). cograph (proprietary) calls
+OSS ships with a `lite` tier (cache + wikidata). infona (proprietary) calls
 `register_tier(EnrichmentTier.base, [...])` etc. at app boot to wire paid
 adapters into base/core/pro.
 """
@@ -14,7 +14,7 @@ from typing import Callable
 
 from infona_client.enrichment.models import EnrichmentTier
 
-# Default OSS chains. cograph overrides via register_tier().
+# Default OSS chains. infona overrides via register_tier().
 #
 # ``auto`` is a META-tier (COG-124): it is resolved to a concrete tier
 # (``lite``/``core``) by the tier router BEFORE a job is created, so a real chain
@@ -67,7 +67,7 @@ def _chain_prefix(tier: EnrichmentTier) -> list[str]:
 
 
 def register_tier(tier: EnrichmentTier, adapter_chain: list[str]) -> None:
-    """Override the adapter chain for a tier. Called by the cograph plugin
+    """Override the adapter chain for a tier. Called by the infona plugin
     at app boot. Idempotent -- last write wins.
     """
     _chains[tier] = list(adapter_chain)

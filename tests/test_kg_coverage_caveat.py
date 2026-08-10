@@ -53,7 +53,7 @@ def _clear_kg_status_cache():
     yield
     kg_status.invalidate_kg_status("t1")
 
-BASE = "https://graph.onta.sh"
+BASE = "https://graph.infona.ai"
 TENANT_GRAPH = f"{BASE}/graphs/t1"
 KG_GRAPH = f"{TENANT_GRAPH}/kg/maral"
 PUBLIC_LAYER = f"{BASE}/graphs/global/public"

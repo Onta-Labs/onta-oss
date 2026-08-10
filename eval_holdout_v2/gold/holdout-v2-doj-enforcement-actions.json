@@ -11,7 +11,7 @@
     {
       "id": "q-001",
       "question": "How many distinct companies are there?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?company) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE { ?company <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/type/Company> . }",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?company) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE { ?company <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/type/Company> . }",
       "full_expected_items": [
         "4935"
       ],
@@ -26,7 +26,7 @@
     {
       "id": "q-002",
       "question": "List all available crime types.",
-      "gold_sparql": "SELECT ?crimetype_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE { ?crimetype <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/type/CrimeType> . ?crimetype <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/crimetype_name> ?crimetype_name . }",
+      "gold_sparql": "SELECT ?crimetype_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE { ?crimetype <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/type/CrimeType> . ?crimetype <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/crimetype_name> ?crimetype_name . }",
       "full_expected_items": [
         "Bank Secrecy Act",
         "Antitrust",
@@ -64,7 +64,7 @@
     {
       "id": "q-003",
       "question": "What are the names of all jurisdictions?",
-      "gold_sparql": "SELECT ?jurisdiction_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE { ?jurisdiction <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/type/Jurisdiction> . ?jurisdiction <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/jurisdiction_name> ?jurisdiction_name . }",
+      "gold_sparql": "SELECT ?jurisdiction_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE { ?jurisdiction <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/type/Jurisdiction> . ?jurisdiction <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/jurisdiction_name> ?jurisdiction_name . }",
       "full_expected_items": [
         "Florida - Southern District,USDOJ - Criminal Division",
         "Alabama - Middle District",
@@ -518,7 +518,7 @@
     {
       "id": "q-004",
       "question": "How many distinct enforcement actions are recorded?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?action) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE { ?action <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/type/Action> . }",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?action) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE { ?action <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/type/Action> . }",
       "full_expected_items": [
         "5070"
       ],
@@ -533,7 +533,7 @@
     {
       "id": "q-005",
       "question": "List the names of all crime types that contain 'Act' in their name.",
-      "gold_sparql": "SELECT ?crimeTypeName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE {\n  ?crimeType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/type/CrimeType> .\n  ?crimeType <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/crimetype_name> ?crimeTypeName .\n  FILTER(CONTAINS(LCASE(STR(?crimeTypeName)), \"act\"))\n}",
+      "gold_sparql": "SELECT ?crimeTypeName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE {\n  ?crimeType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/type/CrimeType> .\n  ?crimeType <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/crimetype_name> ?crimeTypeName .\n  FILTER(CONTAINS(LCASE(STR(?crimeTypeName)), \"act\"))\n}",
       "full_expected_items": [
         "Bank Secrecy Act",
         "Controlled Substances / Drugs / Meth Act",
@@ -550,7 +550,7 @@
     {
       "id": "q-006",
       "question": "How many actions have a probation period of more than 30 months?",
-      "gold_sparql": "SELECT (COUNT(?action) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE {\n  ?action <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/type/Action> .\n  ?action <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_probation_months> ?probationMonths .\n  FILTER(xsd:integer(?probationMonths) > 30)\n}",
+      "gold_sparql": "SELECT (COUNT(?action) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE {\n  ?action <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/type/Action> .\n  ?action <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_probation_months> ?probationMonths .\n  FILTER(xsd:integer(?probationMonths) > 30)\n}",
       "full_expected_items": [
         "1696"
       ],
@@ -565,7 +565,7 @@
     {
       "id": "q-007",
       "question": "Find all years that are earlier than 2000.",
-      "gold_sparql": "SELECT ?yearValue FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE {\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/type/Year> .\n  ?year <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/year_value> ?yearValue .\n  FILTER(xsd:integer(?yearValue) < 2000)\n}",
+      "gold_sparql": "SELECT ?yearValue FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE {\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/type/Year> .\n  ?year <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/year_value> ?yearValue .\n  FILTER(xsd:integer(?yearValue) < 2000)\n}",
       "full_expected_items": [
         "1999",
         "1992",
@@ -586,7 +586,7 @@
     {
       "id": "q-008",
       "question": "How many actions are associated with each company that is a US public company?",
-      "gold_sparql": "SELECT ?company_name (COUNT(?action) AS ?action_count)\nFROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions>\nWHERE {\n  ?company <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/type/Company> .\n  ?company <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/company_has_action> ?action .\n  ?action <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/type/Action> .\n  ?company <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/company_is_us_public_co> \"True\" .\n  ?company <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/company_name> ?company_name .\n}\nGROUP BY ?company_name\nORDER BY DESC(?action_count)",
+      "gold_sparql": "SELECT ?company_name (COUNT(?action) AS ?action_count)\nFROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions>\nWHERE {\n  ?company <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/type/Company> .\n  ?company <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/company_has_action> ?action .\n  ?action <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/type/Action> .\n  ?company <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/company_is_us_public_co> \"True\" .\n  ?company <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/company_name> ?company_name .\n}\nGROUP BY ?company_name\nORDER BY DESC(?action_count)",
       "full_expected_items": [
         "Overseas Shipholding Group, Inc. | 6",
         "Monsanto Co. | 5",
@@ -929,7 +929,7 @@
     {
       "id": "q-009",
       "question": "Find the number of actions for each jurisdiction where the action had a probation period of more than 12 months.",
-      "gold_sparql": "SELECT ?jurisdiction_name (COUNT(?action) AS ?action_count)\nFROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions>\nWHERE {\n  ?action <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/type/Action> .\n  ?action <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_in_jurisdiction> ?jurisdiction .\n  ?jurisdiction <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/type/Jurisdiction> .\n  ?action <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_probation_months> ?probation_months_str .\n  FILTER (xsd:integer(?probation_months_str) > 12) .\n  ?jurisdiction <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/jurisdiction_name> ?jurisdiction_name .\n}\nGROUP BY ?jurisdiction_name\nORDER BY DESC(?action_count)",
+      "gold_sparql": "SELECT ?jurisdiction_name (COUNT(?action) AS ?action_count)\nFROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions>\nWHERE {\n  ?action <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/type/Action> .\n  ?action <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_in_jurisdiction> ?jurisdiction .\n  ?jurisdiction <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/type/Jurisdiction> .\n  ?action <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_probation_months> ?probation_months_str .\n  FILTER (xsd:integer(?probation_months_str) > 12) .\n  ?jurisdiction <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/jurisdiction_name> ?jurisdiction_name .\n}\nGROUP BY ?jurisdiction_name\nORDER BY DESC(?action_count)",
       "full_expected_items": [
         "Florida - Southern District | 115",
         "USDOJ - Tax Division | 77",
@@ -1246,7 +1246,7 @@
     {
       "id": "q-010",
       "question": "What is the average total payment for actions taken against companies that are US public companies, grouped by the crime type?",
-      "gold_sparql": "SELECT ?crimeTypeName (AVG(xsd:float(?totalPayment)) AS ?averageTotalPayment) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE { \n  ?action <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/type/Action> .\n  ?action <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_by_company> ?company .\n  ?company <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/type/Company> .\n  ?company <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/company_is_us_public_co> \"True\" .\n  ?action <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_total_payment> ?totalPayment .\n  ?action <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_for_crime> ?crimeType .\n  ?crimeType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/type/CrimeType> .\n  ?crimeType <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/crimetype_name> ?crimeTypeName .\n} GROUP BY ?crimeTypeName",
+      "gold_sparql": "SELECT ?crimeTypeName (AVG(xsd:float(?totalPayment)) AS ?averageTotalPayment) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE { \n  ?action <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/type/Action> .\n  ?action <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_by_company> ?company .\n  ?company <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/type/Company> .\n  ?company <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/company_is_us_public_co> \"True\" .\n  ?action <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_total_payment> ?totalPayment .\n  ?action <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_for_crime> ?crimeType .\n  ?crimeType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/type/CrimeType> .\n  ?crimeType <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/crimetype_name> ?crimeTypeName .\n} GROUP BY ?crimeTypeName",
       "full_expected_items": [
         "Fraud - Tax | 7.8236806E8",
         "Fraud - General | 3.149544E8",
@@ -1284,7 +1284,7 @@
     {
       "id": "q-011",
       "question": "For each year, what is the total number of actions where the company involved is a financial institution?",
-      "gold_sparql": "SELECT ?yearValue (COUNT(?action) AS ?numberOfActions) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE {\n  ?action <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/type/Action> .\n  ?action <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_by_company> ?company .\n  ?company <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/type/Company> .\n  ?company <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/company_is_financial_institution> \"True\" .\n  ?action <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_in_year> ?year .\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/type/Year> .\n  ?year <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/year_value> ?yearValue .\n} GROUP BY ?yearValue ORDER BY ?yearValue",
+      "gold_sparql": "SELECT ?yearValue (COUNT(?action) AS ?numberOfActions) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE {\n  ?action <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/type/Action> .\n  ?action <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_by_company> ?company .\n  ?company <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/type/Company> .\n  ?company <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/company_is_financial_institution> \"True\" .\n  ?action <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_in_year> ?year .\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/type/Year> .\n  ?year <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/year_value> ?yearValue .\n} GROUP BY ?yearValue ORDER BY ?yearValue",
       "full_expected_items": [
         "1999 | 1",
         "2000 | 1",
@@ -1324,7 +1324,7 @@
     {
       "id": "q-012",
       "question": "What is the average total payment for actions associated with companies that are US public companies, grouped by the crime type?",
-      "gold_sparql": "SELECT ?crimeTypeName (AVG(xsd:float(?totalPayment)) AS ?averageTotalPayment) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE {\n  ?action <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/type/Action> .\n  ?action <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_by_company> ?company .\n  ?company <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/type/Company> .\n  ?company <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/company_is_us_public_co> \"True\" .\n  ?action <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_for_crime> ?crimeType .\n  ?crimeType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/type/CrimeType> .\n  ?crimeType <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/crimetype_name> ?crimeTypeName .\n  ?action <https://omnix.dev/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_total_payment> ?totalPayment .\n  FILTER (xsd:float(?totalPayment) > 0)\n} GROUP BY ?crimeTypeName\nORDER BY DESC(?averageTotalPayment)\nLIMIT 10",
+      "gold_sparql": "SELECT ?crimeTypeName (AVG(xsd:float(?totalPayment)) AS ?averageTotalPayment) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-doj-enforcement-actions> WHERE {\n  ?action <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/type/Action> .\n  ?action <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_by_company> ?company .\n  ?company <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/type/Company> .\n  ?company <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/company_is_us_public_co> \"True\" .\n  ?action <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_for_crime> ?crimeType .\n  ?crimeType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/type/CrimeType> .\n  ?crimeType <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/crimetype_name> ?crimeTypeName .\n  ?action <https://graph.infona.ai/holdout-v2/holdout-v2-doj-enforcement-actions/pred/action_total_payment> ?totalPayment .\n  FILTER (xsd:float(?totalPayment) > 0)\n} GROUP BY ?crimeTypeName\nORDER BY DESC(?averageTotalPayment)\nLIMIT 10",
       "full_expected_items": [
         "Fraud - Tax | 7.82368E8",
         "Fraud - Securities | 4.9096128E8",

@@ -21,7 +21,7 @@ timestamps. The primary key ``(tenant_id, slug)`` enforces per-tenant slug
 uniqueness AND makes every query naturally tenant-scoped — a store method is
 *never* given a way to read across tenants.
 
-Boundary: OSS. Pure ``infona_client.*`` / stdlib — no ``from cograph.*``.
+Boundary: OSS. Pure ``infona_client.*`` / stdlib — no ``from infona.*``.
 Secrets are NOT stored here; they live in the separate encrypted secret store
 (Child 2). This module stores the spec only, which references a secret by
 logical name, never by value.

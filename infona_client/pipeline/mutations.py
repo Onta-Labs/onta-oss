@@ -60,7 +60,7 @@ from infona_client.graph.kg_writer import (
     refresh_after_write,
     rewrite_subject,
 )
-from infona_client.graph.ontology_queries import OMNIX_ONTO
+from infona_client.graph.ontology_queries import INFONA_ONTO
 from infona_client.graph.provenance import (
     build_conflict_loss_triples,
     build_provenance_triples,
@@ -88,18 +88,18 @@ from infona_client.pipeline.conflict import (
     FactClaim,
 )
 
-logger = structlog.stdlib.get_logger("cograph.pipeline.mutations")
+logger = structlog.stdlib.get_logger("infona.pipeline.mutations")
 
 Triple = tuple[str, str, str]
 
 
 def _provenance_enabled() -> bool:
     """Whether the op writes a companion-graph governance event (supersede /
-    retract), gated by the SAME ``COGRAPH_PROVENANCE_ENABLED`` env var the rest of
+    retract), gated by the SAME ``INFONA_PROVENANCE_ENABLED`` env var the rest of
     the write path uses for tombstone/rewrite provenance (default OFF). The
     valid-time interval (``graph/validity.py``) is ALWAYS written regardless — it
     is load-bearing for the "current facts" read, not optional governance."""
-    return os.environ.get("COGRAPH_PROVENANCE_ENABLED", "0") == "1"
+    return os.environ.get("INFONA_PROVENANCE_ENABLED", "0") == "1"
 
 
 def _predicate_leaf(predicate: str) -> str:
@@ -850,7 +850,7 @@ async def write_with_conflict_resolution(
 # primitives (``rewrite_subject`` / ``insert_facts`` / ``delete_facts`` /
 # ``refresh_after_write``); they construct no raw SPARQL and fork no write path.
 
-SAME_AS = f"{OMNIX_ONTO}/sameAs"  # the alias/redirect INSTANCE edge (node-valued →
+SAME_AS = f"{INFONA_ONTO}/sameAs"  # the alias/redirect INSTANCE edge (node-valued →
 #                                   on onto/, never attrs/, so NL queries can see it)
 
 

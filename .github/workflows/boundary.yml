@@ -1,7 +1,7 @@
 name: OSS boundary
 
 # MOE-21 — mechanical enforcement of the OSS/proprietary boundary.
-# cograph-oss is published publicly; public publication is a one-way door.
+# infona-oss is published publicly; public publication is a one-way door.
 # This gate runs on every PR and push to main and blocks proprietary leaks.
 # (Layer 4 — pre-publish tarball inspection — lives in npm-publish.yml, where
 # the build artifacts that actually get shipped exist.)

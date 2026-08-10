@@ -3,7 +3,7 @@
 SEC's fair-access policy asks automated clients to declare a working contact.
 A published OSS build that hardcoded one operator's mailbox would make every
 self-hoster's EDGAR traffic attributable to that individual, so the contact is
-configuration (``OMNIX_SEC_USER_AGENT``) with an impersonal project fallback.
+configuration (``INFONA_SEC_USER_AGENT``) with an impersonal project fallback.
 """
 
 import re

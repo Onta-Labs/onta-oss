@@ -49,7 +49,7 @@ V_WIND = [0.0, 1.0, 0.0, 0.0]
 @pytest.fixture(autouse=True)
 def _clean_state(monkeypatch):
     # The gate is on for every test unless a test disables it explicitly.
-    monkeypatch.setenv("COGRAPH_SEMANTIC_INDEX_ENABLED", "true")
+    monkeypatch.setenv("INFONA_SEMANTIC_INDEX_ENABLED", "true")
     # No embed key by default — individual tests opt in to the embed path.
     monkeypatch.setattr(settings, "openrouter_api_key", "")
     reset_semantic_index()
@@ -161,7 +161,7 @@ def test_search_gate_off_degrades_to_lexical_not_503(monkeypatch, client, auth_h
     reduced-recall) result instead of a dead-end. This is the fix for the
     persona-eval search-503 bug: a disabled semantic index must degrade, not
     refuse."""
-    monkeypatch.delenv("COGRAPH_SEMANTIC_INDEX_ENABLED", raising=False)
+    monkeypatch.delenv("INFONA_SEMANTIC_INDEX_ENABLED", raising=False)
     _seed(*_corpus())
     resp = _search(client, {"query": "solar panel subsidies"}, headers=auth_headers)
     assert resp.status_code == 200
@@ -175,7 +175,7 @@ def test_search_gate_off_forces_lexical_even_with_embed_key(monkeypatch, client,
     """With the gate off we must NOT embed the query — even if a key is
     configured — because the vector leg is not maintained. Assert the embed
     client is never called and the result is a 200 lexical degrade."""
-    monkeypatch.delenv("COGRAPH_SEMANTIC_INDEX_ENABLED", raising=False)
+    monkeypatch.delenv("INFONA_SEMANTIC_INDEX_ENABLED", raising=False)
     _seed(*_corpus())
     monkeypatch.setattr(settings, "openrouter_api_key", "some-key")
 
@@ -196,7 +196,7 @@ def test_search_gate_off_forces_lexical_even_with_embed_key(monkeypatch, client,
 def test_search_gate_off_unknown_kg_is_empty_200_not_503(monkeypatch, client, auth_headers):
     """Even an unpopulated / unknown KG under a disabled gate is an
     empty-but-200 ``degraded=true`` result — never a 503."""
-    monkeypatch.delenv("COGRAPH_SEMANTIC_INDEX_ENABLED", raising=False)
+    monkeypatch.delenv("INFONA_SEMANTIC_INDEX_ENABLED", raising=False)
     _seed(*_corpus())
     resp = _search(
         client, {"query": "solar", "kg_name": "no-such-kg"}, headers=auth_headers

@@ -15,7 +15,7 @@ from infona_client.graph.client import NeptuneClient
 from infona_client.graph.queries import InvalidGraphIdentifier
 from infona_client.logging import setup_logging
 
-logger = structlog.stdlib.get_logger("cograph.app")
+logger = structlog.stdlib.get_logger("infona.app")
 
 
 def _load_auth_plugin() -> None:
@@ -23,7 +23,7 @@ def _load_auth_plugin() -> None:
 
     Format: "module.path:callable". The callable is invoked with no
     arguments and is expected to register an external verifier via
-    omnix.auth.api_keys.register_external_verifier. Failures are logged
+    infona.auth.api_keys.register_external_verifier. Failures are logged
     but do not prevent the app from starting — the app will simply fall
     back to static API key auth.
     """
@@ -206,7 +206,7 @@ def _load_secrets_cipher_plugin() -> None:
     is expected to register a SecretCipher via
     infona_client.api_registry.register_secret_cipher (e.g. an AWS-KMS data-key
     cipher). Failures are logged but do not prevent startup — without it, the OSS
-    default LocalAesGcmCipher (keyed by OMNIX_SECRETS_KEY) is used, or, if that
+    default LocalAesGcmCipher (keyed by INFONA_SECRETS_KEY) is used, or, if that
     key is also unset, secret storage is disabled (fail closed).
     """
     spec = settings.secrets_cipher_plugin.strip()
@@ -333,9 +333,9 @@ async def lifespan(app: FastAPI):
                 logger.warning(
                     "semantic_index_enabled_without_scheduler",
                     hint=(
-                        "COGRAPH_SEMANTIC_INDEX_ENABLED is set but the schedule "
+                        "INFONA_SEMANTIC_INDEX_ENABLED is set but the schedule "
                         "runner is disabled — embed-fill/reconcile will not run "
-                        "(set OMNIX_DATABASE_URL or COGRAPH_SCHEDULER_ENABLED)."
+                        "(set INFONA_DATABASE_URL or INFONA_SCHEDULER_ENABLED)."
                     ),
                 )
     except Exception as exc:  # noqa: BLE001 - seeding must not break startup

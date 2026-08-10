@@ -35,7 +35,7 @@ from typing import Any, Awaitable, Callable
 
 import structlog
 
-logger = structlog.stdlib.get_logger("cograph.db.pool")
+logger = structlog.stdlib.get_logger("infona.db.pool")
 
 #: Per-connection init hooks, applied (in registration order) to every new
 #: connection of every pool this module creates.

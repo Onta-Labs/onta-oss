@@ -509,7 +509,7 @@ def test_instance_of_evicted_when_type_assertion_deleted(store):
 
 def test_neptune_default_path_without_store(monkeypatch):
     """Default backend remains neptune; insert_facts without store does not require GraphStore."""
-    monkeypatch.delenv("COGRAPH_GRAPH_BACKEND", raising=False)
+    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
     assert graph_backend() == "neptune"
 
     class _FakeNeptune:

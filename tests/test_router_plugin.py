@@ -1,4 +1,4 @@
-"""Tests for the generic OMNIX_ROUTER_PLUGINS hook (COG-85).
+"""Tests for the generic INFONA_ROUTER_PLUGINS hook (COG-85).
 
 Mirrors the enrichment/governance plugin-loading pattern: a dotted
 "module.path:callable" is imported at create_app() time and invoked with the

@@ -37,7 +37,7 @@ validity node carrying a ``valid_to``.
 
 For a fact ``(s, p, o)`` the validity graph holds, when it is closed::
 
-    <https://graph.onta.sh/validity/int/{sha1(s|p|o)}>
+    <https://graph.infona.ai/validity/int/{sha1(s|p|o)}>
         val:subject      <s> ;
         val:predicate    <p> ;
         val:object       o ;                       # literal or URI, as written

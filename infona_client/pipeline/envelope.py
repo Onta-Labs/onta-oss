@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 from typing import Any, Sequence
 
 # Frozen namespace UUID for `derive_fact_id`'s uuid5 calls. Minted once
-# (uuid.uuid5(uuid.NAMESPACE_DNS, "getonta.com/pipeline/fact_id")) and pinned
+# (uuid.uuid5(uuid.NAMESPACE_DNS, "infona.ai/pipeline/fact_id")) and pinned
 # as a literal forever after — regenerating it would silently change every
 # fact_id a replayed run produces, breaking the "same run replayed
 # deterministically produces the same ids" property the derivation exists for.

@@ -28,12 +28,12 @@ from infona_client.graph.aliases import (
 from infona_client.graph.client import NeptuneClient
 from infona_client.nlp.pipeline import NLQueryPipeline
 
-ONTO_GRAPH = "https://graph.onta.sh/graphs/t-alias"
-DATA_GRAPH = "https://graph.onta.sh/graphs/t-alias/kg/main"
+ONTO_GRAPH = "https://graph.infona.ai/graphs/t-alias"
+DATA_GRAPH = "https://graph.infona.ai/graphs/t-alias/kg/main"
 
-PHONE_NUM = "https://graph.onta.sh/types/Guest/attrs/phone_num"
-PHONE = "https://graph.onta.sh/types/Guest/attrs/phone"
-CONTACT = "https://graph.onta.sh/types/Person/attrs/contact_phone"
+PHONE_NUM = "https://graph.infona.ai/types/Guest/attrs/phone_num"
+PHONE = "https://graph.infona.ai/types/Guest/attrs/phone"
+CONTACT = "https://graph.infona.ai/types/Person/attrs/contact_phone"
 
 
 @pytest.fixture
@@ -227,7 +227,7 @@ async def test_backfill_zero_triples_no_updates(mock_neptune):
 
 
 # ---------------------------------------------------------------------------
-# NL pipeline wiring (gated by COGRAPH_ALIASES_ENABLED)
+# NL pipeline wiring (gated by INFONA_ALIASES_ENABLED)
 # ---------------------------------------------------------------------------
 
 
@@ -252,7 +252,7 @@ def _exec_result() -> dict:
 async def test_pipeline_default_off_no_alias_query_no_rewrite(mock_neptune, monkeypatch):
     """Regression guard: with the flag unset (the default), /ask issues NO
     alias-map query and the generated SPARQL passes through untouched."""
-    monkeypatch.delenv("COGRAPH_ALIASES_ENABLED", raising=False)
+    monkeypatch.delenv("INFONA_ALIASES_ENABLED", raising=False)
     pipeline = NLQueryPipeline(mock_neptune, "fake-key")
     pipeline._openrouter_key = ""
     assert pipeline._aliases_enabled is False
@@ -273,7 +273,7 @@ async def test_pipeline_default_off_no_alias_query_no_rewrite(mock_neptune, monk
 @pytest.mark.asyncio
 async def test_pipeline_enabled_rewrites_aliased_attr(mock_neptune, monkeypatch):
     """Flag on + alias registered: the executed SPARQL uses the new IRI."""
-    monkeypatch.setenv("COGRAPH_ALIASES_ENABLED", "1")
+    monkeypatch.setenv("INFONA_ALIASES_ENABLED", "1")
     pipeline = NLQueryPipeline(mock_neptune, "fake-key")
     pipeline._openrouter_key = ""
     assert pipeline._aliases_enabled is True
@@ -298,7 +298,7 @@ async def test_pipeline_enabled_rewrites_aliased_attr(mock_neptune, monkeypatch)
 @pytest.mark.asyncio
 async def test_pipeline_enabled_zero_aliases_unchanged(mock_neptune, monkeypatch):
     """Flag on but no aliases registered: empty map => query untouched."""
-    monkeypatch.setenv("COGRAPH_ALIASES_ENABLED", "1")
+    monkeypatch.setenv("INFONA_ALIASES_ENABLED", "1")
     pipeline = NLQueryPipeline(mock_neptune, "fake-key")
     pipeline._openrouter_key = ""
 

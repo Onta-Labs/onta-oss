@@ -552,7 +552,7 @@ async def test_enrich_resolves_ranked_subset_to_entity_uris(monkeypatch):
             "tier": "core",
         },
     )
-    uris = [f"https://onta.dev/e/broker/{i}" for i in range(5)]
+    uris = [f"https://example.invalid/e/broker/{i}" for i in range(5)]
     _stub_subset_resolver(monkeypatch, uris)
 
     out = await asyncio.wait_for(
@@ -717,8 +717,8 @@ async def test_refresh_multi_value_subset_routes_to_enrich_verify(monkeypatch):
     # Existing records for two of the three named vendors (mixed casing/spacing).
     execu = _ScopeValueExecutor(
         {
-            "acme": "https://onta.dev/e/widget/1",
-            "globex": "https://onta.dev/e/widget/2",
+            "acme": "https://example.invalid/e/widget/1",
+            "globex": "https://example.invalid/e/widget/2",
             # "Initech" intentionally absent — the set still matches the 2 present.
         }
     )
@@ -737,8 +737,8 @@ async def test_refresh_multi_value_subset_routes_to_enrich_verify(monkeypatch):
     p = step["params"]
     # Scoped to EXACTLY the matched existing records (entity_uris), scope cleared.
     assert p["entity_uris"] == [
-        "https://onta.dev/e/widget/1",
-        "https://onta.dev/e/widget/2",
+        "https://example.invalid/e/widget/1",
+        "https://example.invalid/e/widget/2",
     ]
     assert p["scope"] is None
     # It is a REFRESH (verify) run — ran_enrich-equivalent true.
@@ -775,7 +775,7 @@ async def test_multi_value_scope_matches_case_insensitively(monkeypatch):
         },
     )
     execu = _ScopeValueExecutor(
-        {"north": "https://onta.dev/e/vendor/n", "south": "https://onta.dev/e/vendor/s"}
+        {"north": "https://example.invalid/e/vendor/n", "south": "https://example.invalid/e/vendor/s"}
     )
     cap = EnrichCapability()
     ctx = _ctx(executor=execu)
@@ -786,8 +786,8 @@ async def test_multi_value_scope_matches_case_insensitively(monkeypatch):
     assert len(steps) == 1
     p = steps[0].params
     assert p["entity_uris"] == [
-        "https://onta.dev/e/vendor/n",
-        "https://onta.dev/e/vendor/s",
+        "https://example.invalid/e/vendor/n",
+        "https://example.invalid/e/vendor/s",
     ]
     assert p["scope"] is None
     # "update" is a refresh-existing verb → verify mode.
@@ -822,7 +822,7 @@ async def test_replace_intent_plan_sets_overwrite_param(monkeypatch):
         },
     )
     execu = _ScopeValueExecutor(
-        {"north": "https://onta.dev/e/vendor/n", "south": "https://onta.dev/e/vendor/s"}
+        {"north": "https://example.invalid/e/vendor/n", "south": "https://example.invalid/e/vendor/s"}
     )
     cap = EnrichCapability()
     ctx = _ctx(executor=execu)
@@ -934,7 +934,7 @@ async def test_execute_enrich_passes_entity_uris(monkeypatch):
     cap = EnrichCapability()
     job_store = FakeJobStore()
     ctx = _ctx(job_store=job_store)
-    uris = ["https://onta.dev/e/broker/1", "https://onta.dev/e/broker/2"]
+    uris = ["https://example.invalid/e/broker/1", "https://example.invalid/e/broker/2"]
     step = PlanStep(
         capability="enrich",
         action="run_enrichment",
@@ -963,19 +963,19 @@ def test_pipeline_entity_uris_from_bindings():
     from infona_client.nlp.pipeline import NLQueryPipeline
 
     bindings = [
-        {"uri": "https://onta.dev/e/b/1", "n": "299"},
-        {"uri": "https://onta.dev/e/b/2", "n": "194"},
-        {"uri": "https://onta.dev/e/b/1", "n": "299"},  # duplicate dropped
+        {"uri": "https://example.invalid/e/b/1", "n": "299"},
+        {"uri": "https://example.invalid/e/b/2", "n": "194"},
+        {"uri": "https://example.invalid/e/b/1", "n": "299"},  # duplicate dropped
         {"name": "no-iri-here"},  # skipped — no IRI
-        {"x": "https://onta.dev/e/b/3"},  # fallback to first IRI value
+        {"x": "https://example.invalid/e/b/3"},  # fallback to first IRI value
     ]
     assert NLQueryPipeline._entity_uris_from_bindings(bindings, limit=10) == [
-        "https://onta.dev/e/b/1",
-        "https://onta.dev/e/b/2",
-        "https://onta.dev/e/b/3",
+        "https://example.invalid/e/b/1",
+        "https://example.invalid/e/b/2",
+        "https://example.invalid/e/b/3",
     ]
     assert NLQueryPipeline._entity_uris_from_bindings(bindings, limit=1) == [
-        "https://onta.dev/e/b/1",
+        "https://example.invalid/e/b/1",
     ]
 
 
@@ -1408,8 +1408,8 @@ async def test_route_confirm_executes_plan(monkeypatch):
     """End-to-end through the HTTP route: handle → plan, then confirm → result."""
     import os
 
-    os.environ.setdefault("OMNIX_API_KEYS", '{"test-key": "test-tenant"}')
-    os.environ.setdefault("OMNIX_NEPTUNE_ENDPOINT", "http://fake:8182")
+    os.environ.setdefault("INFONA_API_KEYS", '{"test-key": "test-tenant"}')
+    os.environ.setdefault("INFONA_NEPTUNE_ENDPOINT", "http://fake:8182")
     # monkeypatch (NOT os.environ[...]=) so the key is reverted after the test
     # and never leaks into other tests' NLQueryPipeline construction.
     monkeypatch.setenv("OPENROUTER_API_KEY", "fake-key")
@@ -2010,7 +2010,7 @@ async def test_dedup_routes_to_plan_with_er_types(monkeypatch):
     real ER-enabled types. 'Person' resolves to an ERConfig (kept); 'Skill' does
     not (filtered out)."""
     _stub_classifier(monkeypatch, "dedup")
-    prefix = "https://graph.onta.sh/types/"
+    prefix = "https://graph.infona.ai/types/"
     neptune = _TypedNeptune([f"{prefix}Person", f"{prefix}Skill"])
 
     out = await asyncio.wait_for(
@@ -2097,7 +2097,7 @@ async def test_dedup_execute_drives_rebuild_engine(monkeypatch):
     # The engine ran against the KG's instance graph (the same primitive the
     # er-rebuild route uses), the job landed in 'applied' with the merge volume
     # recorded, and a type-stats recompute was scheduled.
-    assert captured["instance_graph"] == "https://graph.onta.sh/graphs/t1/kg/kg1"
+    assert captured["instance_graph"] == "https://graph.infona.ai/graphs/t1/kg/kg1"
     assert job.status == JobStatus.applied
     assert job.progress.processed == 7
     assert "merged 7 duplicate fragment" in (job.error or "")

@@ -6,7 +6,7 @@ Neptune reads the union of every named graph, i.e. every workspace. The
 confinement rules themselves live in ``tests/test_query_tenant_scoping.py``.
 """
 
-TENANT_GRAPH = "https://graph.onta.sh/graphs/test-tenant"
+TENANT_GRAPH = "https://graph.infona.ai/graphs/test-tenant"
 
 
 def test_execute_sparql(client, auth_headers, mock_neptune):

@@ -1,7 +1,7 @@
 """ONTA-402b — adversarial cross-tenant isolation suite.
 
 Isolation is by **named graph**, not by type URI: two tenants' ``Hotel`` share
-``https://graph.onta.sh/types/Hotel``. Layered reads (ONTA-397) union Public /
+``https://graph.infona.ai/types/Hotel``. Layered reads (ONTA-397) union Public /
 Enhanced / tenant graphs via ``LayerStack`` — that union is the leak surface
 this suite attacks.
 
@@ -79,9 +79,9 @@ from tests.test_global_ontology_browser import (
 RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns"
 RDFS = "http://www.w3.org/2000/01/rdf-schema"
 XSD = "http://www.w3.org/2001/XMLSchema"
-ONTO = "https://graph.onta.sh/onto"
-TENANT_NS = "https://graph.onta.sh/types"
-ENTITY_NS = "https://graph.onta.sh/entities"
+ONTO = "https://graph.infona.ai/onto"
+TENANT_NS = "https://graph.infona.ai/types"
+ENTITY_NS = "https://graph.infona.ai/entities"
 
 TENANT_A = "iso-acme"
 TENANT_B = "iso-globex"
@@ -373,7 +373,7 @@ class IsolationNeptune:
 
         # --- literal grep decoration: VALUES ?s + OPTIONAL label/type ---
         if "VALUES ?s" in sparql:
-            subjects = re.findall(r"<(https://graph\.onta\.sh/entities/[^>]+)>", sparql)
+            subjects = re.findall(r"<(https://graph\.infona\.ai/entities/[^>]+)>", sparql)
             rows = []
             for s in subjects:
                 for p, o in self._entity_preds(self._grep_scope(graphs), s):
@@ -422,7 +422,7 @@ class IsolationNeptune:
         # --- get_type_detail / explore summary onto lookup ---
         if "?label" in sparql and "subClassOf" in sparql and "SELECT ?label" in sparql:
             # Extract type URI from `<uri> <...#label>`
-            m = re.search(r"<(https://graph\.onta\.sh/types[^>]*)>\s+<(?:[^>]*#label)", sparql)
+            m = re.search(r"<(https://graph\.infona\.ai/types[^>]*)>\s+<(?:[^>]*#label)", sparql)
             if m:
                 t_uri = m.group(1)
                 g = graphs[0]
@@ -430,7 +430,7 @@ class IsolationNeptune:
 
         # --- attribute defs ---
         if "attrLabel" in sparql and "domain" in sparql:
-            m = re.search(r"domain>\s+<(https://graph\.onta\.sh/types[^>]*)>", sparql)
+            m = re.search(r"domain>\s+<(https://graph\.infona\.ai/types[^>]*)>", sparql)
             if m:
                 t_uri = m.group(1)
                 g = graphs[0]
@@ -496,7 +496,7 @@ class IsolationNeptune:
         # --- entity page (records) ---
         if "DISTINCT ?e" in sparql and "ORDER BY ?e" in sparql:
             g = graphs[0]
-            m = re.search(r"<(https://graph\.onta\.sh/types/[^>]+)>", sparql)
+            m = re.search(r"<(https://graph\.infona\.ai/types/[^>]+)>", sparql)
             t_uri = m.group(1) if m else None
             ents = self._instance_entities(self._triples(g), t_uri)
             return _sparql_from_rows([{"e": e} for e in ents])
@@ -505,7 +505,7 @@ class IsolationNeptune:
         if "VALUES ?e" in sparql:
             g = graphs[0]
             # Extract entity URIs from VALUES block
-            ents = re.findall(r"<(https://graph\.onta\.sh/entities/[^>]+)>", sparql)
+            ents = re.findall(r"<(https://graph\.infona\.ai/entities/[^>]+)>", sparql)
             rows = []
             for e in ents:
                 for p, o in self._entity_preds(self._triples(g), e):
@@ -515,7 +515,7 @@ class IsolationNeptune:
         # --- COUNT DISTINCT entities for explore search ---
         if "COUNT(DISTINCT ?e)" in sparql:
             g = graphs[0]
-            m = re.search(r"<(https://graph\.onta\.sh/types/[^>]+)>", sparql)
+            m = re.search(r"<(https://graph\.infona\.ai/types/[^>]+)>", sparql)
             t_uri = m.group(1) if m else None
             ents = self._instance_entities(self._triples(g), t_uri)
             return _sparql_from_rows([{"n": str(len(ents))}])
@@ -612,8 +612,8 @@ def _seed_adversarial(*, plant_a_into_b: bool = False) -> IsolationNeptune:
         (B_ENTITY, f"{ONTO}/{B_ATTR_PRIVATE}", "SUITE-99"),
     ]
     # Minimal stats so type-counts / summary entityCount resolve.
-    a_stats = [(t_uri, "https://graph.onta.sh/stats/entityCount", "1")]
-    b_stats = [(t_uri, "https://graph.onta.sh/stats/entityCount", "1")]
+    a_stats = [(t_uri, "https://graph.infona.ai/stats/entityCount", "1")]
+    b_stats = [(t_uri, "https://graph.infona.ai/stats/entityCount", "1")]
 
     return IsolationNeptune(
         {
@@ -1400,7 +1400,7 @@ def test_mcp_view_ontology_targets_canonical_types_route():
     mcp_index = (
         Path(__file__).resolve().parent.parent
         / "packages"
-        / "cograph-mcp"
+        / "mcp"
         / "src"
         / "index.ts"
     )
@@ -1414,7 +1414,7 @@ def test_cli_ontology_types_targets_canonical_route():
     cli = (
         Path(__file__).resolve().parent.parent
         / "packages"
-        / "cograph"
+        / "cli"
         / "src"
         / "client.ts"
     )

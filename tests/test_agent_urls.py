@@ -25,8 +25,8 @@ import os
 import pytest
 
 # Mirror the test env so settings/auth construct the same way as in CI.
-os.environ.setdefault("OMNIX_API_KEYS", '{"test-key": "test-tenant"}')
-os.environ.setdefault("OMNIX_NEPTUNE_ENDPOINT", "http://fake:8182")
+os.environ.setdefault("INFONA_API_KEYS", '{"test-key": "test-tenant"}')
+os.environ.setdefault("INFONA_NEPTUNE_ENDPOINT", "http://fake:8182")
 
 from infona_client.agent import planner as planner_mod  # noqa: E402
 from infona_client.agent.planner import (  # noqa: E402

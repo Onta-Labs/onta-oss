@@ -1,12 +1,12 @@
 """CSV schema inference, then deterministic mapping for all rows (no LLM per
 row).
 
-Inference (ADR 0003, default ``OMNIX_CSV_INFERENCE_V2=1``) is the
+Inference (ADR 0003, default ``INFONA_CSV_INFERENCE_V2=1``) is the
 evidence-grounded pipeline: deterministic profile (Pass A) → REASON LLM call
 (Pass B) → adversarial REFUTE LLM call (Pass C) → conceptual COMPLETE LLM
 call (Pass D — dependent-entity promotions + constitutive core slots, max 3
 per type) → conversion to :class:`CSVSchemaMapping`. Set
-``OMNIX_CSV_INFERENCE_V2=0`` to fall back to the legacy single-LLM-call path
+``INFONA_CSV_INFERENCE_V2=0`` to fall back to the legacy single-LLM-call path
 (verbatim, including its post-hoc keyword patches)."""
 
 from __future__ import annotations
@@ -62,7 +62,7 @@ from infona_client.resolver.sensitivity import (
     redact_privileged_sample_rows,
 )
 
-logger = structlog.stdlib.get_logger("cograph.resolver.csv")
+logger = structlog.stdlib.get_logger("infona.resolver.csv")
 
 
 @dataclass
@@ -386,9 +386,9 @@ Apply the two steps and return the completion JSON now."""
 
 
 def _v2_enabled() -> bool:
-    """ADR 0003 feature flag: ``OMNIX_CSV_INFERENCE_V2`` defaults ON; set it
+    """ADR 0003 feature flag: ``INFONA_CSV_INFERENCE_V2`` defaults ON; set it
     to 0 (or false/no/off) to run the legacy single-call inference verbatim."""
-    return os.environ.get("OMNIX_CSV_INFERENCE_V2", "1").strip().lower() not in {
+    return os.environ.get("INFONA_CSV_INFERENCE_V2", "1").strip().lower() not in {
         "0", "false", "no", "off",
     }
 
@@ -402,7 +402,7 @@ def _v2_enabled() -> bool:
 # per-column JSON exceeds max_tokens, truncates, fails validation, retries, and
 # eventually 422s or hits the 120s route timeout. Narrow tables (<= threshold)
 # keep the single-call path unchanged.
-MAX_INFERENCE_COLUMNS = int(os.environ.get("OMNIX_CSV_MAX_INFERENCE_COLUMNS", "40"))
+MAX_INFERENCE_COLUMNS = int(os.environ.get("INFONA_CSV_MAX_INFERENCE_COLUMNS", "40"))
 
 # Output-token budget for v2 passes, scaled to the column count. The REFUTE and
 # COMPLETE passes still echo the (whole) schema, so even with chunked REASON
@@ -541,16 +541,16 @@ class CSVResolver:
     # already make (google/gemini-2.5-flash; _build_mapping below even carries
     # a Flash-specific quirk workaround). This restores the pre-OpenRouter-
     # convergence default (a fast model) but behind its OWN env knob, so it is
-    # decoupled from BOTH the reasoning primary (OMNIX_LLM_MODEL) and the
-    # entity-extraction knob (OMNIX_EXTRACT_MODEL) — bumping either can never
+    # decoupled from BOTH the reasoning primary (INFONA_LLM_MODEL) and the
+    # entity-extraction knob (INFONA_EXTRACT_MODEL) — bumping either can never
     # again silently drag schema inference back onto a slow model. Ops override
-    # via OMNIX_CSV_SCHEMA_MODEL; the OpenRouter fallback chain still applies.
+    # via INFONA_CSV_SCHEMA_MODEL; the OpenRouter fallback chain still applies.
     SCHEMA_MODEL_DEFAULT = "google/gemini-2.5-flash"
-    EXTRACT_MODEL = os.environ.get("OMNIX_CSV_SCHEMA_MODEL", SCHEMA_MODEL_DEFAULT)
-    EXTRACT_PROVIDER = os.environ.get("OMNIX_EXTRACT_PROVIDER", "openrouter")
+    EXTRACT_MODEL = os.environ.get("INFONA_CSV_SCHEMA_MODEL", SCHEMA_MODEL_DEFAULT)
+    EXTRACT_PROVIDER = os.environ.get("INFONA_EXTRACT_PROVIDER", "openrouter")
     # Anthropic-SDK offline fallback (used only when no OpenRouter key is set) —
     # must be a NATIVE Anthropic model id. Env-overridable.
-    INFER_MODEL = os.environ.get("OMNIX_INFER_MODEL", "claude-opus-4-8")
+    INFER_MODEL = os.environ.get("INFONA_INFER_MODEL", "claude-opus-4-8")
 
     def __init__(self, client: anthropic.AsyncAnthropic, openrouter_key: str = ""):
         self._client = client
@@ -566,7 +566,7 @@ class CSVResolver:
     ) -> CSVSchemaMapping:
         """Infer column-to-ontology mapping from sample rows.
 
-        Default (``OMNIX_CSV_INFERENCE_V2`` unset or truthy): the ADR 0003
+        Default (``INFONA_CSV_INFERENCE_V2`` unset or truthy): the ADR 0003
         evidence-grounded pipeline — deterministic profile (Pass A), REASON
         LLM call (Pass B), adversarial REFUTE LLM call (Pass C), conceptual
         COMPLETE LLM call (Pass D), then conversion to the same
@@ -574,7 +574,7 @@ class CSVResolver:
         with optional ``key_strategy``/``why``/``confidence``/``violations``/
         ``inference_audit``/``ontology_extensions`` fields).
 
-        ``OMNIX_CSV_INFERENCE_V2=0``: the legacy single-LLM-call path,
+        ``INFONA_CSV_INFERENCE_V2=0``: the legacy single-LLM-call path,
         verbatim — including its NAME_HINTS / FORCE_RELATIONSHIP post-hoc
         patches, which the v2 pipeline deliberately retires (ADR 0003 §4).
 
@@ -632,7 +632,7 @@ class CSVResolver:
         existing_attrs: dict[str, dict[str, AttributeSchema]] | None = None,
     ) -> CSVSchemaMapping:
         """Legacy single-call inference (pre-ADR 0003), kept verbatim behind
-        ``OMNIX_CSV_INFERENCE_V2=0``: one LLM call with one retry at higher
+        ``INFONA_CSV_INFERENCE_V2=0``: one LLM call with one retry at higher
         temperature if the response fails validation."""
         types_str = format_existing_ontology_for_prompt(existing_types, existing_attrs)
 

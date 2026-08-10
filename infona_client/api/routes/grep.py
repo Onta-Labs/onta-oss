@@ -61,10 +61,10 @@ guardrails rather than pretending it is cheap:
 * the needle must carry >= 2 non-whitespace characters (a 1-char grep matches
   most of the graph and is never what the caller meant);
 * ``limit`` is clamped to [1, 200];
-* a dedicated SHORT SPARQL timeout (``COGRAPH_GREP_TIMEOUT_S``, default 15s)
+* a dedicated SHORT SPARQL timeout (``INFONA_GREP_TIMEOUT_S``, default 15s)
   instead of the client-wide 120s, so a pathological scan fails fast;
 * ``@limiter.limit("60/minute")`` per API key;
-* ``COGRAPH_GREP_ENABLED`` is an OPT-OUT kill switch (default ON) for an
+* ``INFONA_GREP_ENABLED`` is an OPT-OUT kill switch (default ON) for an
   operator who wants the surface gone entirely on a large deployment.
 
 Internal predicates
@@ -104,7 +104,7 @@ from infona_client.graph.predicates import (
 )
 from infona_client.graph.queries import kg_graph_uri, sparql_string_literal
 
-logger = structlog.stdlib.get_logger("cograph.api.grep")
+logger = structlog.stdlib.get_logger("infona.api.grep")
 
 router = APIRouter(prefix="/graphs/{tenant}")
 
@@ -142,27 +142,27 @@ _DEFAULT_TIMEOUT_S = 15.0
 def grep_enabled() -> bool:
     """OPT-OUT kill switch (default **on**).
 
-    Inverted relative to ``COGRAPH_SEMANTIC_INDEX_ENABLED`` (opt-IN) on purpose:
+    Inverted relative to ``INFONA_SEMANTIC_INDEX_ENABLED`` (opt-IN) on purpose:
     the semantic index costs embedding spend and storage merely by being on,
     whereas grep costs nothing until someone calls it and is the debugging
     surface users asked for. An operator who does not want an unindexed scan
-    reachable at all sets ``COGRAPH_GREP_ENABLED=false`` and the route 503s with
+    reachable at all sets ``INFONA_GREP_ENABLED=false`` and the route 503s with
     a message naming the gate.
     """
-    raw = os.environ.get("COGRAPH_GREP_ENABLED", "").strip().lower()
+    raw = os.environ.get("INFONA_GREP_ENABLED", "").strip().lower()
     if not raw:
         return True
     return raw in ("1", "true", "yes", "on")
 
 
 def grep_timeout_s() -> float:
-    """Dedicated SPARQL read timeout for the scan (``COGRAPH_GREP_TIMEOUT_S``).
+    """Dedicated SPARQL read timeout for the scan (``INFONA_GREP_TIMEOUT_S``).
 
     Much shorter than the client-wide 120s: grep is an interactive debugging aid,
     so a scan that has not answered in seconds is more useful as a fast failure
     than as a two-minute stall holding a connection.
     """
-    raw = os.environ.get("COGRAPH_GREP_TIMEOUT_S", "").strip()
+    raw = os.environ.get("INFONA_GREP_TIMEOUT_S", "").strip()
     if not raw:
         return _DEFAULT_TIMEOUT_S
     try:
@@ -292,7 +292,7 @@ def _predicate_clause(predicate: str) -> str:
     A full URI binds ``?p`` EXACTLY (a ``VALUES`` clause, so the store can use it
     to drive the scan); a bare leaf name degrades to a ``STRENDS`` filter on
     ``"/<leaf>"``, which is the form a user actually types ("title", not the full
-    ``https://graph.onta.sh/onto/title``).
+    ``https://graph.infona.ai/onto/title``).
     """
     p = predicate.strip()
     if p.startswith("http://") or p.startswith("https://"):
@@ -421,7 +421,7 @@ async def grep_graph(
             status_code=503,
             detail=(
                 "literal grep is disabled on this deployment "
-                "(COGRAPH_GREP_ENABLED)"
+                "(INFONA_GREP_ENABLED)"
             ),
         )
 

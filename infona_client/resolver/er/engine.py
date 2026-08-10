@@ -32,7 +32,7 @@ from infona_client.resolver.models import ExtractedEntity
 # logging.getLogger raises TypeError on those kwargs, which masks the
 # original exception and prevents ER from cleanly returning SKIP. With
 # the structlog wrapper the kwargs are accepted as the event_dict.
-logger = structlog.stdlib.get_logger("cograph.resolver.er")
+logger = structlog.stdlib.get_logger("infona.resolver.er")
 
 
 # ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@ Minimal CRUD for ``:OntoType`` / ``:OntoAttr`` (+ ``SUBCLASS_OF`` /
 snapshots stay deferred (model §10.1 B7) — see module TODO at bottom.
 
 **Dual-backend:** when an explicit ``store`` / ``session`` is passed, or
-``COGRAPH_GRAPH_BACKEND=neo4j``, mutations run through GraphStore templates.
+``INFONA_GRAPH_BACKEND=neo4j``, mutations run through GraphStore templates.
 Otherwise the legacy SPARQL builders in :mod:`ontology_queries` are executed
 via the Neptune client (unchanged until cutover).
 
@@ -192,7 +192,7 @@ def layer_from_scope(scope: GraphScope) -> str:
 
 def graph_backend() -> str:
     """Same switch as :func:`infona_client.graph.kg_writer.graph_backend`."""
-    return (os.environ.get("COGRAPH_GRAPH_BACKEND") or "neptune").strip().lower()
+    return (os.environ.get("INFONA_GRAPH_BACKEND") or "neptune").strip().lower()
 
 
 def resolve_catalog_session(
@@ -522,7 +522,7 @@ async def upsert_type(
 ) -> OntoTypeRecord:
     """Upsert a type declaration (PG catalog or SPARQL).
 
-    Prefer ``store`` / ``session`` for Neo4j. With ``COGRAPH_GRAPH_BACKEND=neo4j``
+    Prefer ``store`` / ``session`` for Neo4j. With ``INFONA_GRAPH_BACKEND=neo4j``
     and no store, uses the process GraphStore. Otherwise requires ``neptune`` +
     ``graph_uri`` and runs :func:`ontology_queries.upsert_type`.
     """
@@ -546,7 +546,7 @@ async def upsert_type(
     if neptune is None or not graph_uri:
         raise GraphScopeError(
             "SPARQL ontology path requires neptune client and graph_uri "
-            "(or pass store=/session=/COGRAPH_GRAPH_BACKEND=neo4j)"
+            "(or pass store=/session=/INFONA_GRAPH_BACKEND=neo4j)"
         )
     from infona_client.graph import ontology_queries as oq
 
@@ -614,7 +614,7 @@ async def upsert_attribute(
     if neptune is None or not graph_uri:
         raise GraphScopeError(
             "SPARQL ontology path requires neptune client and graph_uri "
-            "(or pass store=/session=/COGRAPH_GRAPH_BACKEND=neo4j)"
+            "(or pass store=/session=/INFONA_GRAPH_BACKEND=neo4j)"
         )
     from infona_client.graph import ontology_queries as oq
 
@@ -671,7 +671,7 @@ async def list_types(
     if neptune is None or not graph_uri:
         raise GraphScopeError(
             "SPARQL list_types requires neptune + graph_uri "
-            "(or pass store=/session=/COGRAPH_GRAPH_BACKEND=neo4j)"
+            "(or pass store=/session=/INFONA_GRAPH_BACKEND=neo4j)"
         )
     from infona_client.graph import ontology_queries as oq
     from infona_client.graph.parser import parse_sparql_results
@@ -723,7 +723,7 @@ async def list_attributes(
     if neptune is None or not graph_uri or not type_name:
         raise GraphScopeError(
             "SPARQL list_attributes requires neptune, graph_uri, and type_name "
-            "(or pass store=/session=/COGRAPH_GRAPH_BACKEND=neo4j)"
+            "(or pass store=/session=/INFONA_GRAPH_BACKEND=neo4j)"
         )
     from infona_client.graph import ontology_queries as oq
     from infona_client.graph.parser import parse_sparql_results

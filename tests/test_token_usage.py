@@ -254,7 +254,7 @@ async def test_ask_collects_sparql_gen_token_usage(monkeypatch):
     async def fake_generate(*_a, **_k):
         return attach_usage(
             {
-                "sparql": "SELECT ?s WHERE { ?s a <https://cograph.tech/types/InventedThing> } LIMIT 1",
+                "sparql": "SELECT ?s WHERE { ?s a <https://graph.infona.ai/types/InventedThing> } LIMIT 1",
                 "explanation": "e",
                 "functions_needed": [],
             },
@@ -268,7 +268,7 @@ async def test_ask_collects_sparql_gen_token_usage(monkeypatch):
             "head": {"vars": ["s"]},
             "results": {
                 "bindings": [
-                    {"s": {"type": "uri", "value": "https://cograph.tech/entities/InventedThing/1"}}
+                    {"s": {"type": "uri", "value": "https://graph.infona.ai/entities/InventedThing/1"}}
                 ]
             },
         }
@@ -297,8 +297,8 @@ async def test_ask_collects_sparql_gen_token_usage(monkeypatch):
 
     result = await p.ask(
         "how many invented things?",
-        "https://cograph.tech/graphs/demo-tenant",
-        "https://cograph.tech/graphs/demo-tenant/kg/invented",
+        "https://graph.infona.ai/graphs/demo-tenant",
+        "https://graph.infona.ai/graphs/demo-tenant/kg/invented",
     )
 
     assert result.token_usage, "expected at least sparql_gen event"
@@ -340,7 +340,7 @@ async def test_ask_retry_stage_on_second_attempt(monkeypatch):
             )
         return attach_usage(
             {
-                "sparql": "SELECT ?s WHERE { ?s a <https://cograph.tech/types/InventedThing> } LIMIT 1",
+                "sparql": "SELECT ?s WHERE { ?s a <https://graph.infona.ai/types/InventedThing> } LIMIT 1",
                 "explanation": "e",
                 "functions_needed": [],
             },
@@ -366,8 +366,8 @@ async def test_ask_retry_stage_on_second_attempt(monkeypatch):
 
     result = await p.ask(
         "q",
-        "https://cograph.tech/graphs/demo-tenant",
-        "https://cograph.tech/graphs/demo-tenant/kg/invented",
+        "https://graph.infona.ai/graphs/demo-tenant",
+        "https://graph.infona.ai/graphs/demo-tenant/kg/invented",
     )
 
     stages = [e["stage"] for e in result.token_usage]

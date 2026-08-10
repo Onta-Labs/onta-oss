@@ -17,7 +17,7 @@ from infona_client.graph.ontology_queries import list_types_query
 from infona_client.graph.parser import parse_sparql_results
 from infona_client.graph.queries import tenant_graph_uri
 
-logger = structlog.stdlib.get_logger("cograph.enrichment.strategy")
+logger = structlog.stdlib.get_logger("infona.enrichment.strategy")
 
 
 ONTO = ONTO_BASE

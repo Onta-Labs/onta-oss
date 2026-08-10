@@ -37,7 +37,7 @@ from infona_client.graph.text_markers import (
     reset_for_tests,
 )
 
-GRAPH = "https://graph.onta.sh/graphs/test"
+GRAPH = "https://graph.infona.ai/graphs/test"
 
 _PROSE = (
     "The committee heard extensive testimony about the proposed changes to the "
@@ -102,11 +102,11 @@ class TestUpsertAttributeTextKind:
         a_uri = attr_uri("Speech", "transcript")
         assert (
             f"DELETE {{ GRAPH <{GRAPH}> {{ <{a_uri}> "
-            f"<https://graph.onta.sh/onto/textKind> ?k }} }}" in sparql
+            f"<https://graph.infona.ai/onto/textKind> ?k }} }}" in sparql
         )
         assert (
             f"INSERT {{ GRAPH <{GRAPH}> {{ <{a_uri}> "
-            f'<https://graph.onta.sh/onto/textKind> "free_text" }} }}' in sparql
+            f'<https://graph.infona.ai/onto/textKind> "free_text" }} }}' in sparql
         )
         assert "OPTIONAL" in sparql and "WHERE" in sparql
         # Atomicity: DELETE precedes INSERT precedes WHERE in one operation.
@@ -133,7 +133,7 @@ class TestUpsertAttributeTextKind:
     def test_map_query_selects_attr_and_kind(self):
         sparql = text_kind_map_query(GRAPH)
         assert f"FROM <{GRAPH}>" in sparql
-        assert "?attr <https://graph.onta.sh/onto/textKind> ?kind" in sparql
+        assert "?attr <https://graph.infona.ai/onto/textKind> ?kind" in sparql
 
 
 # --- per-tenant marker-map cache ---------------------------------------------
@@ -209,7 +209,7 @@ class TestFreeTextMapCache:
 
     def test_ttl_expiry_refetches(self, monkeypatch):
         async def run():
-            monkeypatch.setenv("COGRAPH_TEXT_MARKER_TTL_S", "0")
+            monkeypatch.setenv("INFONA_TEXT_MARKER_TTL_S", "0")
             neptune = _neptune_with([(_TRANSCRIPT, "free_text")])
             await get_free_text_map(neptune, "tenant-a")
             await get_free_text_map(neptune, "tenant-a")
@@ -312,7 +312,7 @@ def test_invalidate_for_graph_derives_tenant_from_ontology_graph():
         neptune = _neptune_with([(_TRANSCRIPT, "free_text")])
         await get_free_text_map(neptune, "tenant-a")
         await get_free_text_map(neptune, "tenant-b")
-        invalidate_for_graph("https://graph.onta.sh/graphs/tenant-a")
+        invalidate_for_graph("https://graph.infona.ai/graphs/tenant-a")
         assert "tenant-a" not in tm._cache
         assert "tenant-b" in tm._cache
 

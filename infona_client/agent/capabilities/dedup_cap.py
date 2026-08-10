@@ -58,7 +58,7 @@ from infona_client.graph.queries import kg_graph_uri
 from infona_client.resolver.er.rebuild import TYPE_URI_PREFIX
 from infona_client.resolver.er.types import config_for
 
-logger = structlog.stdlib.get_logger("cograph.agent.dedup")
+logger = structlog.stdlib.get_logger("infona.agent.dedup")
 
 # Strong refs to background rebuild tasks (mirrors enrich_cap / normalize_cap /
 # actions.py): a bare create_task() is only weakly held by CPython and can be
@@ -162,7 +162,7 @@ class DedupCapability:
         """Best-effort list of the KG's ER-enabled type names for the preview.
 
         Queries the distinct ``rdf:type`` URIs present in the KG's instance graph
-        (the same cograph-type filter :func:`rebuild_kg` uses) and keeps those
+        (the same infona-type filter :func:`rebuild_kg` uses) and keeps those
         that resolve to an :class:`ERConfig` via :func:`config_for` — i.e. the
         exact set the rebuild will act on. Defensive: ANY Neptune/parse error
         degrades to ``[]`` so the plan still proposes a (generic-preview) dedup

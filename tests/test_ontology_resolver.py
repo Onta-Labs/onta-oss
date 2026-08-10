@@ -347,7 +347,7 @@ def test_build_inventory_separates_attributes_and_relationships():
         {"typeLabel": "Person", "attrLabel": "name",
          "range": "http://www.w3.org/2001/XMLSchema#string"},
         {"typeLabel": "Person", "attrLabel": "works_for",
-         "range": "https://graph.onta.sh/types/Company"},
+         "range": "https://graph.infona.ai/types/Company"},
         {"typeLabel": "Company"},
     ]
     inv = build_inventory(bindings)

@@ -42,8 +42,8 @@ from infona_client.enrichment.tiers import (
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch):
     # Feature OFF unless a test opts in; clean registry + selector state each run.
-    monkeypatch.delenv("COGRAPH_REGISTRY_SELECTION", raising=False)
-    monkeypatch.delenv("COGRAPH_REGISTRY_SELECTION_TOP_K", raising=False)
+    monkeypatch.delenv("INFONA_REGISTRY_SELECTION", raising=False)
+    monkeypatch.delenv("INFONA_REGISTRY_SELECTION_TOP_K", raising=False)
     reset_api_source_layers()
     reset_tiers()
     reset_chain_prefix_providers()
@@ -401,7 +401,7 @@ async def test_apply_selection_identity_when_flag_off():
 
 @pytest.mark.asyncio
 async def test_apply_selection_reshapes_when_flag_on(monkeypatch):
-    monkeypatch.setenv("COGRAPH_REGISTRY_SELECTION", "1")
+    monkeypatch.setenv("INFONA_REGISTRY_SELECTION", "1")
     good = _spec("nppes", kinds=["physician"], cols={"npi": "n"})
     other = _spec("food", kinds=["food_item"], cols={"barcode": "c"})
     cat = _catalog(good, other)
@@ -416,7 +416,7 @@ async def test_apply_selection_reshapes_when_flag_on(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_apply_selection_drops_all_registry_when_none_qualify(monkeypatch):
-    monkeypatch.setenv("COGRAPH_REGISTRY_SELECTION", "1")
+    monkeypatch.setenv("INFONA_REGISTRY_SELECTION", "1")
     food = _spec("food", kinds=["food_item"], cols={"barcode": "c"})
     cat = _catalog(food)
     register_registry_enrichment(catalog=cat)
@@ -429,7 +429,7 @@ async def test_apply_selection_drops_all_registry_when_none_qualify(monkeypatch)
 
 @pytest.mark.asyncio
 async def test_apply_selection_preserves_non_registry_names(monkeypatch):
-    monkeypatch.setenv("COGRAPH_REGISTRY_SELECTION", "1")
+    monkeypatch.setenv("INFONA_REGISTRY_SELECTION", "1")
     good = _spec("nppes", kinds=["physician"], cols={"npi": "n"})
     cat = _catalog(good)
     register_registry_enrichment(catalog=cat)
@@ -441,7 +441,7 @@ async def test_apply_selection_preserves_non_registry_names(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_apply_selection_noop_when_no_registry_in_chain(monkeypatch):
-    monkeypatch.setenv("COGRAPH_REGISTRY_SELECTION", "1")
+    monkeypatch.setenv("INFONA_REGISTRY_SELECTION", "1")
     register_registry_enrichment(catalog=_catalog(_spec("nppes", kinds=["physician"], cols={"npi": "n"})))
     chain = ["cache", "wikidata"]
     out = await apply_registry_selection(chain, "Physician", "npi")
@@ -450,7 +450,7 @@ async def test_apply_selection_noop_when_no_registry_in_chain(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_apply_selection_never_raises_on_bad_catalog(monkeypatch):
-    monkeypatch.setenv("COGRAPH_REGISTRY_SELECTION", "1")
+    monkeypatch.setenv("INFONA_REGISTRY_SELECTION", "1")
 
     class _Boom:
         def all(self):
@@ -466,10 +466,10 @@ async def test_apply_selection_never_raises_on_bad_catalog(monkeypatch):
 # --------------------------------------------------------------------------- #
 def test_selection_flag_and_top_k_env(monkeypatch):
     assert rs.selection_enabled() is False
-    monkeypatch.setenv("COGRAPH_REGISTRY_SELECTION", "TRUE")
+    monkeypatch.setenv("INFONA_REGISTRY_SELECTION", "TRUE")
     assert rs.selection_enabled() is True
     assert rs.selection_top_k() == 8
-    monkeypatch.setenv("COGRAPH_REGISTRY_SELECTION_TOP_K", "3")
+    monkeypatch.setenv("INFONA_REGISTRY_SELECTION_TOP_K", "3")
     assert rs.selection_top_k() == 3
-    monkeypatch.setenv("COGRAPH_REGISTRY_SELECTION_TOP_K", "garbage")
+    monkeypatch.setenv("INFONA_REGISTRY_SELECTION_TOP_K", "garbage")
     assert rs.selection_top_k() == 8

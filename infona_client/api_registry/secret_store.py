@@ -20,7 +20,7 @@ created_at, updated_at, PK(tenant_id, slug, logical_name))``:
 Backends mirror ``store.py``: an in-memory default and a Postgres backend over
 the shared pool. Deleting a source deletes its secrets (same slug scope).
 
-Boundary: OSS. Pure ``infona_client.*`` / stdlib — no ``from cograph.*``.
+Boundary: OSS. Pure ``infona_client.*`` / stdlib — no ``from infona.*``.
 """
 
 from __future__ import annotations

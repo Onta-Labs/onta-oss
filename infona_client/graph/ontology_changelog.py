@@ -9,7 +9,7 @@ a reader can describe the change **without consulting the live ontology
 graph**.
 
 Global governance still writes the thinner action/subject/timestamp/tenant
-shape into ``https://graph.onta.sh/graphs/global/changelog`` (ADR 0002 §8).
+shape into ``https://graph.infona.ai/graphs/global/changelog`` (ADR 0002 §8).
 This reader is workspace-scoped by default (tenant isolation by named graph);
 optional fields (delta, actor, versions, …) are OPTIONAL so governance-shaped
 entries remain readable if pointed at that graph.

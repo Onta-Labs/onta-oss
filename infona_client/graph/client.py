@@ -6,7 +6,7 @@ import time
 import httpx
 import structlog
 
-logger = structlog.stdlib.get_logger("cograph.neptune")
+logger = structlog.stdlib.get_logger("infona.neptune")
 
 # Cap on how much of the endpoint's error body we surface, so a runaway HTML
 # error page can't blow up the retry prompt / logs.

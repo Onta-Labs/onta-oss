@@ -20,7 +20,7 @@ an LLM-judge verifier, semantic-escalation discovery — plug in through the sam
 ``register_*`` hooks, key-gated and dormant without their keys.
 
 Boundary: OSS. Every module here imports only stdlib / ``infona_client.*`` /
-``httpx``. No ``from cograph.*`` and no proprietary identifiers.
+``httpx``. No ``from infona.*`` and no proprietary identifiers.
 """
 
 from __future__ import annotations

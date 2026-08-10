@@ -124,9 +124,9 @@ def test_b5_subject_id_is_entity_iri_string():
 
 
 def test_classify_type_cross_host_keeps_class_iri():
-    """ETL from cograph.tech dump under default graph.onta.sh base still maps."""
-    subj = "https://cograph.tech/entities/Person/alice"
-    class_iri = "https://cograph.tech/types/Person"
+    """ETL from graph.infona.ai dump under default graph.infona.ai base still maps."""
+    subj = "https://graph.infona.ai/entities/Person/alice"
+    class_iri = "https://graph.infona.ai/types/Person"
     fact = classify_triple(
         subj,
         "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
@@ -203,29 +203,29 @@ def test_parse_json_triples_shapes():
 
 def test_parse_instance_graph_uri_any_host():
     assert etl.parse_instance_graph_uri(
-        "https://cograph.tech/graphs/demo-tenant/kg/bookstore"
+        "https://graph.infona.ai/graphs/demo-tenant/kg/bookstore"
     ) == ("demo-tenant", "bookstore")
     assert etl.parse_instance_graph_uri(
-        "https://graph.onta.sh/graphs/acme/kg/crm"
+        "https://graph.infona.ai/graphs/acme/kg/crm"
     ) == ("acme", "crm")
     assert etl.parse_instance_graph_uri(
-        "https://cograph.tech/graphs/demo-tenant"
+        "https://graph.infona.ai/graphs/demo-tenant"
     ) is None
     assert etl.parse_instance_graph_uri(
-        "https://cograph.tech/graphs/demo-tenant/kg/bookstore/provenance"
+        "https://graph.infona.ai/graphs/demo-tenant/kg/bookstore/provenance"
     ) is None
 
 
 def test_parse_ontology_graph_uri():
     assert etl.parse_ontology_graph_uri(
-        "https://cograph.tech/graphs/demo-tenant"
+        "https://graph.infona.ai/graphs/demo-tenant"
     ) == "demo-tenant"
     assert etl.parse_ontology_graph_uri(
-        "https://graph.onta.sh/graphs/acme/"
+        "https://graph.infona.ai/graphs/acme/"
     ) == "acme"
     assert (
         etl.parse_ontology_graph_uri(
-            "https://cograph.tech/graphs/demo-tenant/kg/bookstore"
+            "https://graph.infona.ai/graphs/demo-tenant/kg/bookstore"
         )
         is None
     )

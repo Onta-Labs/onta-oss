@@ -10,7 +10,7 @@ CloudWatch request gaps.
 
 Assertions record against a MagicMock swapped in for the module logger rather
 than ``structlog.testing.capture_logs()``: under the full suite the
-``cograph.resolver`` module logger is cached by earlier tests, so ``capture_logs``
+``infona.resolver`` module logger is cached by earlier tests, so ``capture_logs``
 would silently intercept nothing. The mock-logger pattern (mirroring
 tests/test_stage_timing.py) is order-independent.
 

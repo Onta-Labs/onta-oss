@@ -29,9 +29,9 @@ from infona_client.qc.__main__ import _parse_args, _resolve_include, _run
 from infona_client.qc.invariants import RDF_TYPE, RDFS_LABEL, RDFS_RANGE
 
 TENANT = "demo"
-ENT = "https://graph.onta.sh/entities/"
-ONTO = "https://graph.onta.sh/onto/"
-TYPES = "https://graph.onta.sh/types/"
+ENT = "https://graph.infona.ai/entities/"
+ONTO = "https://graph.infona.ai/onto/"
+TYPES = "https://graph.infona.ai/types/"
 
 
 def _err(inv="node_edge_on_attrs_predicate") -> Violation:

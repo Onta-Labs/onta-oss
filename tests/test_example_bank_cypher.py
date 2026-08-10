@@ -114,7 +114,7 @@ def test_format_examples_sparql_mode_skips_cypher_only():
     examples = [
         Example(
             question="Q1",
-            sparql="SELECT ?s FROM <https://graph.onta.sh/graphs/t/kg/x> WHERE { ?s ?p ?o }",
+            sparql="SELECT ?s FROM <https://graph.infona.ai/graphs/t/kg/x> WHERE { ?s ?p ?o }",
             kg_name="x",
             ontology_context="",
             pattern_tags=["basic"],
@@ -130,7 +130,7 @@ def test_format_examples_sparql_mode_skips_cypher_only():
     ]
     text = format_examples_for_prompt(
         examples,
-        "https://graph.onta.sh/graphs/acme/kg/app",
+        "https://graph.infona.ai/graphs/acme/kg/app",
         language="sparql",
     )
     assert "SPARQL:" in text

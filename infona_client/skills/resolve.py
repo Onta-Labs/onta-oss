@@ -35,7 +35,7 @@ from .models import TypeSkill
 from .registry import global_skills_by_layer
 from .store import TypeSkillStore, make_type_skill_store
 
-logger = structlog.stdlib.get_logger("cograph.skills.resolve")
+logger = structlog.stdlib.get_logger("infona.skills.resolve")
 
 #: Default character budget for one injected skills block. Sized to be
 #: meaningful guidance without crowding out the schema/question in a planner
@@ -211,7 +211,7 @@ async def skills_prompt_block(
     3. **Agent planner** — ``agent/planner.py::_classify`` injects only capability
        one-liners plus the transcript; a skills block for ``ctx.type_name`` gives
        intent classification the type semantics it currently lacks.
-    4. **MCP ``view_ontology``** — ``packages/cograph-mcp/src/index.ts`` renders
+    4. **MCP ``view_ontology``** — ``packages/mcp/src/index.ts`` renders
        ``Type: / Attributes: / Relationships:`` and today DROPS the
        ``description`` the backend already returns. It should call the canonical
        ``GET /graphs/{tenant}/skills/prompt-block`` route rather than render

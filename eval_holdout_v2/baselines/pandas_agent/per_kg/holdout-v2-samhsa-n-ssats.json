@@ -4,7 +4,7 @@
     "id": "q-001",
     "tier": "T1",
     "question": "How many treatment facilities are there?",
-    "gold_sparql": "SELECT (COUNT(DISTINCT ?facility) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE { ?facility <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/type/TreatmentFacility> . }",
+    "gold_sparql": "SELECT (COUNT(DISTINCT ?facility) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE { ?facility <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/type/TreatmentFacility> . }",
     "expected_answer": "16066",
     "full_expected_items": [
       "16066"
@@ -49,7 +49,7 @@
     "id": "q-002",
     "tier": "T1",
     "question": "List all available services.",
-    "gold_sparql": "SELECT DISTINCT ?service_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE { ?service <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/type/Service> . ?service <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/service_name> ?service_name . }",
+    "gold_sparql": "SELECT DISTINCT ?service_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE { ?service <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/type/Service> . ?service <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/service_name> ?service_name . }",
     "expected_answer": "Substance use assessment, Family counseling, Social skills development, Anger management, Drug/alcohol urine screening, Referral to community services, Transportation assistance, Assistance with obtaining social services, Integrated dual-diagnosis treatment, Outreach to persons in community ... (85 total)",
     "full_expected_items": [
       "Substance use assessment",
@@ -178,7 +178,7 @@
     "id": "q-003",
     "tier": "T1",
     "question": "What are the different types of clients served?",
-    "gold_sparql": "SELECT DISTINCT ?client_type_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE { ?client_type <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/type/ClientType> . ?client_type <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/client_type_name> ?client_type_name . }",
+    "gold_sparql": "SELECT DISTINCT ?client_type_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE { ?client_type <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/type/ClientType> . ?client_type <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/client_type_name> ?client_type_name . }",
     "expected_answer": "Adults, Adolescents, Children/adolescents, Young adults (18-25), Persons with HIV/AIDS, Persons with co-occurring disorders, Hospital inpatient detox, Hospital inpatient treatment, Military/veterans, Outpatient ... (13 total)",
     "full_expected_items": [
       "Adults",
@@ -235,7 +235,7 @@
     "id": "q-004",
     "tier": "T1",
     "question": "How many states are represented in the dataset?",
-    "gold_sparql": "SELECT (COUNT(DISTINCT ?state) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE { ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/type/State> . }",
+    "gold_sparql": "SELECT (COUNT(DISTINCT ?state) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE { ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/type/State> . }",
     "expected_answer": "53",
     "full_expected_items": [
       "53"
@@ -280,7 +280,7 @@
     "id": "q-005",
     "tier": "T2",
     "question": "How many states have a facility count greater than 500?",
-    "gold_sparql": "SELECT (COUNT(?state) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/facility_count> ?facility_count_str .\n  FILTER(xsd:integer(?facility_count_str) > 500)\n}",
+    "gold_sparql": "SELECT (COUNT(?state) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/type/State> .\n  ?state <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/facility_count> ?facility_count_str .\n  FILTER(xsd:integer(?facility_count_str) > 500)\n}",
     "expected_answer": "8",
     "full_expected_items": [
       "8"
@@ -325,7 +325,7 @@
     "id": "q-006",
     "tier": "T2",
     "question": "Find the names of services that include 'testing' in their name.",
-    "gold_sparql": "SELECT ?service_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE {\n  ?service <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/type/Service> .\n  ?service <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/service_name> ?service_name .\n  FILTER(CONTAINS(LCASE(STR(?service_name)), \"testing\"))\n}",
+    "gold_sparql": "SELECT ?service_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE {\n  ?service <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/type/Service> .\n  ?service <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/service_name> ?service_name .\n  FILTER(CONTAINS(LCASE(STR(?service_name)), \"testing\"))\n}",
     "expected_answer": "STD testing, Laboratory testing, HIV testing, Hepatitis B testing, Hepatitis C testing",
     "full_expected_items": [
       "STD testing",
@@ -374,7 +374,7 @@
     "id": "q-007",
     "tier": "T2",
     "question": "List the names of all services that include 'counseling' in their name.",
-    "gold_sparql": "SELECT DISTINCT ?serviceName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE { ?service <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/type/Service> . ?service <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/service_name> ?serviceName . FILTER(CONTAINS(LCASE(STR(?serviceName)), \"counseling\")) }",
+    "gold_sparql": "SELECT DISTINCT ?serviceName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE { ?service <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/type/Service> . ?service <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/service_name> ?serviceName . FILTER(CONTAINS(LCASE(STR(?serviceName)), \"counseling\")) }",
     "expected_answer": "Family counseling, Marital/couples counseling, Smoking/tobacco cessation counseling, Diet/exercise counseling, Employment counseling or training, Trauma-related counseling, Individual counseling, Group counseling",
     "full_expected_items": [
       "Family counseling",
@@ -426,7 +426,7 @@
     "id": "q-008",
     "tier": "T3",
     "question": "List the names of treatment facilities that accept 'Medicaid' as a payment type and serve 'Adolescents'.",
-    "gold_sparql": "SELECT DISTINCT ?facility_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE {\n  ?facility <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/type/TreatmentFacility> .\n  ?facility <http://www.w3.org/2000/01/rdf-schema#label> ?facility_name .\n  ?facility <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/accepts_payment> ?payment_type .\n  ?payment_type <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/type/PaymentType> .\n  ?payment_type <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/payment_name> \"Medicaid\" .\n  ?facility <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/serves_client_type> ?client_type .\n  ?client_type <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/type/ClientType> .\n  ?client_type <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/client_type_name> \"Adolescents\" .\n}",
+    "gold_sparql": "SELECT DISTINCT ?facility_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE {\n  ?facility <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/type/TreatmentFacility> .\n  ?facility <http://www.w3.org/2000/01/rdf-schema#label> ?facility_name .\n  ?facility <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/accepts_payment> ?payment_type .\n  ?payment_type <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/type/PaymentType> .\n  ?payment_type <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/payment_name> \"Medicaid\" .\n  ?facility <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/serves_client_type> ?client_type .\n  ?client_type <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/type/ClientType> .\n  ?client_type <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/client_type_name> \"Adolescents\" .\n}",
     "expected_answer": "11229, 11266, 11263, 11273, 11277, 11279, 11332, 11334, 11278, 11264 ... (5864 total)",
     "full_expected_items": [
       "11229",
@@ -2470,7 +2470,7 @@
     "id": "q-009",
     "tier": "T3",
     "question": "List the names of treatment facilities that accept 'Medicaid' as a payment type and serve 'Adolescents' as a client type.",
-    "gold_sparql": "SELECT DISTINCT ?facility_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE {\n  ?facility <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/type/TreatmentFacility> .\n  ?facility <http://www.w3.org/2000/01/rdf-schema#label> ?facility_name .\n  ?facility <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/accepts_payment> ?payment_type .\n  ?payment_type <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/type/PaymentType> .\n  ?payment_type <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/payment_name> \"Medicaid\" .\n  ?facility <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/serves_client_type> ?client_type .\n  ?client_type <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/type/ClientType> .\n  ?client_type <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/client_type_name> \"Adolescents\" .\n}",
+    "gold_sparql": "SELECT DISTINCT ?facility_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE {\n  ?facility <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/type/TreatmentFacility> .\n  ?facility <http://www.w3.org/2000/01/rdf-schema#label> ?facility_name .\n  ?facility <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/accepts_payment> ?payment_type .\n  ?payment_type <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/type/PaymentType> .\n  ?payment_type <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/payment_name> \"Medicaid\" .\n  ?facility <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/serves_client_type> ?client_type .\n  ?client_type <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/type/ClientType> .\n  ?client_type <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/client_type_name> \"Adolescents\" .\n}",
     "expected_answer": "11692, 11592, 11618, 11621, 11622, 11624, 11631, 11633, 11636, 11688 ... (5864 total)",
     "full_expected_items": [
       "11692",
@@ -4514,7 +4514,7 @@
     "id": "q-010",
     "tier": "T4",
     "question": "What is the average number of distinct services offered by treatment facilities in each state?",
-    "gold_sparql": "SELECT ?state_name (AVG(?num_services) AS ?average_services_per_facility) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE { \n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/state_name> ?state_name .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/state_has_facility> ?facility .\n  ?facility <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/type/TreatmentFacility> .\n  {\n    SELECT ?facility (COUNT(DISTINCT ?service) AS ?num_services) WHERE {\n      ?facility <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/offers_service> ?service .\n      ?service <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/type/Service> .\n    } GROUP BY ?facility\n  }\n} GROUP BY ?state_name\n",
+    "gold_sparql": "SELECT ?state_name (AVG(?num_services) AS ?average_services_per_facility) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE { \n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/type/State> .\n  ?state <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/state_name> ?state_name .\n  ?state <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/state_has_facility> ?facility .\n  ?facility <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/type/TreatmentFacility> .\n  {\n    SELECT ?facility (COUNT(DISTINCT ?service) AS ?num_services) WHERE {\n      ?facility <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/offers_service> ?service .\n      ?service <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/type/Service> .\n    } GROUP BY ?facility\n  }\n} GROUP BY ?state_name\n",
     "expected_answer": "VA | 4.93574297188755020080\nDE | 5.93877551020408163265\nOH | 5.14216478190630048465\nOK | 5.33846153846153846154\nNV | 5.73394495412844036697\nNY | 6.07270693512304250559\nPA | 5.10264900662251655629\nRI | 5.60317460317460317460\nOR | 5.21457489878542510121\nPR | 5.01980198019801980198\n... (50 total rows)",
     "full_expected_items": [
       "VA | 4.93574297188755020080",
@@ -4608,7 +4608,7 @@
     "id": "q-011",
     "tier": "T4",
     "question": "What is the average number of distinct services offered by treatment facilities that accept 'Medicaid' as a payment type?",
-    "gold_sparql": "SELECT (AVG(?distinct_services) AS ?average_distinct_services) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE {\n  ?facility <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/type/TreatmentFacility> .\n  ?facility <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/accepts_payment> ?paymentType .\n  ?paymentType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/type/PaymentType> .\n  ?paymentType <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/payment_name> \"Medicaid\" .\n  {\n    SELECT ?facility (COUNT(DISTINCT ?service) AS ?distinct_services) WHERE {\n      ?facility <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/type/TreatmentFacility> .\n      ?facility <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/pred/offers_service> ?service .\n      ?service <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-samhsa-n-ssats/type/Service> .\n    } GROUP BY ?facility\n  }\n}",
+    "gold_sparql": "SELECT (AVG(?distinct_services) AS ?average_distinct_services) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-samhsa-n-ssats> WHERE {\n  ?facility <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/type/TreatmentFacility> .\n  ?facility <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/accepts_payment> ?paymentType .\n  ?paymentType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/type/PaymentType> .\n  ?paymentType <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/payment_name> \"Medicaid\" .\n  {\n    SELECT ?facility (COUNT(DISTINCT ?service) AS ?distinct_services) WHERE {\n      ?facility <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/type/TreatmentFacility> .\n      ?facility <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/pred/offers_service> ?service .\n      ?service <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-samhsa-n-ssats/type/Service> .\n    } GROUP BY ?facility\n  }\n}",
     "expected_answer": "5.38",
     "full_expected_items": [
       "5.37708892544809074379"

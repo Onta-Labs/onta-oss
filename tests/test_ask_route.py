@@ -369,7 +369,7 @@ def test_ask_without_kg_name_never_probes(client, auth_headers, mock_neptune):
     [
         # The tenant-isolation break: ">" closes <...> so a second FROM naming
         # another tenant's graph can be appended.
-        "widgets> FROM <https://graph.onta.sh/graphs/other-tenant",
+        "widgets> FROM <https://graph.infona.ai/graphs/other-tenant",
         "widgets ",
         "a/b",
         'x"y',

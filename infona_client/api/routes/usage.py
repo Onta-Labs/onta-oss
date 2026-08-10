@@ -5,7 +5,7 @@ Composes two already-durable sources at read time:
 - request metrics (count / errors / latency) from the usage store, recorded
   per daily bucket by the request middleware (``usage/recorder.py``);
 - spend from the job store — per-run cost already lives on
-  ``cograph_jobs.cost``, so cost is aggregated from there rather than being
+  ``infona_jobs.cost``, so cost is aggregated from there rather than being
   double-tracked.
 
 Every series is day-aligned over the requested window, with per-KG and

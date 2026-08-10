@@ -41,18 +41,18 @@ from infona_client.graph.ontology_compat import (
     assert_publishable,
     classify_diff,
 )
-from infona_client.graph.ontology_queries import OMNIX_ONTO, XSD
+from infona_client.graph.ontology_queries import INFONA_ONTO, XSD
 from infona_client.graph.parser import parse_sparql_results
 from infona_client.graph.queries import insert_triples
 from infona_client.models.ontology import ChangeKind, ChangeRecord
 
-logger = structlog.stdlib.get_logger("cograph.graph.ontology_snapshots")
+logger = structlog.stdlib.get_logger("infona.graph.ontology_snapshots")
 
 # ---------------------------------------------------------------------------
 # Vocabulary — RDF release/revision records on the versions companion graph
 # ---------------------------------------------------------------------------
 
-_REL_NS = f"{OMNIX_ONTO}/"
+_REL_NS = f"{INFONA_ONTO}/"
 _REL_TYPE = f"{_REL_NS}OntologyRelease"
 _REL_OF = f"{_REL_NS}releaseOf"  # live graph this release versions
 _REL_VERSION = f"{_REL_NS}version"
@@ -531,7 +531,7 @@ async def _next_release_version(neptune, live_graph_uri: str, kind: SnapshotKind
 async def _current_revision_counter(neptune, live_graph_uri: str) -> int:
     """Read the ONTA-403 workspaceRevision counter (0 if absent)."""
     rev_graph = versions_graph_uri(live_graph_uri)
-    pred = f"{OMNIX_ONTO}/workspaceRevision"
+    pred = f"{INFONA_ONTO}/workspaceRevision"
     try:
         raw = await neptune.query(
             f"SELECT ?r FROM <{rev_graph}> WHERE {{ "

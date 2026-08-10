@@ -58,7 +58,7 @@ questions via LLM-generated SPARQL.
 
 ### CSV Ingestion (two-step, no LLM per row)
 
-**Step 1 — Schema inference** (`omnix/resolver/csv_resolver.py:90-175`)
+**Step 1 — Schema inference** (`infona/resolver/csv_resolver.py:90-175`)
 
 One LLM call. Input: column headers, 5 sample rows, existing ontology types.
 Output: entity type name + per-column mapping (role, datatype, target type).
@@ -72,7 +72,7 @@ Post-processing enforces entity-first principles: geographic columns (city, stat
 country) and people columns (broker, agent) are forced to relationships even if the
 LLM mapped them as attributes.
 
-**Wide tables (COG-58).** Above `OMNIX_CSV_MAX_INFERENCE_COLUMNS` columns (default 40)
+**Wide tables (COG-58).** Above `INFONA_CSV_MAX_INFERENCE_COLUMNS` columns (default 40)
 the per-column REASON pass is split so no single LLM call must emit a tag for every
 column within its output-token budget (the ~300-column failure mode: truncated JSON →
 validation retry → 422/120s timeout). It becomes one global entity-decomposition call
@@ -86,7 +86,7 @@ Note: *type matching* (`type_matcher.py`) is **not** a wide-table bottleneck —
 entity *type names*, not columns, and scales with the (small) distinct-type count via its
 cache + exact-name short-circuit, so no per-column concurrency cap is needed there.
 
-**Step 2 — Row mapping** (`omnix/resolver/csv_resolver.py:241-306`)
+**Step 2 — Row mapping** (`infona/resolver/csv_resolver.py:241-306`)
 
 Fully deterministic. No LLM. Each row produces:
 - One primary entity (the row itself)
@@ -99,7 +99,7 @@ are split into separate triples. For relationships, each value becomes a separat
 and relationship triple. For string attributes, each value becomes a separate attribute
 triple. This enables exact-match SPARQL filters without CONTAINS.
 
-**Step 3 — Resolution + insertion** (`omnix/resolver/schema_resolver.py:200+`)
+**Step 3 — Resolution + insertion** (`infona/resolver/schema_resolver.py:200+`)
 
 For each batch of entities:
 1. **Type matching** — is this type new, or does it match an existing type?
@@ -110,7 +110,7 @@ For each batch of entities:
 
 ### Text/JSON Ingestion
 
-Text is chunked (3000 chars, 200 overlap) via `omnix/resolver/chunker.py`. Each chunk
+Text is chunked (3000 chars, 200 overlap) via `infona/resolver/chunker.py`. Each chunk
 gets one LLM extraction call. Results are deduplicated by entity ID across chunks, then
 follow the same resolution + insertion path.
 
@@ -158,7 +158,7 @@ it would propose different attributes.
 
 ## Type Matching
 
-`omnix/resolver/type_matcher.py` — 4-layer cascade, fast to slow:
+`infona/resolver/type_matcher.py` — 4-layer cascade, fast to slow:
 
 | Layer | Speed | When Used | How |
 |-------|-------|-----------|-----|
@@ -187,12 +187,12 @@ containment. City is NOT a subtype of State.
 
 | Thing | Pattern | Example |
 |-------|---------|---------|
-| Type | `https://graph.onta.sh/types/{TypeName}` | `https://graph.onta.sh/types/ClinicalTrial` |
-| Attribute | `https://graph.onta.sh/types/{TypeName}/attrs/{attr}` | `https://graph.onta.sh/types/Event/attrs/name` |
-| Relationship | `https://graph.onta.sh/onto/{predicate}` | `https://graph.onta.sh/onto/city` |
-| Entity | `https://graph.onta.sh/entities/{TypeName}/{safe_id}` | `https://graph.onta.sh/entities/City/Austin` |
-| Tenant graph | `https://graph.onta.sh/graphs/{tenant_id}` | `https://graph.onta.sh/graphs/demo-tenant` |
-| KG graph | `https://graph.onta.sh/graphs/{tenant_id}/kg/{kg}` | `https://graph.onta.sh/graphs/demo-tenant/kg/zillow-austin` |
+| Type | `https://graph.infona.ai/types/{TypeName}` | `https://graph.infona.ai/types/ClinicalTrial` |
+| Attribute | `https://graph.infona.ai/types/{TypeName}/attrs/{attr}` | `https://graph.infona.ai/types/Event/attrs/name` |
+| Relationship | `https://graph.infona.ai/onto/{predicate}` | `https://graph.infona.ai/onto/city` |
+| Entity | `https://graph.infona.ai/entities/{TypeName}/{safe_id}` | `https://graph.infona.ai/entities/City/Austin` |
+| Tenant graph | `https://graph.infona.ai/graphs/{tenant_id}` | `https://graph.infona.ai/graphs/demo-tenant` |
+| KG graph | `https://graph.infona.ai/graphs/{tenant_id}/kg/{kg}` | `https://graph.infona.ai/graphs/demo-tenant/kg/zillow-austin` |
 
 ### Named Graph Structure
 
@@ -234,7 +234,7 @@ per-writer choice.
 
 Discovery (`resolver/schema_resolver.py`), enrichment (`enrichment/executor.py`), and
 `promote_to_node` (`normalization/execute.py`) all mint entity URIs with the
-IDENTICAL scheme: `https://graph.onta.sh/entities/{TypeName}/{_safe_id(value)}`
+IDENTICAL scheme: `https://graph.infona.ai/entities/{TypeName}/{_safe_id(value)}`
 (`_safe_id`: non-`[A-Za-z0-9_-]` characters → `_`, truncated to 200 chars). A value
 from any of the three rails resolves to the SAME shared node — enrichment filling a
 `city` attribute with `"Austin"` links to the exact `entities/City/Austin` node
@@ -299,7 +299,7 @@ auto-suggested; the human decides when a literal has earned nodehood.
 
 ## Query Pipeline
 
-`omnix/nlp/pipeline.py` — NLQueryPipeline
+`infona/nlp/pipeline.py` — NLQueryPipeline
 
 ### Flow
 
@@ -315,7 +315,7 @@ Question → Ontology Retrieval → Example Retrieval → SPARQL Generation → 
   low-cardinality string attributes via concurrent queries (asyncio.gather, not UNION).
   Cached for 60s.
 
-**Step 2 — Example retrieval** (`omnix/nlp/example_bank.py`): Before generating
+**Step 2 — Example retrieval** (`infona/nlp/example_bank.py`): Before generating
 SPARQL, retrieve 3 similar working queries from the example bank. The bank stores
 (question, SPARQL, embedding) pairs from previous eval runs. Retrieval algorithm:
 embed the question, cosine similarity against bank, pattern diversity (pick examples
@@ -334,13 +334,13 @@ functions_needed.
 **Step 4 — Post-processing**: `_fix_attribute_uris` fuzzy-matches generated URIs
 against the ontology to catch LLM URI mistakes (wrong namespace, missing /attrs/).
 
-**Step 4.5 — SPARQL normalization** (`omnix/nlp/validator.py:normalize_sparql`):
+**Step 4.5 — SPARQL normalization** (`infona/nlp/validator.py:normalize_sparql`):
 Auto-fixes common LLM syntax mistakes before execution:
 - Expands PREFIX declarations inline
 - Moves FROM clauses to correct position
 - Fixes bare aggregates (`SELECT COUNT(?x)` → `SELECT (COUNT(?x) AS ?count)`)
 - Corrects URI namespace mistakes (bare type names, and the retired
-  `omnix.dev/` namespace echoed back from a stale prompt)
+  `graph.infona.ai/` namespace echoed back from a stale prompt)
 
 **Step 5 — Validation + execution**: Syntax check, then execute against Neptune.
 On failure, retry with error feedback (up to 3 attempts).
@@ -350,7 +350,7 @@ On failure, retry with error feedback (up to 3 attempts).
 
 ### SPARQL Generation Rules
 
-Key rules in the system prompt (`omnix/nlp/prompts.py`):
+Key rules in the system prompt (`infona/nlp/prompts.py`):
 - No PREFIX declarations, write full URIs
 - Only use URIs that appear in the ontology
 - Always include `FROM <graph_uri>` clause
@@ -365,7 +365,7 @@ Key rules in the system prompt (`omnix/nlp/prompts.py`):
 
 During full ontology fetch, cardinality is checked for ALL attributes and relationships
 via concurrent SPARQL queries (one per predicate, via asyncio.gather). Concurrency is
-**bounded by a semaphore** (`OMNIX_ENUM_DISCOVERY_CONCURRENCY`, default 8 — COG-58): a
+**bounded by a semaphore** (`INFONA_ENUM_DISCOVERY_CONCURRENCY`, default 8 — COG-58): a
 wide table with hundreds of attributes would otherwise launch hundreds of simultaneous
 queries and throttle serverless Neptune. The in-flight query count is now capped
 regardless of column count, trading a little latency for stability.
@@ -384,7 +384,7 @@ for this use case.
 
 ## Embedding Service
 
-`omnix/nlp/ontology_embeddings.py`
+`infona/nlp/ontology_embeddings.py`
 
 - **Model:** `openai/text-embedding-3-small` via OpenRouter
 - **Dimensions:** 1536
@@ -399,7 +399,7 @@ Each type is embedded as a text chunk containing the type name, its attributes
 
 ## Example Bank (RAG for SPARQL)
 
-`omnix/nlp/example_bank.py` — Few-shot examples from eval history.
+`infona/nlp/example_bank.py` — Few-shot examples from eval history.
 
 The example bank replaces static prompt rules with concrete working SPARQL examples.
 Instead of teaching the LLM "use CONTAINS for entity names" (abstract), it shows
@@ -461,14 +461,14 @@ run eval → correct pairs saved → bank loaded, pairs merged in, saved
 
 **It is a MERGE, not a regenerate.** This matters more than it sounds.
 `eval_reports/example_bank.jsonl` is committed, shared state;
-`finetune_pairs.jsonl` is gitignored and machine-local. Until the onta-oss#280
+`finetune_pairs.jsonl` is gitignored and machine-local. Until the infona-oss#280
 follow-up, the rebuild constructed an `ExampleBank`, never `load()`ed it, and
 `save()`d — and
 `save()` writes `self._examples` wholesale, so the shared bank was *replaced* by
 one developer's local pair file. Anyone who evaluated a subset of KGs and
 committed the result silently shrank the bank to that subset; that is the most
 plausible way 148 Spider4SPARQL entries came to be 148 of the OSS bank's 262
-(ONTA-449). onta-oss#280 skipped `save()` when `add_batch` accepted nothing,
+(ONTA-449). infona-oss#280 skipped `save()` when `add_batch` accepted nothing,
 which stopped truncate-to-zero but not replace-114-with-12.
 
 The bank is the durable artifact — the file in git, the file the KG-delete purge
@@ -514,8 +514,8 @@ A stale-namespace bank does now heal itself on the next eval of the affected KG
 (refresh-on-re-add, plus last-wins when both pairs land in one batch), and a
 bank carrying benchmark rows heals on the next eval of
 any KG — `load()` filters them and the rebuild saves the filtered result even
-when it accepted no new pairs. Neither was true when the `omnix.dev` →
-`graph.onta.sh` rename (2026-04-27) left both banks priming every `/ask` prompt
+when it accepted no new pairs. Neither was true when the `graph.infona.ai` →
+`graph.infona.ai` rename (2026-04-27) left both banks priming every `/ask` prompt
 with predicates that resolve to nothing, while the *system* prompt already
 taught the new namespace, so each prompt contradicted itself. Still guarded by
 `tests/test_example_bank_namespace.py` (OSS bank) and the parent repo's
@@ -576,7 +576,7 @@ predicate URIs.
 
 **What does NOT transfer:** Answer values, entity names, specific predicate URIs.
 The LLM must still read the current ontology to generate correct URIs. A Coffee
-example's `<https://graph.onta.sh/types/CoffeeLot/attrs/altitude>` is useless for
+example's `<https://graph.infona.ai/types/CoffeeLot/attrs/altitude>` is useless for
 IMDB queries. Only the SPARQL structure carries over.
 
 **Why this works:** A human developer does the same thing. You look at a working
@@ -602,8 +602,8 @@ tested from the example bank. This would produce high scores without real
 generalization.
 
 **How it works:** The eval passes ALL eval question texts as `exclude_questions`
-to the `/ask` endpoint (`omnix/models/query.py:NLQuery.exclude_questions`). The
-pipeline passes these to `bank.retrieve()` (`omnix/nlp/pipeline.py`), which
+to the `/ask` endpoint (`infona/models/query.py:NLQuery.exclude_questions`). The
+pipeline passes these to `bank.retrieve()` (`infona/nlp/pipeline.py`), which
 excludes any bank example with >0.90 cosine similarity to any excluded question.
 
 **Enforcement chain:**
@@ -631,7 +631,7 @@ the LLM sees varied patterns, not 3 of the same type.
 
 ## Failure Diagnosis
 
-`omnix/eval_diagnosis.py` — Classifies failures by layer.
+`infona/eval_diagnosis.py` — Classifies failures by layer.
 
 Three-stage triage per failed question:
 - **Stage A — Graph Probe:** Query Neptune to check if expected data exists (~200ms)
@@ -659,7 +659,7 @@ Anti-overfitting safeguards:
 
 ## Eval Framework
 
-`omnix/eval.py` — Iterative eval loop for measuring query accuracy.
+`infona/eval.py` — Iterative eval loop for measuring query accuracy.
 
 ### Question Generation (4 tiers)
 
@@ -746,7 +746,7 @@ Defined in `template.yaml` (AWS SAM).
 
 Push to `main` or `feat/phase-1-core-platform` triggers `.github/workflows/deploy.yml`:
 1. Build Docker image
-2. Push to ECR (`omnix-demo-tenant`) <!-- boundary-ok: the ECR repository NAME is deliberately public deploy documentation; it is not a host, ARN, or credential -->
+2. Push to ECR (`infona-demo-tenant`) <!-- boundary-ok: the ECR repository NAME is deliberately public deploy documentation; it is not a host, ARN, or credential -->
 3. Force new ECS deployment (rolling update)
 
 Deploy takes ~45s. Do NOT deploy during bulk ingestion — ECS rolling restart kills the
@@ -763,7 +763,7 @@ running container, causing 500 errors on in-flight requests.
 
 ## Configuration
 
-`omnix/config.py` — Pydantic Settings with `OMNIX_` env prefix.
+`infona/config.py` — Pydantic Settings with `INFONA_` env prefix.
 
 | Setting | Default | Purpose |
 |---------|---------|---------|
@@ -774,26 +774,26 @@ running container, causing 500 errors on in-flight requests.
 | `cerebras_api_key` | `""` | For fast query generation |
 | `function_arns` | `{}` | Lambda ARN mapping |
 | `embeddings_s3_bucket` | `""` | S3 bucket for embedding persistence |
-| `embeddings_s3_prefix` | `omnix/embeddings` | S3 key prefix |
+| `embeddings_s3_prefix` | `infona/embeddings` | S3 key prefix |
 | `embeddings_top_k` | `15` | Semantic retrieval result count |
 
 LLM model routing (all resolver/governance/query calls go through OpenRouter
 with a primary model + automatic fallback via OpenRouter's `models` array, see
 `infona_client/resolver/llm_router.py`):
-- `OMNIX_LLM_MODEL` — default `anthropic/claude-opus-4.8`. Primary model for every
+- `INFONA_LLM_MODEL` — default `anthropic/claude-opus-4.8`. Primary model for every
   decision/inference call. Per-role knobs below default to this, so changing it
   flips all roles at once unless one is individually overridden.
-- `OMNIX_LLM_FALLBACK_MODEL` — default `openai/gpt-5.5`. Tried automatically when
+- `INFONA_LLM_FALLBACK_MODEL` — default `openai/gpt-5.5`. Tried automatically when
   the primary errors/rate-limits (OpenRouter `models` routing).
-- `OMNIX_EXTRACT_MODEL` — default = `OMNIX_LLM_MODEL` (schema/entity extraction — the "propose" stage)
-- `OMNIX_MATCH_MODEL` — default = `OMNIX_LLM_MODEL` (type matching: reuse-vs-expand verdict + ambiguous judge fan-out)
-- `OMNIX_GOV_JUDGE_MODEL` — default = `OMNIX_LLM_MODEL` (OSS governance judge panel; premium `ShapeJudgePanel` uses `COGRAPH_GOV_JUDGE_MODEL`)
-- `OMNIX_INFER_MODEL` — default `claude-opus-4-8` (NATIVE Anthropic id; used only by the offline Anthropic-SDK fallback path when no OpenRouter key is set)
+- `INFONA_EXTRACT_MODEL` — default = `INFONA_LLM_MODEL` (schema/entity extraction — the "propose" stage)
+- `INFONA_MATCH_MODEL` — default = `INFONA_LLM_MODEL` (type matching: reuse-vs-expand verdict + ambiguous judge fan-out)
+- `INFONA_GOV_JUDGE_MODEL` — default = `INFONA_LLM_MODEL` (OSS governance judge panel; premium `ShapeJudgePanel` uses `INFONA_GOV_JUDGE_MODEL`)
+- `INFONA_INFER_MODEL` — default `claude-opus-4-8` (NATIVE Anthropic id; used only by the offline Anthropic-SDK fallback path when no OpenRouter key is set)
 
 Query + other models (not in Settings):
-- `OMNIX_QUERY_MODEL` — default `llama3.1-8b` (SPARQL generation; production sets this to the primary). Also gets the `OMNIX_LLM_FALLBACK_MODEL` fallback.
-- `OMNIX_QUERY_PROVIDER` — default `cerebras`
-- `OMNIX_EVAL_MODEL` — default `deepseek/deepseek-v3.2`
+- `INFONA_QUERY_MODEL` — default `llama3.1-8b` (SPARQL generation; production sets this to the primary). Also gets the `INFONA_LLM_FALLBACK_MODEL` fallback.
+- `INFONA_QUERY_PROVIDER` — default `cerebras`
+- `INFONA_EVAL_MODEL` — default `deepseek/deepseek-v3.2`
 - The narrative answer summarizer is a deliberately cheap, fast path (hardcoded `meta-llama/llama-3.1-8b-instruct` on Cerebras) and is intentionally NOT routed through the primary model.
 
 ## API Endpoints

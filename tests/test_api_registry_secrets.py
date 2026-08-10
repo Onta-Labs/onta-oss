@@ -42,7 +42,7 @@ _SECRET = "sk-super-secret-value-12345"
 def _clean(monkeypatch):
     reset_secret_cipher()
     reset_tenant_secret_store()
-    monkeypatch.delenv("OMNIX_SECRETS_KEY", raising=False)
+    monkeypatch.delenv("INFONA_SECRETS_KEY", raising=False)
     yield
     reset_secret_cipher()
     reset_tenant_secret_store()
@@ -105,19 +105,19 @@ def test_cipher_error_message_never_leaks_secret_or_key():
 # Cipher seam (register / env default / fail-closed)
 # --------------------------------------------------------------------------- #
 def test_no_cipher_configured_returns_none():
-    # No OMNIX_SECRETS_KEY and no registered cipher => None (fail closed).
+    # No INFONA_SECRETS_KEY and no registered cipher => None (fail closed).
     assert get_secret_cipher() is None
 
 
 def test_env_key_builds_default_cipher(monkeypatch):
-    monkeypatch.setenv("OMNIX_SECRETS_KEY", "env-provided-key")
+    monkeypatch.setenv("INFONA_SECRETS_KEY", "env-provided-key")
     reset_secret_cipher()
     cipher = get_secret_cipher()
     assert cipher is not None and cipher.scheme == "aesgcm"
 
 
 def test_registered_cipher_overrides_env(monkeypatch):
-    monkeypatch.setenv("OMNIX_SECRETS_KEY", "env-key")
+    monkeypatch.setenv("INFONA_SECRETS_KEY", "env-key")
     reset_secret_cipher()
 
     class _FakeKms:
@@ -290,7 +290,7 @@ async def test_make_secret_resolver_none_without_cipher():
 
 @pytest.mark.asyncio
 async def test_make_secret_resolver_roundtrips_via_process_store(monkeypatch):
-    monkeypatch.setenv("OMNIX_SECRETS_KEY", "proc-key")
+    monkeypatch.setenv("INFONA_SECRETS_KEY", "proc-key")
     reset_secret_cipher()
     reset_tenant_secret_store()
     cipher = get_secret_cipher()

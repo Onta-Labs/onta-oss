@@ -312,12 +312,12 @@ async def test_postgres_queries_are_tenant_scoped(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_postgres_smoke_real_db():
-    """Optional real-DB smoke test; skipped unless OMNIX_DATABASE_URL is set."""
+    """Optional real-DB smoke test; skipped unless INFONA_DATABASE_URL is set."""
     import os
 
-    dsn = os.environ.get("OMNIX_DATABASE_URL")
+    dsn = os.environ.get("INFONA_DATABASE_URL")
     if not dsn:
-        pytest.skip("OMNIX_DATABASE_URL not set")
+        pytest.skip("INFONA_DATABASE_URL not set")
     from infona_client.api_registry.store import PostgresTenantApiSourceStore
 
     store = PostgresTenantApiSourceStore(dsn=dsn)

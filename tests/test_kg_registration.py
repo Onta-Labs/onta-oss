@@ -329,14 +329,14 @@ def test_register_then_list_roundtrip():
         store = _InMemoryTripleStore()
         await ensure_kg_registered(store, TENANT, "my-kg")
 
-        from infona_client.api.routes.knowledge_graphs import OMNIX_ONTO
+        from infona_client.api.routes.knowledge_graphs import INFONA_ONTO
         from infona_client.graph.parser import parse_sparql_results
         from infona_client.graph.queries import tenant_graph_uri
 
         base = tenant_graph_uri(TENANT)
         sparql = (
             f"SELECT ?name FROM <{base}> WHERE {{"
-            f"  ?kg <{OMNIX_ONTO}/kg_name> ?name ."
+            f"  ?kg <{INFONA_ONTO}/kg_name> ?name ."
             f"}}"
         )
         _, rows = parse_sparql_results(await store.query(sparql))

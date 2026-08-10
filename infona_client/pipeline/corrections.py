@@ -32,7 +32,7 @@ threaded through ``supersede_fact``'s existing ``provenance_triples`` seam — s
 every write still funnels through ``kg_writer`` (``insert_facts`` /
 ``refresh_after_write``). It does NOT modify ONTA-277's or ONTA-276's op bodies.
 
-Boundary: OSS. Imports only stdlib / ``infona_client.*`` — never ``from cograph.*``.
+Boundary: OSS. Imports only stdlib / ``infona_client.*`` — never ``from infona.*``.
 """
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ from infona_client.pipeline.mutations import (
     supersede_fact,
 )
 
-logger = structlog.stdlib.get_logger("cograph.pipeline.corrections")
+logger = structlog.stdlib.get_logger("infona.pipeline.corrections")
 
 Triple = tuple[str, str, str]
 

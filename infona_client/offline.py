@@ -1,6 +1,6 @@
 """Fail-closed outbound network guard for private / sensitive OSS dogfood.
 
-When ``OMNIX_OFFLINE=1`` or ``COGRAPH_OFFLINE=1``, every call to
+When ``INFONA_OFFLINE=1``, every call to
 :func:`assert_online_url` / :func:`assert_online_host` raises
 :class:`OfflineModeError` unless the host is on the allowlist.
 
@@ -12,13 +12,13 @@ Default allowlist (loopback only)::
 
 Extend with a comma-separated override::
 
-    OMNIX_OFFLINE_ALLOW_HOSTS=ollama.local,my-vllm.internal
+    INFONA_OFFLINE_ALLOW_HOSTS=ollama.local,my-vllm.internal
 
 Typical private-deploy pattern::
 
-    OMNIX_OFFLINE=1
-    OMNIX_LLM_BASE_URL=http://127.0.0.1:11434/v1
-    OMNIX_EMBED_BASE_URL=http://127.0.0.1:11434/v1
+    INFONA_OFFLINE=1
+    INFONA_LLM_BASE_URL=http://127.0.0.1:11434/v1
+    INFONA_EMBED_BASE_URL=http://127.0.0.1:11434/v1
 
 Wired at the main outbound entrypoints (LLM router, embed client, Wikidata
 adapter, page-fetch ladder, query-pipeline LLM posts, Anthropic SDK
@@ -34,7 +34,7 @@ from typing import Iterable
 from urllib.parse import urlparse
 
 # Default loopback hosts — keep private data on-box. Override with
-# OMNIX_OFFLINE_ALLOW_HOSTS for a self-hosted stack on a named host.
+# INFONA_OFFLINE_ALLOW_HOSTS for a self-hosted stack on a named host.
 _DEFAULT_ALLOW_HOSTS: frozenset[str] = frozenset(
     {
         "localhost",
@@ -58,22 +58,19 @@ class OfflineModeError(RuntimeError):
 def offline_enabled() -> bool:
     """True when the operator opted into fail-closed offline mode.
 
-    Either ``OMNIX_OFFLINE`` or ``COGRAPH_OFFLINE`` (legacy alias) set to a
-    truthy value enables the guard. Unset / empty / ``0`` / ``false`` → off.
+    ``INFONA_OFFLINE`` set to a truthy value enables the guard.
+    Unset / empty / ``0`` / ``false`` → off.
     """
-    for key in ("OMNIX_OFFLINE", "COGRAPH_OFFLINE"):
-        raw = (os.environ.get(key) or "").strip().lower()
-        if raw in _TRUTHY:
-            return True
-    return False
+    raw = (os.environ.get("INFONA_OFFLINE") or "").strip().lower()
+    return raw in _TRUTHY
 
 
 def offline_allow_hosts() -> frozenset[str]:
-    """Effective allowlist: defaults ∪ ``OMNIX_OFFLINE_ALLOW_HOSTS`` (comma-sep).
+    """Effective allowlist: defaults ∪ ``INFONA_OFFLINE_ALLOW_HOSTS`` (comma-sep).
 
     Host comparison is case-insensitive; bracketed IPv6 forms are normalized.
     """
-    extra_raw = os.environ.get("OMNIX_OFFLINE_ALLOW_HOSTS") or ""
+    extra_raw = os.environ.get("INFONA_OFFLINE_ALLOW_HOSTS") or ""
     extra = {
         _normalize_host(h)
         for h in extra_raw.split(",")
@@ -123,15 +120,15 @@ def _purpose_hint(purpose: str, host: str) -> str:
     )
     if not llmish:
         return (
-            "Unset OMNIX_OFFLINE / COGRAPH_OFFLINE to allow external network, "
-            "or add the host to OMNIX_OFFLINE_ALLOW_HOSTS."
+            "Unset INFONA_OFFLINE to allow external network, "
+            "or add the host to INFONA_OFFLINE_ALLOW_HOSTS."
         )
     return (
-        "Unset OMNIX_OFFLINE / COGRAPH_OFFLINE to use cloud providers, "
-        "or set OMNIX_LLM_BASE_URL (and optionally OMNIX_EMBED_BASE_URL) to a "
+        "Unset INFONA_OFFLINE to use cloud providers, "
+        "or set INFONA_LLM_BASE_URL (and optionally INFONA_EMBED_BASE_URL) to a "
         "local OpenAI-compatible endpoint on an allowlisted host "
         "(default allowlist: localhost, 127.0.0.1, ::1). "
-        "Extend the allowlist with OMNIX_OFFLINE_ALLOW_HOSTS=host1,host2."
+        "Extend the allowlist with INFONA_OFFLINE_ALLOW_HOSTS=host1,host2."
     )
 
 
@@ -147,7 +144,7 @@ def assert_online_host(host: str, *, purpose: str = "outbound HTTP") -> None:
     display = host or "(empty host)"
     allowed = ", ".join(sorted(offline_allow_hosts()))
     raise OfflineModeError(
-        f"Offline mode is enabled (OMNIX_OFFLINE=1 / COGRAPH_OFFLINE=1) and "
+        f"Offline mode is enabled (INFONA_OFFLINE=1) and "
         f"blocks {purpose} to '{display}'. Allowed hosts: {allowed}. "
         f"{_purpose_hint(purpose, display)}"
     )

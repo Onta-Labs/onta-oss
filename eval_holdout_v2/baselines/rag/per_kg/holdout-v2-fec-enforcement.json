@@ -6,7 +6,7 @@
       "id": "q-001",
       "tier": "T1",
       "question": "How many participants are there?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?participant) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fec-enforcement> WHERE {\n  ?participant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/type/Participant> .\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?participant) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fec-enforcement> WHERE {\n  ?participant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/type/Participant> .\n}",
       "expected_answer": "738",
       "full_expected_items": [
         "738"
@@ -48,7 +48,7 @@
       "id": "q-002",
       "tier": "T1",
       "question": "List all the disposition outcomes.",
-      "gold_sparql": "SELECT DISTINCT ?outcome FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fec-enforcement> WHERE {\n  ?disposition <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/type/Disposition> .\n  ?disposition <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/pred/disposition_outcome> ?outcome .\n}",
+      "gold_sparql": "SELECT DISTINCT ?outcome FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fec-enforcement> WHERE {\n  ?disposition <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/type/Disposition> .\n  ?disposition <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/pred/disposition_outcome> ?outcome .\n}",
       "expected_answer": "Conciliation: Pre Probable Cause, Dismiss Pursuant to Prosecutorial Discretion, Dismissed-Other",
       "full_expected_items": [
         "Conciliation: Pre Probable Cause",
@@ -92,7 +92,7 @@
       "id": "q-003",
       "tier": "T1",
       "question": "What are the names of all respondents?",
-      "gold_sparql": "SELECT DISTINCT ?respondentName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fec-enforcement> WHERE {\n  ?respondent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/type/Respondent> .\n  ?respondent <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/pred/respondent_name> ?respondentName .\n}",
+      "gold_sparql": "SELECT DISTINCT ?respondentName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fec-enforcement> WHERE {\n  ?respondent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/type/Respondent> .\n  ?respondent <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/pred/respondent_name> ?respondentName .\n}",
       "expected_answer": "Mario Fratto for Congress, GADS PAC, Stefanich, Allison K., Stefanich, Brian L., Lauren Boebert for Congress, Boebert, Lauren, We The People Leadership PAC, Bernie 2020, Fetterman for PA, Fetterman, John Karl ... (418 total)",
       "full_expected_items": [
         "Mario Fratto for Congress",
@@ -551,7 +551,7 @@
       "id": "q-004",
       "tier": "T1",
       "question": "How many unique citation statutes are recorded?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?statute) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fec-enforcement> WHERE {\n  ?statute <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/type/CitationStatute> .\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?statute) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fec-enforcement> WHERE {\n  ?statute <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/type/CitationStatute> .\n}",
       "expected_answer": "235",
       "full_expected_items": [
         "235"
@@ -593,7 +593,7 @@
       "id": "q-005",
       "tier": "T2",
       "question": "How many dispositions have a penalty greater than 50000 USD?",
-      "gold_sparql": "SELECT (COUNT(?disposition) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fec-enforcement> WHERE {\n  ?disposition <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/type/Disposition> .\n  ?disposition <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/pred/disposition_penalty_usd> ?penalty .\n  FILTER(xsd:float(?penalty) > 50000.0)\n}",
+      "gold_sparql": "SELECT (COUNT(?disposition) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fec-enforcement> WHERE {\n  ?disposition <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/type/Disposition> .\n  ?disposition <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/pred/disposition_penalty_usd> ?penalty .\n  FILTER(xsd:float(?penalty) > 50000.0)\n}",
       "expected_answer": "12",
       "full_expected_items": [
         "12"
@@ -635,7 +635,7 @@
       "id": "q-006",
       "tier": "T2",
       "question": "Find the disposition outcomes that contain the word 'Dismiss'.",
-      "gold_sparql": "SELECT DISTINCT ?outcome FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fec-enforcement> WHERE {\n  ?disposition <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/type/Disposition> .\n  ?disposition <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/pred/disposition_outcome> ?outcome .\n  FILTER(CONTAINS(LCASE(STR(?outcome)), \"dismiss\"))\n}",
+      "gold_sparql": "SELECT DISTINCT ?outcome FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fec-enforcement> WHERE {\n  ?disposition <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/type/Disposition> .\n  ?disposition <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/pred/disposition_outcome> ?outcome .\n  FILTER(CONTAINS(LCASE(STR(?outcome)), \"dismiss\"))\n}",
       "expected_answer": "Dismiss Pursuant to Prosecutorial Discretion, Dismissed-Other",
       "full_expected_items": [
         "Dismiss Pursuant to Prosecutorial Discretion",
@@ -678,7 +678,7 @@
       "id": "q-007",
       "tier": "T3",
       "question": "How many dispositions are associated with each respondent, and what are the names of those respondents?",
-      "gold_sparql": "SELECT ?respondentName (COUNT(DISTINCT ?disposition) AS ?numberOfDispositions) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fec-enforcement> WHERE {\n  ?disposition <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/type/Disposition> .\n  ?disposition <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/pred/disposition_against_respondent> ?respondent .\n  ?respondent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/type/Respondent> .\n  ?respondent <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/pred/respondent_name> ?respondentName .\n} GROUP BY ?respondentName ORDER BY DESC(?numberOfDispositions) LIMIT 10",
+      "gold_sparql": "SELECT ?respondentName (COUNT(DISTINCT ?disposition) AS ?numberOfDispositions) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fec-enforcement> WHERE {\n  ?disposition <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/type/Disposition> .\n  ?disposition <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/pred/disposition_against_respondent> ?respondent .\n  ?respondent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/type/Respondent> .\n  ?respondent <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/pred/respondent_name> ?respondentName .\n} GROUP BY ?respondentName ORDER BY DESC(?numberOfDispositions) LIMIT 10",
       "expected_answer": "Crate, Bradley T. | 11\nBoles, Jason D. | 6\nDatwyler, Thomas Charles | 6\nNever Surrender Inc. | 4\nActBlue | 4\nGilmer, George | 4\nHarris for President | 4\nSpencer, Keana | 4\nKilgore, Paul | 4\nLisker, Lisa | 4",
       "full_expected_items": [
         "Crate, Bradley T. | 11",
@@ -729,7 +729,7 @@
       "id": "q-008",
       "tier": "T3",
       "question": "What are the names of participants involved in cases that have more than 1 respondent?",
-      "gold_sparql": "SELECT DISTINCT ?participantName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fec-enforcement> WHERE {\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/type/Case> .\n  ?case <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/pred/case_has_participant> ?participant .\n  ?participant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/type/Participant> .\n  ?participant <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/pred/participant_name> ?participantName .\n  ?case <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/pred/case_n_respondents> ?numRespondents .\n  FILTER (xsd:integer(?numRespondents) > 1)\n}",
+      "gold_sparql": "SELECT DISTINCT ?participantName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fec-enforcement> WHERE {\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/type/Case> .\n  ?case <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/pred/case_has_participant> ?participant .\n  ?participant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/type/Participant> .\n  ?participant <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/pred/participant_name> ?participantName .\n  ?case <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/pred/case_n_respondents> ?numRespondents .\n  FILTER (xsd:integer(?numRespondents) > 1)\n}",
       "expected_answer": "Taylor, Carson, Spies, Charles \"Charlie\" R., Gibson, Benjamin J., Clark, Justin, Lilienthal, Elizabeth, Mitchell, Emmett \"Bucky\", Tim Sheehy for Montana, ECN Capital Corp., Crate, Bradley T., Make America Great Again PAC (f/k/a Donald J. Trump for President, Inc.) ... (569 total)",
       "full_expected_items": [
         "Taylor, Carson",
@@ -1339,7 +1339,7 @@
       "id": "q-009",
       "tier": "T3",
       "question": "List the citation titles and the outcomes of dispositions that cite them, where the disposition outcome is 'Dismissed-Other'.",
-      "gold_sparql": "SELECT DISTINCT ?citationTitle ?dispositionOutcome FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fec-enforcement> WHERE {\n  ?disposition <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/type/Disposition> .\n  ?disposition <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/pred/disposition_cites_statute> ?citationStatute .\n  ?citationStatute <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/type/CitationStatute> .\n  ?citationStatute <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/pred/citation_title> ?citationTitle .\n  ?disposition <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/pred/disposition_outcome> ?dispositionOutcome .\n  FILTER (?dispositionOutcome = \"Dismissed-Other\")\n}",
+      "gold_sparql": "SELECT DISTINCT ?citationTitle ?dispositionOutcome FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fec-enforcement> WHERE {\n  ?disposition <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/type/Disposition> .\n  ?disposition <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/pred/disposition_cites_statute> ?citationStatute .\n  ?citationStatute <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/type/CitationStatute> .\n  ?citationStatute <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/pred/citation_title> ?citationTitle .\n  ?disposition <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/pred/disposition_outcome> ?dispositionOutcome .\n  FILTER (?dispositionOutcome = \"Dismissed-Other\")\n}",
       "expected_answer": "11 | Dismissed-Other\n52 | Dismissed-Other\n2 | Dismissed-Other",
       "full_expected_items": [
         "11 | Dismissed-Other",
@@ -1383,7 +1383,7 @@
       "id": "q-010",
       "tier": "T4",
       "question": "What are the names of participants who are involved in cases that have dispositions with a penalty greater than 5000 USD?",
-      "gold_sparql": "SELECT DISTINCT ?participantName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fec-enforcement> WHERE {\n  ?participant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/type/Participant> .\n  ?participant <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/pred/participant_name> ?participantName .\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/type/Case> .\n  ?case <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/pred/case_has_participant> ?participant .\n  ?case <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/pred/case_has_disposition> ?disposition .\n  ?disposition <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/type/Disposition> .\n  ?disposition <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/pred/disposition_penalty_usd> ?penalty .\n  FILTER (xsd:float(?penalty) > 5000.0)\n}",
+      "gold_sparql": "SELECT DISTINCT ?participantName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fec-enforcement> WHERE {\n  ?participant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/type/Participant> .\n  ?participant <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/pred/participant_name> ?participantName .\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/type/Case> .\n  ?case <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/pred/case_has_participant> ?participant .\n  ?case <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/pred/case_has_disposition> ?disposition .\n  ?disposition <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/type/Disposition> .\n  ?disposition <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/pred/disposition_penalty_usd> ?penalty .\n  FILTER (xsd:float(?penalty) > 5000.0)\n}",
       "expected_answer": "Calspan Corporation, Black Voters Matter Action PAC, 1199 SEIU United Healthcare Workers East Federal Political Action Fund, Sheila Jackson Lee for Congress, Meier, David, Sauer, Peter, Franklin, Kamau, Schaub, Helen, Grays, Karen Y., Lippes Mathias LLP ... (48 total)",
       "full_expected_items": [
         "Calspan Corporation",
@@ -1472,7 +1472,7 @@
       "id": "q-011",
       "tier": "T4",
       "question": "For each case, what is the average penalty of its dispositions, considering only dispositions that cite a statute?",
-      "gold_sparql": "SELECT ?caseName (AVG(xsd:float(?penalty)) AS ?averagePenalty) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fec-enforcement> WHERE {\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/type/Case> .\n  ?case <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/pred/case_name> ?caseName .\n  ?case <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/pred/case_has_disposition> ?disposition .\n  ?disposition <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/type/Disposition> .\n  ?disposition <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/pred/disposition_penalty_usd> ?penalty .\n  ?disposition <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/pred/disposition_cites_statute> ?statute .\n  ?statute <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/type/CitationStatute> .\n} GROUP BY ?caseName",
+      "gold_sparql": "SELECT ?caseName (AVG(xsd:float(?penalty)) AS ?averagePenalty) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fec-enforcement> WHERE {\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/type/Case> .\n  ?case <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/pred/case_name> ?caseName .\n  ?case <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/pred/case_has_disposition> ?disposition .\n  ?disposition <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/type/Disposition> .\n  ?disposition <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/pred/disposition_penalty_usd> ?penalty .\n  ?disposition <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/pred/disposition_cites_statute> ?statute .\n  ?statute <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/type/CitationStatute> .\n} GROUP BY ?caseName",
       "expected_answer": "Hamilton County Republican Party | 0.0\nThe Republicans of Northeast Ohio | 0.0\nNew San Diego | 0.0\nMcCorkle for Colorado | 0.0\nSupport American Leaders PAC | 0.0\nJoanna Weiss for Congress | 0.0\nThe Joshua Super PAC | 0.0\nEvan Low for Congress | 0.0\nHawaii Republican Party | 0.0\nX Corp. | 0.0\n... (130 total rows)",
       "full_expected_items": [
         "Hamilton County Republican Party | 0.0",
@@ -1643,7 +1643,7 @@
       "id": "q-012",
       "tier": "T4",
       "question": "What is the average penalty for dispositions that cite a statute, grouped by the case they belong to?",
-      "gold_sparql": "SELECT ?case_name (AVG(xsd:float(?penalty)) AS ?average_penalty) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fec-enforcement> WHERE {\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/type/Case> .\n  ?case <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/pred/case_name> ?case_name .\n  ?case <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/pred/case_has_disposition> ?disposition .\n  ?disposition <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/type/Disposition> .\n  ?disposition <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/pred/disposition_cites_statute> ?statute .\n  ?statute <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/type/CitationStatute> .\n  ?disposition <https://omnix.dev/holdout-v2/holdout-v2-fec-enforcement/pred/disposition_penalty_usd> ?penalty .\n  FILTER(xsd:float(?penalty) > 0)\n}\nGROUP BY ?case_name\nORDER BY DESC(?average_penalty)\nLIMIT 10",
+      "gold_sparql": "SELECT ?case_name (AVG(xsd:float(?penalty)) AS ?average_penalty) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fec-enforcement> WHERE {\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/type/Case> .\n  ?case <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/pred/case_name> ?case_name .\n  ?case <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/pred/case_has_disposition> ?disposition .\n  ?disposition <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/type/Disposition> .\n  ?disposition <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/pred/disposition_cites_statute> ?statute .\n  ?statute <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/type/CitationStatute> .\n  ?disposition <https://graph.infona.ai/holdout-v2/holdout-v2-fec-enforcement/pred/disposition_penalty_usd> ?penalty .\n  FILTER(xsd:float(?penalty) > 0)\n}\nGROUP BY ?case_name\nORDER BY DESC(?average_penalty)\nLIMIT 10",
       "expected_answer": "Oklahoma Leadership Council | 174000.0\nJohn James for Senate, Inc. | 95000.0\n1199 SEIU United Healthcare Workers East Federal Political Action Fund | 85000.0\nDemocratic Executive Committee of Florida | 70000.0\nCitizens for Waters | 68000.0\nThe Moderate PAC, Inc. | 58000.0\nMichigan Republican Party | 43500.0\nStraight Talk Politics PAC | 37700.0\nSheila Jackson Lee for Congress | 33000.0\nPA Lawyer Fund | 25000.0",
       "full_expected_items": [
         "Oklahoma Leadership Council | 174000.0",
@@ -1694,61 +1694,61 @@
   "tables": [
     {
       "table": "Case",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_staged/holdout-v2-fec-enforcement/Case.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_staged/holdout-v2-fec-enforcement/Case.csv",
       "n_rows_used": 140,
       "n_cols": 13
     },
     {
       "table": "CaseRespondent",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_staged/holdout-v2-fec-enforcement/CaseRespondent.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_staged/holdout-v2-fec-enforcement/CaseRespondent.csv",
       "n_rows_used": 200,
       "n_cols": 2
     },
     {
       "table": "CaseSubject",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_staged/holdout-v2-fec-enforcement/CaseSubject.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_staged/holdout-v2-fec-enforcement/CaseSubject.csv",
       "n_rows_used": 200,
       "n_cols": 2
     },
     {
       "table": "CitationStatute",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_staged/holdout-v2-fec-enforcement/CitationStatute.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_staged/holdout-v2-fec-enforcement/CitationStatute.csv",
       "n_rows_used": 200,
       "n_cols": 5
     },
     {
       "table": "Disposition",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_staged/holdout-v2-fec-enforcement/Disposition.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_staged/holdout-v2-fec-enforcement/Disposition.csv",
       "n_rows_used": 200,
       "n_cols": 7
     },
     {
       "table": "DispositionCitation",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_staged/holdout-v2-fec-enforcement/DispositionCitation.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_staged/holdout-v2-fec-enforcement/DispositionCitation.csv",
       "n_rows_used": 200,
       "n_cols": 2
     },
     {
       "table": "Participant",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_staged/holdout-v2-fec-enforcement/Participant.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_staged/holdout-v2-fec-enforcement/Participant.csv",
       "n_rows_used": 200,
       "n_cols": 4
     },
     {
       "table": "Respondent",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_staged/holdout-v2-fec-enforcement/Respondent.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_staged/holdout-v2-fec-enforcement/Respondent.csv",
       "n_rows_used": 200,
       "n_cols": 2
     },
     {
       "table": "Subject",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_staged/holdout-v2-fec-enforcement/Subject.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_staged/holdout-v2-fec-enforcement/Subject.csv",
       "n_rows_used": 16,
       "n_cols": 4
     },
     {
       "table": "Year",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_staged/holdout-v2-fec-enforcement/Year.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_staged/holdout-v2-fec-enforcement/Year.csv",
       "n_rows_used": 4,
       "n_cols": 2
     }

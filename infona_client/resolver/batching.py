@@ -21,12 +21,12 @@ from typing import Any, Callable, Iterable, Iterator
 
 import structlog
 
-logger = structlog.stdlib.get_logger("cograph.resolver.batching")
+logger = structlog.stdlib.get_logger("infona.resolver.batching")
 
 #: Body budget for one ``/ingest/csv/rows`` POST. Default stays under the ALB
 #: 1MB request-body limit with headroom; override per-deployment if the ALB's
 #: limit is confirmed/raised (the ticket's payload note).
-DEFAULT_MAX_BODY_BYTES = int(os.environ.get("OMNIX_INGEST_MAX_BODY_BYTES", "900000"))
+DEFAULT_MAX_BODY_BYTES = int(os.environ.get("INFONA_INGEST_MAX_BODY_BYTES", "900000"))
 
 #: JSON structural overhead of the rows array itself: the enclosing ``[`` ``]``.
 _ARRAY_BRACKETS = 2

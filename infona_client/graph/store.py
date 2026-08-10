@@ -405,7 +405,7 @@ def graph_backend() -> str:
     here so write rails can resolve an optional store without importing
     ``kg_writer`` (avoids circular imports at rail module load).
     """
-    return (os.environ.get("COGRAPH_GRAPH_BACKEND") or "neptune").strip().lower()
+    return (os.environ.get("INFONA_GRAPH_BACKEND") or "neptune").strip().lower()
 
 
 def get_optional_graph_store() -> GraphStore | None:
@@ -414,7 +414,7 @@ def get_optional_graph_store() -> GraphStore | None:
     **Neptune default (no env / ``neptune``):** returns ``None`` so callers keep
     the SPARQL path and never require ``NEO4J_*`` credentials.
 
-    **``COGRAPH_GRAPH_BACKEND=neo4j``:** delegates to :func:`get_graph_store`
+    **``INFONA_GRAPH_BACKEND=neo4j``:** delegates to :func:`get_graph_store`
     (process singleton from :func:`configure_graph_store`, or BYOK Neo4j from
     env). Raises :class:`GraphConfigError` if neither is configured — fail
     closed rather than silently writing to Neptune under a neo4j flag.

@@ -19,18 +19,18 @@ from infona_client.enrichment.executor import (
 from infona_client.graph.ontology_queries import _safe_id, entity_uri, type_uri
 
 _ITV = EnrichmentExecutor._instance_triples_for_value
-PHYS = "https://graph.onta.sh/entities/Physician/p1"
+PHYS = "https://graph.infona.ai/entities/Physician/p1"
 # A relationship INSTANCE edge lives on onto/<leaf> — the form the NL planner
 # queries (the attrs/<leaf> attribute predicate is the LITERAL / declaration form).
-ONTO_LOCATED_IN = "https://graph.onta.sh/onto/located_in"
-ATTRS_LOCATED_IN = "https://graph.onta.sh/types/Physician/attrs/located_in"
+ONTO_LOCATED_IN = "https://graph.infona.ai/onto/located_in"
+ATTRS_LOCATED_IN = "https://graph.infona.ai/types/Physician/attrs/located_in"
 
 
 def test_primitive_value_stays_a_typed_literal():
     # literals stay on the attrs/<leaf> attribute predicate (unchanged).
     out = _ITV(PHYS, "Physician", "age", "42", "integer")
     assert out == [
-        (PHYS, "https://graph.onta.sh/types/Physician/attrs/age",
+        (PHYS, "https://graph.infona.ai/types/Physician/attrs/age",
          "42^^http://www.w3.org/2001/XMLSchema#integer")
     ]
 
@@ -56,12 +56,12 @@ def test_node_uri_matches_discovery_scheme():
     edge = next(t for t in out if t[1] == ONTO_LOCATED_IN)
     assert edge[2] == entity_uri("City", "San Francisco")
     # …and that shared minter is exactly prefix + _safe_id(value).
-    assert edge[2] == f"https://graph.onta.sh/entities/City/{_safe_id('San Francisco')}"
+    assert edge[2] == f"https://graph.infona.ai/entities/City/{_safe_id('San Francisco')}"
 
 
 def test_already_resolved_iri_is_written_directly():
     """A value that already IS an entity IRI (e.g. a premium adapter that resolved
     it) keeps the direct-edge behavior — on onto/<leaf>, no re-wrapping."""
-    iri = "https://graph.onta.sh/entities/City/SF"
+    iri = "https://graph.infona.ai/entities/City/SF"
     out = _ITV(PHYS, "Physician", "located_in", iri, "City")
     assert out == [(PHYS, ONTO_LOCATED_IN, iri)]

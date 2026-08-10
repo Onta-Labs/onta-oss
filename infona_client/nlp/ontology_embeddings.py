@@ -124,7 +124,7 @@ class TenantEmbeddingStore:
 
 
 class OntologyEmbeddingService:
-    def __init__(self, openrouter_api_key: str, s3_bucket: str = "", s3_prefix: str = "omnix/embeddings"):
+    def __init__(self, openrouter_api_key: str, s3_bucket: str = "", s3_prefix: str = "infona/embeddings"):
         self._api_key = openrouter_api_key
         self._s3_bucket = s3_bucket
         self._s3_prefix = s3_prefix
@@ -528,8 +528,8 @@ def _extract_tenant_id(graph_uri: str) -> str:
     """Extract tenant ID from a graph URI like ``…/graphs/{tenant_id}``."""
     # Handle both base and KG-specific URIs
     parts = graph_uri.rstrip("/").split("/")
-    # https://graph.onta.sh/graphs/{tenant_id} → tenant_id is at index 4
-    # https://graph.onta.sh/graphs/{tenant_id}/kg/{kg_name} → still index 4
+    # https://graph.infona.ai/graphs/{tenant_id} → tenant_id is at index 4
+    # https://graph.infona.ai/graphs/{tenant_id}/kg/{kg_name} → still index 4
     if len(parts) >= 5:
         return parts[4]
     return "unknown"

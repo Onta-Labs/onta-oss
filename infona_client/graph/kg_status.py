@@ -52,7 +52,7 @@ from infona_client.graph.queries import (
     tenant_graph_uri,
 )
 
-logger = structlog.stdlib.get_logger("cograph.graph.kg_status")
+logger = structlog.stdlib.get_logger("infona.graph.kg_status")
 
 # Verdicts. Plain strings (not an Enum) so they serialize into telemetry and
 # route payloads without ceremony.
@@ -176,7 +176,7 @@ async def kg_data_status(neptune, tenant_id: str, kg_name: str) -> str:
     the base graph is also the ONTOLOGY graph and always holds at least the KG's
     own registration triple, so a bare pattern would be true for every
     registered KG and this feature would never fire. It looks for INSTANCE data
-    specifically, a subject typed with a ``graph.onta.sh/types/`` class. Ontology
+    specifically, a subject typed with a ``graph.infona.ai/types/`` class. Ontology
     class declarations are ``<types/X> rdf:type <rdfs#Class>`` (object outside
     that namespace), so they do not count, while instances
     (``<entities/X/id> rdf:type <types/X>``) do. This is the same notion of

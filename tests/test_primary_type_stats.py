@@ -110,7 +110,7 @@ def _make_scan_mock(triples: list[tuple[str, str, str]]):
                     continue
                 g = groups.setdefault((t, p), {"ents": set(), "rel": 0, "sample": o})
                 g["ents"].add(s)
-                if o.startswith("https://graph.onta.sh/entities/"):
+                if o.startswith("https://graph.infona.ai/entities/"):
                     g["rel"] += 1
         bindings = []
         for (t, p), g in groups.items():
@@ -133,8 +133,8 @@ def _entity_counts_from_update(update_sparql: str) -> dict[str, int]:
     """Pull the per-type entityCount triples out of the INSERT DATA body."""
     out: dict[str, int] = {}
     for m in re.finditer(
-        r"<(https://graph\.onta\.sh/types/[^>]+)> "
-        r"<https://graph\.onta\.sh/stats/entityCount> (\d+)",
+        r"<(https://graph\.infona\.ai/types/[^>]+)> "
+        r"<https://graph\.infona\.ai/stats/entityCount> (\d+)",
         update_sparql,
     ):
         out[m.group(1)] = int(m.group(2))
@@ -156,12 +156,12 @@ async def test_multityped_instance_counted_once_under_primary_type():
     # sanity: confirm the helper's choice we are mirroring in SPARQL.
     assert primary_type(["Employee", "Guest"], {}) == "Employee"
 
-    e = "https://graph.onta.sh/entities/Employee/alice"
+    e = "https://graph.infona.ai/entities/Employee/alice"
     triples = [
         # Multi-typed: both asserted rdf:types.
         (e, RDF_TYPE, _t("Employee")),
         (e, RDF_TYPE, _t("Guest")),
-        (e, "https://graph.onta.sh/types/Employee/attrs/name", "Alice"),
+        (e, "https://graph.infona.ai/types/Employee/attrs/name", "Alice"),
     ]
     client = AsyncMock(spec=NeptuneClient)
     client.query.side_effect = _make_scan_mock(triples)
@@ -194,13 +194,13 @@ async def test_single_typed_instances_counted_exactly_as_before():
     """
     triples: list[tuple[str, str, str]] = []
     for i in range(3):
-        e = f"https://graph.onta.sh/entities/Guest/g{i}"
+        e = f"https://graph.infona.ai/entities/Guest/g{i}"
         triples.append((e, RDF_TYPE, _t("Guest")))
-        triples.append((e, "https://graph.onta.sh/types/Guest/attrs/name", f"g{i}"))
+        triples.append((e, "https://graph.infona.ai/types/Guest/attrs/name", f"g{i}"))
     for i in range(2):
-        e = f"https://graph.onta.sh/entities/Employee/e{i}"
+        e = f"https://graph.infona.ai/entities/Employee/e{i}"
         triples.append((e, RDF_TYPE, _t("Employee")))
-        triples.append((e, "https://graph.onta.sh/types/Employee/attrs/name", f"e{i}"))
+        triples.append((e, "https://graph.infona.ai/types/Employee/attrs/name", f"e{i}"))
 
     client = AsyncMock(spec=NeptuneClient)
     client.query.side_effect = _make_scan_mock(triples)
@@ -232,11 +232,11 @@ async def test_mixed_single_and_multi_typed_population():
     """
     triples: list[tuple[str, str, str]] = []
     for i in range(4):
-        e = f"https://graph.onta.sh/entities/Guest/g{i}"
+        e = f"https://graph.infona.ai/entities/Guest/g{i}"
         triples.append((e, RDF_TYPE, _t("Guest")))
-    plain_emp = "https://graph.onta.sh/entities/Employee/e0"
+    plain_emp = "https://graph.infona.ai/entities/Employee/e0"
     triples.append((plain_emp, RDF_TYPE, _t("Employee")))
-    straddler = "https://graph.onta.sh/entities/Employee/both"
+    straddler = "https://graph.infona.ai/entities/Employee/both"
     triples.append((straddler, RDF_TYPE, _t("Employee")))
     triples.append((straddler, RDF_TYPE, _t("Guest")))
 

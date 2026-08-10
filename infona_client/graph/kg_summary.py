@@ -12,7 +12,7 @@ Everything here is **best-effort**: no OpenRouter key, an empty breakdown, or an
 LLM/parse error yields ``""`` — a missing description must never fail a
 recompute or a KG listing. The generation funnels through the shared
 :mod:`infona_client.resolver.llm_router` seam like every other OSS LLM call, so
-the provider/model/fallback knobs (``OMNIX_LLM_MODEL`` etc.) apply uniformly.
+the provider/model/fallback knobs (``INFONA_LLM_MODEL`` etc.) apply uniformly.
 """
 
 from __future__ import annotations
@@ -52,11 +52,11 @@ def _openrouter_key() -> str:
 def _summary_model() -> str:
     """Model for the one-liner. A ≤10-word label doesn't need the flagship
     extraction model, so default to the cheap query-tier model; override with
-    ``OMNIX_KG_SUMMARY_MODEL``. Falls back to ``PRIMARY_MODEL`` only if the env
+    ``INFONA_KG_SUMMARY_MODEL``. Falls back to ``PRIMARY_MODEL`` only if the env
     is explicitly blanked."""
     from infona_client.resolver.llm_router import PRIMARY_MODEL
 
-    return os.environ.get("OMNIX_KG_SUMMARY_MODEL", "google/gemini-2.5-flash") or PRIMARY_MODEL
+    return os.environ.get("INFONA_KG_SUMMARY_MODEL", "google/gemini-2.5-flash") or PRIMARY_MODEL
 
 
 def should_generate_summary(

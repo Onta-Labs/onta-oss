@@ -25,7 +25,7 @@ from infona_client.pipeline.answer_run import record_answer_run
 
 router = APIRouter()
 
-logger = structlog.stdlib.get_logger("cograph.api.ask")
+logger = structlog.stdlib.get_logger("infona.api.ask")
 
 
 @router.post("/graphs/{tenant}/ask", response_model=NLResult)
@@ -52,7 +52,7 @@ async def ask_question(
         status = await kg_data_status(client, tenant.tenant_id, body.kg_name)
         if status == KG_MISSING:
             # A 404 is the honest answer for a resource that does not exist, and
-            # it is what lets the caller self-correct: the SDK raises OntaError
+            # it is what lets the caller self-correct: the SDK raises InfonaError
             # with the status + body, and the MCP server renders that as a tool
             # error. The available-KG list rides along in the detail so an agent
             # can retry with a real name without a second round-trip.

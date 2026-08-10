@@ -31,7 +31,7 @@ follows the same plugin discipline as ``register_spatiotemporal_index`` /
 * A PREMIUM geocoder (Google Places / Mapbox / a paid Nominatim tier, …) lives in
   the proprietary tree and registers itself at startup via
   :func:`register_geocoder` (loaded through the existing ``module:callable``
-  plugin-spec mechanism / ``OMNIX_GEOCODER_PLUGIN``, same as the enrichment /
+  plugin-spec mechanism / ``INFONA_GEOCODER_PLUGIN``, same as the enrichment /
   governance plugins). Premium → OSS only; OSS never imports it, and no paid API
   is baked into OSS.
 
@@ -49,7 +49,7 @@ from typing import Optional, Protocol, runtime_checkable
 
 import structlog
 
-logger = structlog.stdlib.get_logger("cograph.spatiotemporal.geocoder")
+logger = structlog.stdlib.get_logger("infona.spatiotemporal.geocoder")
 
 
 @runtime_checkable

@@ -5,7 +5,7 @@ calibrated rule (floor=20% + support>=5 + core-slot exemption) against the four
 REFERENCE TRUTH cases from the ADR / ``scripts/adr4_drift_threshold_experiment``,
 plus env-override behavior, the reconcile split, drift-report shape, and the
 core-slot exemption. No Neptune, no LLM, no flag dependency — this module is
-importable and correct regardless of ``OMNIX_DRIFT_CONTROL``.
+importable and correct regardless of ``INFONA_DRIFT_CONTROL``.
 """
 from __future__ import annotations
 

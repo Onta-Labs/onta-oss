@@ -86,12 +86,12 @@ def test_explore_templates_registered():
 
 
 def test_graph_backend_default_neptune(monkeypatch):
-    monkeypatch.delenv("COGRAPH_GRAPH_BACKEND", raising=False)
+    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
     assert graph_backend() == "neptune"
 
 
 def test_resolve_explore_session_neptune_default(monkeypatch, store):
-    monkeypatch.delenv("COGRAPH_GRAPH_BACKEND", raising=False)
+    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
     assert (
         resolve_explore_session(tenant_id="demo-tenant", kg="bookstore") is None
     )
@@ -105,7 +105,7 @@ def test_resolve_explore_session_neptune_default(monkeypatch, store):
 
 
 def test_resolve_explore_session_env_neo4j(monkeypatch, store):
-    monkeypatch.setenv("COGRAPH_GRAPH_BACKEND", "neo4j")
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neo4j")
     configure_graph_store(store)
     sess = resolve_explore_session(tenant_id="demo-tenant", kg_name="bookstore")
     assert sess is not None
@@ -303,7 +303,7 @@ def test_reject_unsafe_type_name_onta425(store):
 
 
 def test_sparql_fallback_returns_none(monkeypatch):
-    monkeypatch.delenv("COGRAPH_GRAPH_BACKEND", raising=False)
+    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
 
     async def run():
         assert (

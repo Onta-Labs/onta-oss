@@ -686,8 +686,8 @@ class MemNeptune:
         return {"head": {"vars": vars_}, "results": {"bindings": bindings}}
 
 
-PUBLIC = "https://graph.onta.sh/graphs/global/public"
-TENANT = "https://graph.onta.sh/graphs/acme"
+PUBLIC = "https://graph.infona.ai/graphs/global/public"
+TENANT = "https://graph.infona.ai/graphs/acme"
 
 
 async def _seed_type(n: MemNeptune, g: str, name: str = "Person") -> None:

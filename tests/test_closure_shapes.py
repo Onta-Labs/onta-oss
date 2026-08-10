@@ -27,8 +27,8 @@ CLOSURE = (
     "/<http://www.w3.org/2000/01/rdf-schema#subClassOf>*"
 )
 RDF_TYPE = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>"
-PERSON = "<https://graph.onta.sh/types/Person>"
-ARTIST = "<https://graph.onta.sh/types/Artist>"
+PERSON = "<https://graph.infona.ai/types/Person>"
+ARTIST = "<https://graph.infona.ai/types/Artist>"
 
 
 # ---------------------------------------------------------------------------
@@ -145,7 +145,7 @@ def test_non_type_predicate_with_type_uri_not_rewritten():
     q = (
         "SELECT ?x WHERE { "
         f"VALUES ?t {{ {PERSON} }} "
-        "?x <https://graph.onta.sh/onto/works_at> ?t "
+        "?x <https://graph.infona.ai/onto/works_at> ?t "
         "}"
     )
     assert rewrite_type_predicate_to_closure(q) == q

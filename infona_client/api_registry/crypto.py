@@ -8,18 +8,18 @@ executor. This module is the cipher seam.
 Two implementations, mirroring the layer split:
 
 - ``LocalAesGcmCipher`` — the OSS default. A single local symmetric key from the
-  environment (``OMNIX_SECRETS_KEY``), used with AES-256-GCM (authenticated
+  environment (``INFONA_SECRETS_KEY``), used with AES-256-GCM (authenticated
   encryption). Works for any self-hoster with one env var — no cloud dependency.
 - A **KMS-backed cipher** is the premium binding: the deployed image registers an
   AWS-KMS data-key cipher via :func:`register_secret_cipher` (the same plugin
   shape as ``register_adapter`` / ``register_api_source_layer``). That code lives
-  in the proprietary ``cograph/`` tree — this OSS module never imports it.
+  in the proprietary ``infona/`` tree — this OSS module never imports it.
 
 Ciphertext format (opaque to callers): ``v1.<scheme>.<base64url payload>``. The
 scheme tag lets a future/premium cipher be distinguished at decrypt time and lets
 us migrate schemes without ambiguity. The OSS scheme is ``aesgcm``.
 
-Boundary: OSS. Imports stdlib + ``cryptography`` only — no ``from cograph.*`` and
+Boundary: OSS. Imports stdlib + ``cryptography`` only — no ``from infona.*`` and
 no cloud-provider identifiers. ``cryptography`` is a first-party dependency
 (pyproject); a deployment that wants KMS registers it over this seam.
 """
@@ -93,7 +93,7 @@ def ciphertext_scheme(token: str) -> str:
 # OSS default: AES-256-GCM with a local key
 # --------------------------------------------------------------------------- #
 class LocalAesGcmCipher:
-    """AES-256-GCM using one local symmetric key from ``OMNIX_SECRETS_KEY``.
+    """AES-256-GCM using one local symmetric key from ``INFONA_SECRETS_KEY``.
 
     The env var holds the key as either base64/base64url (any length that decodes
     to 16/24/32 bytes) or raw text (any length); a non-32-byte key is stretched to
@@ -123,7 +123,7 @@ class LocalAesGcmCipher:
     def from_env(cls, env_value: str) -> "LocalAesGcmCipher":
         raw = (env_value or "").strip()
         if not raw:
-            raise SecretCipherError("OMNIX_SECRETS_KEY is empty")
+            raise SecretCipherError("INFONA_SECRETS_KEY is empty")
         key = _decode_key(raw)
         return cls(key)
 
@@ -200,7 +200,7 @@ def get_secret_cipher() -> Optional[SecretCipher]:
 
     Precedence: a registered cipher (premium KMS) wins; otherwise the OSS
     ``LocalAesGcmCipher`` is built from the configured local key
-    (``settings.secrets_key`` ← ``OMNIX_SECRETS_KEY``) if it is set. ``None`` means
+    (``settings.secrets_key`` ← ``INFONA_SECRETS_KEY``) if it is set. ``None`` means
     "no cipher available" — the routes must then REFUSE to store a secret (fail
     closed) rather than store it in the clear.
     """
@@ -219,7 +219,7 @@ def get_secret_cipher() -> Optional[SecretCipher]:
 
 def _local_key() -> str:
     """The OSS local symmetric key, read through the settings object (which
-    sources ``OMNIX_SECRETS_KEY``), falling back to the raw env var so a key set
+    sources ``INFONA_SECRETS_KEY``), falling back to the raw env var so a key set
     after ``Settings()`` was constructed (e.g. in a test via ``monkeypatch.setenv``)
     is still picked up."""
     try:
@@ -230,7 +230,7 @@ def _local_key() -> str:
             return configured
     except Exception:  # noqa: BLE001 — never let config import break cipher selection
         pass
-    return os.environ.get("OMNIX_SECRETS_KEY", "").strip()
+    return os.environ.get("INFONA_SECRETS_KEY", "").strip()
 
 
 def reset_secret_cipher() -> None:

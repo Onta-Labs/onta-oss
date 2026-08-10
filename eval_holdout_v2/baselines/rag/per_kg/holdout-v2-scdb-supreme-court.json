@@ -6,7 +6,7 @@
       "id": "q-001",
       "tier": "T1",
       "question": "How many unique Supreme Court cases are recorded?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?case) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Case> .\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?case) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/Case> .\n}",
       "expected_answer": "9341",
       "full_expected_items": [
         "9341"
@@ -48,7 +48,7 @@
       "id": "q-002",
       "tier": "T1",
       "question": "List all the names of the Chief Justices.",
-      "gold_sparql": "SELECT ?chiefName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?chiefJustice <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/ChiefJustice> .\n  ?chiefJustice <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/chief_name> ?chiefName .\n}",
+      "gold_sparql": "SELECT ?chiefName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?chiefJustice <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/ChiefJustice> .\n  ?chiefJustice <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/chief_name> ?chiefName .\n}",
       "expected_answer": "Vinson, Warren, Burger, Rehnquist, Roberts",
       "full_expected_items": [
         "Vinson",
@@ -94,7 +94,7 @@
       "id": "q-003",
       "tier": "T1",
       "question": "How many distinct issue areas are there?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?issueArea) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?issueArea <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/IssueArea> .\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?issueArea) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?issueArea <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/IssueArea> .\n}",
       "expected_answer": "14",
       "full_expected_items": [
         "14"
@@ -136,7 +136,7 @@
       "id": "q-004",
       "tier": "T1",
       "question": "What are the names of all the Justices?",
-      "gold_sparql": "SELECT ?justiceName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?justice <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Justice> .\n  ?justice <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/justice_name> ?justiceName .\n}",
+      "gold_sparql": "SELECT ?justiceName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?justice <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/Justice> .\n  ?justice <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/justice_name> ?justiceName .\n}",
       "expected_answer": "BRWhite, ACBarrett, EKagan, SSotomayor, NMGorsuch, BMKavanaugh, SGBreyer, JGRoberts, SAAlito, RBGinsburg ... (40 total)",
       "full_expected_items": [
         "BRWhite",
@@ -217,7 +217,7 @@
       "id": "q-005",
       "tier": "T2",
       "question": "List the names of justices whose names contain 'Burton'.",
-      "gold_sparql": "SELECT ?justice_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?justice <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Justice> .\n  ?justice <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/justice_name> ?justice_name .\n  FILTER(CONTAINS(?justice_name, \"Burton\"))\n}",
+      "gold_sparql": "SELECT ?justice_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?justice <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/Justice> .\n  ?justice <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/justice_name> ?justice_name .\n  FILTER(CONTAINS(?justice_name, \"Burton\"))\n}",
       "expected_answer": "HHBurton",
       "full_expected_items": [
         "HHBurton"
@@ -259,7 +259,7 @@
       "id": "q-006",
       "tier": "T2",
       "question": "How many terms occurred after the year 1990?",
-      "gold_sparql": "SELECT (COUNT(?term_entity) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?term_entity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Term> .\n  ?term_entity <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/term> ?term_year .\n  FILTER(xsd:integer(?term_year) > 1990)\n}",
+      "gold_sparql": "SELECT (COUNT(?term_entity) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?term_entity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/Term> .\n  ?term_entity <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/term> ?term_year .\n  FILTER(xsd:integer(?term_year) > 1990)\n}",
       "expected_answer": "34",
       "full_expected_items": [
         "34"
@@ -301,7 +301,7 @@
       "id": "q-007",
       "tier": "T2",
       "question": "Find all issue areas related to 'Civil Rights'.",
-      "gold_sparql": "SELECT ?issue_area_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?issue_area <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/IssueArea> .\n  ?issue_area <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/issue_area_name> ?issue_area_name .\n  FILTER(?issue_area_name = \"Civil Rights\")\n}",
+      "gold_sparql": "SELECT ?issue_area_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?issue_area <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/IssueArea> .\n  ?issue_area <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/issue_area_name> ?issue_area_name .\n  FILTER(?issue_area_name = \"Civil Rights\")\n}",
       "expected_answer": "Civil Rights",
       "full_expected_items": [
         "Civil Rights"
@@ -343,7 +343,7 @@
       "id": "q-008",
       "tier": "T3",
       "question": "How many cases were decided under each Chief Justice?",
-      "gold_sparql": "SELECT ?chief_name (COUNT(DISTINCT ?case) AS ?case_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Case> .\n  ?case <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/case_under_chief> ?chief .\n  ?chief <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/ChiefJustice> .\n  ?chief <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/chief_name> ?chief_name .\n} GROUP BY ?chief_name ORDER BY DESC(?case_count)",
+      "gold_sparql": "SELECT ?chief_name (COUNT(DISTINCT ?case) AS ?case_count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/Case> .\n  ?case <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/case_under_chief> ?chief .\n  ?chief <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/ChiefJustice> .\n  ?chief <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/chief_name> ?chief_name .\n} GROUP BY ?chief_name ORDER BY DESC(?case_count)",
       "expected_answer": "Burger | 2809\nWarren | 2205\nRehnquist | 2044\nRoberts | 1471\nVinson | 812",
       "full_expected_items": [
         "Burger | 2809",
@@ -389,7 +389,7 @@
       "id": "q-009",
       "tier": "T3",
       "question": "How many cases were decided in each term, specifically for terms after 1980?",
-      "gold_sparql": "SELECT ?term_name (COUNT(DISTINCT ?case) AS ?case_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Case> .\n  ?case <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/case_decided_in_term> ?term .\n  ?term <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Term> .\n  ?term <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/term> ?term_name .\n  FILTER (xsd:integer(?term_name) > 1980)\n} GROUP BY ?term_name ORDER BY ?term_name",
+      "gold_sparql": "SELECT ?term_name (COUNT(DISTINCT ?case) AS ?case_count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/Case> .\n  ?case <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/case_decided_in_term> ?term .\n  ?term <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/Term> .\n  ?term <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/term> ?term_name .\n  FILTER (xsd:integer(?term_name) > 1980)\n} GROUP BY ?term_name ORDER BY ?term_name",
       "expected_answer": "1981 | 177\n1982 | 166\n1983 | 173\n1984 | 165\n1985 | 165\n1986 | 161\n1987 | 153\n1988 | 152\n1989 | 140\n1990 | 129\n... (44 total rows)",
       "full_expected_items": [
         "1981 | 177",
@@ -474,7 +474,7 @@
       "id": "q-010",
       "tier": "T3",
       "question": "For each Chief Justice, how many cases had a 'precedent alteration' of '1'?",
-      "gold_sparql": "SELECT ?chief_name (COUNT(DISTINCT ?case) AS ?case_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Case> .\n  ?case <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/case_under_chief> ?chief .\n  ?chief <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/ChiefJustice> .\n  ?chief <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/chief_name> ?chief_name .\n  ?case <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/precedent_alteration> \"1\" .\n} GROUP BY ?chief_name ORDER BY ?chief_name",
+      "gold_sparql": "SELECT ?chief_name (COUNT(DISTINCT ?case) AS ?case_count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/Case> .\n  ?case <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/case_under_chief> ?chief .\n  ?chief <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/ChiefJustice> .\n  ?chief <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/chief_name> ?chief_name .\n  ?case <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/precedent_alteration> \"1\" .\n} GROUP BY ?chief_name ORDER BY ?chief_name",
       "expected_answer": "Burger | 58\nRehnquist | 45\nRoberts | 30\nVinson | 13\nWarren | 49",
       "full_expected_items": [
         "Burger | 58",
@@ -520,7 +520,7 @@
       "id": "q-011",
       "tier": "T4",
       "question": "List the names of Justices who voted in cases where the party winning was '1' and the case was decided in the '1996' term.",
-      "gold_sparql": "SELECT DISTINCT ?justice_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?vote <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Vote> .\n  ?vote <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/vote_by_justice> ?justice .\n  ?justice <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Justice> .\n  ?justice <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/justice_name> ?justice_name .\n  ?vote <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/vote_in_case> ?case .\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Case> .\n  ?case <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/party_winning> \"1\" .\n  ?case <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/case_decided_in_term> ?term .\n  ?term <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Term> .\n  ?term <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/term> \"1996\" .\n}",
+      "gold_sparql": "SELECT DISTINCT ?justice_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?vote <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/Vote> .\n  ?vote <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/vote_by_justice> ?justice .\n  ?justice <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/Justice> .\n  ?justice <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/justice_name> ?justice_name .\n  ?vote <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/vote_in_case> ?case .\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/Case> .\n  ?case <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/party_winning> \"1\" .\n  ?case <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/case_decided_in_term> ?term .\n  ?term <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/type/Term> .\n  ?term <https://graph.infona.ai/holdout-v2/holdout-v2-scdb-supreme-court/pred/term> \"1996\" .\n}",
       "expected_answer": "WHRehnquist, JPStevens, SDOConnor, AScalia, AMKennedy, DHSouter, CThomas, RBGinsburg, SGBreyer",
       "full_expected_items": [
         "WHRehnquist",
@@ -570,43 +570,43 @@
   "tables": [
     {
       "table": "Case",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-scdb-supreme-court/Case.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_prepped/holdout-v2-scdb-supreme-court/Case.csv",
       "n_rows_used": 285,
       "n_cols": 15
     },
     {
       "table": "ChiefJustice",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-scdb-supreme-court/ChiefJustice.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_prepped/holdout-v2-scdb-supreme-court/ChiefJustice.csv",
       "n_rows_used": 5,
       "n_cols": 1
     },
     {
       "table": "DecisionDirection",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-scdb-supreme-court/DecisionDirection.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_prepped/holdout-v2-scdb-supreme-court/DecisionDirection.csv",
       "n_rows_used": 3,
       "n_cols": 2
     },
     {
       "table": "IssueArea",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-scdb-supreme-court/IssueArea.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_prepped/holdout-v2-scdb-supreme-court/IssueArea.csv",
       "n_rows_used": 14,
       "n_cols": 2
     },
     {
       "table": "Justice",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-scdb-supreme-court/Justice.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_prepped/holdout-v2-scdb-supreme-court/Justice.csv",
       "n_rows_used": 40,
       "n_cols": 2
     },
     {
       "table": "Term",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-scdb-supreme-court/Term.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_prepped/holdout-v2-scdb-supreme-court/Term.csv",
       "n_rows_used": 79,
       "n_cols": 1
     },
     {
       "table": "Vote",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-scdb-supreme-court/Vote.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_prepped/holdout-v2-scdb-supreme-court/Vote.csv",
       "n_rows_used": 285,
       "n_cols": 7
     }

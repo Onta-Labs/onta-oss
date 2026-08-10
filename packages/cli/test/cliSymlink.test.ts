@@ -8,7 +8,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 // ---------------------------------------------------------------------------
 // Regression guard for the symlink'd-bin bug (COG-129).
 //
-// npm installs the `infona` / `onta` bins as SYMLINKs (node_modules/.bin/infona →
+// npm installs the `infona` / `infona` bins as SYMLINKs (node_modules/.bin/infona →
 // dist/cli.js). Node then sets import.meta.url to the *realpath* of the entry
 // while process.argv[1] keeps the *symlink* path. A naive
 // `import.meta.url === pathToFileURL(process.argv[1]).href` guard therefore
@@ -42,7 +42,7 @@ describe("cli — symlinked bin (npm .bin layout)", () => {
     const dir = mkdtempSync(join(tmpdir(), "infona-bin-"));
     const link = join(dir, "infona");
     try {
-      // Mimic node_modules/.bin/infona -> ../cograph/dist/cli.js
+      // Mimic node_modules/.bin/infona -> ../infona/dist/cli.js
       symlinkSync(cliPath, link);
       const res = spawnSync("node", [link, "--version"], { encoding: "utf-8" });
 
@@ -64,7 +64,7 @@ describe("cli — symlinked bin (npm .bin layout)", () => {
 
   it("dispatches subcommands through the symlink (agent --help)", () => {
     const dir = mkdtempSync(join(tmpdir(), "infona-bin-"));
-    const link = join(dir, "onta"); // back-compat bin alias
+    const link = join(dir, "infona"); // canonical bin
     try {
       symlinkSync(cliPath, link);
       const res = spawnSync("node", [link, "agent", "--help"], {

@@ -56,9 +56,9 @@ class FakeFetcher:
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
     # Start each test with caching OFF and a fresh store registry; individual tests
-    # opt into a mode. Prevents an ambient COGRAPH_FETCH_CACHE from leaking in.
+    # opt into a mode. Prevents an ambient INFONA_FETCH_CACHE from leaking in.
     monkeypatch.delenv(CACHE_MODE_ENV, raising=False)
-    monkeypatch.delenv("COGRAPH_FETCH_CACHE_DIR", raising=False)
+    monkeypatch.delenv("INFONA_FETCH_CACHE_DIR", raising=False)
     reset_fetch_cache_registry()
     reset_page_fetchers()
     yield
@@ -99,11 +99,11 @@ def test_current_mode_reads_env(monkeypatch):
 
 def test_default_cache_dir_env_override(monkeypatch, tmp_path):
     custom = tmp_path / "my-cache"
-    monkeypatch.setenv("COGRAPH_FETCH_CACHE_DIR", str(custom))
+    monkeypatch.setenv("INFONA_FETCH_CACHE_DIR", str(custom))
     assert default_cache_dir() == custom
-    monkeypatch.delenv("COGRAPH_FETCH_CACHE_DIR")
+    monkeypatch.delenv("INFONA_FETCH_CACHE_DIR")
     # Falls back to a stable temp path (not the repo).
-    assert default_cache_dir().name == "cograph-fetch-cache"
+    assert default_cache_dir().name == "infona-fetch-cache"
 
 
 # --- record mode: scrape once, replay after ----------------------------------- #
@@ -356,7 +356,7 @@ def test_default_ladder_off_is_unchanged(monkeypatch):
 
 def test_default_ladder_record_wraps_each_rung(monkeypatch, tmp_path):
     monkeypatch.setenv(CACHE_MODE_ENV, "record")
-    monkeypatch.setenv("COGRAPH_FETCH_CACHE_DIR", str(tmp_path / "ld"))
+    monkeypatch.setenv("INFONA_FETCH_CACHE_DIR", str(tmp_path / "ld"))
     register_default_fetchers()
     ladder = default_ladder()
     assert ladder and all(isinstance(f, CachingPageFetcher) for f in ladder)
@@ -366,7 +366,7 @@ def test_default_ladder_record_wraps_each_rung(monkeypatch, tmp_path):
 
 def test_maybe_wrap_ladder_is_idempotent(monkeypatch, tmp_path):
     monkeypatch.setenv(CACHE_MODE_ENV, "record")
-    monkeypatch.setenv("COGRAPH_FETCH_CACHE_DIR", str(tmp_path / "idem"))
+    monkeypatch.setenv("INFONA_FETCH_CACHE_DIR", str(tmp_path / "idem"))
     rungs = [FakeFetcher(name="static", tier=0)]
     once = maybe_wrap_ladder(rungs)
     twice = maybe_wrap_ladder(once)

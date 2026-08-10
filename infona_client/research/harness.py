@@ -64,7 +64,7 @@ from infona_client.web_sources.base import (
     provider_cost,
 )
 
-logger = structlog.stdlib.get_logger("cograph.research.harness")
+logger = structlog.stdlib.get_logger("infona.research.harness")
 
 # A fetched page is treated as "incomplete" — a signal to escalate to the next,
 # pricier ladder rung — when it is empty, truly tiny, JS-gated, or a nav-only

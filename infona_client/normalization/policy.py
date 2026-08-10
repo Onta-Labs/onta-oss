@@ -33,7 +33,7 @@ canonicalizes per the toggles. It is standalone — the actual clean-stage wirin
 that CALLS it is owned by a sibling ticket (``normalization/clean.py``), untouched
 here.
 
-Boundary: OSS. Imports only stdlib / ``infona_client.*``. No ``from cograph.*``.
+Boundary: OSS. Imports only stdlib / ``infona_client.*``. No ``from infona.*``.
 """
 
 

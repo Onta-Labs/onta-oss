@@ -48,7 +48,7 @@ def _openrouter_key() -> str:
     """The OpenRouter key the auto-tier resolver needs for its classify call.
 
     Same source the rest of OSS uses (``normalization.inference._openrouter_key``):
-    the app ``settings`` (env ``OMNIX_OPENROUTER_API_KEY``) with a plain
+    the app ``settings`` (env ``INFONA_OPENROUTER_API_KEY``) with a plain
     ``OPENROUTER_API_KEY`` env fallback. When empty, ``resolve_auto_tier`` falls
     back to its deterministic heuristic — it never requires a key.
     """

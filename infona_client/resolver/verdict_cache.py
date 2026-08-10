@@ -14,7 +14,7 @@ import structlog
 
 from infona_client.resolver.models import MatchVerdict
 
-logger = structlog.stdlib.get_logger("cograph.resolver.cache")
+logger = structlog.stdlib.get_logger("infona.resolver.cache")
 
 
 class VerdictEntry:

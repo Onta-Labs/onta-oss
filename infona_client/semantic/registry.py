@@ -25,7 +25,7 @@ from infona_client.config import settings
 from infona_client.semantic.memory import InMemorySemanticIndex
 from infona_client.semantic.protocol import SemanticIndex
 
-logger = structlog.stdlib.get_logger("cograph.semantic.registry")
+logger = structlog.stdlib.get_logger("infona.semantic.registry")
 
 _registered: Optional[SemanticIndex] = None
 _default: Optional[SemanticIndex] = None

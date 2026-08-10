@@ -135,9 +135,9 @@ def test_inmemory_store_preserves_ai_description():
 
 
 def test_summary_model_default_and_override(monkeypatch):
-    monkeypatch.delenv("OMNIX_KG_SUMMARY_MODEL", raising=False)
+    monkeypatch.delenv("INFONA_KG_SUMMARY_MODEL", raising=False)
     assert kg_summary._summary_model() == "google/gemini-2.5-flash"
-    monkeypatch.setenv("OMNIX_KG_SUMMARY_MODEL", "vendor/cheap-model")
+    monkeypatch.setenv("INFONA_KG_SUMMARY_MODEL", "vendor/cheap-model")
     assert kg_summary._summary_model() == "vendor/cheap-model"
 
 

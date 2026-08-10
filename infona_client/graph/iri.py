@@ -1,22 +1,18 @@
 """Canonical IRI base + derived namespace prefixes for every Infona graph URI.
 
-IRIs are opaque primary keys, not HTTP-dereferenced resources. Historically they
-were hard-coded under ``https://cograph.tech/…`` (the pre-rebrand product host).
-That brand is gone; new graphs should mint under an Infona-shaped base.
+IRIs are opaque primary keys, not HTTP-dereferenced resources. Graphs mint under
+``https://graph.infona.ai/…`` (or ``INFONA_IRI_BASE`` when set).
 
 Configuration
 -------------
-``ONTA_IRI_BASE`` (preferred) or ``COGRAPH_IRI_BASE`` (legacy alias) — a bare
-HTTPS origin, no trailing slash. Example::
+``INFONA_IRI_BASE`` — a bare HTTPS origin, no trailing slash. Example::
 
-    ONTA_IRI_BASE=https://graph.onta.sh
+    INFONA_IRI_BASE=https://graph.infona.ai
 
-Default (when unset): ``https://graph.onta.sh``.
+Default (when unset): ``https://graph.infona.ai``.
 
-**Hosted deployments that still store pre-rename triples must pin the base**
-to the host those triples were minted under (typically
-``ONTA_IRI_BASE=https://cograph.tech``) until they re-ingest. Changing the base
-without re-minting orphans every existing entity / type / graph IRI.
+Changing the base without re-minting orphans every existing entity / type /
+graph IRI in a store that was written under a different base.
 
 Derived prefixes (always end with ``/`` where the rest of the code expects a
 prefix, never a path segment)::
@@ -37,24 +33,19 @@ prefix, never a path segment)::
     meta/        workspace-level meta subjects
 """
 
-
 from __future__ import annotations
 
 import os
 from functools import lru_cache
 from urllib.parse import urlparse
 
-# Brand-aligned default for NEW graphs. Not the live Next.js app host (onta.sh
-# apex) — that would collide with real App Router paths like /types/Person.
-# ``graph.onta.sh`` is an IRI-namespace host only (never served as product UI).
-DEFAULT_IRI_BASE = "https://graph.onta.sh"
+# Brand-aligned default. ``graph.infona.ai`` is an IRI-namespace host only
+# (never served as product UI) so it does not collide with App Router paths.
+DEFAULT_IRI_BASE = "https://graph.infona.ai"
 
-# Historical hosts that may still appear in few-shot banks, LLM echoes, or
-# pre-rename stores. ``normalize_sparql`` rewrites these onto the live base.
-LEGACY_IRI_BASES: tuple[str, ...] = (
-    "https://cograph.tech",
-    "https://omnix.dev",
-)
+# Historical hosts kept only so ``normalize_sparql`` can rewrite bank/LLM echoes
+# that still cite pre-rename IRIs. Prefer the single live base for all new data.
+LEGACY_IRI_BASES: tuple[str, ...] = ()
 
 
 def _normalize_base(raw: str) -> str:
@@ -79,11 +70,7 @@ def _normalize_base(raw: str) -> str:
 @lru_cache(maxsize=1)
 def iri_base() -> str:
     """Resolved IRI base for this process (import-time env, then default)."""
-    raw = (
-        os.environ.get("ONTA_IRI_BASE")
-        or os.environ.get("COGRAPH_IRI_BASE")
-        or DEFAULT_IRI_BASE
-    )
+    raw = os.environ.get("INFONA_IRI_BASE") or DEFAULT_IRI_BASE
     return _normalize_base(raw)
 
 
@@ -110,7 +97,7 @@ def _freeze() -> dict[str, str]:
         "ENTITY_URI_PREFIX": f"{b}/entities/",
         "GRAPH_URI_PREFIX": f"{b}/graphs/",
         "ONTO_PRED_PREFIX": f"{b}/onto/",
-        "ONTO_BASE": f"{b}/onto",  # no trailing slash (historical OMNIX_ONTO)
+        "ONTO_BASE": f"{b}/onto",  # no trailing slash (historical INFONA_ONTO)
         "ER_NS": f"{b}/er/",
         "ATTR_META_NS": f"{b}/attr_meta/",
         "VALIDITY_NS": f"{b}/validity/",
@@ -149,14 +136,12 @@ PUBLIC_GRAPH_URI: str = _F["PUBLIC_GRAPH_URI"]
 ENHANCED_GRAPH_URI: str = _F["ENHANCED_GRAPH_URI"]
 CHANGELOG_GRAPH_URI: str = _F["CHANGELOG_GRAPH_URI"]
 
-# Hosts the SPARQL normalizer rewrites onto the live base. Includes every
-# historical brand host PLUS the current default so a custom ONTA_IRI_BASE still
-# rewrites bank/LLM echoes that used the stock default.
+
 def known_rewrite_hosts() -> tuple[str, ...]:
+    """Hosts the SPARQL normalizer may rewrite onto the live base."""
     hosts = {urlparse(b).netloc for b in LEGACY_IRI_BASES}
     hosts.add(urlparse(DEFAULT_IRI_BASE).netloc)
     hosts.add(urlparse(IRI_BASE).netloc)
-    # Drop empty; stable order for regex compile.
     return tuple(sorted(h for h in hosts if h))
 
 
@@ -164,7 +149,7 @@ def reset_iri_base_cache() -> None:
     """Test-only: drop the lru_cache so a new env var is observed.
 
     Production code must not call this — IRI base is process-scoped config,
-    same as every other OMNIX_* setting.
+    same as every other INFONA_* setting.
     """
     iri_base.cache_clear()
     global IRI_BASE, TYPE_URI_PREFIX, ENTITY_URI_PREFIX, GRAPH_URI_PREFIX

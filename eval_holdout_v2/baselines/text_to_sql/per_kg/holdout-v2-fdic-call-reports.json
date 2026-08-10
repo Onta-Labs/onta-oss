@@ -11,7 +11,7 @@
         "87409"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?financialMetric) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports> WHERE {\n  ?financialMetric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/type/FinancialMetric> .\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?financialMetric) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports> WHERE {\n  ?financialMetric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/type/FinancialMetric> .\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -68,7 +68,7 @@
         "National commercial bank"
       ],
       "full_result_count": 6,
-      "gold_sparql": "SELECT ?bankClassLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports> WHERE {\n  ?bankClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/type/BankClass> .\n  ?bankClass <http://www.w3.org/2000/01/rdf-schema#label> ?bankClassLabel .\n}",
+      "gold_sparql": "SELECT ?bankClassLabel FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports> WHERE {\n  ?bankClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/type/BankClass> .\n  ?bankClass <http://www.w3.org/2000/01/rdf-schema#label> ?bankClassLabel .\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -120,7 +120,7 @@
         "4609"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?callReport) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports> WHERE {\n  ?callReport <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/type/CallReport> .\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?callReport) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports> WHERE {\n  ?callReport <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/type/CallReport> .\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -229,7 +229,7 @@
         "New York"
       ],
       "full_result_count": 58,
-      "gold_sparql": "SELECT ?stateName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/state_name> ?stateName .\n}",
+      "gold_sparql": "SELECT ?stateName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/type/State> .\n  ?state <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/state_name> ?stateName .\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -2280,7 +2280,7 @@
         "58859_20240630 | 19"
       ],
       "full_result_count": 4608,
-      "gold_sparql": "SELECT ?callReportId (COUNT(?financialMetric) AS ?metricCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports> WHERE {\n  ?callReport <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/type/CallReport> .\n  ?callReport <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_has_metric> ?financialMetric .\n  ?financialMetric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/type/FinancialMetric> .\n  ?callReport <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_repdte> \"20240630\" .\n  ?callReport <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_id> ?callReportId .\n} GROUP BY ?callReportId",
+      "gold_sparql": "SELECT ?callReportId (COUNT(?financialMetric) AS ?metricCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports> WHERE {\n  ?callReport <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/type/CallReport> .\n  ?callReport <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_has_metric> ?financialMetric .\n  ?financialMetric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/type/FinancialMetric> .\n  ?callReport <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_repdte> \"20240630\" .\n  ?callReport <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_id> ?callReportId .\n} GROUP BY ?callReportId",
       "per_seed": [
         {
           "seed": 1,
@@ -2450,7 +2450,7 @@
         "Citizens Business Bank, National Association"
       ],
       "full_result_count": 119,
-      "gold_sparql": "SELECT ?bankName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports> WHERE {\n  ?bank <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/type/Bank> .\n  ?bank <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/bank_headquartered_in_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/state_stalp> \"CA\" .\n  ?bank <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/bank_name> ?bankName .\n}",
+      "gold_sparql": "SELECT ?bankName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports> WHERE {\n  ?bank <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/type/Bank> .\n  ?bank <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/bank_headquartered_in_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/type/State> .\n  ?state <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/state_stalp> \"CA\" .\n  ?bank <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/bank_name> ?bankName .\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -2506,7 +2506,7 @@
         "Insured U.S. branch of a foreign-chartered bank | 10"
       ],
       "full_result_count": 5,
-      "gold_sparql": "SELECT ?bankClassDescription (COUNT(?bank) AS ?bankCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports> WHERE {\n  ?bank <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/type/Bank> .\n  ?bank <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/bank_classified_as> ?bankClass .\n  ?bankClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/type/BankClass> .\n  ?bankClass <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/bankclass_description> ?bankClassDescription .\n} GROUP BY ?bankClassDescription",
+      "gold_sparql": "SELECT ?bankClassDescription (COUNT(?bank) AS ?bankCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports> WHERE {\n  ?bank <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/type/Bank> .\n  ?bank <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/bank_classified_as> ?bankClass .\n  ?bankClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/type/BankClass> .\n  ?bankClass <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/bankclass_description> ?bankClassDescription .\n} GROUP BY ?bankClassDescription",
       "per_seed": [
         {
           "seed": 1,
@@ -4557,7 +4557,7 @@
         "The First State Bank of Rosemount"
       ],
       "full_result_count": 3288,
-      "gold_sparql": "SELECT DISTINCT ?bankName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports> WHERE {\n  ?bank <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/type/Bank> .\n  ?bank <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/bank_name> ?bankName .\n  ?bank <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/has_call_report> ?callReport .\n  ?callReport <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/type/CallReport> .\n  ?callReport <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_fiscal_quarter> \"Q2\" .\n  ?callReport <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_fiscal_year> \"2024\" .\n  ?bank <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/bank_classified_as> ?bankClass .\n  ?bankClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/type/BankClass> .\n  ?bankClass <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/bankclass_charter_category> \"commercial\" .\n}",
+      "gold_sparql": "SELECT DISTINCT ?bankName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports> WHERE {\n  ?bank <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/type/Bank> .\n  ?bank <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/bank_name> ?bankName .\n  ?bank <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/has_call_report> ?callReport .\n  ?callReport <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/type/CallReport> .\n  ?callReport <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_fiscal_quarter> \"Q2\" .\n  ?callReport <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/callreport_fiscal_year> \"2024\" .\n  ?bank <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/bank_classified_as> ?bankClass .\n  ?bankClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/type/BankClass> .\n  ?bankClass <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/bankclass_charter_category> \"commercial\" .\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -4663,7 +4663,7 @@
         "U.S. Virgin Islands | 1"
       ],
       "full_result_count": 55,
-      "gold_sparql": "SELECT ?stateName (COUNT(DISTINCT ?bank) AS ?numberOfBanks) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/state_name> ?stateName .\n  ?bank <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/type/Bank> .\n  ?bank <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/bank_headquartered_in_state> ?state .\n  ?metric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/type/FinancialMetric> .\n  ?metric <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/metric_for_bank> ?bank .\n  ?metric <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/metric_value> ?metricValue .\n  FILTER (xsd:float(?metricValue) > 1000)\n} GROUP BY ?stateName\nORDER BY DESC(?numberOfBanks)",
+      "gold_sparql": "SELECT ?stateName (COUNT(DISTINCT ?bank) AS ?numberOfBanks) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/type/State> .\n  ?state <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/state_name> ?stateName .\n  ?bank <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/type/Bank> .\n  ?bank <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/bank_headquartered_in_state> ?state .\n  ?metric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/type/FinancialMetric> .\n  ?metric <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/metric_for_bank> ?bank .\n  ?metric <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/metric_value> ?metricValue .\n  FILTER (xsd:float(?metricValue) > 1000)\n} GROUP BY ?stateName\nORDER BY DESC(?numberOfBanks)",
       "per_seed": [
         {
           "seed": 1,
@@ -6714,7 +6714,7 @@
         "Kress National Bank | OCC"
       ],
       "full_result_count": 3564,
-      "gold_sparql": "SELECT DISTINCT ?bankName ?primaryRegulator FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports> WHERE {\n  ?bank <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/type/Bank> .\n  ?bank <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/bank_name> ?bankName .\n  ?bank <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/bank_classified_as> ?bankClass .\n  ?bankClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/type/BankClass> .\n  ?bankClass <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/bankclass_primary_regulator> ?primaryRegulator .\n  ?metric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/type/FinancialMetric> .\n  ?metric <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/metric_for_bank> ?bank .\n  ?metric <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/metric_name> \"Tier 1 Risk-Based Capital Ratio\" .\n  ?metric <https://omnix.dev/holdout-v2/holdout-v2-fdic-call-reports/pred/metric_repdte> \"20240630\" .\n}",
+      "gold_sparql": "SELECT DISTINCT ?bankName ?primaryRegulator FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fdic-call-reports> WHERE {\n  ?bank <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/type/Bank> .\n  ?bank <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/bank_name> ?bankName .\n  ?bank <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/bank_classified_as> ?bankClass .\n  ?bankClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/type/BankClass> .\n  ?bankClass <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/bankclass_primary_regulator> ?primaryRegulator .\n  ?metric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/type/FinancialMetric> .\n  ?metric <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/metric_for_bank> ?bank .\n  ?metric <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/metric_name> \"Tier 1 Risk-Based Capital Ratio\" .\n  ?metric <https://graph.infona.ai/holdout-v2/holdout-v2-fdic-call-reports/pred/metric_repdte> \"20240630\" .\n}",
       "per_seed": [
         {
           "seed": 1,

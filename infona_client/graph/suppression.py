@@ -40,7 +40,7 @@ provenance / validity / history companion-graph pattern exactly:
 
 For a suppressed fact ``(s, p, o)`` the suppression graph holds::
 
-    <https://graph.onta.sh/suppression/mark/{sha1(s|p|o)}>
+    <https://graph.infona.ai/suppression/mark/{sha1(s|p|o)}>
         sup:subject      <s> ;
         sup:predicate    <p> ;
         sup:object       o ;                       # literal or URI, as written

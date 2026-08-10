@@ -51,7 +51,7 @@ from infona_client.spatiotemporal.protocol import (
     TimeWindow,
 )
 
-logger = structlog.stdlib.get_logger("cograph.spatiotemporal.postgis")
+logger = structlog.stdlib.get_logger("infona.spatiotemporal.postgis")
 
 
 class PostGISSpatioTemporalIndex:

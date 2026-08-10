@@ -141,7 +141,7 @@ class TestCsvResolverWiresRedaction:
 
     @pytest.mark.asyncio
     async def test_legacy_prompt_redacts_ssn(self, monkeypatch):
-        monkeypatch.setenv("OMNIX_CSV_INFERENCE_V2", "0")
+        monkeypatch.setenv("INFONA_CSV_INFERENCE_V2", "0")
 
         from infona_client.resolver.csv_resolver import CSVResolver
 
@@ -181,7 +181,7 @@ class TestCsvResolverWiresRedaction:
 
     @pytest.mark.asyncio
     async def test_v2_prompt_redacts_privileged(self, monkeypatch):
-        monkeypatch.setenv("OMNIX_CSV_INFERENCE_V2", "1")
+        monkeypatch.setenv("INFONA_CSV_INFERENCE_V2", "1")
 
         from infona_client.resolver.csv_resolver import CSVResolver
 

@@ -49,9 +49,9 @@ RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
 TENANT = "t1"
 KG = "kg1"
 GRAPH = kg_graph_uri(TENANT, KG)
-DESC_PRED = "https://graph.onta.sh/types/Doc/attrs/description"
-SUMMARY_PRED = "https://graph.onta.sh/types/Doc/attrs/summary"
-ENTITY = "https://graph.onta.sh/entities/Doc/e1"
+DESC_PRED = "https://graph.infona.ai/types/Doc/attrs/description"
+SUMMARY_PRED = "https://graph.infona.ai/types/Doc/attrs/summary"
+ENTITY = "https://graph.infona.ai/entities/Doc/e1"
 PROSE = (
     "The committee heard extensive testimony about the proposed changes to the "
     "watershed management plan and debated the funding formula for well over "
@@ -146,7 +146,7 @@ def _clean_state():
 
 
 def _enable(monkeypatch) -> None:
-    monkeypatch.setenv("COGRAPH_SEMANTIC_INDEX_ENABLED", "true")
+    monkeypatch.setenv("INFONA_SEMANTIC_INDEX_ENABLED", "true")
 
 
 async def _all_rows(index: InMemorySemanticIndex) -> list[SemanticChunk]:
@@ -159,7 +159,7 @@ async def _all_rows(index: InMemorySemanticIndex) -> list[SemanticChunk]:
 def test_hook_disabled_by_default(monkeypatch):
     """No env knob → the hook is OFF: no marker fetch, no index writes — but the
     Neptune write itself proceeds normally (cost/rollout control, ONTA-181)."""
-    monkeypatch.delenv("COGRAPH_SEMANTIC_INDEX_ENABLED", raising=False)
+    monkeypatch.delenv("INFONA_SEMANTIC_INDEX_ENABLED", raising=False)
     index = InMemorySemanticIndex()
     register_semantic_index(index)
     neptune = _FakeNeptune({DESC_PRED: "free_text"})
@@ -247,7 +247,7 @@ def test_identity_arm_off_restores_the_old_zero_cost_behavior(monkeypatch):
     """With the kill switch off, a name-only write on an unmarked tenant costs
     no entity re-read and writes nothing — the pre-ONTA-421 behavior."""
     _enable(monkeypatch)
-    monkeypatch.setenv("COGRAPH_SEMANTIC_IDENTITY_INDEX", "0")
+    monkeypatch.setenv("INFONA_SEMANTIC_IDENTITY_INDEX", "0")
     index = InMemorySemanticIndex()
     register_semantic_index(index)
     neptune = _FakeNeptune({})
@@ -283,7 +283,7 @@ def test_hook_unmarked_write_does_zero_entity_fetches(monkeypatch):
     _enable(monkeypatch)
     index = InMemorySemanticIndex()
     register_semantic_index(index)
-    sku_pred = "https://graph.onta.sh/types/Doc/attrs/sku"
+    sku_pred = "https://graph.infona.ai/types/Doc/attrs/sku"
     neptune = _FakeNeptune({DESC_PRED: "free_text"})  # description IS marked
 
     async def run():
@@ -437,16 +437,16 @@ def test_hook_fetch_failure_skips_index_never_fails_write(monkeypatch):
 
 
 def test_hook_entity_cap_bounds_the_fetch_and_logs(monkeypatch):
-    """The re-read is bounded: past COGRAPH_SEMANTIC_HOOK_MAX_ENTITIES touched
+    """The re-read is bounded: past INFONA_SEMANTIC_HOOK_MAX_ENTITIES touched
     entities the hook indexes the first (sorted) N, logs the cap loudly, and
     leaves the rest to the reconciler."""
     _enable(monkeypatch)
-    monkeypatch.setenv("COGRAPH_SEMANTIC_HOOK_MAX_ENTITIES", "1")
+    monkeypatch.setenv("INFONA_SEMANTIC_HOOK_MAX_ENTITIES", "1")
     index = InMemorySemanticIndex()
     register_semantic_index(index)
     neptune = _FakeNeptune({DESC_PRED: "free_text"})
-    e_a = "https://graph.onta.sh/entities/Doc/a"
-    e_b = "https://graph.onta.sh/entities/Doc/b"
+    e_a = "https://graph.infona.ai/entities/Doc/a"
+    e_b = "https://graph.infona.ai/entities/Doc/b"
 
     async def run():
         with structlog.testing.capture_logs() as logs:
@@ -488,10 +488,10 @@ class _ExplodingIndex(InMemorySemanticIndex):
 
 def test_hook_timeout_never_fails_the_write(monkeypatch):
     """A hung index backend is converted to a caught TimeoutError by the hook's
-    own env knob (COGRAPH_SEMANTIC_UPSERT_TIMEOUT_S) — the KG write succeeds
+    own env knob (INFONA_SEMANTIC_UPSERT_TIMEOUT_S) — the KG write succeeds
     (same regression class as the spatio-temporal timeout guard)."""
     _enable(monkeypatch)
-    monkeypatch.setenv("COGRAPH_SEMANTIC_UPSERT_TIMEOUT_S", "0.05")
+    monkeypatch.setenv("INFONA_SEMANTIC_UPSERT_TIMEOUT_S", "0.05")
     register_semantic_index(_HangingIndex())
     neptune = _FakeNeptune({DESC_PRED: "free_text"})
 
@@ -569,7 +569,7 @@ def test_hook_empty_doc_deletes_that_attrs_rows(monkeypatch):
 def test_hook_empty_doc_delete_is_attr_scoped(monkeypatch):
     """Emptying one marked attr must not touch the entity's OTHER marked docs."""
     _enable(monkeypatch)
-    notes_pred = "https://graph.onta.sh/types/Doc/attrs/notes"
+    notes_pred = "https://graph.infona.ai/types/Doc/attrs/notes"
     index = InMemorySemanticIndex()
     register_semantic_index(index)
     neptune = _FakeNeptune({DESC_PRED: "free_text", notes_pred: "free_text"})

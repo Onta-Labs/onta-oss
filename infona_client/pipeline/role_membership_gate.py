@@ -19,7 +19,7 @@ evidence only**:
 3. **Uncertain → keep** — no brand/voice/platform denylists; no focus_type name
    lists. Absence of batch evidence never drops a row.
 
-Pure OSS: stdlib only, no I/O, no ``from cograph.*``. Wired post-A1 via
+Pure OSS: stdlib only, no I/O, no ``from infona.*``. Wired post-A1 via
 ``web_ingest_cap.apply_post_a1_structural_gates`` (ONTA-465 / WS6).
 """
 

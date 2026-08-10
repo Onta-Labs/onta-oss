@@ -107,7 +107,7 @@ def app():
     # authenticate via the provider, not the path-tenant dependency.
     import os
 
-    os.environ["OMNIX_API_KEYS"] = "{}"
+    os.environ["INFONA_API_KEYS"] = "{}"
     return create_app()
 
 

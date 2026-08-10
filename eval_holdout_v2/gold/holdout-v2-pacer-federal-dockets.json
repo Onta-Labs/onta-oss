@@ -12,7 +12,7 @@
     {
       "id": "q-001",
       "question": "How many dockets are there in total?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?docket) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE {\n  ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> .\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?docket) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE {\n  ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> .\n}",
       "full_expected_items": [
         "3980"
       ],
@@ -27,7 +27,7 @@
     {
       "id": "q-002",
       "question": "List the names of all judges.",
-      "gold_sparql": "SELECT ?judgeName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE {\n  ?judge <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Judge> .\n  ?judge <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/judge_name> ?judgeName .\n}",
+      "gold_sparql": "SELECT ?judgeName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE {\n  ?judge <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Judge> .\n  ?judge <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/judge_name> ?judgeName .\n}",
       "full_expected_items": [
         "Nancy J. Rosenstengel",
         "Staci M. Yandle",
@@ -888,7 +888,7 @@
     {
       "id": "q-003",
       "question": "What are the full names of all courts?",
-      "gold_sparql": "SELECT ?courtFullName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE {\n  ?court <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Court> .\n  ?court <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/court_full_name> ?courtFullName .\n}",
+      "gold_sparql": "SELECT ?courtFullName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE {\n  ?court <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Court> .\n  ?court <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/court_full_name> ?courtFullName .\n}",
       "full_expected_items": [
         "District Court, D. Guam",
         "District Court, S.D. Alabama",
@@ -1003,7 +1003,7 @@
     {
       "id": "q-004",
       "question": "How many distinct case types are recorded?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?caseType) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE {\n  ?caseType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/CaseType> .\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?caseType) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE {\n  ?caseType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/CaseType> .\n}",
       "full_expected_items": [
         "17"
       ],
@@ -1018,7 +1018,7 @@
     {
       "id": "q-005",
       "question": "List the docket numbers for dockets that are not blocked.",
-      "gold_sparql": "SELECT ?docket_number FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE {\n  ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> .\n  ?docket <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_blocked> ?blocked_status .\n  FILTER(?blocked_status = \"false\") .\n  ?docket <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_number> ?docket_number .\n}",
+      "gold_sparql": "SELECT ?docket_number FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE {\n  ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> .\n  ?docket <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_blocked> ?blocked_status .\n  FILTER(?blocked_status = \"false\") .\n  ?docket <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_number> ?docket_number .\n}",
       "full_expected_items": [
         "5:26-cv-05076",
         "4:26-cv-04028",
@@ -3032,7 +3032,7 @@
     {
       "id": "q-006",
       "question": "Find all docket case names that contain 'Search Warrant'.",
-      "gold_sparql": "SELECT ?case_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE {\n  ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> .\n  ?docket <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_case_name> ?case_name .\n  FILTER(CONTAINS(LCASE(STR(?case_name)), \"search warrant\"))\n}",
+      "gold_sparql": "SELECT ?case_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE {\n  ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> .\n  ?docket <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_case_name> ?case_name .\n  FILTER(CONTAINS(LCASE(STR(?case_name)), \"search warrant\"))\n}",
       "full_expected_items": [
         "United States v. SEARCH WARRANT",
         "United States v. Search Warrant",
@@ -3098,7 +3098,7 @@
     {
       "id": "q-007",
       "question": "How many dockets have a short case name starting with 'S'?",
-      "gold_sparql": "SELECT (COUNT(?docket) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE {\n  ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> .\n  ?docket <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_case_name_short> ?short_name .\n  FILTER(STRSTARTS(?short_name, \"S\"))\n}",
+      "gold_sparql": "SELECT (COUNT(?docket) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE {\n  ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> .\n  ?docket <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_case_name_short> ?short_name .\n  FILTER(STRSTARTS(?short_name, \"S\"))\n}",
       "full_expected_items": [
         "313"
       ],
@@ -3113,7 +3113,7 @@
     {
       "id": "q-008",
       "question": "Which courts have the most dockets with 'United States v.' in their case name?",
-      "gold_sparql": "SELECT ?court_name (COUNT(?docket) AS ?docket_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE {\n  ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> .\n  ?docket <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_filed_in_court> ?court .\n  ?court <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Court> .\n  ?court <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/court_full_name> ?court_name .\n  ?docket <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_case_name> ?case_name .\n  FILTER (CONTAINS(?case_name, \"United States v.\"))\n} GROUP BY ?court_name ORDER BY DESC(?docket_count) LIMIT 10",
+      "gold_sparql": "SELECT ?court_name (COUNT(?docket) AS ?docket_count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE {\n  ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> .\n  ?docket <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_filed_in_court> ?court .\n  ?court <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Court> .\n  ?court <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/court_full_name> ?court_name .\n  ?docket <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_case_name> ?case_name .\n  FILTER (CONTAINS(?case_name, \"United States v.\"))\n} GROUP BY ?court_name ORDER BY DESC(?docket_count) LIMIT 10",
       "full_expected_items": [
         "District Court, E.D. North Carolina | 38",
         "District Court, D. Wyoming | 38",
@@ -3137,7 +3137,7 @@
     {
       "id": "q-009",
       "question": "List the judges and the number of dockets they were assigned to that have a 'Civil Rights Act' cause.",
-      "gold_sparql": "SELECT ?judge_name (COUNT(?docket) AS ?docket_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE {\n  ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> .\n  ?docket <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_assigned_to_judge> ?judge .\n  ?judge <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Judge> .\n  ?judge <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/judge_name> ?judge_name .\n  ?docket <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_cause> ?cause .\n  FILTER (CONTAINS(?cause, \"Civil Rights Act\"))\n} GROUP BY ?judge_name ORDER BY DESC(?docket_count) LIMIT 10",
+      "gold_sparql": "SELECT ?judge_name (COUNT(?docket) AS ?docket_count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE {\n  ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> .\n  ?docket <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_assigned_to_judge> ?judge .\n  ?judge <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Judge> .\n  ?judge <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/judge_name> ?judge_name .\n  ?docket <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_cause> ?cause .\n  FILTER (CONTAINS(?cause, \"Civil Rights Act\"))\n} GROUP BY ?judge_name ORDER BY DESC(?docket_count) LIMIT 10",
       "full_expected_items": [
         "Kristi K. Dubose | 2",
         "William M. Conley | 2",
@@ -3161,7 +3161,7 @@
     {
       "id": "q-010",
       "question": "What are the different nature of suits associated with dockets filed in the year '2026'?",
-      "gold_sparql": "SELECT DISTINCT ?nos_label FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE {\n  ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> .\n  ?docket <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_has_nature_of_suit> ?nos .\n  ?nos <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/NatureOfSuit> .\n  ?nos <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/nos_label> ?nos_label .\n  ?docket <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_filed_in_year> ?year .\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Year> .\n  ?year <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/year_value> \"2026\" .\n}",
+      "gold_sparql": "SELECT DISTINCT ?nos_label FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE {\n  ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> .\n  ?docket <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_has_nature_of_suit> ?nos .\n  ?nos <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/NatureOfSuit> .\n  ?nos <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/nos_label> ?nos_label .\n  ?docket <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_filed_in_year> ?year .\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Year> .\n  ?year <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/year_value> \"2026\" .\n}",
       "full_expected_items": [
         "Contract: Other",
         "Habeas Corpus - Alien Detainee",
@@ -3235,7 +3235,7 @@
     {
       "id": "q-011",
       "question": "What is the average number of dockets assigned to judges in each court?",
-      "gold_sparql": "SELECT ?court_name (AVG(?docket_count) AS ?average_dockets_per_judge) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE {\n  ?court <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Court> .\n  ?court <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/court_full_name> ?court_name .\n  {\n    SELECT ?court (COUNT(DISTINCT ?docket) AS ?docket_count) WHERE {\n      ?judge <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Judge> .\n      ?judge <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/judge_sits_in_court> ?court .\n      ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> .\n      ?docket <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_assigned_to_judge> ?judge .\n      ?court <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Court> .\n    } GROUP BY ?court ?judge\n  }\n} GROUP BY ?court_name\nLIMIT 100",
+      "gold_sparql": "SELECT ?court_name (AVG(?docket_count) AS ?average_dockets_per_judge) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE {\n  ?court <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Court> .\n  ?court <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/court_full_name> ?court_name .\n  {\n    SELECT ?court (COUNT(DISTINCT ?docket) AS ?docket_count) WHERE {\n      ?judge <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Judge> .\n      ?judge <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/judge_sits_in_court> ?court .\n      ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> .\n      ?docket <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_assigned_to_judge> ?judge .\n      ?court <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Court> .\n    } GROUP BY ?court ?judge\n  }\n} GROUP BY ?court_name\nLIMIT 100",
       "full_expected_items": [
         "District Court, D. Guam | 5",
         "District Court, District of Columbia | 1.42857142857142857143",
@@ -3340,7 +3340,7 @@
     {
       "id": "q-012",
       "question": "For each court, what is the average number of dockets that have a 'Civil Miscellaneous Case' cause, grouped by the year they were filed?",
-      "gold_sparql": "SELECT ?courtName ?yearValue (COUNT(?docket) AS ?numberOfDockets) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE {\n  ?court <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Court> .\n  ?court <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/court_full_name> ?courtName .\n  ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> .\n  ?docket <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_filed_in_court> ?court .\n  ?docket <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_cause> \"Civil Miscellaneous Case\" .\n  ?docket <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_filed_in_year> ?year .\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Year> .\n  ?year <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/year_value> ?yearValue .\n} GROUP BY ?courtName ?yearValue\nORDER BY ?courtName ?yearValue",
+      "gold_sparql": "SELECT ?courtName ?yearValue (COUNT(?docket) AS ?numberOfDockets) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE {\n  ?court <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Court> .\n  ?court <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/court_full_name> ?courtName .\n  ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> .\n  ?docket <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_filed_in_court> ?court .\n  ?docket <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_cause> \"Civil Miscellaneous Case\" .\n  ?docket <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_filed_in_year> ?year .\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Year> .\n  ?year <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/year_value> ?yearValue .\n} GROUP BY ?courtName ?yearValue\nORDER BY ?courtName ?yearValue",
       "full_expected_items": [
         "District Court, District of Columbia | 2026 | 1",
         "District Court, E.D. Missouri | 2026 | 1"
@@ -3356,7 +3356,7 @@
     {
       "id": "q-013",
       "question": "What are the names of judges who have been assigned to dockets in courts with 'District' in their full name, and how many such dockets has each judge been assigned to?",
-      "gold_sparql": "SELECT ?judgeName (COUNT(DISTINCT ?docket) AS ?docketCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE { \n  ?judge <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Judge> .\n  ?judge <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/judge_name> ?judgeName .\n  ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> .\n  ?docket <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_assigned_to_judge> ?judge .\n  ?docket <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_filed_in_court> ?court .\n  ?court <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/type/Court> .\n  ?court <https://omnix.dev/holdout-v2/holdout-v2-pacer-federal-dockets/pred/court_full_name> ?courtFullName .\n  FILTER(CONTAINS(LCASE(STR(?courtFullName)), \"district\"))\n} GROUP BY ?judgeName\nORDER BY DESC(?docketCount)\nLIMIT 10",
+      "gold_sparql": "SELECT ?judgeName (COUNT(DISTINCT ?docket) AS ?docketCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-pacer-federal-dockets> WHERE { \n  ?judge <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Judge> .\n  ?judge <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/judge_name> ?judgeName .\n  ?docket <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Docket> .\n  ?docket <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_assigned_to_judge> ?judge .\n  ?docket <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/docket_filed_in_court> ?court .\n  ?court <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/type/Court> .\n  ?court <https://graph.infona.ai/holdout-v2/holdout-v2-pacer-federal-dockets/pred/court_full_name> ?courtFullName .\n  FILTER(CONTAINS(LCASE(STR(?courtFullName)), \"district\"))\n} GROUP BY ?judgeName\nORDER BY DESC(?docketCount)\nLIMIT 10",
       "full_expected_items": [
         "Unassigned Judge | 30",
         "M CASEY RODGERS | 19",

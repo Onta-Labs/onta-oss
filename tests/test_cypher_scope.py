@@ -48,11 +48,11 @@ def test_rejects_create_merge_delete():
 
 def test_rejects_sparql_leftovers():
     assert has_sparql_leftovers(
-        "SELECT ?s FROM <https://graph.onta.sh/graphs/t/kg/x> WHERE { ?s ?p ?o }"
+        "SELECT ?s FROM <https://graph.infona.ai/graphs/t/kg/x> WHERE { ?s ?p ?o }"
     )
     with pytest.raises(CypherScopeError, match="SPARQL"):
         confine_generated_cypher(
-            "SELECT ?s FROM <https://graph.onta.sh/graphs/t/kg/x> WHERE { ?s ?p ?o }",
+            "SELECT ?s FROM <https://graph.infona.ai/graphs/t/kg/x> WHERE { ?s ?p ?o }",
             tenant_id="t1",
             kg="kg1",
         )

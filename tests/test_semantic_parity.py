@@ -7,7 +7,7 @@ overlap* — the must-hit entity present, top-1 agreement where the corpus makes
 it deterministic — never ranking equality.
 
 The memory half runs everywhere (no DSN required); the Postgres half is gated
-on ``OMNIX_DATABASE_URL`` and skips without it (CI provides a
+on ``INFONA_DATABASE_URL`` and skips without it (CI provides a
 ``pgvector/pgvector:pg16`` service container). Both halves also carry the
 security-grade tenant-isolation checks, RRF determinism with fake embeddings,
 and the NULL-embedding-rows-are-FTS-only property.
@@ -27,7 +27,7 @@ from infona_client.semantic import (
 )
 from infona_client.semantic.postgres import PostgresSemanticIndex
 
-DSN = os.environ.get("OMNIX_DATABASE_URL", "")
+DSN = os.environ.get("INFONA_DATABASE_URL", "")
 
 KG = "kg1"
 OTHER_KG = "kg2"
@@ -141,7 +141,7 @@ def _t() -> str:
     return f"t-{uuid.uuid4().hex[:10]}"
 
 
-needs_pg_reason = "OMNIX_DATABASE_URL not set; needs live Postgres with pgvector"
+needs_pg_reason = "INFONA_DATABASE_URL not set; needs live Postgres with pgvector"
 
 
 @pytest.fixture(params=["memory", "postgres"])

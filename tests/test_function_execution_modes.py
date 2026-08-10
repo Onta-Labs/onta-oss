@@ -40,14 +40,14 @@ from infona_client.resolver.functions import (
     store_derived_update,
 )
 
-GRAPH = "https://graph.onta.sh/graphs/test-tenant/kg/test"
-ENTITY = "https://graph.onta.sh/entities/Guest/g1"
+GRAPH = "https://graph.infona.ai/graphs/test-tenant/kg/test"
+ENTITY = "https://graph.infona.ai/entities/Guest/g1"
 T0 = datetime(2026, 6, 9, 12, 0, 0, tzinfo=timezone.utc)
 
 AGE_FN = {
     "name": "age",
     "kind": "sparql",
-    "query": "SELECT ?age WHERE { $entity <https://graph.onta.sh/attrs/Guest/age> ?age }",
+    "query": "SELECT ?age WHERE { $entity <https://graph.infona.ai/attrs/Guest/age> ?age }",
 }
 
 

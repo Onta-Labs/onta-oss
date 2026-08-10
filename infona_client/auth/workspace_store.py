@@ -41,7 +41,7 @@ OSS ships NO implementations of either protocol; the premium identity
 integration registers both.
 
 Ownership enforcement (the 403 on someone else's slug) is deliberately gated on
-BOTH a durable store and ``COGRAPH_WORKSPACE_ENFORCE_OWNERSHIP=1``: an
+BOTH a durable store and ``INFONA_WORKSPACE_ENFORCE_OWNERSHIP=1``: an
 in-memory registry that forgets owners on restart would silently re-run
 first-claim-wins, which is worse than not pretending. Rollout is deploy
 (writes on, flag off) → backfill → flip the flag, so lazy-claim only ever
@@ -64,12 +64,12 @@ from infona_client.auth.capabilities import normalize_role
 from infona_client.config import settings
 from infona_client.db.pool import get_pg_pool
 
-logger = structlog.stdlib.get_logger("cograph.auth.workspace_store")
+logger = structlog.stdlib.get_logger("infona.auth.workspace_store")
 
 #: Env flag gating the ownership 403 on ``POST /v1/me/tenants`` (see
 #: :func:`ownership_enforced`). Default off — flipped only after the premium
 #: backfill has seeded the registry (rollout step 3).
-OWNERSHIP_ENFORCE_ENV = "COGRAPH_WORKSPACE_ENFORCE_OWNERSHIP"
+OWNERSHIP_ENFORCE_ENV = "INFONA_WORKSPACE_ENFORCE_OWNERSHIP"
 
 #: Invite validity window. 30 days, matching Clerk sign-up invitation validity —
 #: a live email link pointing at an expired row is a support ticket.
@@ -466,9 +466,9 @@ class PostgresWorkspaceStore:
 
     durable = True
 
-    _WORKSPACES = "cograph_workspaces"
-    _MEMBERS = "cograph_workspace_members"
-    _INVITES = "cograph_workspace_invites"
+    _WORKSPACES = "infona_workspaces"
+    _MEMBERS = "infona_workspace_members"
+    _INVITES = "infona_workspace_invites"
 
     def __init__(self, dsn: Optional[str] = None) -> None:
         self._dsn = dsn if dsn is not None else settings.database_url
@@ -892,7 +892,7 @@ def log_workspace_registry_mode() -> None:
             "workspace_ownership_degraded",
             reason=(
                 f"{OWNERSHIP_ENFORCE_ENV}=1 but no durable store "
-                "(OMNIX_DATABASE_URL unset) — the ownership 403 is OFF and the "
+                "(INFONA_DATABASE_URL unset) — the ownership 403 is OFF and the "
                 "in-memory registry forgets owners on restart"
             ),
         )
@@ -1001,7 +1001,7 @@ def require_subject(api_key: Optional[str]) -> str:
     Deliberately independent of :func:`~infona_client.auth.api_keys.get_tenant`:
     that path 403/401s on tenant grants, but a brand-new user accepting their
     first workspace invite has ZERO tenants yet — their key must still resolve
-    a subject. Keys that carry no subject (static ``OMNIX_API_KEYS`` entries,
+    a subject. Keys that carry no subject (static ``INFONA_API_KEYS`` entries,
     legacy verdicts, no-auth dev mode) get 403 — invites require user-scoped
     auth. Unknown keys stay 401.
     """

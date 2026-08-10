@@ -51,7 +51,7 @@ function makeClient(): Client {
 let dir: string;
 let csv: string;
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "cograph-keyjoin-"));
+  dir = mkdtempSync(join(tmpdir(), "infona-keyjoin-"));
   csv = join(dir, "referrals.csv");
   writeFileSync(csv, "sku,region\nW-1,west\n", "utf-8");
 });

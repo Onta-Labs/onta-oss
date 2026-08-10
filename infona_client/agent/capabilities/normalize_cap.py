@@ -40,7 +40,7 @@ from infona_client.normalization.rules import (
 )
 from infona_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
 
-logger = structlog.stdlib.get_logger("cograph.agent.normalize")
+logger = structlog.stdlib.get_logger("infona.agent.normalize")
 
 # Rule types the execute engine + dry-run preview actually support today
 # (infona_client.normalization.inference._SUPPORTED_RULE_TYPES). The planner

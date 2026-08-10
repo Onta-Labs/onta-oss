@@ -27,7 +27,7 @@ from typing import Any, Iterable, Iterator, TypeVar
 
 import structlog
 
-logger = structlog.stdlib.get_logger("cograph.resolver.sampling")
+logger = structlog.stdlib.get_logger("infona.resolver.sampling")
 
 T = TypeVar("T")
 
@@ -35,7 +35,7 @@ T = TypeVar("T")
 #: asks clients to send "the full file (capped at a few thousand rows)"; the
 #: profiler's statistics converge well below this and the LLM only ever sees a
 #: density-ranked handful of them (``_rank_sample_rows``).
-DEFAULT_SAMPLE_SIZE = int(os.environ.get("OMNIX_CSV_SAMPLE_ROWS", "3000"))
+DEFAULT_SAMPLE_SIZE = int(os.environ.get("INFONA_CSV_SAMPLE_ROWS", "3000"))
 
 
 def reservoir_sample(stream: Iterable[T], k: int, *, seed: int = 0) -> list[T]:

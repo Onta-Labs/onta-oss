@@ -165,7 +165,7 @@ async def test_plan_available_via_registered_provider_without_urls():
 
 
 async def test_provider_without_fetcher_does_not_resurrect_an_implicit_fetcher():
-    """ONTA-293 regression guard, caught in review of onta-oss#287.
+    """ONTA-293 regression guard, caught in review of infona-oss#287.
 
     The first cut gated only on `provider is None and not can_read_urls`, so a
     registered web source satisfied the gate on its own. `execute` then built the

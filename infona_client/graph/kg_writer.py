@@ -98,7 +98,7 @@ from infona_client.graph.scope import GraphScope, GraphScopeError
 if TYPE_CHECKING:
     from infona_client.graph.store import GraphSession, GraphStore
 
-logger = structlog.stdlib.get_logger("cograph.graph.kg_writer")
+logger = structlog.stdlib.get_logger("infona.graph.kg_writer")
 
 Triple = tuple[str, str, str]
 
@@ -110,7 +110,7 @@ Triple = tuple[str, str, str]
 # timeout converts a hang into a caught TimeoutError → logged, index skipped, the
 # write proceeds. Env-overridable for ops.
 _INDEX_UPSERT_TIMEOUT_S = float(
-    os.environ.get("COGRAPH_SPATIOTEMPORAL_UPSERT_TIMEOUT_S", "10")
+    os.environ.get("INFONA_SPATIOTEMPORAL_UPSERT_TIMEOUT_S", "10")
 )
 
 
@@ -120,7 +120,7 @@ def _semantic_upsert_timeout_s() -> float:
     because the semantic hook does strictly more work per write (marker-map
     read + touched-entity re-read + chunk upsert + empty-doc deletes). Read per
     call so tests/ops can tune it without re-importing the module."""
-    return float(os.environ.get("COGRAPH_SEMANTIC_UPSERT_TIMEOUT_S", "10"))
+    return float(os.environ.get("INFONA_SEMANTIC_UPSERT_TIMEOUT_S", "10"))
 
 
 def _semantic_hook_max_entities() -> int:
@@ -131,7 +131,7 @@ def _semantic_hook_max_entities() -> int:
     and repaired by the reconciler's next full scan. Read per call so
     tests/ops can tune it without re-importing the module."""
     try:
-        return int(float(os.environ.get("COGRAPH_SEMANTIC_HOOK_MAX_ENTITIES", "500")))
+        return int(float(os.environ.get("INFONA_SEMANTIC_HOOK_MAX_ENTITIES", "500")))
     except ValueError:
         return 500
 
@@ -139,18 +139,18 @@ def _semantic_hook_max_entities() -> int:
 def _provenance_enabled(*, store_path: bool = False) -> bool:
     """Whether removal/rename primitives write companion-graph provenance events.
 
-    Gated by the same ``COGRAPH_PROVENANCE_ENABLED`` env var the ingest path uses
+    Gated by the same ``INFONA_PROVENANCE_ENABLED`` env var the ingest path uses
     for assertion provenance (default OFF), so tombstone/rewrite events only land
     when governance/undo is switched on.
 
     E8 store-path optional always-on: when ``store_path=True`` and
-    ``COGRAPH_PROVENANCE_STORE_ALWAYS=1``, provenance events fire on the
+    ``INFONA_PROVENANCE_STORE_ALWAYS=1``, provenance events fire on the
     property-graph path even if the global flag is off (useful for hermetic
     isolation QC / Neo4j local without enabling Neptune companion graphs).
     """
-    if os.environ.get("COGRAPH_PROVENANCE_ENABLED", "0") == "1":
+    if os.environ.get("INFONA_PROVENANCE_ENABLED", "0") == "1":
         return True
-    if store_path and os.environ.get("COGRAPH_PROVENANCE_STORE_ALWAYS", "0") == "1":
+    if store_path and os.environ.get("INFONA_PROVENANCE_STORE_ALWAYS", "0") == "1":
         return True
     return False
 
@@ -164,7 +164,7 @@ def graph_backend() -> str:
     Neptune SPARQL path is used (``neptune``). **Do not delete the Neptune path
     until the cutover gate lands.**
     """
-    return (os.environ.get("COGRAPH_GRAPH_BACKEND") or "neptune").strip().lower()
+    return (os.environ.get("INFONA_GRAPH_BACKEND") or "neptune").strip().lower()
 
 
 def _resolve_graph_session(
@@ -180,7 +180,7 @@ def _resolve_graph_session(
     Priority:
     1. Explicit ``session``
     2. Explicit ``store`` + scope derived from graph URI or tenant/kg
-    3. ``COGRAPH_GRAPH_BACKEND=neo4j`` → process :func:`get_graph_store`
+    3. ``INFONA_GRAPH_BACKEND=neo4j`` → process :func:`get_graph_store`
     """
     if session is not None:
         # When both an explicit session and instance_graph are supplied, fail
@@ -228,7 +228,7 @@ def _resolve_graph_session(
 def _value_history_enabled() -> bool:
     """Whether an attribute UPDATE records a dated value-history entry (ONTA-236).
 
-    Gated by ``COGRAPH_VALUE_HISTORY_ENABLED`` (default OFF) so bulk ingest stays
+    Gated by ``INFONA_VALUE_HISTORY_ENABLED`` (default OFF) so bulk ingest stays
     byte-stable and the extra read-before-delete + companion-graph write are only
     paid where "what changed, old→new, when" matters. When ON, ``delete_facts``
     reads the prior value of each predicate-scoped clear it is given a NEW value
@@ -236,7 +236,7 @@ def _value_history_enabled() -> bool:
     mechanism is GENERAL — it versions ANY attribute of ANY type, with zero
     domain knowledge.
     """
-    return os.environ.get("COGRAPH_VALUE_HISTORY_ENABLED", "0") == "1"
+    return os.environ.get("INFONA_VALUE_HISTORY_ENABLED", "0") == "1"
 
 
 def _chunk(items: list, size: int):
@@ -461,7 +461,7 @@ async def insert_facts(
     **Dual-backend (E3 migration):**
 
     * When ``store`` / ``session`` is provided, **or**
-      ``COGRAPH_GRAPH_BACKEND=neo4j``, facts are written through the property-
+      ``INFONA_GRAPH_BACKEND=neo4j``, facts are written through the property-
       graph path (:mod:`infona_client.graph.pg_ops`) against a scoped
       :class:`GraphSession`. Prefer structured :class:`Fact` objects; legacy
       ``instance_triples`` are mapped via :func:`triples_to_facts`.
@@ -475,7 +475,7 @@ async def insert_facts(
     ``provenance_triples`` / ``validity_triples`` / ``suppression_triples`` /
     ``reopen_facts`` are RDF companion-graph payloads and apply on the Neptune
     path. On the Neo4j path, optional ``:ProvEvent`` assert hooks fire when
-    ``COGRAPH_PROVENANCE_ENABLED=1`` (minimal Wave-1 companions; full validity /
+    ``INFONA_PROVENANCE_ENABLED=1`` (minimal Wave-1 companions; full validity /
     suppression node ports are E7).
 
     ``run_id`` (ONTA-271): when given, returns a deterministic A6
@@ -622,7 +622,7 @@ async def _index_semantic(
     spatio-temporal hook above) so EVERY converged writer auto-indexes with no
     per-caller wiring.
 
-    Env-gated OFF by default (``COGRAPH_SEMANTIC_INDEX_ENABLED`` — cost/rollout
+    Env-gated OFF by default (``INFONA_SEMANTIC_INDEX_ENABLED`` — cost/rollout
     control: indexing implies embedding spend and index growth). Marker-driven:
     only predicates the tenant's textKind map (``graph/text_markers.py``) marks
     ``free_text`` are extracted — free text has no distinguishing datatype, so
@@ -634,8 +634,8 @@ async def _index_semantic(
     ``title`` now touches the index where it previously touched nothing. That is
     the cost side of the fix: a KG with no marked attribute at all used to pay
     zero Neptune re-reads per write and now pays one bounded, VALUES-scoped
-    SELECT (still capped by ``COGRAPH_SEMANTIC_HOOK_MAX_ENTITIES``, still under
-    the one timeout, still best-effort). ``COGRAPH_SEMANTIC_IDENTITY_INDEX=0``
+    SELECT (still capped by ``INFONA_SEMANTIC_HOOK_MAX_ENTITIES``, still under
+    the one timeout, still best-effort). ``INFONA_SEMANTIC_IDENTITY_INDEX=0``
     restores the old write-path behavior — but note it is not free to flip: the
     next reconcile of each KG then sees every identity doc as a ghost and
     batch-deletes it (symmetric and self-healing on flip-back, but a mass delete
@@ -842,7 +842,7 @@ async def delete_facts(
     * ``subjects`` — whole-entity removal (all props + incident rels in scope).
     * ``triples`` — specific ``(s, p, o)``; object ``None`` = predicate-scoped clear.
 
-    **Dual-backend:** with ``store`` / ``session`` / ``COGRAPH_GRAPH_BACKEND=neo4j``,
+    **Dual-backend:** with ``store`` / ``session`` / ``INFONA_GRAPH_BACKEND=neo4j``,
     uses :mod:`pg_ops` (property-graph). Otherwise Neptune SPARQL (unchanged).
 
     Does NOT itself touch derived secondary indexes: call
@@ -1021,7 +1021,7 @@ async def _record_value_history(
 ) -> None:
     """Version any genuine value CHANGE among ``sp_pairs`` before they're cleared.
 
-    Called by :func:`delete_facts` (gated by ``COGRAPH_VALUE_HISTORY_ENABLED``)
+    Called by :func:`delete_facts` (gated by ``INFONA_VALUE_HISTORY_ENABLED``)
     for the predicate-scoped-delete step of an attribute UPDATE — the one place
     that sees both the OLD value (still in the graph) and the NEW value the caller
     is about to write. For every ``(s, p)`` in this chunk that the caller declared
@@ -1100,7 +1100,7 @@ async def rewrite_subject(
     indexes re-key cheaply. Dual-backend: GraphStore path re-keys Entity ``id`` +
     rel endpoints via :func:`pg_ops.rewrite_entity_id`; Neptune path uses
     ``rewrite_subject_update``. Provenance rewrite event gated by
-    ``COGRAPH_PROVENANCE_ENABLED``.
+    ``INFONA_PROVENANCE_ENABLED``.
 
     Does NOT itself touch derived secondary indexes: call
     :func:`refresh_after_write` with ``rewritten_subjects={old: new}`` once per

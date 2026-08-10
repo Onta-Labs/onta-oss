@@ -16,7 +16,7 @@ hardening suite — so it becomes the substrate's shared safety primitive withou
 a behaviour change. ``infona_client.research.fetch`` now re-exports these names
 for published-package compatibility.
 
-Boundary: OSS. Imports only stdlib. No ``from cograph.*`` and no proprietary
+Boundary: OSS. Imports only stdlib. No ``from infona.*`` and no proprietary
 identifiers.
 """
 
@@ -32,7 +32,7 @@ from urllib.parse import urlparse
 
 import structlog
 
-logger = structlog.stdlib.get_logger("cograph.retrieval.safety")
+logger = structlog.stdlib.get_logger("infona.retrieval.safety")
 
 
 # --- SSRF guard --------------------------------------------------------------- #

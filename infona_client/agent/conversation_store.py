@@ -309,7 +309,7 @@ class PostgresConversationStore:
     hostnames live here.
     """
 
-    _TABLE = "cograph_conversations"
+    _TABLE = "infona_conversations"
 
     def __init__(self, dsn: Optional[str] = None) -> None:
         self._dsn = dsn if dsn is not None else settings.database_url

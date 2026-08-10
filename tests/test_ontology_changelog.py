@@ -57,8 +57,8 @@ def test_serialize_parse_roundtrip_full_change_record():
             slot_name="phone_num",
             from_name="phone_num",
             to_name="phone",
-            old_value="https://graph.onta.sh/types/Guest/attrs/phone_num",
-            new_value="https://graph.onta.sh/types/Guest/attrs/phone",
+            old_value="https://graph.infona.ai/types/Guest/attrs/phone_num",
+            new_value="https://graph.infona.ai/types/Guest/attrs/phone",
         ),
         ChangeRecord(
             kind=ChangeKind.DEPRECATE,
@@ -107,7 +107,7 @@ def test_serialize_excludes_none_fields():
 
 
 def test_changelog_graph_uri_is_companion():
-    g = "https://graph.onta.sh/graphs/acme"
+    g = "https://graph.infona.ai/graphs/acme"
     assert changelog_graph_uri_for(g) == f"{g}/changelog"
     # Trailing slash stripped — no double slash.
     assert changelog_graph_uri_for(g + "/") == f"{g}/changelog"
@@ -116,27 +116,27 @@ def test_changelog_graph_uri_is_companion():
 def test_query_scopes_to_tenant_companion_only():
     """TENANT ISOLATION: FROM is exactly the caller's companion — never another
     tenant's graph and never a cross-tenant UNION."""
-    g = "https://graph.onta.sh/graphs/tenant-a"
+    g = "https://graph.infona.ai/graphs/tenant-a"
     q = ontology_changelog_query(g)
     assert f"FROM <{g}/changelog>" in q
     assert "tenant-b" not in q
     assert "UNION" not in q.upper()
-    assert "https://graph.onta.sh/graphs/global/changelog" not in q
+    assert "https://graph.infona.ai/graphs/global/changelog" not in q
 
 
 def test_query_filters_and_pagination():
-    g = "https://graph.onta.sh/graphs/t"
+    g = "https://graph.infona.ai/graphs/t"
     q = ontology_changelog_query(
         g,
         since="2026-07-01T00:00:00Z",
-        subject="https://graph.onta.sh/graphs/t",
+        subject="https://graph.infona.ai/graphs/t",
         action="commit_ontology",
         limit=25,
         offset=50,
     )
     assert 'FILTER(?timestamp > "2026-07-01T00:00:00Z"^^' in q
-    assert f"<{GOV_SUBJECT}> <https://graph.onta.sh/graphs/t>" in q or (
-        f"<{GOV_SUBJECT}>" in q and "https://graph.onta.sh/graphs/t" in q
+    assert f"<{GOV_SUBJECT}> <https://graph.infona.ai/graphs/t>" in q or (
+        f"<{GOV_SUBJECT}>" in q and "https://graph.infona.ai/graphs/t" in q
     )
     assert 'FILTER(?action = "commit_ontology")' in q
     assert "LIMIT 25" in q
@@ -147,15 +147,15 @@ def test_query_filters_and_pagination():
 
 def test_query_rejects_bad_limit_offset():
     with pytest.raises(ValueError):
-        ontology_changelog_query("https://graph.onta.sh/graphs/t", limit=0)
+        ontology_changelog_query("https://graph.infona.ai/graphs/t", limit=0)
     with pytest.raises(ValueError):
-        ontology_changelog_query("https://graph.onta.sh/graphs/t", offset=-1)
+        ontology_changelog_query("https://graph.infona.ai/graphs/t", offset=-1)
 
 
 def test_query_escapes_action_and_since_literals():
     """Crafted action/since cannot break out of the SPARQL string literal."""
     q = ontology_changelog_query(
-        "https://graph.onta.sh/graphs/t",
+        "https://graph.infona.ai/graphs/t",
         action='x" } FILTER(true) #',
         since='2020-01-01"^^<http://evil>',
     )
@@ -209,7 +209,7 @@ async def test_fetch_reconstructs_entry_from_delta_alone():
             {
                 "entry": f"{GOV_NS}log/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
                 "action": "commit_ontology",
-                "subject": "https://graph.onta.sh/graphs/acme",
+                "subject": "https://graph.infona.ai/graphs/acme",
                 "timestamp": "2026-07-28T12:00:00Z",
                 "tenant": "acme",
                 "actor": "tester",
@@ -222,12 +222,12 @@ async def test_fetch_reconstructs_entry_from_delta_alone():
         ]
     )
     entries = await fetch_ontology_changelog(
-        neptune, "https://graph.onta.sh/graphs/acme"
+        neptune, "https://graph.infona.ai/graphs/acme"
     )
     assert len(entries) == 1
     e = entries[0]
     assert e.action == "commit_ontology"
-    assert e.subject == "https://graph.onta.sh/graphs/acme"
+    assert e.subject == "https://graph.infona.ai/graphs/acme"
     assert e.revision == 3
     assert e.actor == "tester"
     assert [c.kind for c in e.changes] == [
@@ -238,7 +238,7 @@ async def test_fetch_reconstructs_entry_from_delta_alone():
     assert e.changes[1].slot_name == "amount"
     # The fetch only ever FROM-s the companion changelog graph.
     sent = neptune.query.await_args.args[0]
-    assert "FROM <https://graph.onta.sh/graphs/acme/changelog>" in sent
+    assert "FROM <https://graph.infona.ai/graphs/acme/changelog>" in sent
     assert sent.count("FROM <") == 1
     assert "UNION" not in sent.upper()
 
@@ -249,7 +249,7 @@ async def test_fetch_tolerates_governance_thin_entry():
     # Mirror what changelog_triples writes.
     thin = changelog_triples(
         "add_type",
-        "https://graph.onta.sh/types/public/Hotel",
+        "https://graph.infona.ai/types/public/Hotel",
         "acme",
         "2026-07-28T12:00:00+00:00",
     )
@@ -267,7 +267,7 @@ async def test_fetch_tolerates_governance_thin_entry():
         ]
     )
     entries = await fetch_ontology_changelog(
-        neptune, "https://graph.onta.sh/graphs/global/public"
+        neptune, "https://graph.infona.ai/graphs/global/public"
     )
     assert len(entries) == 1
     assert entries[0].action == "add_type"
@@ -280,7 +280,7 @@ async def test_fetch_returns_empty_on_neptune_error():
     neptune = AsyncMock()
     neptune.query.side_effect = RuntimeError("neptune down")
     out = await fetch_ontology_changelog(
-        neptune, "https://graph.onta.sh/graphs/t"
+        neptune, "https://graph.infona.ai/graphs/t"
     )
     assert out == []
 
@@ -324,7 +324,7 @@ def _entry_uris_from_inserts(inserts: list[str]) -> list[str]:
 @pytest.mark.asyncio
 async def test_commit_emits_full_delta_and_target_graph_uri():
     n = _WriteCaptureNeptune()
-    g = "https://graph.onta.sh/graphs/acme"
+    g = "https://graph.infona.ai/graphs/acme"
     await commit_ontology(
         n,
         g,
@@ -362,7 +362,7 @@ async def test_commit_emits_full_delta_and_target_graph_uri():
 async def test_append_only_n_commits_n_distinct_uuid_entries():
     """N commits → N distinct entry URIs; no DELETE against the changelog graph."""
     n = _WriteCaptureNeptune()
-    g = "https://graph.onta.sh/graphs/t-append"
+    g = "https://graph.infona.ai/graphs/t-append"
     for i in range(5):
         await commit_ontology(
             n,
@@ -400,7 +400,7 @@ async def test_same_ms_commits_still_distinct_entry_nodes(monkeypatch):
     monkeypatch.setattr(oc, "datetime", _FixedDT)
 
     n = _WriteCaptureNeptune()
-    g = "https://graph.onta.sh/graphs/t-samems"
+    g = "https://graph.infona.ai/graphs/t-samems"
     await commit_ontology(
         n, g, [OntologyMutation(op=OntologyOpKind.UPSERT_TYPE, type_name="A")]
     )
@@ -418,6 +418,6 @@ async def test_same_ms_commits_still_distinct_entry_nodes(monkeypatch):
 @pytest.mark.asyncio
 async def test_empty_commit_writes_no_changelog():
     n = _WriteCaptureNeptune()
-    g = "https://graph.onta.sh/graphs/t-empty"
+    g = "https://graph.infona.ai/graphs/t-empty"
     await commit_ontology(n, g, [])
     assert _changelog_inserts(n.updates, g) == []

@@ -14,7 +14,7 @@
 
 ### P0 — Must have for launch
 
-- [ ] **Local graph DB support** — Docker Compose with Apache Fuseki so users don't need Neptune/AWS. `docker compose up` + `omnix ingest` should work out of the box.
+- [ ] **Local graph DB support** — Docker Compose with Apache Fuseki so users don't need Neptune/AWS. `docker compose up` + `infona ingest` should work out of the box.
 - [ ] **Strip premium features** — move enrichment, text ingestion, Neptune-specific optimizations behind feature flags or into a separate package
 - [ ] **Remove hardcoded AWS endpoints** — ALB URLs, ECR refs, Neptune endpoints all from env vars
 - [ ] **Clean repo** — remove untracked CSVs, .bak files, eval reports from git history
