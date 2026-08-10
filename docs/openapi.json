@@ -244,13 +244,17 @@
                 }
               }
             }
+          },
+          "410": {
+            "description": "Gone \u2014 raw SPARQL is unavailable when COGRAPH_GRAPH_BACKEND=neo4j. Use agent/SDK/high-level APIs."
           }
         },
         "security": [
           {
             "APIKeyHeader": []
           }
-        ]
+        ],
+        "description": "Execute a scoped raw SPARQL SELECT/ASK/CONSTRUCT (Neptune backend only).\n\nThe query must declare the graphs it reads (`FROM` / `FROM NAMED` naming workspace-owned IRIs). Tenant confinement is enforced before the store is touched.\n\n**Neo4j:** returns **410 Gone** when `COGRAPH_GRAPH_BACKEND=neo4j` \u2014 there is no SPARQL fa\u00e7ade. Prefer `/ask`, `/agent`, explore, or typed write routes. Unchanged on Neptune (default)."
       }
     },
     "/graphs/{tenant}/update": {
@@ -288,13 +292,17 @@
                 }
               }
             }
+          },
+          "410": {
+            "description": "Gone \u2014 raw SPARQL Update is unavailable when COGRAPH_GRAPH_BACKEND=neo4j. Use agent/SDK/high-level APIs."
           }
         },
         "security": [
           {
             "APIKeyHeader": []
           }
-        ]
+        ],
+        "description": "Execute raw SPARQL Update (operator-only; Neptune backend only).\n\nOperator-only wherever authentication is configured. Arbitrary SPARQL Update cannot be confined to one workspace by inspecting its text \u2014 use `/triples`, `/kgs`, or ingest for workspace-scoped writes.\n\n**Neo4j:** returns **410 Gone** when `COGRAPH_GRAPH_BACKEND=neo4j`. Unchanged on Neptune (default)."
       }
     },
     "/graphs/{tenant}/functions": {

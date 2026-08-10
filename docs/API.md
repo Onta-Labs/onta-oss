@@ -221,11 +221,16 @@ has to name a full IRI inside the calling workspace, for example
 default graph as the union of every named graph, so a query with no dataset
 clause would read every workspace.
 
+**Neo4j:** when `COGRAPH_GRAPH_BACKEND=neo4j`, this route returns **410 Gone**
+(no SPARQL façade). Use `/ask`, `/agent`, explore, or typed write routes instead.
+Unchanged on Neptune (default).
+
 **Request body:** `SPARQLQuery`
 
 **200:** Successful Response
 **400:** No dataset clause, unparseable SPARQL, or `SERVICE`
 **403:** A graph outside this workspace
+**410:** Gone — raw SPARQL unavailable under neo4j backend
 **422:** Validation Error
 **503:** The SPARQL parser used to confine the query is not installed
 
@@ -240,10 +245,14 @@ cannot be confined to one workspace by inspecting its text: `DROP ALL` and
 graph-less removals act on everything while naming no graph. Use `/triples`,
 `/kgs` or the ingest routes for workspace-scoped writes.
 
+**Neo4j:** when `COGRAPH_GRAPH_BACKEND=neo4j`, this route returns **410 Gone**.
+Unchanged on Neptune (default).
+
 **Request body:** `SPARQLUpdate`
 
 **200:** Successful Response
 **403:** Not an operator
+**410:** Gone — raw SPARQL Update unavailable under neo4j backend
 **422:** Validation Error
 
 ---

@@ -672,3 +672,6 @@ def test_every_route_on_the_passthrough_router_is_guarded():
             or "require_raw_update_access" in source
         )
         assert guarded, f"{route.path} has no tenant-confinement guard"
+        assert "reject_raw_sparql_if_neo4j" in source, (
+            f"{route.path} missing neo4j SPARQL hard-break (E9)"
+        )
