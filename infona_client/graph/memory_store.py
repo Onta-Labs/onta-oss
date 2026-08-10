@@ -4,7 +4,7 @@ Implements the same scope-enforcement surface as :class:`Neo4jGraphStore` so
 isolation tests do not need a live database. Supports:
 
 * Entity MERGE / MATCH by ``(tenant_id, kg, id)`` (templates)
-* Entity list filtered by ``primary_type``
+* Entity list filtered by ``INSTANCE_OF`` → Class (ADR 0013; not primary_type alone)
 * Domain-label SET via :func:`infona_client.graph.labels.set_entity_type_labels`
 * Native writer methods used by :mod:`infona_client.graph.pg_ops` (E3):
   literals (list-union), typed rels (B4 MERGE key), delete, rewrite, ProvEvent
@@ -40,6 +40,7 @@ from infona_client.graph.schema_bootstrap import (
     ENTITY_GET_CYPHER,
     ENTITY_LIST_BY_TYPE_CYPHER,
     ENTITY_LIST_BY_TYPE_PAGE_CYPHER,
+    ENTITY_LITERAL_GREP_CYPHER,
     ENTITY_MERGE_CYPHER,
     ENTITY_RELS_CYPHER,
     ONTO_ATTR_LIST_CYPHER,
@@ -77,6 +78,7 @@ _COUNT_BY_TYPE_SINGLE_NORM = _norm_cypher(ENTITY_COUNT_BY_TYPE_CYPHER)
 _COUNT_TOTAL_NORM = _norm_cypher(ENTITY_COUNT_TOTAL_CYPHER)
 _DETAIL_NORM = _norm_cypher(ENTITY_DETAIL_CYPHER)
 _RELS_NORM = _norm_cypher(ENTITY_RELS_CYPHER)
+_LITERAL_GREP_NORM = _norm_cypher(ENTITY_LITERAL_GREP_CYPHER)
 _FILTER_PROP_EQ_NORM = _norm_cypher(ENTITY_FILTER_PROP_EQ_CYPHER)
 _HOP_OUT_NORM = _norm_cypher(ENTITY_1HOP_OUT_CYPHER)
 _ENTITIES_OF_TYPE_NORM = _norm_cypher(ENTITIES_OF_TYPE_CYPHER)
@@ -2115,6 +2117,87 @@ class MemoryGraphStore:
             return getattr(row, prop_key, None)
         return row.props.get(prop_key)
 
+    def _entity_literal_grep(
+        self,
+        tenant_id: str,
+        kg: str,
+        needle: str,
+        *,
+        case_sensitive: bool,
+        type_name: str | None,
+        predicate_leaf: str | None,
+        limit: int,
+    ) -> list[GraphRecord]:
+        """Substring scan over Entity name + props (grep dual-backend)."""
+        from infona_client.graph.facts import RESERVED_ENTITY_PROPERTY_KEYS
+
+        skip = set(RESERVED_ENTITY_PROPERTY_KEYS) | {
+            "labels",
+            "props",
+            "created_at",
+            "updated_at",
+            "elementId",
+        }
+        # ``name`` is greppable (display label) even though reserved for writes.
+        skip.discard("name")
+
+        needle_cmp = needle if case_sensitive else needle.lower()
+        type_filter = (type_name or "").strip() or None
+        pred_filter = (predicate_leaf or "").strip() or None
+        if type_filter:
+            matched_ids = set(
+                self._entity_ids_via_instance_of(tenant_id, kg, [type_filter])
+            )
+        else:
+            matched_ids = None
+
+        out: list[GraphRecord] = []
+        for (t, k, eid), row in sorted(self._entities.items(), key=lambda x: x[0][2]):
+            if t != tenant_id or k != kg:
+                continue
+            if matched_ids is not None and eid not in matched_ids:
+                # Also allow primary_type denorm match when INSTANCE_OF missing.
+                if row.primary_type != type_filter:
+                    continue
+            candidates: list[tuple[str, Any]] = []
+            if row.name is not None:
+                candidates.append(("name", row.name))
+            for pk, pv in sorted(row.props.items()):
+                if pk in skip:
+                    continue
+                candidates.append((pk, pv))
+            for attr, val in candidates:
+                if pred_filter is not None and attr != pred_filter:
+                    continue
+                if val is None:
+                    continue
+                # Multi-value lists: any element may match (scan each).
+                values: list[Any]
+                if isinstance(val, (list, tuple)):
+                    values = list(val)
+                else:
+                    values = [val]
+                for item in values:
+                    text = str(item)
+                    hay = text if case_sensitive else text.lower()
+                    if needle_cmp not in hay:
+                        continue
+                    out.append(
+                        GraphRecord(
+                            data={
+                                "entity_uri": row.id,
+                                "label": row.name,
+                                "type": row.primary_type,
+                                "attr": attr,
+                                "value": text,
+                            }
+                        )
+                    )
+                    if len(out) >= limit:
+                        return out
+                    break  # one match per (entity, attr) is enough
+        return out
+
     def _entity_filter_prop_eq(
         self,
         tenant_id: str,
@@ -2260,6 +2343,20 @@ class MemoryGraphStore:
             if entity_id is None:
                 return []
             return self._entity_rels(tenant_id, kg, str(entity_id))
+
+        if norm == _LITERAL_GREP_NORM:
+            lim = params.get("limit")
+            type_name = params.get("type_name")
+            pred = params.get("predicate_leaf")
+            return self._entity_literal_grep(
+                tenant_id,
+                kg,
+                str(params.get("needle") or ""),
+                case_sensitive=bool(params.get("case_sensitive")),
+                type_name=None if type_name is None else str(type_name),
+                predicate_leaf=None if pred is None else str(pred),
+                limit=int(lim) if lim is not None else 51,
+            )
 
         if norm == _FILTER_PROP_EQ_NORM:
             lim = params.get("limit")

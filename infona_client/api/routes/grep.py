@@ -459,6 +459,63 @@ async def grep_graph(
     limit = max(1, min(body.limit, LIMIT_MAX))
     graph_uri = kg_graph_uri(tenant.tenant_id, kg_name)
 
+    # Dual-backend (E9): GraphStore property scan when neo4j / store injected.
+    from infona_client.graph.explore_store import grep_literals as pg_grep
+    from infona_client.graph.iri import ONTO_PRED_PREFIX
+
+    pred_raw = body.predicate.strip() if body.predicate else None
+    pred_leaf: str | None = None
+    if pred_raw:
+        if pred_raw.startswith("http://") or pred_raw.startswith("https://"):
+            pred_leaf = _leaf(pred_raw)
+        else:
+            pred_leaf = pred_raw
+
+    pg_result = await pg_grep(
+        tenant_id=tenant.tenant_id,
+        kg_name=kg_name,
+        needle=needle,
+        case_sensitive=body.case_sensitive,
+        type_name=type_name,
+        predicate_leaf=pred_leaf,
+        limit=limit,
+    )
+    if pg_result is not None:
+        hits, truncated = pg_result
+        matches = [
+            GrepMatch(
+                entity_uri=h.entity_uri,
+                label=h.label or "",
+                type=h.type or "",
+                predicate=(
+                    LABEL_PRED
+                    if h.attr in ("name", "label")
+                    else f"{ONTO_PRED_PREFIX}{h.attr}"
+                ),
+                attr=h.attr,
+                value=_truncate(h.value, VALUE_CHARS),
+                snippet=_snippet(
+                    h.value, needle, case_sensitive=body.case_sensitive
+                ),
+            )
+            for h in hits
+            if h.entity_uri
+        ]
+        logger.info(
+            "grep_scan",
+            tenant=tenant.tenant_id,
+            kg=kg_name,
+            matches=len(matches),
+            truncated=truncated,
+            backend="graph_store",
+        )
+        return GrepResponse(
+            matches=matches,
+            count=len(matches),
+            limit=limit,
+            truncated=truncated,
+        )
+
     sparql = _scan_query(
         graph_uri,
         needle,

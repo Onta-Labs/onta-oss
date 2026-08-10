@@ -20,9 +20,17 @@ from infona_client.api.deps import get_neptune_client
 from infona_client.auth.api_keys import TenantContext, get_tenant
 from infona_client.graph.client import NeptuneClient
 from infona_client.graph.history import fetch_value_history
+from infona_client.graph.kg_writer import graph_backend
 from infona_client.graph.queries import kg_graph_uri
 
 router = APIRouter()
+
+_HISTORY_NOT_IMPLEMENTED_NEO4J = (
+    "Value history is not yet available when INFONA_GRAPH_BACKEND=neo4j "
+    "(SPARQL companion history graph is Neptune-only). Use the Neptune "
+    "backend, or track INFONA_VALUE_HISTORY on the shared write path once "
+    "the property-graph history store lands."
+)
 
 # A well-formed absolute IRI for the subject/predicate narrowing filters: an
 # ``http(s)://`` scheme with NO IRIREF-forbidden character. This is the route-
@@ -74,6 +82,12 @@ async def get_value_history(
     # tenant via kg_graph_uri, so a valid narrow can only ever read this tenant.
     _require_abs_iri("subject", subject)
     _require_abs_iri("predicate", predicate)
+
+    # Dual-backend (E9): value-history companion is SPARQL-only today. Degrade
+    # clearly on neo4j without breaking the default Neptune path.
+    if graph_backend() == "neo4j":
+        raise HTTPException(status_code=501, detail=_HISTORY_NOT_IMPLEMENTED_NEO4J)
+
     graph_uri = kg_graph_uri(tenant.tenant_id, kg_name)
     changes = await fetch_value_history(
         client,
