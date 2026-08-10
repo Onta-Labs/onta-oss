@@ -1,9 +1,30 @@
 # Neo4j local / CI (Wave 1 GraphStore)
 
-Companion to [ADR 0012](../../docs/adr/0012-neo4j-cypher-migration.md) and the
-[property-graph model](../../docs/plans/neo4j-property-graph-model.md) in the
-parent monorepo. This OSS package owns the **GraphStore protocol**, the
-official Python driver adapter, schema bootstrap, and Docker Compose service.
+Companion to [ADR 0012](../../docs/adr/0012-neo4j-cypher-migration.md) and
+**[ADR 0013 — RDF semantics in Neo4j](../../docs/adr/0013-rdf-semantics-in-neo4j.md)**
+(assertion-centric model). Implementer contract:
+[`docs/plans/neo4j-rdf-semantic-model.md`](../../docs/plans/neo4j-rdf-semantic-model.md)
+in the parent monorepo (supersedes Wave‑1 “props + typed rels only” as instance
+SoT). This OSS package owns the **GraphStore protocol**, the official Python
+driver adapter, schema bootstrap, Assertion write path, RDFS helpers, and Docker
+Compose service.
+
+### ADR 0013 model (short)
+
+* **Labels:** `Entity`, `Class`, `Property`, `Assertion` (plus legacy
+  `OntoType` / `OntoAttr` catalog until cutover).
+* **Instance truth:** `:Assertion` nodes — `(a)-[:SUBJECT]->(:Entity)`,
+  `(a)-[:PREDICATE]->(:Property)`, object via `[:OBJECT]->(:Entity)` or
+  `literal_value` / type via `[:OBJECT_CLASS]->(:Class)`.
+* **Provenance on Assertion:** `source_url`, `verified_at`, `run_id`,
+  `confidence`.
+* **Derived only:** Entity property cache, typed shortcut rels, `INSTANCE_OF`
+  (dual-written from type Assertions by `kg_writer` / `pg_ops`).
+* **Helpers:** `cograph_client.graph.rdfs_helpers` (Python + Cypher templates) —
+  compose these; do not 1:1 translate SPARQL.
+* **Identity:** Entity/Class/Property `id` = RDF-compatible IRI strings
+  (`entity_uri` / `type_uri` / `property_uri`); Assertion id =
+  `make_assertion_id` / `mint_assertion_id` (SHA-256 of s|p|o|source).
 
 ## Quick start
 
@@ -22,8 +43,9 @@ http://localhost:7474).
 
 ## Schema bootstrap (required before uniqueness-sensitive writes)
 
-Model §7 uniqueness is `(Entity.tenant_id, Entity.kg, Entity.id)`. Apply once
-per database (idempotent `IF NOT EXISTS`):
+Uniqueness (ADR 0013 §12): `(tenant_id, kg, id)` on `Entity`, `Class`,
+`Property`, and `Assertion`. Apply once per database (idempotent
+`IF NOT EXISTS`):
 
 ```python
 import asyncio
@@ -241,9 +263,10 @@ recovery, eval rebaseline against golden suite CI, richer NL coverage.
 ## Tests
 
 ```bash
-# Hermetic (default CI) — in-memory store + scope unit tests
+# Hermetic (default CI) — in-memory store + scope unit tests + ADR 0013
 pytest tests/test_graph_store.py tests/test_explore_store.py \
   tests/test_kg_writer_store.py tests/test_rails_graph_store_write.py \
+  tests/test_rdf_semantic_model.py \
   tests/test_cypher_scope.py tests/test_cypher_prompts.py \
   tests/test_example_bank_cypher.py tests/test_ask_cypher_pipeline.py -q
 
