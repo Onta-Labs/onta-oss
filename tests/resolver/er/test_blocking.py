@@ -106,6 +106,38 @@ def test_person_email_phone_blocking_still_works():
     assert "soundex_core" in kinds
 
 
+def test_sparql_candidates_query_interpolates_placeholders():
+    """Neptune lookup SPARQL must embed graph / type / keys (not raw braces)."""
+    import asyncio
+
+    captured: list[str] = []
+
+    class _FakeNeptune:
+        async def query(self, sparql: str):
+            captured.append(sparql)
+            return {"results": {"bindings": []}}
+
+    blocker = SparqlBlocker(_FakeNeptune())
+    keys = generate_block_keys(
+        N.normalize(EntitySignals(name="A B", email="a@b.com", phone="+12125550000"))
+    )
+
+    async def run():
+        await blocker.candidates_with_signals(
+            "https://graph.infona.ai/graphs/t/kg/k",
+            "https://graph.infona.ai/types/Person",
+            keys,
+        )
+
+    asyncio.run(run())
+    assert captured, "expected a SPARQL query"
+    q = captured[0]
+    assert "{instance_graph}" not in q
+    assert "https://graph.infona.ai/graphs/t/kg/k" in q
+    assert "https://graph.infona.ai/types/Person" in q
+    assert "email_local:" in q or "blockKey" in q
+
+
 def test_northern_lights_org_variants_share_block_key():
     """Anti-overfit: org ER must work beyond Acme Corp fixtures."""
     variants = [

@@ -156,7 +156,10 @@ async def rebuild_type(
     scorer: Scorer | None = None,
 ) -> dict:
     """Re-resolve one ER-enabled type in one KG. Returns a small stat dict."""
-    blocker = SparqlBlocker(client)
+    # Dual-path: when neo4j backend is active, SparqlBlocker reads block keys /
+    # signals via GraphStore Assertions instead of SPARQL.
+    store = resolve_optional_graph_store()
+    blocker = SparqlBlocker(client, store=store)
     entities = await blocker.all_entities_with_signals(instance_graph, type_uri)
     before = len(entities)
     if before < 2:
@@ -182,9 +185,7 @@ async def rebuild_type(
     # (ADR 0007): one batched URI rewrite per (loser -> canonical). A rewrite is a
     # single semantic event, so the derived indexes re-key (cheap) rather than
     # evict-and-recompute — done once, below, for the whole batch.
-    # E7: resolve GraphStore once for the merge batch when neo4j backend is
-    # active; None keeps the Neptune SPARQL default.
-    store = resolve_optional_graph_store()
+    # store already resolved above for the blocker; reuse for rewrite_subject.
     for canonical, loser in merges:
         await rewrite_subject(
             client,

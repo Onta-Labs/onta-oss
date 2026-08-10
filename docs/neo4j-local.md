@@ -239,11 +239,24 @@ and rails keep the Neptune SPARQL path (no Neo4j credentials required). When
 backend is `neo4j`, missing store config fails closed (`GraphConfigError`).
 
 **Still SPARQL-only by design (this epic):** normalization SELECTs that find
-candidates before the write, ER signal load (`SparqlBlocker`), ontology-graph
-config rows (normalization rules/policy stores), companion RDF provenance on
-the Neptune path. Full explore/admin rewrite is E9.
+candidates before the write, ontology-graph config rows (normalization
+rules/policy stores), companion RDF provenance on the Neptune path. Full
+explore/admin rewrite is E9.
 
-Hermetic tests: `tests/test_rails_graph_store_write.py` (MemoryGraphStore).
+**ER blocking (store dual-path):** `SparqlBlocker` routes
+`candidates_with_signals` / `all_entities_with_signals` through
+`GraphStoreBlocker` when `INFONA_GRAPH_BACKEND=neo4j` (or an explicit store is
+passed). Index triples (`er/blockKey`, `er/erSignal_*`) map to literal
+Assertions via `classify_triple` → `insert_facts`. Neptune SPARQL path is
+unchanged when the backend is unset/`neptune`.
+
+**Attr citations (store):** RDF `attr_meta/…/source_url|provenance|verified_at`
+companions fold onto Assertion provenance fields on the store path (ADR 0013);
+`:AttrCitation` remains a secondary residual. Neptune keeps attr_meta companions.
+
+Hermetic tests: `tests/test_rails_graph_store_write.py`,
+`tests/test_er_blocking_store.py`, `tests/test_e8_provenance_qc_store.py`
+(MemoryGraphStore).
 
 ## NL → Cypher /ask (ADR 0013 semantic helpers)
 
