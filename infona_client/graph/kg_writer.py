@@ -1298,11 +1298,20 @@ async def refresh_after_write(
         except Exception:  # noqa: BLE001 — non-blocking, mirrors the ingest routes
             logger.warning("embed_types_failed", types=types, exc_info=True)
 
-    # 3. Register the KG in the tenant metadata graph (idempotent, best-effort)
-    #    so non-UI writers don't leave it invisible to list_kgs (ONTA-153).
-    #    Neptune SPARQL path only — Neo4j KG registry is deferred (model B7 / E4).
-    if kg_name and neptune is not None and graph_backend() != "neo4j" and store is None and session is None:
-        await ensure_kg_registered(neptune, tenant_id, kg_name)
+    # 3. Register the KG so non-UI writers don't leave it invisible to list_kgs
+    #    (ONTA-153). Neo4j uses :KnowledgeGraph nodes; SPARQL uses tenant meta.
+    if kg_name:
+        if graph_backend() == "neo4j" or store is not None or session is not None:
+            try:
+                from infona_client.graph.kg_registry import ensure_kg_registered_store
+
+                await ensure_kg_registered_store(tenant_id, kg_name)
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "ensure_kg_registered_store_failed", kg_name=kg_name, exc_info=True
+                )
+        elif neptune is not None:
+            await ensure_kg_registered(neptune, tenant_id, kg_name)
 
     # 4. Drop the stored triple count so list_kgs recomputes on next read.
     #    Must run on every successful instance write (not only Explorer recompute):

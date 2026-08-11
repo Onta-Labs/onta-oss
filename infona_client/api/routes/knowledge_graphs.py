@@ -239,11 +239,12 @@ async def list_kgs(
 ):
     """List all knowledge graphs for a tenant, with dashboard-summary stats.
 
-    Triple counts are read from the metadata graph (stored alongside the KG
-    registration) in the SAME query that lists the KGs — no per-KG scan on the
-    hot path. KGs with no stored count yet (legacy, or freshly invalidated
-    after ingest) fall back to a live COUNT(*); those run in PARALLEL and are
-    written back so the next read is again a single tiny lookup.
+    **Neo4j:** registry is ``:KnowledgeGraph`` nodes (see
+    :mod:`infona_client.graph.kg_registry`). Entity/edge stats still come from
+    the durable stats store when available.
+
+    **Legacy SPARQL:** triple counts are read from the metadata graph (stored
+    alongside the KG registration) in the SAME query that lists the KGs.
 
     Entity/edge counts come from the durable per-KG stats store (kept fresh by
     the shared write/refresh path) — a single relational read, no Neptune. Rows
@@ -260,7 +261,39 @@ async def list_kgs(
     ``recompute-stats`` gate this ticket added, since it schedules the identical
     recompute.
     """
+    from infona_client.graph.kg_registry import list_registered_kgs, neo4j_kg_registry_active
+
     persist = can_write(tenant.role)
+
+    if neo4j_kg_registry_active():
+        entries = await list_registered_kgs(tenant.tenant_id)
+        # Durable stats only — no SPARQL backfill against decommissioned Neptune.
+        stats_by_kg: dict = {}
+        try:
+            from infona_client.graph.kg_stats_store import get_kg_stats_store
+
+            for r in await get_kg_stats_store().list_for_tenant(tenant.tenant_id):
+                stats_by_kg[r.kg_name] = r
+        except Exception:  # noqa: BLE001
+            stats_by_kg = {}
+        enriching = await _enriching_kgs(job_store, tenant.tenant_id)
+        out: list[KGInfo] = []
+        for e in entries:
+            s = stats_by_kg.get(e["name"])
+            out.append(
+                KGInfo(
+                    name=e["name"],
+                    description=e.get("description") or "",
+                    triple_count=int(e.get("triple_count") or 0),
+                    entity_count=s.entity_count if s else 0,
+                    edge_count=s.edge_count if s else 0,
+                    status="enriching" if e["name"] in enriching else "active",
+                    stats_updated_at=s.updated_at.isoformat() if s else None,
+                    ai_description=s.ai_description if s else "",
+                )
+            )
+        return out
+
     base = tenant_graph_uri(tenant.tenant_id)
 
     # One query: KG registrations + their stored triple counts.
@@ -433,7 +466,9 @@ async def create_kg(
 ):
     """Create a new knowledge graph for a tenant.
 
-    Idempotent-safe: guarded with ``FILTER NOT EXISTS`` so calling it twice
+    **Neo4j:** ``:KnowledgeGraph`` registry upsert (idempotent).
+
+    **Legacy SPARQL:** guarded with ``FILTER NOT EXISTS`` so calling it twice
     never duplicates the registration triples and never clobbers an existing
     registration (or its ``kg_description``). This is the same registration the
     shared write path performs via ``ensure_kg_registered`` (ONTA-153) — here we
@@ -450,6 +485,29 @@ async def create_kg(
     are escaped via the canonical ``_escape_literal`` before going into a SPARQL
     literal — no statement-breakout on a ``"`` / ``\\`` / newline.
     """
+    from infona_client.graph.kg_registry import neo4j_kg_registry_active, upsert_registered_kg
+
+    if neo4j_kg_registry_active():
+        row = await upsert_registered_kg(
+            tenant.tenant_id,
+            body.name,
+            description=body.description or "",
+            triple_count=0,
+            only_if_absent=False,
+        )
+        emit(
+            "kg_created",
+            distinct_id=distinct_id_for(tenant.subject, tenant.tenant_id),
+            tenant=tenant.tenant_id,
+            kg=body.name,
+            has_description=bool(body.description),
+        )
+        return KGInfo(
+            name=row["name"],
+            description=row.get("description") or body.description or "",
+            triple_count=int(row.get("triple_count") or 0),
+        )
+
     base = tenant_graph_uri(tenant.tenant_id)
     kg_uri = _kg_meta_uri(tenant.tenant_id, body.name)
 
@@ -522,6 +580,36 @@ async def delete_kg(
     schedule_store=Depends(get_schedule_store),
 ):
     """Delete a knowledge graph and all its data."""
+    from infona_client.graph.kg_registry import delete_registered_kg, neo4j_kg_registry_active
+
+    if neo4j_kg_registry_active():
+        # Registry row first; instance entity purge is best-effort via Cypher.
+        await delete_registered_kg(tenant.tenant_id, kg_name)
+        try:
+            from infona_client.graph.store import get_graph_store
+
+            store = get_graph_store()
+            run = getattr(store, "_run", None)
+            if callable(run):
+                await run(
+                    "MATCH (n {tenant_id: $tenant_id, kg: $kg}) DETACH DELETE n",
+                    {"tenant_id": tenant.tenant_id, "kg": kg_name},
+                    writing=True,
+                    database=None,
+                )
+        except Exception:  # noqa: BLE001
+            import structlog
+            structlog.get_logger("infona.kg").warning(
+                "neo4j_kg_instance_delete_failed", kg_name=kg_name, exc_info=True
+            )
+        try:
+            from infona_client.graph.kg_stats_store import get_kg_stats_store
+
+            await get_kg_stats_store().delete(tenant.tenant_id, kg_name)
+        except Exception:  # noqa: BLE001
+            pass
+        return {"deleted": kg_name}
+
     base = tenant_graph_uri(tenant.tenant_id)
     graph = kg_graph_uri(tenant.tenant_id, kg_name)
     # The shared builder, not a fourth hand-rolled copy of this URI (ONTA-422):
