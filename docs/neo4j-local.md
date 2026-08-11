@@ -16,30 +16,38 @@ Compose service.
 what shipped, holdout rebaseline / Aura notes, test commands, and links to
 ADR 0012/0013, success gates, and the cutover runbook.
 
-**Neo4j is the default and only supported production path.** Unset
-`INFONA_GRAPH_BACKEND` (or set it to `neo4j`) selects GraphStore / Cypher.
-Amazon Neptune + SPARQL is **legacy** — kept for older deploys and hermetic
-SPARQL-path tests, **not for new work**.
-
-| Track | Backend | Query language |
-|-------|---------|----------------|
-| **Production (default)** | Neo4j | Cypher / GraphStore |
-| **Legacy only** | Neptune / Fuseki | SPARQL |
+**Neo4j is the ONLY graph backend (ONTA-527).** `INFONA_GRAPH_BACKEND` no longer
+selects anything: unset means `neo4j`, and any other value raises
+`GraphConfigError` at startup or first use. Amazon Neptune was decommissioned
+2026-08-11 and the SPARQL execution path it fed is deleted, so a stale
+`INFONA_GRAPH_BACKEND=neptune` must fail loudly rather than point instance
+reads/writes at a store that does not exist.
 
 Hard rules:
 
-1. **Default backend is `neo4j`** — GraphStore writers, explore reads, NL→Cypher
-   `/ask`, and health probes use Neo4j unless you explicitly set
-   `INFONA_GRAPH_BACKEND=neptune` or `fuseki`.
+1. **One backend, one switch** — `graph_backend()` lives only in
+   `infona_client/graph/store.py`. Do not re-derive it from `os.environ`;
+   `tests/test_neo4j_only_backend.py` fails if you do (it used to be defined in
+   four modules).
 2. **BYOK Neo4j credentials** — set `NEO4J_URI` / `NEO4J_USER` /
    `NEO4J_PASSWORD` (see docker-compose for local). The package never ships a
    platform key.
-3. **Legacy SPARQL remains in-tree** — client, `sparql_scope`, and public SPARQL
-   routes still exist for `INFONA_GRAPH_BACKEND=neptune|fuseki`. Do not extend
-   them for new features; under neo4j, public raw SPARQL returns **410 Gone**.
-4. **History (GET `/history`)** — Neo4j lists **Assertion provenance** for a
-   subject via `rdfs_helpers.session_assertion_history`. Neptune still uses the
-   SPARQL companion ``…/history`` graph (legacy only).
+3. **Store resolution fails closed** — `get_optional_graph_store()` never
+   returns `None`. Tests that want an in-process store call
+   `configure_graph_store(MemoryGraphStore())`; they do not select a backend.
+4. **Public raw SPARQL is gone** — `POST /graphs/{tenant}/query`, `/update` and
+   all `/triples` verbs return **410 Gone** unconditionally.
+   `graph/sparql_scope.py` stays, because it still confines the NL layer's
+   generated queries — it is the guard, not the executor.
+5. **History (GET `/history`)** lists **Assertion provenance** for a subject via
+   `rdfs_helpers.session_assertion_history`. The SPARQL companion `…/history`
+   graph carried `old_value`; that field is empty until the property-graph
+   ValueHistory port lands.
+
+Residual SPARQL reads (Explorer aggregates, NL→SPARQL generation, ontology
+reads, QC invariants) are still in-tree awaiting their GraphStore ports — see
+the purge tracker in the parent repo's `docs/plans/neo4j-sparql-inventory.md`
+§0. They may shrink, never grow.
 
 CI: hermetic MemoryGraphStore / golden / isolation tests always run; live
 `@pytest.mark.neo4j` runs against an optional Neo4j service container.
@@ -188,10 +196,10 @@ if they collide with reserved system labels (`Entity`, `OntoType`, …).
 
 ## Explore / KG-admin reads (E5)
 
-Module: `infona_client.graph.explore_store`. Dual-backend like `kg_writer` /
-`ontology_catalog`: pass `store=` / `session=` or use the default neo4j backend.
-Legacy SPARQL explore runs only when `INFONA_GRAPH_BACKEND` is explicitly
-`neptune` / `fuseki` (helpers return `None` for the GraphStore path).
+Module: `infona_client.graph.explore_store`. Pass `store=` / `session=` or let it
+resolve the process store. There is no SPARQL fallback: a missing store raises
+`GraphConfigError` rather than returning `None`, so an unconfigured deployment
+cannot read as "this KG is empty" (ONTA-527).
 
 ```python
 from infona_client.graph.explore_store import (
@@ -246,16 +254,15 @@ candidates before the write, ontology-graph config rows (normalization
 rules/policy stores), companion RDF provenance on the Neptune path. Full
 explore/admin rewrite is E9.
 
-**ER blocking (store dual-path):** `SparqlBlocker` routes
-`candidates_with_signals` / `all_entities_with_signals` through
-`GraphStoreBlocker` when the backend is `neo4j` (default; or an explicit store
-is passed). Index triples (`er/blockKey`, `er/erSignal_*`) map to literal
-Assertions via `classify_triple` → `insert_facts`. Legacy Neptune SPARQL path
-runs only when `INFONA_GRAPH_BACKEND=neptune`.
+**ER blocking:** `SparqlBlocker` routes `candidates_with_signals` /
+`all_entities_with_signals` through `GraphStoreBlocker`. Index triples
+(`er/blockKey`, `er/erSignal_*`) map to literal Assertions via `classify_triple`
+→ `insert_facts`. (The class keeps its historical name; its SPARQL path is no
+longer reachable.)
 
-**Attr citations (store):** RDF `attr_meta/…/source_url|provenance|verified_at`
-companions fold onto Assertion provenance fields on the store path (ADR 0013);
-`:AttrCitation` remains a secondary residual. Neptune keeps attr_meta companions.
+**Attr citations:** RDF `attr_meta/…/source_url|provenance|verified_at`
+companions fold onto Assertion provenance fields (ADR 0013); `:AttrCitation`
+remains a secondary residual.
 
 Hermetic tests: `tests/test_rails_graph_store_write.py`,
 `tests/test_er_blocking_store.py`, `tests/test_e8_provenance_qc_store.py`
@@ -263,10 +270,11 @@ Hermetic tests: `tests/test_rails_graph_store_write.py`,
 
 ## NL → Cypher /ask (ADR 0013 semantic helpers)
 
-With the default Neo4j backend, `POST /graphs/{tenant}/ask` (and
-`NLQueryPipeline.ask`) generate **Cypher over the RDF-semantic model** and
-execute via GraphStore. Legacy Neptune SPARQL `/ask` only when
-`INFONA_GRAPH_BACKEND=neptune`.
+`POST /graphs/{tenant}/ask` (and `NLQueryPipeline.ask`) generate **Cypher over
+the RDF-semantic model** and execute via GraphStore. `neo4j_ask_enabled()` no
+longer consults the env — only an explicit `use_cypher=False` from an
+eval/archive harness still reaches the legacy SPARQL generator, which is
+awaiting deletion (ONTA-527 follow-up).
 
 **Quality bar:** answers are measured by the **golden-query suite** (expected
 answer sets vs gold) — **not** by SPARQL string match or SPARQL↔Cypher text
