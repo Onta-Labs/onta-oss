@@ -56,6 +56,10 @@ SUBJ = "https://graph.infona.ai/entities/Guest/g1"
 PRED = attr_uri("Guest", "email")
 OBJ = "alice@example.com"
 
+# Per-KG instance graph. The write path derives the tenant/kg scope from this
+# URI, so a bare tenant graph (`…/graphs/t1`) is a GraphScopeError, not a write.
+INGEST_GRAPH = "https://graph.infona.ai/graphs/t1/kg/k"
+
 
 @pytest.fixture
 def mock_neptune():
@@ -348,15 +352,14 @@ async def test_flag_on_collector_defers_provenance_zero_per_entity_inserts(mock_
     assert by_pred[f"{PROV_NS}source"] == "crm.csv"
 
 
-@pytest.mark.asyncio
-async def test_multi_entity_ingest_flushes_one_batched_provenance_insert(mock_neptune):
-    """End-to-end through _resolve_and_insert: a multi-entity ingest emits
-    exactly ONE batched INSERT into the companion provenance graph (chunked
-    only past the instance batcher's 500-triple batch size), carrying every
-    entity's statement metadata — not one awaited update per entity."""
-    resolver = _make_resolver(mock_neptune, provenance=True)
+async def _ingest_two_guests(resolver, mock_neptune) -> None:
+    """Two-entity ingest through the real ``_resolve_and_insert`` pipeline.
+
+    The graph is a per-KG URI (``…/graphs/t1/kg/k``): the write path derives the
+    tenant/kg scope from it, and a bare tenant URI now raises ``GraphScopeError``
+    rather than silently writing to a tenant-wide graph.
+    """
     mock_neptune.batch_exists.return_value = set()
-    graph = "https://graph.infona.ai/graphs/t1"
     extraction = ExtractionResult(
         entities=[
             ExtractedEntity(
@@ -371,29 +374,101 @@ async def test_multi_entity_ingest_flushes_one_batched_provenance_insert(mock_ne
         relationships=[],
         source_text="",
     )
-    result = IngestResult(entities_extracted=2)
-
     await resolver._resolve_and_insert(
-        extraction, graph, {"Guest": ""},
+        extraction, INGEST_GRAPH, {"Guest": ""},
         {"Guest": {"email": AttributeSchema(name="email", datatype="string")}},
-        "crm.csv", result, {}, {}, "batch-1",
+        "crm.csv", IngestResult(entities_extracted=2), {}, {}, "batch-1",
     )
 
-    prov_graph = provenance_graph_uri(graph)
-    calls = _update_sparql(mock_neptune)
-    prov_calls = [c for c in calls if f"GRAPH <{prov_graph}>" in c]
-    assert len(prov_calls) == 1, "ONE batched provenance INSERT per ingest"
+
+@pytest.mark.asyncio
+async def test_multi_entity_ingest_flushes_one_batched_provenance_write(
+    mock_neptune, monkeypatch
+):
+    """End-to-end through _resolve_and_insert: a multi-entity ingest makes ONE
+    call to the shared write path carrying every entity's statement metadata —
+    not one awaited write per entity.
+
+    **Ported by ONTA-527.** The flush used to be an INSERT into the companion
+    provenance graph, so the batching was countable in the emitted SPARQL text.
+    The write runs through ``GraphStore`` now and emits no SPARQL at all, so the
+    batching is asserted at the seam where it actually happens: a single
+    ``insert_facts`` call whose ``provenance_triples`` carries BOTH entities'
+    statement metadata, with the per-entity-write negative unchanged. Whether
+    that payload then LANDS anywhere is a separate question — see the xfail
+    below, which is the half that did not survive the cutover.
+    """
+    import infona_client.resolver.schema_resolver as schema_resolver_mod
+
+    resolver = _make_resolver(mock_neptune, provenance=True)
+
+    calls: list[tuple[tuple, dict]] = []
+    real_insert_facts = schema_resolver_mod.insert_facts
+
+    async def _spy(*args, **kwargs):
+        calls.append((args, kwargs))
+        return await real_insert_facts(*args, **kwargs)
+
+    monkeypatch.setattr(schema_resolver_mod, "insert_facts", _spy)
+
+    await _ingest_two_guests(resolver, mock_neptune)
+
+    assert len(calls) == 1, "ONE batched write per ingest, not one per entity"
+    (_neptune, graph_uri, instance_triples), kwargs = calls[0]
+    assert graph_uri == INGEST_GRAPH
+    prov_triples = kwargs["provenance_triples"]
     sid1 = statement_id(
         "https://graph.infona.ai/entities/Guest/g1", PRED, "alice@example.com",
     )
     sid2 = statement_id(
         "https://graph.infona.ai/entities/Guest/g2", PRED, "bob@example.com",
     )
-    assert sid1 in prov_calls[0] and sid2 in prov_calls[0]
-    # Instance triples still flush in their own batched INSERT, provenance-free.
-    instance_calls = [c for c in calls if f"GRAPH <{prov_graph}>" not in c]
-    assert len(instance_calls) == 1
-    assert PROV_NS not in instance_calls[0]
+    prov_objects = {o for (_s, _p, o) in prov_triples}
+    assert sid1 in prov_objects and sid2 in prov_objects
+    # Instance triples ride the same single call, provenance-free.
+    assert instance_triples
+    assert all(PROV_NS not in s and PROV_NS not in o for (s, _p, o) in instance_triples)
+    # And nothing is written per entity — the whole ingest awaits no SPARQL.
+    assert mock_neptune.update.call_count == 0
+
+
+@pytest.mark.xfail(
+    reason=(
+        "LOST CAPABILITY (ONTA-527): the per-fact provenance record is no longer "
+        "recoverable after a write. graph/kg_writer.py::insert_facts DROPS its "
+        "provenance_triples payload — the ADR 0002 §4 statement metadata that "
+        "graph/provenance.py::build_provenance_triples produced (prov:source, "
+        "prov:confidence, prov:timestamp, prov:statement) went to a companion "
+        "named graph, and the SPARQL write of that graph is gone. The "
+        "property-graph substitute, graph/pg_ops.py::create_prov_event, records "
+        "only that an assert happened: it carries no confidence, no statement id, "
+        "and its `source` comes from the Fact, which is None for an ordinary "
+        "attribute value (ingest carries the source as a SEPARATE onto/source "
+        "triple), so 'who asserted this value' is unrecoverable for exactly the "
+        "domain facts provenance exists to attribute."
+    ),
+    strict=True,
+)
+@pytest.mark.asyncio
+async def test_ingested_fact_provenance_is_recoverable_after_the_write(
+    mock_neptune, monkeypatch
+):
+    """After an ingest with provenance ON, the source that asserted a value fact
+    must be recoverable from the store."""
+    from infona_client.graph.store import get_graph_store
+
+    monkeypatch.setenv("INFONA_PROVENANCE_ENABLED", "1")
+    resolver = _make_resolver(mock_neptune, provenance=True)
+    await _ingest_two_guests(resolver, mock_neptune)
+
+    events = [
+        e
+        for e in get_graph_store().snapshot_prov()
+        if e["subject_id"] == "https://graph.infona.ai/entities/Guest/g1"
+        and e["object_repr"] == "alice@example.com"
+    ]
+    assert events, "no provenance record for the ingested value"
+    assert events[0]["source"] == "crm.csv"
 
 
 # --- Removal / rename events (ADR 0007): tombstone + rewrite builders ----------
