@@ -48,8 +48,9 @@ def memory_store(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_get_optional_graph_store_default_none(monkeypatch):
-    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
+def test_get_optional_graph_store_legacy_neptune_none(monkeypatch):
+    """Legacy SPARQL backend returns None (no GraphStore required)."""
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
     reset_graph_store_for_tests()
     assert graph_backend() == "neptune"
     assert get_optional_graph_store() is None
@@ -377,13 +378,13 @@ def test_er_rebuild_source_wires_store_kwarg():
 
 
 # ---------------------------------------------------------------------------
-# Neptune default must not require store
+# Legacy Neptune must not require store
 # ---------------------------------------------------------------------------
 
 
-def test_insert_facts_neptune_default_ignores_missing_store(monkeypatch):
-    """Without neo4j backend, insert_facts does not call get_graph_store."""
-    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
+def test_insert_facts_legacy_neptune_ignores_missing_store(monkeypatch):
+    """With legacy neptune backend, insert_facts does not call get_graph_store."""
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
     reset_graph_store_for_tests()
     neptune = AsyncMock()
     neptune.update = AsyncMock()

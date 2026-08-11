@@ -44,9 +44,9 @@ def _graph(tenant: str = "demo-tenant", kg: str = "bookstore") -> str:
     return f"{IRI_BASE}/graphs/{tenant}/kg/{kg}"
 
 
-def test_graph_backend_default_neptune(monkeypatch):
+def test_graph_backend_default_neo4j(monkeypatch):
     monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
-    assert graph_backend() == "neptune"
+    assert graph_backend() == "neo4j"
 
 
 def test_sanitize_prop_key_and_reserved():

@@ -48,21 +48,18 @@ def test_update_returns_410_when_neo4j_backend(
         app.dependency_overrides.pop(get_tenant, None)
 
 
-def test_query_still_accepts_when_backend_default(
+def test_query_returns_410_when_backend_default(
     client, auth_headers, mock_neptune, monkeypatch
 ):
+    """Default backend is neo4j — public SPARQL hard-breaks with 410."""
     monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
-    mock_neptune.query.return_value = {
-        "head": {"vars": ["s"]},
-        "results": {"bindings": []},
-    }
     res = client.post(
         f"/graphs/{TENANT}/query",
         headers=auth_headers,
         json={"query": SCOPED_SELECT},
     )
-    assert res.status_code == 200, res.text
-    mock_neptune.query.assert_awaited_once()
+    assert res.status_code == 410, res.text
+    mock_neptune.query.assert_not_called()
 
 
 def test_query_still_accepts_when_backend_neptune(
@@ -82,10 +79,10 @@ def test_query_still_accepts_when_backend_neptune(
     mock_neptune.query.assert_awaited_once()
 
 
-def test_update_still_accepts_operator_when_backend_default(
+def test_update_still_accepts_operator_when_backend_neptune(
     app, client, auth_headers, mock_neptune, monkeypatch
 ):
-    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
     app.dependency_overrides[get_tenant] = lambda: TenantContext(
         tenant_id=TENANT, api_key="k", is_operator=True
     )

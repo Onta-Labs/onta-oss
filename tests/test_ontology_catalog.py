@@ -431,14 +431,14 @@ def test_resolve_catalog_session_env_backend(store, monkeypatch):
 
 
 def test_resolve_catalog_session_none_when_neptune(monkeypatch):
-    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
     reset_graph_store_for_tests()
     assert graph_backend() == "neptune"
     assert resolve_catalog_session(layer="tenant", tenant_id="demo") is None
 
 
 def test_sparql_path_requires_client_without_store(monkeypatch):
-    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
     reset_graph_store_for_tests()
 
     async def run():
