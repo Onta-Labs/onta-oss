@@ -286,8 +286,32 @@ def _load_router_plugins(app: FastAPI) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging(settings.log_level)
-    logger.info("starting", neptune_endpoint=settings.neptune_endpoint)
-    app.state.neptune_client = NeptuneClient(settings.neptune_endpoint, backend=settings.graph_backend)
+    logger.info(
+        "starting",
+        graph_backend=settings.graph_backend,
+        neptune_endpoint=settings.neptune_endpoint,
+    )
+    # SPARQL client is legacy-only. When product backend is neo4j, still attach a
+    # NeptuneClient for any residual SPARQL call sites, but do NOT pass "neo4j"
+    # as the SPARQL path layout (BACKENDS has no neo4j key).
+    sparql_backend = (
+        settings.graph_backend
+        if settings.graph_backend in ("neptune", "fuseki")
+        else "neptune"
+    )
+    app.state.neptune_client = NeptuneClient(
+        settings.neptune_endpoint or "http://127.0.0.1:8182",
+        backend=sparql_backend,
+    )
+    if (settings.graph_backend or "").strip().lower() == "neo4j":
+        try:
+            from infona_client.graph.store import get_graph_store
+
+            store = get_graph_store()
+            await store.bootstrap_schema()
+            logger.info("neo4j_graph_store_ready")
+        except Exception as exc:  # noqa: BLE001 — surface in logs; health will degrade
+            logger.error("neo4j_graph_store_bootstrap_failed", error=str(exc))
     # ONTA-399: re-hydrate durable Enhanced global skills into the process
     # mirror so authored layer-B content survives restart/redeploy without
     # depending on the image's file seed. Best-effort — never blocks startup.
