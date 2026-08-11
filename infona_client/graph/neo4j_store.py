@@ -217,24 +217,24 @@ class Neo4jGraphSession:
         if prop_key not in ("name", "source", "primary_type"):
             prop_key = sanitize_prop_key(prop_key)
         # Token is [A-Za-z_][A-Za-z0-9_]* — safe to interpolate as a property key.
+        # Multi-value union: normalize cur + incoming to lists in Cypher without
+        # `IS :: LIST` predicates (those mis-type scalars on Neo4j 5.x community).
         if multi_union:
             cypher = (
                 "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg, id: $id})\n"
-                f"WITH e, e.`{prop_key}` AS cur\n"
-                "WITH e, cur, $value AS incoming\n"
-                "SET e.`"
-                + prop_key
-                + "` = CASE\n"
-                "  WHEN cur IS NULL THEN incoming\n"
-                "  WHEN cur = incoming THEN cur\n"
-                "  WHEN cur IS :: LIST<ANY> AND incoming IS :: LIST<ANY> THEN\n"
-                "    cur + [x IN incoming WHERE NOT x IN cur]\n"
-                "  WHEN cur IS :: LIST<ANY> AND NOT incoming IN cur THEN cur + [incoming]\n"
-                "  WHEN cur IS :: LIST<ANY> THEN cur\n"
-                "  WHEN incoming IS :: LIST<ANY> THEN\n"
-                "    CASE WHEN cur IN incoming THEN incoming ELSE [cur] + incoming END\n"
-                "  ELSE [cur, incoming]\n"
-                "END\n"
+                f"WITH e, e.`{prop_key}` AS cur, $value AS incoming\n"
+                "WITH e,\n"
+                "  CASE\n"
+                "    WHEN cur IS NULL THEN []\n"
+                "    WHEN cur IS LIST THEN cur\n"
+                "    ELSE [cur]\n"
+                "  END AS curList,\n"
+                "  CASE\n"
+                "    WHEN incoming IS NULL THEN []\n"
+                "    WHEN incoming IS LIST THEN incoming\n"
+                "    ELSE [incoming]\n"
+                "  END AS inList\n"
+                f"SET e.`{prop_key}` = curList + [x IN inList WHERE NOT x IN curList]\n"
                 "RETURN e.id AS id"
             )
         else:
