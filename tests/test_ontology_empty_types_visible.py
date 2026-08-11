@@ -244,48 +244,74 @@ async def test_disjoint_instance_types_route_to_instance_fallback():
 # ask() end-to-end: honest zero-row answer, no substitution, no "absent" claim
 # --------------------------------------------------------------------------- #
 
-async def test_ask_declared_empty_type_is_honest(monkeypatch):
+async def test_ask_declared_empty_type_is_honest():
     """`ask('list all Sprockets')` must see Sprocket [no instances] in the
-    ontology it feeds the LLM, run a Sprocket query, and return 0 rows — never
-    claiming Sprocket is absent nor substituting the populated Widget type."""
-    _ontology_cache.clear()
-    # Keep the full (non-semantic) ontology path so _fetch_ontology runs.
-    monkeypatch.setattr("infona_client.nlp.pipeline.get_embedding_service", lambda: None)
+    ontology it feeds the generator, target Sprocket, and return 0 rows — never
+    claiming Sprocket is absent nor substituting the populated Widget type.
 
-    pipe = _pipe(WidgetNeptune(active=("Widget",)))
+    **Ported by ONTA-527.** ask() dispatches to ``_ask_cypher`` for every caller
+    now, so the old body — stub ``_generate_sparql``, capture its ``ontology``
+    argument, assert on the emitted SPARQL — hooked a method that is no longer
+    called on this path. The MECHANISM survived on a different substrate: the
+    Cypher path builds its ontology from
+    ``ontology_catalog.schema_types_for_kg`` and
+    ``cypher_generate.format_schema_types_for_cypher`` marks any zero-count
+    declared type ``[no instances]``. So the fixture moves from a SPARQL fake to
+    a seeded catalog + KG, and the "did it substitute a populated type?" check
+    moves from the query TEXT (the target type is a bound parameter now, not a
+    literal in the Cypher) to the resolved target and the row count: had it
+    silently swapped in Widget, the answer would carry Widget's two instances
+    instead of being empty.
+    """
+    from infona_client.graph.kg_writer import insert_facts
+    from infona_client.graph.ontology_catalog import upsert_attribute, upsert_type
+    from infona_client.graph.ontology_queries import entity_uri
+    from infona_client.graph.store import get_graph_store
 
-    captured = {}
+    tenant = "inv-tenant"
+    store = get_graph_store()
+    declared = {
+        "Widget": [("serial", "string"), ("color", "string"),
+                   ("pairs_with", "Sprocket")],
+        "Sprocket": [("torque", "integer"), ("mounts", "Gadget")],
+        "Gadget": [("weight", "float")],
+    }
+    for type_name, attrs in declared.items():
+        await upsert_type(
+            name=type_name, layer="tenant", tenant_id=tenant, store=store
+        )
+        for attr, datatype in attrs:
+            await upsert_attribute(
+                type_name=type_name, attr_name=attr, datatype=datatype,
+                layer="tenant", tenant_id=tenant, store=store,
+            )
+    # Only Widget is populated; Sprocket and Gadget are declared-but-empty.
+    for i in range(2):
+        widget = entity_uri("Widget", f"w{i}")
+        await insert_facts(
+            None, KG, [(widget, RDF_TYPE, f"{TYPES}Widget")], store=store
+        )
 
-    async def fake_generate(question, ontology, graph_uri="", error_feedback="", examples_text=""):
-        captured["ontology"] = ontology
-        # A well-behaved LLM, given "Sprocket [no instances]", queries Sprocket
-        # honestly instead of substituting Widget or denying the type.
-        return {
-            "sparql": (
-                f"SELECT ?s FROM <{KG}> WHERE {{ ?s <{RDF_TYPE}> <{TYPES}Sprocket> }}"
-            ),
-            "explanation": "Sprocket is declared in the ontology but has no instances yet.",
-            "functions_needed": [],
-        }
-
-    async def fake_rephrase(question, bindings, max_rows=None):
-        return ""
-
-    monkeypatch.setattr(pipe, "_generate_sparql", fake_generate)
-    monkeypatch.setattr(pipe, "_rephrase_via_openrouter", fake_rephrase)
-
+    # anthropic_key="" keeps the LLM branch unreachable — the deterministic
+    # Cypher fixtures answer a "list all X" question, so this stays hermetic.
+    pipe = NLQueryPipeline(
+        WidgetNeptune(active=("Widget",)), anthropic_key="", graph_store=store
+    )
     result = await pipe.ask("list all Sprockets", GRAPH, instance_graph=KG)
 
-    # The ontology the LLM actually saw exposes Sprocket as declared-but-empty.
-    assert "Sprocket" in captured["ontology"]
-    assert "[no instances]" in captured["ontology"]
-    assert "Sprocket" in result.ontology
+    # The ontology the generator actually saw exposes Sprocket as
+    # declared-but-empty, with its schema intact, next to the populated Widget.
+    assert result.timing.get("ontology_source") == "graph_store_catalog"
+    parsed = _parse_types(result.ontology)
+    assert parsed == {"Widget": False, "Sprocket": True, "Gadget": True}
+    assert "torque" in result.ontology  # empty type keeps its declared slots
 
-    # The query ran against Sprocket (NOT substituted to the populated Widget).
-    assert f"{TYPES}Sprocket" in result.sparql
-    assert f"{TYPES}Widget" not in result.sparql
+    # The query targeted Sprocket, NOT the populated Widget.
+    assert "Sprocket" in result.explanation
+    assert "Widget" not in result.explanation
 
-    # Zero rows, and no "does not exist" claim leaked into the answer/explanation.
+    # Zero rows — not Widget's two — and no "does not exist" claim.
+    assert result.timing.get("rows") == 0.0
     assert result.answer == "No results found."
     combined = (result.answer + " " + (result.explanation or "")).lower()
     assert "does not exist" not in combined
