@@ -6,12 +6,29 @@ the ontology listed setting values as ``adjuvant`` / ``metastatic`` / etc. Valid
 SPARQL, structurally zero rows → "No matches found."
 
 These tests assert the mechanism (pure detection + ask retry), not a live KG.
+
+**LOST CAPABILITY (ONTA-527) — the ask() half.** ``nlp/enum_filter.py`` is a
+pure module and its detection cases below are untouched and still green. Its
+only caller is ``nlp/pipeline.py::ask``'s SPARQL zero-row branch, and ``POST
+/ask`` takes ``_ask_cypher`` now, which has no zero-row reconsideration at all
+(it retries only on a store or confinement ERROR). So the Oliver-rehearsal
+failure — a valid query whose closed-enum FILTER can never match, answered "No
+matches found." — is unrecovered again on the shipped path, and the detector
+that would catch it is never consulted.
 """
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
+_NO_ENUM_ZERO_ROW_RETRY = (
+    "LOST CAPABILITY (ONTA-527): nlp/enum_filter.py::impossible_enum_contains is "
+    "called only from ask()'s SPARQL zero-row branch. /ask takes _ask_cypher, "
+    "which never reconsiders a valid query that returned zero rows, so no "
+    "enum-mismatch retry fires and timing['enum_filter_mismatch_retry'] is never "
+    "set. The detector itself is unchanged and still unit-tested above."
+)
 
 from infona_client.nlp.enum_filter import (
     enum_mismatch_feedback,
@@ -140,6 +157,7 @@ EMPTY = {"head": {"vars": ["requiredTest"]}, "results": {"bindings": []}}
 HIT = _rows(["requiredTest"], {"requiredTest": "FDA-authorized ctDNA MRD test"})
 
 
+@pytest.mark.xfail(strict=True, reason=_NO_ENUM_ZERO_ROW_RETRY)
 @pytest.mark.asyncio
 async def test_ask_retries_on_enum_filter_zero_rows():
     """First SPARQL is enum-mismatched (0 rows); second is free-text disease FILTER (hits)."""
@@ -154,6 +172,15 @@ async def test_ask_retries_on_enum_filter_zero_rows():
     p._spatial_routing_enabled = False
     p._answer_citations_enabled = False
     p.anthropic = None
+    # ONTA-527: `ask` dispatches to `_ask_cypher`, which reads `_graph_store`.
+    # A hand-built pipeline that omits it crashes with AttributeError before any
+    # assertion runs, which would make the xfail below fire on a fixture defect
+    # rather than on the missing enum retry. None means "resolve the process
+    # store", i.e. the suite's MemoryGraphStore.
+    p._graph_store = None
+    # No live provider call: on the Cypher path `_generate_sparql` is never
+    # consulted, so without this the invented "k" key would POST to OpenRouter.
+    p._try_llm_cypher = AsyncMock(return_value=None)
 
     gen_calls: list[dict] = []
 

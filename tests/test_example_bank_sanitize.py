@@ -327,46 +327,82 @@ def test_sanitizing_a_shipped_example_onto_its_own_graph_is_byte_identical():
 
 
 @pytest.mark.asyncio
-async def test_ask_prompt_for_another_tenant_contains_no_demo_tenant_graph():
+async def test_ask_prompt_for_another_tenant_carries_no_foreign_workspace_id():
     """The real leak path: /ask -> retrieve -> format -> LLM prompt.
 
     Asserts on the prompt actually handed to the generator, not on the helper,
-    so a future caller that forgets to pass the target graph is caught here.
+    so a future caller that forgets to sanitize is caught here.
+
+    **Ported by ONTA-527.** ``/ask`` generates Cypher, so the prompt this walks
+    is ``build_cypher_generation_prompt`` and the sanitizer on the path is
+    ``sanitize_example_cypher`` (Cypher isolation is ``$tenant_id`` / ``$kg``
+    parameters, not a ``FROM`` clause). Same leak, same assertion shape: a
+    stored example minted in ``demo-tenant`` must not put that workspace id in
+    another tenant's prompt, and the example must actually BE injected — a
+    prompt that silently dropped the few-shot would pass a "no leak" check
+    vacuously.
+
+    Note the stored example carries a HARDCODED literal scope, which is exactly
+    what a bank populated from a real run looks like; sanitizing it to the
+    parameter tokens is what keeps the model from being taught to hardcode a
+    workspace id.
     """
     from unittest.mock import AsyncMock, MagicMock, patch
 
+    from infona_client.nlp.example_bank import Example
     from infona_client.nlp.pipeline import NLQueryPipeline
 
-    neptune = AsyncMock()
-    neptune.query.return_value = {
-        "head": {"vars": ["title"]},
-        "results": {"bindings": [{"title": {"type": "literal", "value": "Arrival"}}]},
-    }
-    pipeline = NLQueryPipeline(neptune, "fake-key")
+    cypher_example = Example(
+        question="Which movies did she direct?",
+        sparql=_SAMPLE_SPARQL,
+        cypher=(
+            "MATCH (e:Entity {tenant_id: 'demo-tenant', kg: 'imdb-movies'}) "
+            "WHERE e.primary_type = 'Movie' RETURN e.title AS title"
+        ),
+        kg_name="imdb-movies",
+        ontology_context="Type: Movie",
+        pattern_tags=["join"],
+    )
 
     bank = MagicMock()
-    bank._examples = [_example()]
-    bank.retrieve = AsyncMock(return_value=[_example()])
+    bank._examples = [cypher_example]
+    bank.retrieve = AsyncMock(return_value=[cypher_example])
 
-    llm_response = json.dumps({
-        "sparql": f"SELECT ?title FROM <{TARGET_GRAPH}> WHERE {{ ?s ?p ?title }}",
-        "explanation": "ok",
-        "functions_needed": [],
-    })
-    message = MagicMock()
-    message.content = [MagicMock(text=llm_response)]
+    pipeline = NLQueryPipeline(AsyncMock(), "fake-key", graph_store=MagicMock())
+    prompts: list[str] = []
+
+    async def capture(prompt: str):
+        prompts.append(prompt)
+        return {
+            "cypher": (
+                "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
+                "RETURN e.title AS title"
+            ),
+            "params": {},
+            "explanation": "ok",
+            "functions_needed": [],
+        }
 
     with patch("infona_client.nlp.example_bank.get_example_bank", return_value=bank), \
-            patch.object(pipeline.anthropic.messages, "create", new_callable=AsyncMock) as create:
-        create.return_value = message
+            patch.object(
+                pipeline, "_fetch_ontology", new=AsyncMock(return_value="Type: Movie")
+            ), \
+            patch.object(pipeline, "_generate_cypher_via_anthropic", new=capture), \
+            patch.object(
+                pipeline, "_execute_confined_cypher",
+                new=AsyncMock(return_value=([], "execute_read")),
+            ):
         await pipeline.ask(
             "Which movies did she direct?",
             "https://graph.infona.ai/graphs/acme-corp",
             TARGET_GRAPH,
         )
 
-    assert create.call_args is not None, "generator was never called"
-    prompt = create.call_args.kwargs["messages"][0]["content"]
+    assert prompts, "generator was never called"
+    prompt = prompts[0]
     assert "Q: Which movies did she direct?" in prompt, "examples were not injected"
     assert "demo-tenant" not in prompt
-    assert f"FROM <{TARGET_GRAPH}>" in prompt
+    assert "imdb-movies" not in prompt
+    # The example teaches the PARAMETER form, never a literal workspace id.
+    assert "tenant_id: $tenant_id" in prompt
+    assert "kg: $kg" in prompt

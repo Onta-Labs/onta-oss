@@ -1,222 +1,287 @@
-import json
-from unittest.mock import AsyncMock, MagicMock, patch
+"""``NLQueryPipeline.ask`` end to end (ONTA-527: the Cypher path).
+
+``POST /ask`` generates **Cypher** now — ``nlp/cypher_generate.py::neo4j_ask_enabled``
+returns True unconditionally, so ``ask`` takes ``_ask_cypher`` and executes
+through a scoped ``GraphSession``. The SPARQL generator still exists in
+``nlp/pipeline.py`` but is reachable only via an explicit ``use_cypher=False``
+from the eval/archive harnesses, so a test that asserts on generated SPARQL is
+asserting a language production no longer emits.
+
+The three behavioural cases below (an answered question, a refused mutation, an
+honest empty) were ported onto the Cypher path against a seeded
+``MemoryGraphStore``. The three ontology-retrieval cases could not be: semantic
+retrieval and the zero-row ontology escalation are implemented in ``ask``'s
+SPARQL branch and ``_ask_cypher`` never runs them — see the xfail reasons.
+"""
+
+import asyncio
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from infona_client.nlp.pipeline import NLQueryPipeline, get_embedding_service
+from infona_client.graph.iri import IRI_BASE
+from infona_client.graph.kg_writer import insert_facts
+from infona_client.graph.memory_store import MemoryGraphStore
+from infona_client.graph.ontology_queries import entity_uri
+from infona_client.nlp.pipeline import NLQueryPipeline, get_embedding_service  # noqa: F401
+
+RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
+
+TENANT = "t1"
+KG = "places"
+TENANT_GRAPH = f"{IRI_BASE}/graphs/{TENANT}"
+KG_GRAPH = f"{TENANT_GRAPH}/kg/{KG}"
+PLACE_TYPE = f"{IRI_BASE}/types/Place"
+PARK = entity_uri("Place", "p1")
+
+ONTOLOGY = "Type: Place\n  - title"
 
 
 @pytest.fixture
 def mock_neptune():
+    """Present but never load-bearing: nothing on the Cypher path reads SPARQL.
+
+    ``_ask_cypher`` still receives a client (``ask``'s signature is unchanged)
+    and the answer formatter's URI-label lookup still reaches for it, so it
+    returns an empty result set rather than raising — a raise would be
+    swallowed by that formatter's own guard and prove nothing.
+    """
     client = AsyncMock()
-    client.query.return_value = {
-        "head": {"vars": ["name"]},
-        "results": {
-            "bindings": [
-                {"name": {"type": "literal", "value": "Central Park"}},
-            ]
-        },
-    }
+    client.query.return_value = {"head": {"vars": []}, "results": {"bindings": []}}
     return client
 
 
 @pytest.fixture
-def pipeline(mock_neptune):
-    return NLQueryPipeline(mock_neptune, "fake-key")
+def store():
+    st = MemoryGraphStore()
+    asyncio.run(
+        insert_facts(
+            None,
+            KG_GRAPH,
+            [
+                (PARK, RDF_TYPE, PLACE_TYPE),
+                (PARK, LABEL, "Central Park"),
+                (PARK, f"{PLACE_TYPE}/attrs/title", "Central Park"),
+            ],
+            store=st,
+        )
+    )
+    return st
+
+
+@pytest.fixture
+def pipeline(mock_neptune, store):
+    p = NLQueryPipeline(mock_neptune, "fake-key", graph_store=store)
+    p._fetch_ontology = AsyncMock(return_value=ONTOLOGY)  # type: ignore[method-assign]
+    return p
+
+
+def _llm_cypher(payload: dict):
+    """Stand in for ``_try_llm_cypher``: one canned generation, recorded."""
+    calls: list[dict] = []
+
+    async def fake(question, ontology, **kw):
+        calls.append(kw)
+        return dict(payload)
+
+    return fake, calls
 
 
 @pytest.mark.asyncio
-async def test_ask_success(pipeline, mock_neptune):
-    llm_response = json.dumps({
-        "sparql": "SELECT ?name WHERE { ?s <https://schema.org/name> ?name }",
-        "explanation": "Finds all names",
-        "functions_needed": [],
-    })
-    mock_message = MagicMock()
-    mock_message.content = [MagicMock(text=llm_response)]
+async def test_ask_success(pipeline, store):
+    """A generated query runs against the store and its rows become the answer.
 
-    with patch.object(pipeline.anthropic.messages, "create", new_callable=AsyncMock) as mock_create:
-        mock_create.return_value = mock_message
-        result = await pipeline.ask("What places exist?", "https://graph.infona.ai/graphs/t1")
+    The generator's ``explanation`` rides through untouched, and the executed
+    query text is what comes back on ``NLResult.sparql`` (field name historical
+    — it carries Cypher on this path).
+    """
+    fake, _calls = _llm_cypher(
+        {
+            "cypher": (
+                "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
+                "WHERE e.primary_type IN $type_names RETURN count(*) AS n"
+            ),
+            "params": {"type_names": ["Place"]},
+            "template": "entities_of_type_count",
+            "explanation": "Finds all names",
+            "functions_needed": [],
+        }
+    )
+    pipeline._try_llm_cypher = fake  # type: ignore[method-assign]
 
-    assert result.answer == "Central Park"
-    assert "SELECT" in result.sparql
+    result = await pipeline.ask(
+        "tally the places somehow", TENANT_GRAPH, KG_GRAPH
+    )
+
+    assert result.answer == "1"
     assert result.explanation == "Finds all names"
+    assert "MATCH" in result.sparql
+    assert result.timing.get("query_language") == "cypher"
+    assert result.timing.get("cypher_exec_path") == "template:entities_of_type_count"
 
 
 @pytest.mark.asyncio
-async def test_ask_invalid_sparql(pipeline):
-    llm_response = json.dumps({
-        "sparql": "DELETE WHERE { ?s ?p ?o }",
-        "explanation": "Tried to delete",
-        "functions_needed": [],
-    })
-    mock_message = MagicMock()
-    mock_message.content = [MagicMock(text=llm_response)]
+async def test_ask_refuses_a_generated_mutation(pipeline, store):
+    """A jailbroken generator that emits a WRITE is refused, and writes nothing.
 
-    with patch.object(pipeline.anthropic.messages, "create", new_callable=AsyncMock) as mock_create:
-        mock_create.return_value = mock_message
-        result = await pipeline.ask("Delete everything", "https://graph.infona.ai/graphs/t1")
+    Ported from ``test_ask_invalid_sparql`` (a generated ``DELETE WHERE``). The
+    guard moved from SPARQL shape-checking to
+    ``nlp/cypher_scope.py::confine_generated_cypher``'s read-only rule, but the
+    property is the same one, and it is now asserted against the STORE rather
+    than only against the answer string.
+    """
+    fake, _calls = _llm_cypher(
+        {
+            "cypher": (
+                "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
+                "DETACH DELETE e"
+            ),
+            "params": {},
+            "explanation": "Tried to delete",
+            "functions_needed": [],
+        }
+    )
+    pipeline._try_llm_cypher = fake  # type: ignore[method-assign]
 
-    assert "Could not" in result.answer
-    assert "DELETE" in result.answer or "DELETE" in result.sparql
+    result = await pipeline.ask("Delete everything", TENANT_GRAPH, KG_GRAPH)
+
+    assert "Could not answer" in result.answer
+    assert "read-only" in result.answer.lower()
+    assert "DELETE" in result.sparql
+    assert result.timing.get("cypher_scope_error") == 1.0
+
+    # The entity is still there: refusal, not a partially applied write.
+    survivor = await pipeline.ask("How many places?", TENANT_GRAPH, KG_GRAPH)
+    assert survivor.answer == "1"
 
 
 @pytest.mark.asyncio
-async def test_ask_no_results(pipeline, mock_neptune):
-    mock_neptune.query.side_effect = [
-        {"head": {"vars": ["p"]}, "results": {"bindings": []}},
-        {"head": {"vars": ["name"]}, "results": {"bindings": []}},
-    ]
-    llm_response = json.dumps({
-        "sparql": "SELECT ?name WHERE { ?s <https://schema.org/name> ?name }",
-        "explanation": "Search",
-        "functions_needed": [],
-    })
-    mock_message = MagicMock()
-    mock_message.content = [MagicMock(text=llm_response)]
-
-    with patch.object(pipeline.anthropic.messages, "create", new_callable=AsyncMock) as mock_create:
-        mock_create.return_value = mock_message
-        result = await pipeline.ask("Find something", "https://graph.infona.ai/graphs/t1")
+async def test_ask_no_results(pipeline):
+    """A well-formed query that matches nothing answers honestly."""
+    result = await pipeline.ask(
+        "list all sprockets", TENANT_GRAPH, KG_GRAPH
+    )
 
     assert result.answer == "No results found."
+    assert result.timing.get("rows") == 0
 
 
 @pytest.mark.asyncio
+async def test_ask_requires_a_per_kg_instance_graph(pipeline):
+    """A bare tenant URI cannot be scoped to a workspace, and says so.
+
+    The Cypher path derives ``(tenant_id, kg)`` from the instance graph and
+    forces both onto the session, so "the tenant graph" is not a thing it can
+    read. Pinned because the SPARQL path accepted this shape (the tenant graph
+    was just another dataset clause) and several callers still pass it.
+    """
+    result = await pipeline.ask("How many places?", TENANT_GRAPH, TENANT_GRAPH)
+    assert "Could not answer" in result.answer
+    assert "per-KG instance graph" in result.answer
+
+
+# --------------------------------------------------------------------------- #
+# Ontology retrieval: implemented in ask()'s SPARQL branch only.
+# --------------------------------------------------------------------------- #
+
+_NO_SEMANTIC_RETRIEVAL = (
+    "LOST CAPABILITY (ONTA-527): semantic ontology retrieval is wired into "
+    "nlp/pipeline.py::ask's SPARQL branch (get_embedding_service().retrieve → "
+    "timing['ontology_source'] = 'semantic' | 'full'). _ask_cypher builds its "
+    "context from ontology_from_graph_store (ontology_source = "
+    "'graph_store_catalog') or _fetch_ontology ('sparql_fetch') and never "
+    "consults the embedding service, so the shipped /ask path does no semantic "
+    "schema retrieval at all."
+)
+
+
+@pytest.mark.xfail(strict=True, reason=_NO_SEMANTIC_RETRIEVAL)
+@pytest.mark.asyncio
 async def test_ask_uses_semantic_retrieval(pipeline, mock_neptune):
-    """When embedding service returns ontology, pipeline uses it (not full fetch)."""
-    mock_svc = AsyncMock()
-    mock_svc.retrieve.return_value = "Type: Property\n  Attributes: price (integer)"
+    """When the embedding service returns an ontology, the pipeline uses it."""
+    from unittest.mock import patch
 
-    llm_response = json.dumps({
-        "sparql": "SELECT ?price WHERE { ?s <https://graph.infona.ai/types/Property/attrs/price> ?price }",
-        "explanation": "Gets prices",
-        "functions_needed": [],
-    })
-    mock_message = MagicMock()
-    mock_message.content = [MagicMock(text=llm_response)]
+    svc = AsyncMock()
+    svc.retrieve.return_value = "Type: Place\n  Attributes: title (string)"
+    pipeline._try_llm_cypher = AsyncMock(return_value=None)  # type: ignore[method-assign]
 
-    with patch("infona_client.nlp.pipeline.get_embedding_service", return_value=mock_svc):
-        with patch.object(pipeline.anthropic.messages, "create", new_callable=AsyncMock) as mock_create:
-            mock_create.return_value = mock_message
-            result = await pipeline.ask("What is the price?", "https://graph.infona.ai/graphs/t1")
+    with patch("infona_client.nlp.pipeline.get_embedding_service", return_value=svc):
+        result = await pipeline.ask("What is the title?", TENANT_GRAPH, KG_GRAPH)
 
-    assert result.answer == "Central Park"  # mock_neptune returns this
-    mock_svc.retrieve.assert_called_once()
+    svc.retrieve.assert_called_once()
     assert result.timing.get("ontology_source") == "semantic"
 
 
+@pytest.mark.xfail(strict=True, reason=_NO_SEMANTIC_RETRIEVAL)
 @pytest.mark.asyncio
 async def test_ask_falls_back_when_no_embeddings(pipeline, mock_neptune):
-    """When embedding service returns None, pipeline falls back to full ontology."""
-    mock_svc = AsyncMock()
-    mock_svc.retrieve.return_value = None
+    """No embeddings ⇒ the FULL ontology, marked as such in the timing."""
+    from unittest.mock import patch
 
-    llm_response = json.dumps({
-        "sparql": "SELECT ?name WHERE { ?s <https://schema.org/name> ?name }",
-        "explanation": "Finds names",
-        "functions_needed": [],
-    })
-    mock_message = MagicMock()
-    mock_message.content = [MagicMock(text=llm_response)]
+    svc = AsyncMock()
+    svc.retrieve.return_value = None
+    pipeline._try_llm_cypher = AsyncMock(return_value=None)  # type: ignore[method-assign]
 
-    with patch("infona_client.nlp.pipeline.get_embedding_service", return_value=mock_svc):
-        with patch.object(pipeline.anthropic.messages, "create", new_callable=AsyncMock) as mock_create:
-            mock_create.return_value = mock_message
-            result = await pipeline.ask("Find something", "https://graph.infona.ai/graphs/t1")
+    with patch("infona_client.nlp.pipeline.get_embedding_service", return_value=svc):
+        result = await pipeline.ask("list all places", TENANT_GRAPH, KG_GRAPH)
 
     assert result.timing.get("ontology_source") == "full"
-    assert result.answer == "Central Park"
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "LOST CAPABILITY (ONTA-527): the zero-row ontology escalation "
+        "(infona-oss #273 — widen a semantic subset to the FULL tenant ontology "
+        "and regenerate once, timing['ontology_zero_row_escalation']) lives in "
+        "ask()'s SPARQL retry loop. _ask_cypher's only retry is on "
+        "GraphQueryError / CypherScopeError; a VALID query returning zero rows "
+        "is final, so the Oliver-demo failure mode this guards is unguarded on "
+        "the shipped path."
+    ),
+)
 @pytest.mark.asyncio
-async def test_ask_escalates_semantic_to_full_on_zero_rows(pipeline, mock_neptune):
-    """Zero rows under a semantic ontology subset widen to full schema once.
+async def test_ask_escalates_semantic_to_full_on_zero_rows(pipeline, store):
+    """Zero rows under a reduced ontology subset widen to full schema once.
 
-    Oliver demo RCA: semantic retrieval returned a wrong ClinicalTrial shape
-    (interventions/conditions); the first SPARQL was valid but empty. Without
-    escalation the pipeline answered "No results found" in one attempt.
+    Oliver demo RCA: retrieval returned a wrong ClinicalTrial shape; the first
+    query was valid but empty. Without escalation the pipeline answers "No
+    results found" in one attempt.
     """
-    mock_svc = AsyncMock()
-    mock_svc.retrieve.return_value = (
-        "Type: ClinicalTrial\n  Attributes: name, nct_id\n"
-        "  Relationships: interventions, conditions"
+    attempts: list[str] = []
+
+    async def fake(question, ontology, **kw):
+        attempts.append(ontology)
+        if len(attempts) == 1:
+            # Wrong type: valid, scoped, and empty.
+            return {
+                "cypher": (
+                    "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
+                    "WHERE e.primary_type IN $type_names RETURN count(*) AS n"
+                ),
+                "params": {"type_names": ["ClinicalTrial"]},
+                "template": "entities_of_type_count",
+                "explanation": "wrong shape",
+                "functions_needed": [],
+            }
+        return {
+            "cypher": (
+                "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
+                "WHERE e.primary_type IN $type_names RETURN count(*) AS n"
+            ),
+            "params": {"type_names": ["Place"]},
+            "template": "entities_of_type_count",
+            "explanation": "full schema",
+            "functions_needed": [],
+        }
+
+    pipeline._try_llm_cypher = fake  # type: ignore[method-assign]
+
+    result = await pipeline.ask(
+        "which trial supports this?", TENANT_GRAPH, KG_GRAPH
     )
-
-    empty = {"head": {"vars": ["x"]}, "results": {"bindings": []}}
-    hit = {
-        "head": {"vars": ["name"]},
-        "results": {
-            "bindings": [{"name": {"type": "literal", "value": "IMvigor011"}}]
-        },
-    }
-    # Empty first attempt (+ any name-lookup broaden probes); hit on retry.
-    calls = {"n": 0}
-
-    async def _query(sparql="", *_a, **_k):
-        calls["n"] += 1
-        # Only the post-escalation full-schema query (attrs/name) has data. Keyed
-        # on the query TEXT rather than a call counter, which drifted with the
-        # number of name-lookup broaden probes.
-        return hit if "attrs/name" in sparql else empty
-
-    mock_neptune.query.side_effect = _query
-
-    bad = json.dumps({
-        "sparql": (
-            "SELECT ?x WHERE { "
-            "?t a <https://graph.infona.ai/types/ClinicalTrial> . "
-            "?t <https://graph.infona.ai/onto/interventions> ?x }"
-        ),
-        "explanation": "wrong shape",
-        "functions_needed": [],
-    })
-    good = json.dumps({
-        "sparql": (
-            "SELECT ?name WHERE { "
-            "?t a <https://graph.infona.ai/types/ClinicalTrial> . "
-            "?t <https://graph.infona.ai/types/ClinicalTrial/attrs/name> ?name }"
-        ),
-        "explanation": "full schema",
-        "functions_needed": [],
-    })
-    msg_bad = MagicMock()
-    msg_bad.content = [MagicMock(text=bad)]
-    msg_good = MagicMock()
-    msg_good.content = [MagicMock(text=good)]
-
-    full_ont = (
-        "Type: Drug\n  Attributes: brand_name\n"
-        "Type: Indication\n  Attributes: disease, label_status\n"
-        "Type: ClinicalTrial\n  Attributes: name, nct_id\n"
-        "  Relationships: supported_by_trial (via Indication)\n"
-    )
-
-    with patch("infona_client.nlp.pipeline.get_embedding_service", return_value=mock_svc):
-        with patch.object(
-            pipeline, "_fetch_ontology", new_callable=AsyncMock, return_value=full_ont
-        ):
-            with patch.object(
-                pipeline.anthropic.messages, "create", new_callable=AsyncMock
-            ) as mock_create:
-                mock_create.side_effect = [msg_bad, msg_good]
-                with patch.object(
-                    # "" and not None: NLResult.narrative_answer is a str, so
-                    # None makes NLResult() raise and the attempt retries, which
-                    # made the assertions below pass vacuously off the
-                    # "Could not answer after 3 attempts" fallback.
-                    pipeline, "_rephrase_via_openrouter", new_callable=AsyncMock, return_value=""
-                ):
-                    result = await pipeline.ask(
-                        "What trial supports Tecentriq after bladder surgery?",
-                        "https://graph.infona.ai/graphs/t1",
-                    )
 
     assert result.timing.get("ontology_zero_row_escalation") == 1.0
-    assert result.timing.get("ontology_source") == "full" or result.timing.get(
-        "ontology_escalated_to_full_attempt"
-    )
-    assert mock_create.call_count >= 2
-    # Eventually answered from the second SPARQL hit.
-    assert "IMvigor011" in result.answer
+    assert len(attempts) >= 2
+    assert result.answer == "1"

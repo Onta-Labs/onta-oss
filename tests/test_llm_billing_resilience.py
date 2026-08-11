@@ -317,7 +317,12 @@ def mock_cache(tmp_path):
 
 
 def _records(n: int) -> list[dict]:
-    return [{"id": i, "name": f"model_{i}"} for i in range(n)]
+    # `title`, not `name`: ONTA-527 runs the production property-graph writer,
+    # where `name` is a RESERVED Entity property key (graph/facts.py
+    # RESERVED_ENTITY_PROPERTY_KEYS) and the ontology commit rejects it. The
+    # attribute leaf is incidental to split-and-retry, which is what these
+    # exercise.
+    return [{"id": i, "title": f"model_{i}"} for i in range(n)]
 
 
 async def test_billing_error_does_not_trigger_split_retry(mock_neptune, mock_cache):
@@ -376,7 +381,7 @@ async def test_non_billing_empty_extraction_still_splits(
                         id=str(r["id"]),
                         attributes=[
                             ExtractedAttribute(
-                                name="name", value=r["name"], datatype="string"
+                                name="title", value=r["title"], datatype="string"
                             )
                         ],
                     )
@@ -388,7 +393,15 @@ async def test_non_billing_empty_extraction_still_splits(
 
     with patch.object(resolver, "_extract", side_effect=maybe_extract):
         with patch.object(resolver, "_fetch_ontology", return_value=({}, {})):
-            result = await resolver.ingest(content, "test-tenant", content_type="json")
+            # A per-KG instance graph is now REQUIRED: the shared write path
+            # derives (tenant, kg) from it and a bare tenant URI raises
+            # `Cannot derive tenant/kg scope`.
+            result = await resolver.ingest(
+                content,
+                "test-tenant",
+                content_type="json",
+                instance_graph="https://graph.infona.ai/graphs/test-tenant/kg/models",
+            )
 
     # Splitting happened (more than the initial chunk count of extraction calls)
     # and NO records were lost — the ordinary recovery path is untouched.

@@ -80,7 +80,13 @@ async def test_ingest_emits_extract_and_resolve_spans(mock_neptune, tmp_path, mo
     resolver = SchemaResolver(
         mock_neptune, "fake-key", JsonVerdictCache(tmp_path / "c.json")
     )
-    records = [{"id": i, "name": f"m{i}"} for i in range(3)]
+    # `title`, not `name`: ONTA-527 runs the production property-graph writer,
+    # where `name` is a RESERVED Entity property key (graph/facts.py
+    # RESERVED_ENTITY_PROPERTY_KEYS) and the ontology commit rejects it. The
+    # attribute leaf is incidental to what this test measures (that both heavy
+    # halves of `ingest` emit a `stage_timing` span), so it is renamed rather
+    # than worked around.
+    records = [{"id": i, "title": f"m{i}"} for i in range(3)]
     content = json.dumps(records)
 
     async def fake_extract(content, content_type, existing_types=None):
@@ -92,7 +98,7 @@ async def test_ingest_emits_extract_and_resolve_spans(mock_neptune, tmp_path, mo
                     id=str(r["id"]),
                     attributes=[
                         ExtractedAttribute(
-                            name="name", value=r["name"], datatype="string"
+                            name="title", value=r["title"], datatype="string"
                         )
                     ],
                 )
@@ -103,7 +109,15 @@ async def test_ingest_emits_extract_and_resolve_spans(mock_neptune, tmp_path, mo
 
     with patch.object(resolver, "_extract", side_effect=fake_extract):
         with patch.object(resolver, "_fetch_ontology", return_value=({}, {})):
-            await resolver.ingest(content, "test-tenant", content_type="json")
+            # A per-KG instance graph is now REQUIRED: the shared write path
+            # derives (tenant, kg) from it and a bare tenant URI raises
+            # `Cannot derive tenant/kg scope`.
+            await resolver.ingest(
+                content,
+                "test-tenant",
+                content_type="json",
+                instance_graph="https://graph.infona.ai/graphs/test-tenant/kg/models",
+            )
 
     calls = _stage_calls(rec)
     # Both heavy halves of the ingest are timed.

@@ -1,24 +1,32 @@
-"""Fix A: capture Neptune's 4xx/5xx error body so the NL→SPARQL retry loop can
-self-correct instead of retrying blind.
+"""Fix A: capture the store's error body so the NL retry loop can self-correct
+instead of retrying blind.
 
-The SPARQL is LLM-generated; on a malformed query Neptune returns a 400 whose
-body carries the exact `MalformedQueryException` (naming the offending token).
+The query is LLM-generated; on a malformed query the store returns an error
+whose body carries the exact parse diagnostic (naming the offending token).
 `raise_for_status()` discarded that body and raised a generic
 `"Client error '400 Bad Request' for url '<host>/sparql'"` — which ALSO leaked
-the endpoint host. `NeptuneClient.query` now raises `SparqlQueryError` carrying
-the host-scrubbed parse diagnostic, and the pipeline threads `str(e)` into the
-next attempt's generation feedback.
+the endpoint host. `NeptuneClient.query` raises `SparqlQueryError` carrying the
+host-scrubbed parse diagnostic, and the pipeline threads `str(e)` into the next
+attempt's generation feedback.
+
+**ONTA-527.** The `NeptuneClient` cases below are unchanged (that client is
+still in the residual surface the ratchet is counting down, and its
+error-capture contract is what the property-graph one was modelled on). The
+end-to-end case moved: `/ask` generates Cypher, so the diagnostic that has to
+reach attempt 2 is a `GraphQueryError` from the GraphStore, scrubbed by
+`nlp/cypher_scope.py::scrub_cypher_error` (= `graph/store.py::scrub_store_detail`)
+rather than a `SparqlQueryError`. The property is identical and is asserted the
+same way: the retry sees the ACTUAL diagnostic, and no host survives into it.
 """
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
 from infona_client.graph.client import NeptuneClient, SparqlQueryError
-from infona_client.nlp import pipeline as pipeline_mod
 from infona_client.nlp.pipeline import NLQueryPipeline
 
 # A realistic Neptune malformed-query body (with a URL to prove scrubbing).
@@ -121,52 +129,69 @@ async def test_query_success_unchanged():
         await client.close()
 
 
-def _rows(vars_, *value_rows) -> dict:
-    return {
-        "head": {"vars": list(vars_)},
-        "results": {
-            "bindings": [
-                {k: {"type": "literal", "value": v} for k, v in row.items()}
-                for row in value_rows
-            ]
-        },
-    }
-
-
 @pytest.mark.asyncio
-async def test_neptune_diagnostic_reaches_retry_feedback():
-    """The pipeline threads Neptune's parse error into attempt-2's generation
-    feedback — the retry is no longer blind."""
-    calls = {"n": 0}
+async def test_store_diagnostic_reaches_retry_feedback():
+    """The pipeline threads the store's parse error into attempt-2's generation
+    feedback — the retry is no longer blind.
 
-    async def query(sparql, *a, **k):
+    Ported by ONTA-527 from the SPARQL loop to ``_ask_cypher``'s
+    ``GraphQueryError`` handler. ``_execute_confined_cypher`` is the seam that
+    ``_ask_cypher``'s try/except wraps, so raising there is the property-graph
+    equivalent of the old ``neptune.query`` 400.
+    """
+    from infona_client.graph.store import GraphQueryError
+
+    calls = {"n": 0}
+    records = [MagicMock(data={"name": "widget-a"})]
+
+    async def execute(session, gen_payload, cypher, params):
         calls["n"] += 1
         if calls["n"] == 1:
-            raise SparqlQueryError(
-                400, "MalformedQueryException: offending token 'FILTeR' at line 3"
+            # A realistic Neo4j failure, complete with the bolt host that must
+            # not survive into the prompt.
+            raise GraphQueryError(
+                "Invalid input 'RETRUN': expected an expression "
+                "(line 3, column 5) @ bolt://neo4j.internal-host:7687"
             )
-        return _rows(["name"], {"name": "widget-a"})
+        return records, "execute_read"
 
-    neptune = AsyncMock()
-    neptune.query = AsyncMock(side_effect=query)
-    p = NLQueryPipeline(neptune, "invented-anthropic-key")
+    p = NLQueryPipeline(AsyncMock(), "invented-anthropic-key", graph_store=MagicMock())
     p._openrouter_key = ""              # narrative rephraser fail-open (no network)
-    p._spatial_routing_enabled = False  # skip the geo fast path for this NL
+    p._spatial_routing_enabled = False
 
-    gen = AsyncMock(side_effect=[
-        {"sparql": "SELECT ?name WHERE { ?s <p1> ?name }", "explanation": "", "functions_needed": []},
-        {"sparql": "SELECT ?name WHERE { ?s <p2> ?name }", "explanation": "ok", "functions_needed": []},
-    ])
+    feedbacks: list[str] = []
 
-    with patch.object(pipeline_mod, "get_embedding_service", return_value=None), \
-         patch.object(p, "_fetch_ontology", new=AsyncMock(return_value="ONT")), \
-         patch.object(p, "_generate_sparql", new=gen):
-        result = await p.ask("list the widgets", "https://graph.infona.ai/graphs/t1")
+    async def gen(question, ontology, **kw):
+        feedbacks.append(kw.get("error_feedback") or "")
+        return {
+            "cypher": (
+                "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
+                "RETURN e.name AS name"
+            ),
+            "params": {},
+            "explanation": "ok",
+            "functions_needed": [],
+        }
+
+    with patch.object(p, "_fetch_ontology", new=AsyncMock(return_value="ONT")), \
+         patch.object(p, "_try_llm_cypher", new=gen), \
+         patch.object(p, "_execute_confined_cypher", new=execute), \
+         patch.object(p, "_format_answer", new=AsyncMock(return_value="widget-a")):
+        result = await p.ask(
+            "reconcile the zzqx widgets",
+            "https://graph.infona.ai/graphs/t1",
+            "https://graph.infona.ai/graphs/t1/kg/widgets",
+        )
 
     assert result.timing.get("attempts") == 2
-    feedback = gen.call_args_list[1].kwargs.get("error_feedback", "")
-    # Attempt 2 sees Neptune's ACTUAL parse error — the offending token — not the
-    # generic "400 Bad Request" that the old blind retry received.
-    assert "MalformedQueryException" in feedback
-    assert "FILTeR" in feedback
-    assert "400 Bad Request" not in feedback
+    assert result.timing.get("cypher_retry") == 1.0
+    assert feedbacks[0] == ""
+    feedback = feedbacks[1]
+    # Attempt 2 sees the store's ACTUAL parse error — the offending token — not
+    # a generic "query failed" that the old blind retry received.
+    assert "RETRUN" in feedback
+    assert "line 3, column 5" in feedback
+    # ...and the host is scrubbed out of anything user/prompt-facing.
+    assert "neo4j.internal-host" not in feedback
+    assert "7687" not in feedback
+    assert "[endpoint]" in feedback
