@@ -296,8 +296,20 @@ async def lifespan(app: FastAPI):
     # Vestigial SPARQL client (ONTA-527): no route executes SPARQL any more, but
     # a number of handlers still declare `Depends(get_neptune_client)` and read
     # `app.state.neptune_client` for ontology / explore reads that have not been
-    # ported to GraphStore yet. Constructing it opens no connection.
-    app.state.neptune_client = NeptuneClient(settings.neptune_endpoint, backend="neptune")
+    # ported to GraphStore yet. Constructing it opens no connection. "neptune" is
+    # the path layout, not a backend selection — BACKENDS has no neo4j key.
+    app.state.neptune_client = NeptuneClient(
+        settings.neptune_endpoint or "http://127.0.0.1:8182",
+        backend="neptune",
+    )
+    try:
+        from infona_client.graph.store import get_graph_store
+
+        store = get_graph_store()
+        await store.bootstrap_schema()
+        logger.info("neo4j_graph_store_ready")
+    except Exception as exc:  # noqa: BLE001 — surface in logs; health will degrade
+        logger.error("neo4j_graph_store_bootstrap_failed", error=str(exc))
     # ONTA-399: re-hydrate durable Enhanced global skills into the process
     # mirror so authored layer-B content survives restart/redeploy without
     # depending on the image's file seed. Best-effort — never blocks startup.

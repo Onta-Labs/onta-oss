@@ -2401,14 +2401,25 @@ class SchemaResolver:
                 if e.id in resolved_types and e.id not in skip_ids
             ]
 
-        # Batch existence check: one SPARQL query per 500 URIs instead of N individual ASKs
+        # Batch existence check: one SPARQL query per 500 URIs instead of N individual ASKs.
+        # On Neo4j/GraphStore, SPARQL is unavailable — skip (insert_facts is idempotent
+        # MERGE); a GraphStore existence probe can land later.
         existing_uris: set[str] = set()
-        BATCH_CHECK_SIZE = 500
-        for i in range(0, len(pending_uris), BATCH_CHECK_SIZE):
-            batch = pending_uris[i : i + BATCH_CHECK_SIZE]
-            sparql = batch_entity_exists_query(instance_graph, batch)
-            found = await self._neptune.batch_exists(sparql)
-            existing_uris.update(found)
+        _use_sparql_exists = True
+        try:
+            from infona_client.graph.store import GraphConfigError, get_graph_store
+
+            get_graph_store()
+            _use_sparql_exists = False
+        except Exception:  # noqa: BLE001 — GraphConfigError or import
+            _use_sparql_exists = True
+        if _use_sparql_exists:
+            BATCH_CHECK_SIZE = 500
+            for i in range(0, len(pending_uris), BATCH_CHECK_SIZE):
+                batch = pending_uris[i : i + BATCH_CHECK_SIZE]
+                sparql = batch_entity_exists_query(instance_graph, batch)
+                found = await self._neptune.batch_exists(sparql)
+                existing_uris.update(found)
         if existing_uris:
             logger.info("batch_dedup_found", existing=len(existing_uris), total=len(pending_uris))
 
@@ -3065,14 +3076,23 @@ class SchemaResolver:
                 if e.id in resolved_types and e.id not in skip_ids
             ]
 
-            # Batch existence check
+            # Batch existence check (SPARQL). Skip when GraphStore is live.
             existing_uris: set[str] = set()
-            BATCH_CHECK_SIZE = 500
-            for i in range(0, len(pending_uris), BATCH_CHECK_SIZE):
-                batch = pending_uris[i : i + BATCH_CHECK_SIZE]
-                sparql = batch_entity_exists_query(instance_graph, batch)
-                found = await self._neptune.batch_exists(sparql)
-                existing_uris.update(found)
+            _use_sparql_exists = True
+            try:
+                from infona_client.graph.store import get_graph_store
+
+                get_graph_store()
+                _use_sparql_exists = False
+            except Exception:  # noqa: BLE001
+                _use_sparql_exists = True
+            if _use_sparql_exists:
+                BATCH_CHECK_SIZE = 500
+                for i in range(0, len(pending_uris), BATCH_CHECK_SIZE):
+                    batch = pending_uris[i : i + BATCH_CHECK_SIZE]
+                    sparql = batch_entity_exists_query(instance_graph, batch)
+                    found = await self._neptune.batch_exists(sparql)
+                    existing_uris.update(found)
             if existing_uris:
                 logger.info("csv_batch_dedup_found", existing=len(existing_uris), total=len(pending_uris))
 

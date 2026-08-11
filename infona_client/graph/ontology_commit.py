@@ -356,6 +356,24 @@ async def commit_ontology_unlocked(
     """
     if is_immutable_version_graph(graph_uri):
         raise OntologyGraphImmutable(graph_uri)
+
+    # Neo4j product path: apply via ontology_catalog GraphStore writers when a
+    # process GraphStore is available (prod + hermetic MemoryGraphStore). Prefer
+    # store presence over backend string so mis-set SPARQL backends cannot force
+    # dead Neptune after cutover.
+    from infona_client.graph.store import GraphConfigError, get_graph_store
+
+    try:
+        get_graph_store()
+        return await _commit_ontology_graph_store(
+            graph_uri,
+            mutations,
+            actor=actor,
+            message=message,
+        )
+    except GraphConfigError:
+        pass  # no GraphStore → legacy SPARQL path
+
     version_before = await fingerprint_ontology(neptune, graph_uri)
     if expected_version is not None and expected_version != version_before:
         raise OntologyVersionConflict(expected_version, version_before, graph_uri)
@@ -405,12 +423,143 @@ async def commit_ontology_unlocked(
     )
 
 
+async def _commit_ontology_graph_store(
+    graph_uri: str,
+    mutations: Sequence[OntologyMutation],
+    *,
+    actor: str | None = None,
+    message: str | None = None,
+) -> OntologyCommitResult:
+    """Apply schema mutations via GraphStore catalog (Neo4j product path).
+
+    Skips SPARQL fingerprint / revision / changelog until those are ported.
+    Tenant id is recovered from the standard ontology graph URI when possible.
+    """
+    from infona_client.graph import ontology_catalog as oc
+    from infona_client.models.ontology import ChangeKind, ChangeRecord
+
+    tenant_id = ""
+    # graph.infona.ai/graphs/{tenant}/ontology  or  .../graphs/{tenant}
+    m = re.search(r"/graphs/([^/]+)", graph_uri or "")
+    if m:
+        tenant_id = m.group(1)
+
+    applied: list[OntologyMutation] = []
+    change_records: list[ChangeRecord] = []
+    for mut in mutations:
+        op = mut.op
+        if op is OntologyOpKind.UPSERT_TYPE:
+            await oc.upsert_type(
+                name=mut.type_name,
+                description=mut.description or "",
+                parent_type=mut.parent_type,
+                tenant_id=tenant_id or None,
+            )
+            change_records.append(
+                ChangeRecord(kind=ChangeKind.ADD_TYPE, type_name=mut.type_name)
+            )
+            applied.append(mut)
+        elif op is OntologyOpKind.UPSERT_ATTRIBUTE:
+            if not mut.slot_name:
+                raise ValueError("UPSERT_ATTRIBUTE requires slot_name")
+            await oc.upsert_attribute(
+                type_name=mut.type_name,
+                attr_name=mut.slot_name,
+                description=mut.description or "",
+                datatype=mut.datatype or "string",
+                tenant_id=tenant_id or None,
+            )
+            change_records.append(
+                ChangeRecord(
+                    kind=ChangeKind.ADD_ATTRIBUTE,
+                    type_name=mut.type_name,
+                    slot_name=mut.slot_name,
+                )
+            )
+            applied.append(mut)
+        elif op is OntologyOpKind.UPSERT_RELATIONSHIP:
+            if not mut.slot_name or not mut.target_type:
+                raise ValueError("UPSERT_RELATIONSHIP requires slot_name and target_type")
+            # Relationships are attributes with range type on the catalog path.
+            await oc.upsert_attribute(
+                type_name=mut.type_name,
+                attr_name=mut.slot_name,
+                description=mut.description or "",
+                datatype=mut.target_type,
+                tenant_id=tenant_id or None,
+            )
+            change_records.append(
+                ChangeRecord(
+                    kind=ChangeKind.ADD_ATTRIBUTE,
+                    type_name=mut.type_name,
+                    slot_name=mut.slot_name,
+                )
+            )
+            applied.append(mut)
+        elif op is OntologyOpKind.SET_SUBCLASS:
+            if not mut.parent_type:
+                raise ValueError("SET_SUBCLASS requires parent_type")
+            await oc.upsert_type(
+                name=mut.type_name,
+                parent_type=mut.parent_type,
+                tenant_id=tenant_id or None,
+            )
+            change_records.append(
+                ChangeRecord(
+                    kind=ChangeKind.ADD_SUBCLASS,
+                    type_name=mut.type_name,
+                    parent_type=mut.parent_type,
+                )
+            )
+            applied.append(mut)
+        else:
+            logger.warning(
+                "ontology_store_op_skipped",
+                op=str(op),
+                type_name=getattr(mut, "type_name", None),
+            )
+
+    version = "neo4j"
+    logger.info(
+        "ontology_committed_graph_store",
+        graph_uri=graph_uri,
+        n_mutations=len(applied),
+        actor=actor,
+        message=message,
+    )
+    return OntologyCommitResult(
+        graph_uri=graph_uri,
+        version_before=version,
+        version_after=version,
+        applied=list(applied),
+        change_records=change_records,
+    )
+
+
 async def load_ontology_shape(neptune, graph_uri: str) -> OntologyShape:
     """Read the live ontology shape from ``graph_uri`` (ONTA-403/406).
 
     Shared by :func:`fingerprint_ontology` and the ONTA-406 diff/snapshot path
     so the two cannot disagree on what counts as ontology content.
+
+    On Neo4j / GraphStore, SPARQL is unavailable — return an empty shape for now
+    (catalog list APIs cover product reads; full fingerprint port is follow-up).
     """
+    from infona_client.graph.store import GraphConfigError, get_graph_store
+
+    try:
+        get_graph_store()
+        return OntologyShape(
+            types={},
+            attrs={},
+            attr_comments={},
+            core_slots=[],
+        )
+    except GraphConfigError:
+        pass
+    except Exception:
+        pass
+
     types: dict[str, str] = {}
     attrs: dict[str, dict[str, str]] = {}
     attr_comments: dict[str, dict[str, str]] = {}

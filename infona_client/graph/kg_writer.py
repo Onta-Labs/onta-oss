@@ -1237,11 +1237,18 @@ async def refresh_after_write(
         except Exception:  # noqa: BLE001 — non-blocking, mirrors the ingest routes
             logger.warning("embed_types_failed", types=types, exc_info=True)
 
-    # 3. KG registration in the tenant metadata graph (ONTA-153) was a SPARQL-only
-    #    step and is GONE with the Neptune path (ONTA-527). The property-graph KG
-    #    registry is deferred (model B7 / E4), so a non-UI writer's KG is not
-    #    auto-registered for list_kgs today. `ensure_kg_registered` is kept as an
-    #    unwired reference for that port and must not be called from here.
+    # 3. Register the KG so non-UI writers don't leave it invisible to list_kgs
+    #    (ONTA-153). Property-graph :KnowledgeGraph nodes; the SPARQL tenant-meta
+    #    branch went out with the Neptune path (ONTA-527).
+    if kg_name:
+        try:
+            from infona_client.graph.kg_registry import ensure_kg_registered_store
+
+            await ensure_kg_registered_store(tenant_id, kg_name)
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "ensure_kg_registered_store_failed", kg_name=kg_name, exc_info=True
+            )
 
     # 4. Drop the stored triple count so list_kgs recomputes on next read.
     #    Must run on every successful instance write (not only Explorer recompute):
