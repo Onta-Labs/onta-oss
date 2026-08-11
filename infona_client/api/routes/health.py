@@ -1,8 +1,8 @@
 """Liveness / readiness for the API process.
 
-When ``INFONA_GRAPH_BACKEND=neo4j``, health is driven by the GraphStore
-(Neo4j). Neptune is not required. When the backend is Neptune (default on
-legacy deploys), health still probes the SPARQL endpoint.
+Default backend is Neo4j: health is driven by the GraphStore. When the backend
+is explicitly set to a legacy SPARQL store (``neptune`` / ``fuseki``), health
+still probes that SPARQL endpoint.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ router = APIRouter()
 
 
 def _graph_backend() -> str:
-    return (os.environ.get("INFONA_GRAPH_BACKEND") or "neptune").strip().lower()
+    return (os.environ.get("INFONA_GRAPH_BACKEND") or "neo4j").strip().lower()
 
 
 @router.get("/health")

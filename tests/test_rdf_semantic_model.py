@@ -507,9 +507,9 @@ def test_instance_of_evicted_when_type_assertion_deleted(store):
     asyncio.run(run())
 
 
-def test_neptune_default_path_without_store(monkeypatch):
-    """Default backend remains neptune; insert_facts without store does not require GraphStore."""
-    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
+def test_neptune_legacy_path_without_store(monkeypatch):
+    """Legacy neptune backend: insert_facts without store does not require GraphStore."""
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
     assert graph_backend() == "neptune"
 
     class _FakeNeptune:

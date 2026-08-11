@@ -155,8 +155,8 @@ def test_type_counts_neo4j_store_path(client, mock_neptune, store, monkeypatch):
     mock_neptune.query.assert_not_called()
 
 
-def test_explore_records_default_uses_sparql(client, mock_neptune, monkeypatch):
-    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
+def test_explore_records_legacy_neptune_uses_sparql(client, mock_neptune, monkeypatch):
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
     mock_neptune.query.return_value = {
         "head": {"vars": []},
         "results": {"bindings": []},
@@ -191,8 +191,8 @@ def test_grep_neo4j_property_scan(client, mock_neptune, store, monkeypatch):
     mock_neptune.query.assert_not_called()
 
 
-def test_grep_default_uses_sparql(client, mock_neptune, monkeypatch):
-    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
+def test_grep_legacy_neptune_uses_sparql(client, mock_neptune, monkeypatch):
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
     mock_neptune.query.return_value = {
         "head": {"vars": ["s", "p", "o"]},
         "results": {"bindings": []},
@@ -237,8 +237,8 @@ def test_ontology_list_and_create_neo4j(client, mock_neptune, store, monkeypatch
     mock_neptune.query.assert_not_called()
 
 
-def test_ontology_list_default_uses_sparql(client, mock_neptune, monkeypatch):
-    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
+def test_ontology_list_legacy_neptune_uses_sparql(client, mock_neptune, monkeypatch):
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
     mock_neptune.query.return_value = {
         "head": {"vars": []},
         "results": {"bindings": []},
@@ -276,8 +276,8 @@ def test_triples_410_on_neo4j(client, mock_neptune, monkeypatch):
     assert get.status_code == 410
 
 
-def test_triples_still_work_on_default(client, mock_neptune, monkeypatch):
-    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
+def test_triples_still_work_on_legacy_neptune(client, mock_neptune, monkeypatch):
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
     res = client.post(
         f"/graphs/{TENANT}/triples",
         headers=AUTH,
@@ -349,9 +349,9 @@ def test_history_assertion_provenance_on_neo4j(
     mock_neptune.query.assert_not_called()
 
 
-def test_history_still_works_on_default(client, mock_neptune, monkeypatch):
-    """Default Neptune path still hits SPARQL companion history."""
-    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
+def test_history_still_works_on_legacy_neptune(client, mock_neptune, monkeypatch):
+    """Legacy Neptune path still hits SPARQL companion history."""
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
     mock_neptune.query.return_value = {
         "head": {"vars": []},
         "results": {"bindings": []},

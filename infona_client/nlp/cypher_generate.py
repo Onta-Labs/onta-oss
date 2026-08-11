@@ -766,7 +766,7 @@ def neo4j_ask_enabled(*, explicit: bool | None = None) -> bool:
     except Exception:
         import os
 
-        return (os.environ.get("INFONA_GRAPH_BACKEND") or "neptune").strip().lower() == "neo4j"
+        return (os.environ.get("INFONA_GRAPH_BACKEND") or "neo4j").strip().lower() == "neo4j"
 
 
 __all__ = [

@@ -9,47 +9,40 @@ SoT). This OSS package owns the **GraphStore protocol**, the official Python
 driver adapter, schema bootstrap, Assertion write path, RDFS helpers, and Docker
 Compose service.
 
-## SIDE-BY-SIDE mode (production Neptune + optional Neo4j)
+## Neo4j is THE production graph backend
 
 **Branch-complete summary (parent monorepo):**  
 [`docs/plans/neo4j-branch-complete.md`](../../docs/plans/neo4j-branch-complete.md) —
-what shipped, what is intentionally not done (prod cutover / Neptune delete /
-holdout rebaseline / Aura), test commands, and links to ADR 0012/0013, success
-gates, and the cutover runbook.
+what shipped, holdout rebaseline / Aura notes, test commands, and links to
+ADR 0012/0013, success gates, and the cutover runbook.
 
-**This branch does not replace Neptune.** Infona production on `main` continues
-to use **Amazon Neptune + SPARQL** as the default graph backend. The `neo4j`
-branch is a **side-by-side optional backend** for local development, CI, and
-migration work:
+**Neo4j is the default and only supported production path.** Unset
+`INFONA_GRAPH_BACKEND` (or set it to `neo4j`) selects GraphStore / Cypher.
+Amazon Neptune + SPARQL is **legacy** — kept for older deploys and hermetic
+SPARQL-path tests, **not for new work**.
 
-| Track | Branch / deploy | Backend | Query language |
-|-------|-----------------|---------|----------------|
-| **Production** | `main` (and shipped images) | Neptune (default) | SPARQL |
-| **Optional Neo4j** | `neo4j` branch (this doc) | Neo4j when opted in | Cypher / GraphStore |
+| Track | Backend | Query language |
+|-------|---------|----------------|
+| **Production (default)** | Neo4j | Cypher / GraphStore |
+| **Legacy only** | Neptune / Fuseki | SPARQL |
 
-Hard rules for this track:
+Hard rules:
 
-1. **Never remove Neptune** — SPARQL client, `sparql_scope`, Neptune readers,
-   and public SPARQL routes remain for Neptune deployments.
-2. **Default backend remains `neptune`** — unset `INFONA_GRAPH_BACKEND` (or set
-   it to `neptune`) keeps every dual-backend helper on the SPARQL path; no
-   Neo4j credentials are required.
-3. **Opt in only** — set `INFONA_GRAPH_BACKEND=neo4j` plus `NEO4J_URI` /
-   `NEO4J_USER` / `NEO4J_PASSWORD` (BYOK) to exercise GraphStore writers,
-   explore reads, and NL→Cypher `/ask`.
-4. **Do not merge `main` into this experiment casually** — keep the branch
-   focused; ship Neo4j work as deliberate PRs into `neo4j` (and only later
-   promote deliberate slices to `main` when product-ready).
-5. **History (GET `/history`)** — Neptune uses the SPARQL companion
-   ``…/history`` graph (temporal old→new). Neo4j lists **Assertion
-   provenance** for a subject via `rdfs_helpers.session_assertion_history`
-   (same response shape; full `:ValueHistory` temporal log is deferred).
+1. **Default backend is `neo4j`** — GraphStore writers, explore reads, NL→Cypher
+   `/ask`, and health probes use Neo4j unless you explicitly set
+   `INFONA_GRAPH_BACKEND=neptune` or `fuseki`.
+2. **BYOK Neo4j credentials** — set `NEO4J_URI` / `NEO4J_USER` /
+   `NEO4J_PASSWORD` (see docker-compose for local). The package never ships a
+   platform key.
+3. **Legacy SPARQL remains in-tree** — client, `sparql_scope`, and public SPARQL
+   routes still exist for `INFONA_GRAPH_BACKEND=neptune|fuseki`. Do not extend
+   them for new features; under neo4j, public raw SPARQL returns **410 Gone**.
+4. **History (GET `/history`)** — Neo4j lists **Assertion provenance** for a
+   subject via `rdfs_helpers.session_assertion_history`. Neptune still uses the
+   SPARQL companion ``…/history`` graph (legacy only).
 
-CI: `.github/workflows/neo4j.yml` runs on the **`neo4j` branch only** (plus
-`workflow_dispatch`). Hermetic MemoryGraphStore / golden / isolation tests always
-run; live `@pytest.mark.neo4j` runs against an optional Neo4j service container.
-Main-branch CI (`.github/workflows/test.yml`) is unchanged and does not require
-Neo4j.
+CI: hermetic MemoryGraphStore / golden / isolation tests always run; live
+`@pytest.mark.neo4j` runs against an optional Neo4j service container.
 
 ### ADR 0013 model (short)
 
@@ -196,9 +189,9 @@ if they collide with reserved system labels (`Entity`, `OntoType`, …).
 ## Explore / KG-admin reads (E5)
 
 Module: `infona_client.graph.explore_store`. Dual-backend like `kg_writer` /
-`ontology_catalog`: pass `store=` / `session=` or set
-`INFONA_GRAPH_BACKEND=neo4j`; otherwise helpers return `None` so SPARQL explore
-routes stay the default.
+`ontology_catalog`: pass `store=` / `session=` or use the default neo4j backend.
+Legacy SPARQL explore runs only when `INFONA_GRAPH_BACKEND` is explicitly
+`neptune` / `fuseki` (helpers return `None` for the GraphStore path).
 
 ```python
 from infona_client.graph.explore_store import (
@@ -244,9 +237,9 @@ Instance writers resolve the store once per write batch via
 | Normalization (promote_to_node, list_explode, strip_emoji) | `normalization/execute.py` |
 | ER rebuild / merge | `resolver/er/rebuild.py` |
 
-When `INFONA_GRAPH_BACKEND` is unset or `neptune`, the helper returns `None`
-and rails keep the Neptune SPARQL path (no Neo4j credentials required). When
-backend is `neo4j`, missing store config fails closed (`GraphConfigError`).
+When the backend is `neo4j` (default), missing store config fails closed
+(`GraphConfigError`). Only an explicit legacy `neptune` / `fuseki` backend
+returns `None` so rails keep the SPARQL path.
 
 **Still SPARQL-only by design (this epic):** normalization SELECTs that find
 candidates before the write, ontology-graph config rows (normalization
@@ -255,10 +248,10 @@ explore/admin rewrite is E9.
 
 **ER blocking (store dual-path):** `SparqlBlocker` routes
 `candidates_with_signals` / `all_entities_with_signals` through
-`GraphStoreBlocker` when `INFONA_GRAPH_BACKEND=neo4j` (or an explicit store is
-passed). Index triples (`er/blockKey`, `er/erSignal_*`) map to literal
-Assertions via `classify_triple` → `insert_facts`. Neptune SPARQL path is
-unchanged when the backend is unset/`neptune`.
+`GraphStoreBlocker` when the backend is `neo4j` (default; or an explicit store
+is passed). Index triples (`er/blockKey`, `er/erSignal_*`) map to literal
+Assertions via `classify_triple` → `insert_facts`. Legacy Neptune SPARQL path
+runs only when `INFONA_GRAPH_BACKEND=neptune`.
 
 **Attr citations (store):** RDF `attr_meta/…/source_url|provenance|verified_at`
 companions fold onto Assertion provenance fields on the store path (ADR 0013);
@@ -270,10 +263,10 @@ Hermetic tests: `tests/test_rails_graph_store_write.py`,
 
 ## NL → Cypher /ask (ADR 0013 semantic helpers)
 
-When `INFONA_GRAPH_BACKEND=neo4j`, `POST /graphs/{tenant}/ask` (and
-`NLQueryPipeline.ask`) generate **Cypher over the RDF-semantic model** instead
-of SPARQL and execute via GraphStore. **Default remains Neptune SPARQL** when
-the env var is unset or `neptune`.
+With the default Neo4j backend, `POST /graphs/{tenant}/ask` (and
+`NLQueryPipeline.ask`) generate **Cypher over the RDF-semantic model** and
+execute via GraphStore. Legacy Neptune SPARQL `/ask` only when
+`INFONA_GRAPH_BACKEND=neptune`.
 
 **Quality bar:** answers are measured by the **golden-query suite** (expected
 answer sets vs gold) — **not** by SPARQL string match or SPARQL↔Cypher text
@@ -282,6 +275,7 @@ Do **not** build SPARQL→Cypher translators; fixtures and the LLM compose
 allowlisted semantic helpers.
 
 ```bash
+# INFONA_GRAPH_BACKEND defaults to neo4j; optional explicit pin:
 export INFONA_GRAPH_BACKEND=neo4j
 export NEO4J_URI=bolt://localhost:7687
 export NEO4J_USER=neo4j
@@ -347,26 +341,26 @@ list/count via `INSTANCE_OF` → Class (not denorm `primary_type` alone).
 | `NEO4J_USER` | `neo4j` | Username |
 | `NEO4J_PASSWORD` | — | Password (required with URI) |
 | `NEO4J_DATABASE` | driver default | Optional DB name (Wave 1: single DB) |
-| `INFONA_GRAPH_BACKEND` | `neptune` | Set to `neo4j` to enable GraphStore writers/readers and NL→Cypher `/ask` |
+| `INFONA_GRAPH_BACKEND` | `neo4j` | Production default. Set `neptune`/`fuseki` only for legacy SPARQL |
 
 No platform or AWS-managed credentials are embedded in this package.
 
 ## Public SPARQL hard-break (E9 / ADR 0012 L2)
 
-When `INFONA_GRAPH_BACKEND=neo4j`, the **public** raw SPARQL HTTP surfaces are
+On the default Neo4j backend, the **public** raw SPARQL HTTP surfaces are
 **gone** — not shimmed:
 
-| Route | Neptune (default) | Neo4j |
-|-------|-------------------|--------|
-| `POST /graphs/{tenant}/query` | Scoped SPARQL SELECT/ASK/… | **410 Gone** |
-| `POST /graphs/{tenant}/update` | Operator SPARQL Update | **410 Gone** |
+| Route | Neo4j (default) | Legacy Neptune |
+|-------|-----------------|----------------|
+| `POST /graphs/{tenant}/query` | **410 Gone** | Scoped SPARQL SELECT/ASK/… |
+| `POST /graphs/{tenant}/update` | **410 Gone** | Operator SPARQL Update |
 
 Response body points callers at the agent, SDK, and high-level APIs
 (`/ask`, `/agent`, `/triples`, `/kgs`, ingest, explore). There is **no** SPARQL
 compatibility façade over Neo4j.
 
-**Not deleted:** SPARQL client code, `sparql_scope`, internal Neptune readers,
-and the route modules themselves remain for Neptune deployments and remaining
-internal paths. Only the public HTTP contract hard-breaks in neo4j mode.
+**Not deleted:** SPARQL client code, `sparql_scope`, and route modules remain for
+legacy Neptune/Fuseki deployments. Only the public HTTP contract hard-breaks
+under neo4j.
 
 Hermetic tests: `tests/test_query_neo4j_hard_break.py`.

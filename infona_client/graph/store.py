@@ -399,25 +399,25 @@ def env_neo4j_configured() -> bool:
 
 
 def graph_backend() -> str:
-    """Active instance backend: ``neptune`` (default) or ``neo4j``.
+    """Active instance backend: ``neo4j`` (default) or legacy ``neptune``/``fuseki``.
 
     Same switch as :func:`infona_client.graph.kg_writer.graph_backend` — kept
     here so write rails can resolve an optional store without importing
     ``kg_writer`` (avoids circular imports at rail module load).
     """
-    return (os.environ.get("INFONA_GRAPH_BACKEND") or "neptune").strip().lower()
+    return (os.environ.get("INFONA_GRAPH_BACKEND") or "neo4j").strip().lower()
 
 
 def get_optional_graph_store() -> GraphStore | None:
     """Return the process GraphStore when the neo4j backend is active, else None.
 
-    **Neptune default (no env / ``neptune``):** returns ``None`` so callers keep
-    the SPARQL path and never require ``NEO4J_*`` credentials.
-
-    **``INFONA_GRAPH_BACKEND=neo4j``:** delegates to :func:`get_graph_store`
+    **Neo4j default (no env / ``neo4j``):** delegates to :func:`get_graph_store`
     (process singleton from :func:`configure_graph_store`, or BYOK Neo4j from
     env). Raises :class:`GraphConfigError` if neither is configured — fail
-    closed rather than silently writing to Neptune under a neo4j flag.
+    closed rather than silently falling back to SPARQL.
+
+    **Legacy non-neo4j (``neptune`` / ``fuseki``):** returns ``None`` so callers
+    keep the SPARQL path (legacy only; not the production default).
 
     Write rails (ingest, enrichment, normalization, ER) call this once per
     write batch and pass the result as ``store=`` into

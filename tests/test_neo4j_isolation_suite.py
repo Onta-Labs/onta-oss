@@ -3,7 +3,7 @@
 MemoryGraphStore + ADR 0013 Assertion writes — no live Neo4j, no network.
 
 Pins the multi-tenant / multi-kg contract for the optional Neo4j backend
-(side-by-side with production Neptune; default backend remains neptune):
+(Neo4j is the production default; this suite is hermetic MemoryGraphStore):
 
 1. **Two tenants, two kgs, no cross-leak** — same entity id string in
    tenant A/kg-a and tenant B/kg-b never appears in the peer session.

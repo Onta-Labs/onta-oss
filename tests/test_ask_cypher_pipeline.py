@@ -536,15 +536,15 @@ async def test_ask_default_path_does_not_enter_cypher_when_disabled(monkeypatch)
     assert "9" in result.answer or "count" in result.explanation.lower() or result.answer
 
 
-def test_graph_backend_default_neptune(monkeypatch):
-    """INFONA_GRAPH_BACKEND defaults to neptune (SPARQL /ask path)."""
+def test_graph_backend_default_neo4j(monkeypatch):
+    """INFONA_GRAPH_BACKEND defaults to neo4j (Cypher /ask path)."""
     from infona_client.graph.kg_writer import graph_backend
     from infona_client.nlp.cypher_generate import neo4j_ask_enabled
 
     monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
-    assert graph_backend() == "neptune"
-    assert neo4j_ask_enabled() is False
-    assert neo4j_ask_enabled(explicit=None) is False
+    assert graph_backend() == "neo4j"
+    assert neo4j_ask_enabled() is True
+    assert neo4j_ask_enabled(explicit=None) is True
     assert neo4j_ask_enabled(explicit=False) is False
     assert neo4j_ask_enabled(explicit=True) is True
 
@@ -561,12 +561,11 @@ def test_neo4j_ask_enabled_only_when_backend_or_flag(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_neptune_default_ask_unchanged(monkeypatch):
-    """Default ask (use_cypher unset, backend=neptune) must stay on SPARQL.
+async def test_legacy_neptune_ask_stays_sparql(monkeypatch):
+    """Legacy neptune backend ask (use_cypher unset) must stay on SPARQL.
 
     Regression guard: _ask_cypher only when backend is neo4j OR use_cypher=True.
     """
-    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
     monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
 
     neptune = MagicMock()

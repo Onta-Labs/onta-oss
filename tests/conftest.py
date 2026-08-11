@@ -12,6 +12,9 @@ from tests._hermetic import (
 
 os.environ["INFONA_API_KEYS"] = '{"test-key": "test-tenant"}'
 os.environ["INFONA_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
+# Production default is Neo4j; hermetic suite pins it and injects MemoryGraphStore
+# (see _hermetic_graph_store) so tests never open a live Bolt connection.
+os.environ.setdefault("INFONA_GRAPH_BACKEND", "neo4j")
 
 # Hermetic-by-default LLM credentials.
 #
@@ -54,6 +57,21 @@ if not live_llm_opted_in():
 
 from infona_client.api.app import create_app
 from infona_client.graph.client import NeptuneClient
+from infona_client.graph.memory_store import MemoryGraphStore
+from infona_client.graph.store import configure_graph_store, reset_graph_store_for_tests
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_graph_store():
+    """Every test gets a fresh MemoryGraphStore as the process GraphStore.
+
+    With INFONA_GRAPH_BACKEND=neo4j as the production default, routes and write
+    rails call get_graph_store() unless they explicitly opt into legacy SPARQL.
+    Injecting MemoryGraphStore keeps the suite hermetic (no live Neo4j).
+    """
+    configure_graph_store(MemoryGraphStore())
+    yield
+    reset_graph_store_for_tests()
 
 
 @pytest.fixture(autouse=True)

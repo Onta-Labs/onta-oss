@@ -25,6 +25,10 @@ dependencies = [
     "asyncpg>=0.30.0",
     "pgvector>=0.4.0",
     "cryptography>=43.0.0",
+    # Official Neo4j Python driver (async). Neo4j is the default production
+    # graph backend (GraphStore). OSS is BYOK: set NEO4J_URI / NEO4J_USER /
+    # NEO4J_PASSWORD yourself (see docker-compose.yml for local).
+    "neo4j>=5.26.0",
     # SPARQL 1.1 grammar for the tenant-confinement guard on the raw-SPARQL
     # route (ONTA-412, graph/sparql_scope.py). Pure Python, and used ONLY to
     # parse caller-supplied query text, never to store or reason over RDF.
@@ -42,8 +46,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Official Neo4j Python driver (async). OSS is BYOK: set NEO4J_URI /
-# NEO4J_USER / NEO4J_PASSWORD yourself (see docker-compose.yml for local).
+# Alias kept so `pip install -e ".[neo4j]"` / older docs still work; neo4j is
+# already a core dependency above.
 neo4j = [
     "neo4j>=5.26.0",
 ]

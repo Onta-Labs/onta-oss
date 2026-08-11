@@ -85,13 +85,14 @@ def test_explore_templates_registered():
         assert TEMPLATES[name].writing is False
 
 
-def test_graph_backend_default_neptune(monkeypatch):
+def test_graph_backend_default_neo4j(monkeypatch):
     monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
-    assert graph_backend() == "neptune"
+    assert graph_backend() == "neo4j"
 
 
-def test_resolve_explore_session_neptune_default(monkeypatch, store):
-    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
+def test_resolve_explore_session_legacy_neptune(monkeypatch, store):
+    """Explicit legacy SPARQL backend skips GraphStore unless store= is passed."""
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
     assert (
         resolve_explore_session(tenant_id="demo-tenant", kg="bookstore") is None
     )
@@ -303,7 +304,7 @@ def test_reject_unsafe_type_name_onta425(store):
 
 
 def test_sparql_fallback_returns_none(monkeypatch):
-    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
 
     async def run():
         assert (
