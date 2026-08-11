@@ -12,6 +12,14 @@ Covers the two pieces deferred from the initial implementation:
 
 All mocked — no live Neptune, no LLM. An empty ontology makes TypeMatcher
 short-circuit (no model call), so _resolve_type can be exercised end-to-end.
+
+ONTA-527 port: the lineage assertions used to grep the SPARQL sent to
+``neptune.update`` for each ``types/<T>`` URI. Ontology writes go through
+``ontology_catalog`` on the Neo4j path, so they are read back from there — which
+also makes the assertion sharper, since the subclass EDGES are now checked
+directly instead of inferred from two type URIs appearing in one string. The
+graph argument must be a real tenant graph URI ("g" carries no tenant to scope
+the catalog write to).
 """
 
 from __future__ import annotations
@@ -29,6 +37,8 @@ from infona_client.resolver.schema_resolver import SchemaResolver
 
 
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+TENANT = "test-tenant"
+GRAPH_URI = f"https://graph.infona.ai/graphs/{TENANT}"
 
 
 @pytest.fixture
@@ -57,8 +67,11 @@ def resolver(mock_neptune):
         )
 
 
-def _update_sparql(mock_neptune) -> list[str]:
-    return [c.args[0] for c in mock_neptune.update.call_args_list]
+async def _ontology_types() -> dict[str, object]:
+    """The tenant ontology's types by name (where the ported writes land)."""
+    from infona_client.graph import ontology_catalog as oc
+
+    return {t.name: t for t in await oc.list_types(tenant_id=TENANT)}
 
 
 # ---------------------------------------------------------------------------
@@ -80,18 +93,23 @@ async def test_brand_new_lineage_closes_via_parent_chain(resolver, mock_neptune)
     result = IngestResult(entities_extracted=1)
 
     resolved = await resolver._resolve_type(
-        entity, "g", existing_types, existing_attrs, result,
+        entity, GRAPH_URI, existing_types, existing_attrs, result,
     )
     assert resolved == "Condo"  # leaf stays most-specific
 
-    sparql = " || ".join(_update_sparql(mock_neptune))
+    types = await _ontology_types()
     # All three types created.
     for t in ("Condo", "Property", "Asset"):
-        assert type_uri(t) in sparql, f"{t} type was not created"
+        assert t in types, f"{t} type was not created"
         assert t in result.types_created, f"{t} missing from types_created"
-    # Both subClassOf edges present (child->parent for each consecutive pair).
+    # Both subClassOf edges present (child->parent for each consecutive pair),
+    # in the ontology and in the resolver's lineage map.
+    assert types["Condo"].parent_type == "Property"
+    assert types["Property"].parent_type == "Asset"
+    assert types["Asset"].parent_type is None
     assert resolver._parent_of["Condo"] == "Property"
     assert resolver._parent_of["Property"] == "Asset"
+    mock_neptune.update.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -109,14 +127,32 @@ async def test_existing_parent_plus_deeper_new_chain(resolver, mock_neptune):
     existing_attrs: dict[str, dict] = {"Property": {}}
     result = IngestResult(entities_extracted=1)
 
-    await resolver._link_parent(entity, "g", existing_types, existing_attrs, result)
+    await resolver._link_parent(
+        entity, GRAPH_URI, existing_types, existing_attrs, result
+    )
 
-    sparql = " || ".join(_update_sparql(mock_neptune))
-    assert type_uri("Asset") in sparql and "Asset" in result.types_created
+    types = await _ontology_types()
+    assert "Asset" in types and "Asset" in result.types_created
+    # Condo links to the pre-existing Property, and Asset is synthesized above it.
+    assert types["Condo"].parent_type == "Property"
     assert resolver._parent_of["Condo"] == "Property"
     assert resolver._parent_of["Property"] == "Asset"
     # Property already existed — must NOT be recreated.
     assert "Property" not in result.types_created
+    mock_neptune.update.assert_not_called()
+
+    # KNOWN GAP (pre-existing, NOT introduced by the Neo4j port — the SPARQL
+    # path behaved the same and the original assertion could not see it):
+    # `_synthesize_ancestors` skips an ancestor that is already in
+    # `existing_types`, and the child->parent edge is emitted inside that same
+    # skipped branch. So when the immediate parent EXISTS and the extractor
+    # names a deeper NEW ancestor, `Property ⊂ Asset` is recorded in the
+    # in-memory `parent_of` map (asserted above, and used for the rest of this
+    # ingest) but never persisted: Asset lands as a floating root. Asserted as
+    # the current behavior so a fix shows up here as a change, rather than
+    # left unstated.
+    assert types["Property"].parent_type is None
+    assert types["Asset"].parent_type is None
 
 
 # ---------------------------------------------------------------------------

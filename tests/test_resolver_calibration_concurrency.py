@@ -15,6 +15,14 @@ assert the two composed behaviors:
 
 Harness mirrors tests/test_resolver_chunk_recovery.py: a bare AsyncMock Neptune
 with ``_extract`` / ``_fetch_ontology`` patched.
+
+ONTA-527 port: the subject (batch sizing, overlap, ordering) never involved
+SPARQL. Two harness facts changed with the Neo4j cutover: ingest is given a
+per-KG ``instance_graph`` (the tenant-level URI resolves to no write scope), and
+the mock's emitted attribute is ``model_name`` rather than ``name`` — ``name`` is
+a RESERVED Entity property key (``graph/facts.py``), so declaring it aborts the
+ingest. The padding that makes calibration observe a realistic density is
+unchanged.
 """
 
 from __future__ import annotations
@@ -33,6 +41,11 @@ from infona_client.resolver.models import (
     ExtractionResult,
 )
 from infona_client.resolver.verdict_cache import JsonVerdictCache
+
+TENANT = "test-tenant"
+KG = "calibration"
+#: Instance data needs a per-KG graph URI; the tenant graph alone has no scope.
+KG_GRAPH = f"https://graph.infona.ai/graphs/{TENANT}/kg/{KG}"
 
 
 @pytest.fixture
@@ -63,7 +76,7 @@ def _entity_sized(record: dict, real_tokens_per_record: int) -> ExtractedEntity:
         type_name="Model",
         id=str(record["id"]),
         attributes=[
-            ExtractedAttribute(name="name", value=record["name"], datatype="string"),
+            ExtractedAttribute(name="model_name", value=record["name"], datatype="string"),
             ExtractedAttribute(name="blob", value="x" * approx_chars, datatype="string"),
         ],
     )
@@ -117,7 +130,9 @@ async def test_calibration_shrinks_call_count_for_sparse_records(
 
     with patch.object(resolver, "_extract", side_effect=fake_extract):
         with patch.object(resolver, "_fetch_ontology", return_value=({}, {})):
-            result = await resolver.ingest(content, "test-tenant", content_type="json")
+            result = await resolver.ingest(
+                content, TENANT, content_type="json", instance_graph=KG_GRAPH,
+            )
 
     assert result.rows_in == 60
     assert result.rows_dropped == 0
@@ -160,7 +175,9 @@ async def test_calibration_never_overflows_for_dense_records(
 
     with patch.object(resolver, "_extract", side_effect=fake_extract):
         with patch.object(resolver, "_fetch_ontology", return_value=({}, {})):
-            result = await resolver.ingest(content, "test-tenant", content_type="json")
+            result = await resolver.ingest(
+                content, TENANT, content_type="json", instance_graph=KG_GRAPH,
+            )
 
     assert result.rows_in == 60
     assert result.rows_dropped == 0
@@ -228,7 +245,9 @@ async def test_concurrency_overlaps_bounded_and_conserves_records(
 
     with patch.object(resolver, "_extract", side_effect=fake_extract):
         with patch.object(resolver, "_fetch_ontology", return_value=({}, {})):
-            result = await resolver.ingest(content, "test-tenant", content_type="json")
+            result = await resolver.ingest(
+                content, TENANT, content_type="json", instance_graph=KG_GRAPH,
+            )
 
     # Every record conserved.
     assert result.rows_in == 60
@@ -280,7 +299,9 @@ async def test_concurrency_preserves_result_order(
                 return await orig(extraction, *a, **k)
 
             with patch.object(resolver, "_resolve_and_insert", side_effect=spy):
-                result = await resolver.ingest(content, "test-tenant", content_type="json")
+                result = await resolver.ingest(
+                    content, TENANT, content_type="json", instance_graph=KG_GRAPH,
+                )
 
     assert result.rows_dropped == 0
     assert result.entities_resolved == 60

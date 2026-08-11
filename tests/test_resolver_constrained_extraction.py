@@ -21,6 +21,16 @@ These tests prove three things:
 Harness mirrors tests/test_resolver_calibration_concurrency.py: a bare AsyncMock
 Neptune with ``_extract`` / ``_fetch_ontology`` patched, plus (for the prompt
 tests) a patched module-level ``openrouter_chat`` to capture the exact prompt.
+
+ONTA-527 port: the subject (prompt content + the post-extraction guard) never
+touched SPARQL, and the guard tests are pure. The end-to-end ones now hand
+ingest a per-KG ``instance_graph`` (the tenant-level URI resolves to no write
+scope) and emit ``specialty`` rather than ``name`` as the extracted attribute,
+because ``name`` is a RESERVED Entity property key on the Neo4j path. That
+reserved-key collision is itself a Neo4j-port gap — discovery's own guard
+deliberately KEEPS an attribute called ``name`` — so it is pinned by the strict
+xfail ``test_ingest_of_an_extracted_name_attribute_reaches_the_graph`` below
+rather than papered over everywhere.
 """
 
 from __future__ import annotations
@@ -46,6 +56,11 @@ from infona_client.resolver.models import (
     ExtractionResult,
 )
 from infona_client.resolver.verdict_cache import JsonVerdictCache
+
+TENANT = "test-tenant"
+KG = "discovery"
+#: Instance data needs a per-KG graph URI; the tenant graph alone has no scope.
+KG_GRAPH = f"https://graph.infona.ai/graphs/{TENANT}/kg/{KG}"
 
 
 @pytest.fixture
@@ -211,7 +226,7 @@ async def test_ingest_threads_constraint_into_extract(mock_neptune, mock_cache):
                 ExtractedEntity(
                     type_name="Physician",
                     id="p0",
-                    attributes=[ExtractedAttribute(name="name", value="Jane")],
+                    attributes=[ExtractedAttribute(name="specialty", value="Cardiology")],
                 )
             ]
         )
@@ -221,8 +236,9 @@ async def test_ingest_threads_constraint_into_extract(mock_neptune, mock_cache):
         with patch.object(resolver, "_fetch_ontology", return_value=({}, {})):
             await resolver.ingest(
                 records,
-                "test-tenant",
+                TENANT,
                 content_type="json",
+                instance_graph=KG_GRAPH,
                 constrain_types=PHYSICIAN_CONSTRAINT_TYPES,
                 constrain_attributes=PHYSICIAN_CONSTRAINT_ATTRS,
             )
@@ -259,7 +275,7 @@ async def test_ingest_threads_constraint_through_multi_chunk_json(
                 ExtractedEntity(
                     type_name="Physician",
                     id=str(r["id"]),
-                    attributes=[ExtractedAttribute(name="name", value=r["name"])],
+                    attributes=[ExtractedAttribute(name="specialty", value=r["name"])],
                 )
                 for r in rows
             ]
@@ -270,8 +286,9 @@ async def test_ingest_threads_constraint_through_multi_chunk_json(
         with patch.object(resolver, "_fetch_ontology", return_value=({}, {})):
             result = await resolver.ingest(
                 records,
-                "test-tenant",
+                TENANT,
                 content_type="json",
+                instance_graph=KG_GRAPH,
                 constrain_types=PHYSICIAN_CONSTRAINT_TYPES,
                 constrain_attributes=PHYSICIAN_CONSTRAINT_ATTRS,
             )
@@ -292,6 +309,15 @@ async def test_ingest_constraint_prompt_pins_type_and_drops_off_type(
     Asserts: (a) the extraction prompt carries the CONSTRAINED system + the
     per-type user block, and (b) the post-guard drops the off-type Address the
     model still emitted, keeping only the Physician with confirmed attributes.
+
+    The model deliberately emits an attribute called ``name`` here, because that
+    is what a real discovery payload looks like and the guard is specified to
+    KEEP it. The spy therefore stops at ``_resolve_and_insert`` instead of
+    calling through: on the Neo4j path that write aborts on the reserved
+    property key, which is a product gap in its own right and is pinned by
+    ``test_ingest_of_an_extracted_name_attribute_reaches_the_graph`` below. Both
+    halves under test here (the prompt, and the guard's output) are complete
+    before the write.
     """
     resolver = SchemaResolver(mock_neptune, "fake-key", mock_cache)
     monkeypatch.setattr(resolver, "EXTRACT_PROVIDER", "openrouter")
@@ -323,19 +349,21 @@ async def test_ingest_constraint_prompt_pins_type_and_drops_off_type(
     monkeypatch.setattr(sr, "openrouter_chat", fake_or)
 
     captured_extraction: dict = {}
-    orig = resolver._resolve_and_insert
 
     async def spy(extraction, *a, **k):
         captured_extraction["ex"] = extraction
-        return await orig(extraction, *a, **k)
+        from infona_client.resolver.models import IngestResult
+
+        return IngestResult()
 
     records = json.dumps([{"name": "Jane", "specialty": "Cardiology"}])
     with patch.object(resolver, "_fetch_ontology", return_value=({}, {})):
         with patch.object(resolver, "_resolve_and_insert", side_effect=spy):
             await resolver.ingest(
                 records,
-                "test-tenant",
+                TENANT,
                 content_type="json",
+                instance_graph=KG_GRAPH,
                 constrain_types=PHYSICIAN_CONSTRAINT_TYPES,
                 constrain_attributes=PHYSICIAN_CONSTRAINT_ATTRS,
             )
@@ -348,6 +376,66 @@ async def test_ingest_constraint_prompt_pins_type_and_drops_off_type(
     ex = captured_extraction["ex"]
     assert [e.type_name for e in ex.entities] == ["Physician"]
     assert {a.name for a in ex.entities[0].attributes} == {"name", "specialty"}
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "PRODUCT BUG (Neo4j port): an extracted attribute named `name` aborts "
+        "the ENTIRE ingest. ontology_catalog._validate_attr_leaf rejects the "
+        "reserved Entity property keys (graph/facts.py "
+        "RESERVED_ENTITY_PROPERTY_KEYS: name/label/source/id/kg/…), and the "
+        "resolver declares every extracted attribute, so commit_ontology raises "
+        "GraphScopeError out of ingest (a 500 on /ingest) instead of skipping or "
+        "renaming the declaration. The INSTANCE side has no such problem — "
+        "facts.classify_triple already maps an attrs/name literal onto the "
+        "Entity display property — so a whole run dies over a declaration alone. "
+        "`name` is the single most common extracted attribute, and discovery's "
+        "own constraint guard is specified to always keep it."
+    ),
+)
+@pytest.mark.asyncio
+async def test_ingest_of_an_extracted_name_attribute_reaches_the_graph(
+    mock_neptune, mock_cache
+):
+    """A Physician extracted with a `name` attribute must land in the KG."""
+    from infona_client.graph.explore_store import get_entity_detail
+    from infona_client.graph.ontology_queries import entity_uri
+
+    resolver = SchemaResolver(mock_neptune, "fake-key", mock_cache)
+
+    async def fake_extract(content, content_type, existing_types=None, constraint=None):
+        return ExtractionResult(
+            entities=[
+                ExtractedEntity(
+                    type_name="Physician",
+                    id="dr-jane",
+                    attributes=[
+                        ExtractedAttribute(name="name", value="Jane Roe"),
+                        ExtractedAttribute(name="specialty", value="Cardiology"),
+                    ],
+                )
+            ]
+        )
+
+    records = json.dumps([{"name": "Jane Roe", "specialty": "Cardiology"}])
+    with patch.object(resolver, "_extract", side_effect=fake_extract):
+        with patch.object(resolver, "_fetch_ontology", return_value=({}, {})):
+            result = await resolver.ingest(
+                records,
+                TENANT,
+                content_type="json",
+                instance_graph=KG_GRAPH,
+                constrain_types=PHYSICIAN_CONSTRAINT_TYPES,
+                constrain_attributes=PHYSICIAN_CONSTRAINT_ATTRS,
+            )
+
+    assert result.entities_resolved == 1
+    detail = await get_entity_detail(
+        tenant_id=TENANT, kg=KG, entity_id=entity_uri("Physician", "dr-jane")
+    )
+    assert detail is not None
+    assert detail.properties.get("specialty") == "Cardiology"
 
 
 # --- (2) REGRESSION GUARD: constrain_types=None is a byte-for-byte no-op ------
@@ -367,7 +455,9 @@ async def _capture_prompt_no_constraint(resolver, monkeypatch, content):
 
     monkeypatch.setattr(sr, "openrouter_chat", fake_or)
     with patch.object(resolver, "_fetch_ontology", return_value=({}, {})):
-        await resolver.ingest(content, "test-tenant", content_type="json")
+        await resolver.ingest(
+            content, TENANT, content_type="json", instance_graph=KG_GRAPH
+        )
     return captured
 
 
@@ -423,7 +513,9 @@ async def test_no_constraint_extraction_result_is_untouched(mock_neptune, mock_c
     with patch.object(resolver, "_extract", side_effect=fake_extract):
         with patch.object(resolver, "_fetch_ontology", return_value=({}, {})):
             with patch.object(resolver, "_resolve_and_insert", side_effect=spy):
-                await resolver.ingest(records, "test-tenant", content_type="json")
+                await resolver.ingest(
+                    records, TENANT, content_type="json", instance_graph=KG_GRAPH
+                )
 
     # All three types survived — open-ended behavior preserved.
     assert [e.type_name for e in captured["ex"].entities] == [
