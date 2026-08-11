@@ -357,17 +357,22 @@ async def commit_ontology_unlocked(
     if is_immutable_version_graph(graph_uri):
         raise OntologyGraphImmutable(graph_uri)
 
-    # Neo4j product path: apply via ontology_catalog GraphStore writers.
-    # Fingerprint / changelog SPARQL is skipped (no Neptune).
-    from infona_client.graph.store import graph_backend as _graph_backend
+    # Neo4j product path: apply via ontology_catalog GraphStore writers when a
+    # process GraphStore is available (prod + hermetic MemoryGraphStore). Prefer
+    # store presence over backend string so mis-set SPARQL backends cannot force
+    # dead Neptune after cutover.
+    from infona_client.graph.store import GraphConfigError, get_graph_store
 
-    if _graph_backend() == "neo4j":
+    try:
+        get_graph_store()
         return await _commit_ontology_graph_store(
             graph_uri,
             mutations,
             actor=actor,
             message=message,
         )
+    except GraphConfigError:
+        pass  # no GraphStore → legacy SPARQL path
 
     version_before = await fingerprint_ontology(neptune, graph_uri)
     if expected_version is not None and expected_version != version_before:
@@ -536,7 +541,25 @@ async def load_ontology_shape(neptune, graph_uri: str) -> OntologyShape:
 
     Shared by :func:`fingerprint_ontology` and the ONTA-406 diff/snapshot path
     so the two cannot disagree on what counts as ontology content.
+
+    On Neo4j / GraphStore, SPARQL is unavailable — return an empty shape for now
+    (catalog list APIs cover product reads; full fingerprint port is follow-up).
     """
+    from infona_client.graph.store import GraphConfigError, get_graph_store
+
+    try:
+        get_graph_store()
+        return OntologyShape(
+            types={},
+            attrs={},
+            attr_comments={},
+            core_slots=[],
+        )
+    except GraphConfigError:
+        pass
+    except Exception:
+        pass
+
     types: dict[str, str] = {}
     attrs: dict[str, dict[str, str]] = {}
     attr_comments: dict[str, dict[str, str]] = {}
