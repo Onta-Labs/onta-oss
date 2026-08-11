@@ -538,7 +538,7 @@ async def test_ask_default_path_does_not_enter_cypher_when_disabled(monkeypatch)
 
 def test_graph_backend_default_neo4j(monkeypatch):
     """INFONA_GRAPH_BACKEND defaults to neo4j (Cypher /ask path)."""
-    from infona_client.graph.kg_writer import graph_backend
+    from infona_client.graph.store import graph_backend
     from infona_client.nlp.cypher_generate import neo4j_ask_enabled
 
     monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
@@ -549,69 +549,22 @@ def test_graph_backend_default_neo4j(monkeypatch):
     assert neo4j_ask_enabled(explicit=True) is True
 
 
-def test_neo4j_ask_enabled_only_when_backend_or_flag(monkeypatch):
+def test_neo4j_ask_enabled_ignores_the_env(monkeypatch):
+    """ONTA-527: Cypher is the NL target language; only `explicit` overrides it.
+
+    Previously this asserted the reverse — that a `neptune` env value put /ask
+    back on the SPARQL generator. That backend is gone, so the env no longer
+    selects a query language and a stale value must not quietly re-target the
+    generator at a store that cannot answer.
+    """
     from infona_client.nlp.cypher_generate import neo4j_ask_enabled
 
     monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
-    assert neo4j_ask_enabled() is False
+    assert neo4j_ask_enabled() is True
     monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neo4j")
     assert neo4j_ask_enabled() is True
-    # Explicit False wins even if backend is neo4j.
+    # Explicit False still wins — the eval/archive harnesses use it.
     assert neo4j_ask_enabled(explicit=False) is False
-
-
-@pytest.mark.asyncio
-async def test_legacy_neptune_ask_stays_sparql(monkeypatch):
-    """Legacy neptune backend ask (use_cypher unset) must stay on SPARQL.
-
-    Regression guard: _ask_cypher only when backend is neo4j OR use_cypher=True.
-    """
-    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
-
-    neptune = MagicMock()
-    pipe = NLQueryPipeline(neptune, anthropic_key="test-key", graph_store=None)
-    called = {"cypher": False}
-
-    async def _boom(*_a, **_k):
-        called["cypher"] = True
-        raise AssertionError(
-            "_ask_cypher must not run on default Neptune SPARQL ask"
-        )
-
-    pipe._ask_cypher = _boom  # type: ignore[method-assign]
-    pipe._fetch_ontology = AsyncMock(return_value="Type: Movie")  # type: ignore[method-assign]
-    pipe._generate_sparql = AsyncMock(  # type: ignore[method-assign]
-        return_value={
-            "sparql": (
-                f"SELECT (COUNT(?m) AS ?n) FROM <{_kg_uri('demo-tenant', 'imdb')}> "
-                "WHERE { ?m <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> "
-                f"<{IRI_BASE}/types/Movie> }}"
-            ),
-            "explanation": "count movies",
-            "functions_needed": [],
-        }
-    )
-    neptune.query = AsyncMock(
-        return_value={
-            "head": {"vars": ["n"]},
-            "results": {"bindings": [{"n": {"type": "literal", "value": "42"}}]},
-        }
-    )
-    pipe._rephrase_via_openrouter = AsyncMock(return_value="")  # type: ignore[method-assign]
-    pipe._resolve_uri_labels = AsyncMock(return_value={})  # type: ignore[method-assign]
-
-    # Default: use_cypher is None — must not enter Cypher.
-    result = await pipe.ask(
-        "How many movies?",
-        graph_uri=f"{IRI_BASE}/graphs/demo-tenant",
-        instance_graph=_kg_uri("demo-tenant", "imdb"),
-    )
-    assert called["cypher"] is False
-    assert result.timing.get("query_language") != "cypher"
-    assert result.timing.get("graph_backend") != "neo4j"
-    pipe._generate_sparql.assert_awaited()
-    neptune.query.assert_awaited()
-    assert "42" in result.answer or result.answer
 
 
 @pytest.mark.asyncio

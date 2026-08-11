@@ -1,49 +1,32 @@
 """Liveness / readiness for the API process.
 
-Default backend is Neo4j: health is driven by the GraphStore. When the backend
-is explicitly set to a legacy SPARQL store (``neptune`` / ``fuseki``), health
-still probes that SPARQL endpoint.
+Neo4j is the only graph backend (ONTA-527), so health is exactly "does the
+GraphStore answer". The ``backend`` field is kept in the body — deploy smoke
+checks and the ops runbook assert on it — but it is now a constant, not a
+report of which of several stores got selected.
 """
 
 from __future__ import annotations
 
-import os
+from fastapi import APIRouter
 
-from fastapi import APIRouter, Request
-
-from infona_client.api.deps import get_neptune_client
-from infona_client.graph.client import NeptuneClient
+from infona_client.graph.store import NEO4J_BACKEND
 
 router = APIRouter()
 
 
-def _graph_backend() -> str:
-    return (os.environ.get("INFONA_GRAPH_BACKEND") or "neo4j").strip().lower()
-
-
 @router.get("/health")
-async def health(request: Request):
-    backend = _graph_backend()
-    body: dict = {"status": "healthy", "backend": backend}
-
-    if backend == "neo4j":
-        try:
-            from infona_client.graph.store import get_graph_store
-
-            store = get_graph_store()
-            neo4j_ok = bool(await store.health())
-        except Exception:  # noqa: BLE001 — never crash the probe
-            neo4j_ok = False
-        body["neo4j"] = neo4j_ok
-        body["status"] = "healthy" if neo4j_ok else "degraded"
-        return body
-
-    # Neptune / Fuseki path
+async def health():
+    neo4j_ok = False
     try:
-        client: NeptuneClient = get_neptune_client(request)
-        neptune_ok = await client.health()
-    except Exception:  # noqa: BLE001
-        neptune_ok = False
-    body["neptune"] = neptune_ok
-    body["status"] = "healthy" if neptune_ok else "degraded"
-    return body
+        from infona_client.graph.store import get_graph_store
+
+        store = get_graph_store()
+        neo4j_ok = bool(await store.health())
+    except Exception:  # noqa: BLE001 — never crash the probe
+        neo4j_ok = False
+    return {
+        "status": "healthy" if neo4j_ok else "degraded",
+        "backend": NEO4J_BACKEND,
+        "neo4j": neo4j_ok,
+    }

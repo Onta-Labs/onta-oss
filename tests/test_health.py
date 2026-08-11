@@ -1,5 +1,5 @@
-def test_health_ok(client, mock_neptune):
-    # Default backend is neo4j; hermetic suite injects MemoryGraphStore (health=True).
+def test_health_ok(client):
+    # Neo4j is the only backend; hermetic suite injects MemoryGraphStore (health=True).
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {
@@ -9,18 +9,7 @@ def test_health_ok(client, mock_neptune):
     }
 
 
-def test_health_degraded(client, mock_neptune, monkeypatch):
-    # Legacy SPARQL path: explicit neptune backend still probes NeptuneClient.
-    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
-    mock_neptune.health.return_value = False
-    response = client.get("/health")
-    assert response.status_code == 200
-    assert response.json()["status"] == "degraded"
-    assert response.json()["backend"] == "neptune"
-    assert response.json()["neptune"] is False
-
-
-def test_health_neo4j_degraded(client, monkeypatch):
+def test_health_degraded_when_store_is_down(client):
     from infona_client.graph.store import configure_graph_store
 
     class _DownStore:
@@ -28,10 +17,25 @@ def test_health_neo4j_degraded(client, monkeypatch):
             return False
 
     configure_graph_store(_DownStore())  # type: ignore[arg-type]
-    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neo4j")
     response = client.get("/health")
     assert response.status_code == 200
     body = response.json()
     assert body["backend"] == "neo4j"
     assert body["neo4j"] is False
     assert body["status"] == "degraded"
+
+
+def test_health_degraded_when_no_store_configured(client):
+    """The probe must answer 'degraded', never 500 (ONTA-527 fail-closed reads).
+
+    With no process store and no NEO4J_* env, get_graph_store raises
+    GraphConfigError; health swallows it so a misconfigured task still reports
+    rather than crashing the container's health check into a restart loop.
+    """
+    from infona_client.graph.store import reset_graph_store_for_tests
+
+    reset_graph_store_for_tests()
+    response = client.get("/health")
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {"status": "degraded", "backend": "neo4j", "neo4j": False}

@@ -41,9 +41,8 @@ API sketch (future route wiring — not registered here)::
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal, Mapping, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Literal, Mapping, Optional
 
 from infona_client.graph.facts import RESERVED_ENTITY_PROPERTY_KEYS
 from infona_client.graph.labels import sanitize_domain_label
@@ -135,9 +134,10 @@ class EntityPage:
 # ---------------------------------------------------------------------------
 
 
-def graph_backend() -> str:
-    """Same switch as :func:`infona_client.graph.kg_writer.graph_backend`."""
-    return (os.environ.get("INFONA_GRAPH_BACKEND") or "neo4j").strip().lower()
+# The ONE backend switch lives in `graph/store.py`. This module used to define a
+# copy of `graph_backend()` (as did kg_writer and ontology_catalog); ONTA-527
+# removed all three duplicates and `tests/test_neo4j_only_backend.py` fails if a
+# new one appears.
 
 
 def resolve_explore_session(
@@ -147,22 +147,22 @@ def resolve_explore_session(
     tenant_id: str | None = None,
     kg: str | None = None,
     kg_name: str | None = None,
-) -> Optional["GraphSession"]:
-    """Return an instance-scoped session when the Neo4j path should run.
+) -> "GraphSession":
+    """Return an instance-scoped session for the explore read path.
 
-    Priority: explicit ``session`` → explicit ``store`` → env ``neo4j`` backend.
-    Returns ``None`` when the SPARQL path should be used instead.
+    Priority: explicit ``session`` → explicit ``store`` → the process store.
+    Never returns ``None``: Neo4j is the only backend (ONTA-527), so there is
+    no SPARQL path to hand back to. Raises :class:`GraphConfigError` when no
+    store is configured.
 
     ``kg`` and ``kg_name`` are aliases (``kg_name`` matches REST path params).
     """
     if session is not None:
         return session
-    if store is None and graph_backend() != "neo4j":
-        return None
     if store is None:
-        from infona_client.graph.store import get_graph_store
+        from infona_client.graph.store import get_optional_graph_store
 
-        store = get_graph_store()
+        store = get_optional_graph_store()
     kg_val = kg if kg is not None else kg_name
     if not tenant_id or not kg_val:
         raise GraphScopeError(
@@ -654,7 +654,6 @@ __all__ = [
     "count_entities_pg",
     "get_entity_detail",
     "get_entity_detail_pg",
-    "graph_backend",
     "grep_literals",
     "grep_literals_pg",
     "list_entities_by_type",

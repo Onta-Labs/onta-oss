@@ -21,9 +21,8 @@ leaves that sanitize to reserved system labels, are rejected at schema time.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal, Mapping, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Literal, Mapping, Optional
 
 from infona_client.graph.facts import (
     RESERVED_ENTITY_PROPERTY_KEYS,
@@ -31,7 +30,6 @@ from infona_client.graph.facts import (
 )
 from infona_client.graph.iri import TYPE_URI_PREFIX
 from infona_client.graph.labels import (
-    RESERVED_SYSTEM_LABELS,
     sanitize_domain_label,
 )
 from infona_client.graph.queries import (
@@ -186,13 +184,13 @@ def layer_from_scope(scope: GraphScope) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Session resolution (dual-backend)
+# Session resolution
+#
+# The ONE backend switch lives in `graph/store.py`. This module used to define a
+# THIRD copy of `graph_backend()` (kg_writer had the second) — three independent
+# readings of one env var is exactly the drift ONTA-527 removes. Neither
+# duplicate remains, and this module no longer re-exports it.
 # ---------------------------------------------------------------------------
-
-
-def graph_backend() -> str:
-    """Same switch as :func:`infona_client.graph.kg_writer.graph_backend`."""
-    return (os.environ.get("INFONA_GRAPH_BACKEND") or "neo4j").strip().lower()
 
 
 def resolve_catalog_session(
@@ -202,23 +200,23 @@ def resolve_catalog_session(
     layer: LayerName | str = "tenant",
     tenant_id: str | None = None,
     privileged: bool = False,
-) -> Optional["GraphSession"]:
-    """Return a catalog-scoped session when the Neo4j path should run.
+) -> "GraphSession":
+    """Return a catalog-scoped session for ontology-catalog work.
 
-    Priority: explicit ``session`` → explicit ``store`` → env ``neo4j`` backend.
-    Returns ``None`` when the SPARQL path should be used instead.
+    Priority: explicit ``session`` → explicit ``store`` → the process store.
+    Never returns ``None``: Neo4j is the only backend (ONTA-527), so there is
+    no SPARQL path to hand back to. Raises :class:`GraphConfigError` when no
+    store is configured.
 
     Global-catalog **writes** require ``privileged=True`` (model §3.3 T7);
     reads of public/enhanced may use a non-privileged session.
     """
     if session is not None:
         return session
-    if store is None and graph_backend() != "neo4j":
-        return None
     if store is None:
-        from infona_client.graph.store import get_graph_store
+        from infona_client.graph.store import get_optional_graph_store
 
-        store = get_graph_store()
+        store = get_optional_graph_store()
     layer_norm = (layer or "tenant").strip().lower()
     if layer_norm in ("public", "enhanced"):
         scope = GraphScope.for_catalog(layer=layer_norm, privileged=privileged)
@@ -520,11 +518,11 @@ async def upsert_type(
     privileged: bool = False,
     clear_parent: bool = True,
 ) -> OntoTypeRecord:
-    """Upsert a type declaration (PG catalog or SPARQL).
+    """Upsert a type declaration in the property-graph catalog.
 
-    Prefer ``store`` / ``session`` for Neo4j. With ``INFONA_GRAPH_BACKEND=neo4j``
-    and no store, uses the process GraphStore. Otherwise requires ``neptune`` +
-    ``graph_uri`` and runs :func:`ontology_queries.upsert_type`.
+    Prefer an explicit ``store`` / ``session``; otherwise the process GraphStore
+    is used. ``neptune`` / ``graph_uri`` are vestigial (ONTA-527 deleted the
+    SPARQL ontology path) and ignored.
     """
     if not name:
         raise GraphScopeError("upsert_type requires a non-empty name")
@@ -535,39 +533,13 @@ async def upsert_type(
         tenant_id=tenant_id,
         privileged=privileged,
     )
-    if gs is not None:
-        return await upsert_type_pg(
-            gs,
-            name,
-            description=description,
-            parent_type=parent_type,
-            clear_parent=clear_parent,
-        )
-    if neptune is None or not graph_uri:
-        raise GraphScopeError(
-            "SPARQL ontology path requires neptune client and graph_uri "
-            "(or pass store=/session=/INFONA_GRAPH_BACKEND=neo4j)"
-        )
-    from infona_client.graph import ontology_queries as oq
-
-    leaf = _validate_type_leaf(name)
-    if parent_type is not None:
-        parent_type = _validate_type_leaf(parent_type)
-    sparql = oq.upsert_type(
-        graph_uri, leaf, description=description, parent_type=parent_type
-    )
-    await neptune.update(sparql)
-    return OntoTypeRecord(
-        name=leaf,
-        layer=str(layer),
-        tenant_id=tenant_id or "",
-        kg=ONTOLOGY_KG if str(layer) == "tenant" else str(layer),
-        description=description or "",
+    return await upsert_type_pg(
+        gs,
+        name,
+        description=description,
         parent_type=parent_type,
-        label_token=_label_token_for(leaf),
-        uri=_type_uri(leaf),
+        clear_parent=clear_parent,
     )
-
 
 async def upsert_attribute(
     neptune: Any = None,
@@ -602,56 +574,14 @@ async def upsert_attribute(
         tenant_id=tenant_id,
         privileged=privileged,
     )
-    if gs is not None:
-        return await upsert_attribute_pg(
-            gs,
-            domain,
-            leaf,
-            description=description,
-            datatype=datatype,
-            cardinality=cardinality,
-        )
-    if neptune is None or not graph_uri:
-        raise GraphScopeError(
-            "SPARQL ontology path requires neptune client and graph_uri "
-            "(or pass store=/session=/INFONA_GRAPH_BACKEND=neo4j)"
-        )
-    from infona_client.graph import ontology_queries as oq
-
-    if kind == "relationship" and range_type:
-        # Declare as property then re-point range at the type URI (matches
-        # writer upgrade path: upsert_attribute + set_object_property_range).
-        sparql = oq.upsert_attribute(
-            graph_uri, domain, leaf, description=description, datatype="string"
-        )
-        await neptune.update(sparql)
-        await neptune.update(
-            oq.set_object_property_range(graph_uri, domain, leaf, range_type)
-        )
-    else:
-        sparql = oq.upsert_attribute(
-            graph_uri,
-            domain,
-            leaf,
-            description=description,
-            datatype=lit_dt or "string",
-        )
-        await neptune.update(sparql)
-    card = cardinality or ("1:1" if kind == "literal" else "N:N")
-    return OntoAttrRecord(
-        name=leaf,
-        domain=domain,
-        layer=str(layer),
-        tenant_id=tenant_id or "",
-        kg=ONTOLOGY_KG if str(layer) == "tenant" else str(layer),
-        kind=kind,
-        datatype=lit_dt,
-        range_type=range_type,
-        cardinality=card,
-        description=description or "",
-        prop_key=prop_key,
+    return await upsert_attribute_pg(
+        gs,
+        domain,
+        leaf,
+        description=description,
+        datatype=datatype,
+        cardinality=cardinality,
     )
-
 
 async def list_types(
     neptune: Any = None,
@@ -662,44 +592,11 @@ async def list_types(
     layer: LayerName | str = "tenant",
     tenant_id: str | None = None,
 ) -> list[OntoTypeRecord]:
-    """List types in a catalog scope (PG) or SPARQL graph."""
+    """List types in a catalog scope."""
     gs = resolve_catalog_session(
         store=store, session=session, layer=layer, tenant_id=tenant_id
     )
-    if gs is not None:
-        return await list_types_pg(gs)
-    if neptune is None or not graph_uri:
-        raise GraphScopeError(
-            "SPARQL list_types requires neptune + graph_uri "
-            "(or pass store=/session=/INFONA_GRAPH_BACKEND=neo4j)"
-        )
-    from infona_client.graph import ontology_queries as oq
-    from infona_client.graph.parser import parse_sparql_results
-
-    _, rows = parse_sparql_results(await neptune.query(oq.list_types_query(graph_uri)))
-    out: list[OntoTypeRecord] = []
-    for r in rows:
-        label = r.get("label") or ""
-        if not label:
-            continue
-        parent = r.get("parent")
-        parent_leaf = None
-        if parent and isinstance(parent, str) and parent.startswith(TYPE_URI_PREFIX):
-            parent_leaf = parent[len(TYPE_URI_PREFIX) :].rstrip("/")
-        out.append(
-            OntoTypeRecord(
-                name=label,
-                layer=str(layer),
-                tenant_id=tenant_id or "",
-                kg=ONTOLOGY_KG if str(layer) == "tenant" else str(layer),
-                description=r.get("comment") or "",
-                parent_type=parent_leaf,
-                label_token=_label_token_for(label) if label else None,
-                uri=r.get("type"),
-            )
-        )
-    return out
-
+    return await list_types_pg(gs)
 
 async def list_attributes(
     neptune: Any = None,
@@ -711,62 +608,11 @@ async def list_attributes(
     layer: LayerName | str = "tenant",
     tenant_id: str | None = None,
 ) -> list[OntoAttrRecord]:
-    """List attributes for a type (or all types when ``type_name`` is None on PG).
-
-    SPARQL path requires ``type_name`` (matches ``get_type_attributes_query``).
-    """
+    """List attributes for a type, or all types when ``type_name`` is None."""
     gs = resolve_catalog_session(
         store=store, session=session, layer=layer, tenant_id=tenant_id
     )
-    if gs is not None:
-        return await list_attributes_pg(gs, domain=type_name)
-    if neptune is None or not graph_uri or not type_name:
-        raise GraphScopeError(
-            "SPARQL list_attributes requires neptune, graph_uri, and type_name "
-            "(or pass store=/session=/INFONA_GRAPH_BACKEND=neo4j)"
-        )
-    from infona_client.graph import ontology_queries as oq
-    from infona_client.graph.parser import parse_sparql_results
-
-    domain = _validate_type_leaf(type_name)
-    _, rows = parse_sparql_results(
-        await neptune.query(oq.get_type_attributes_query(graph_uri, domain))
-    )
-    out: list[OntoAttrRecord] = []
-    for r in rows:
-        attr_label = r.get("attrLabel") or ""
-        if not attr_label:
-            continue
-        range_uri = r.get("range") or ""
-        kind: AttrKind = "literal"
-        lit_dt: str | None = "string"
-        range_type: str | None = None
-        if range_uri.startswith(TYPE_URI_PREFIX):
-            kind = "relationship"
-            lit_dt = None
-            range_type = range_uri[len(TYPE_URI_PREFIX) :].rstrip("/")
-        else:
-            lit_dt = oq.xsd_to_datatype(range_uri) if range_uri else "string"
-        try:
-            _, prop_key = _validate_attr_leaf(attr_label)
-        except GraphScopeError:
-            prop_key = None
-        out.append(
-            OntoAttrRecord(
-                name=attr_label,
-                domain=domain,
-                layer=str(layer),
-                tenant_id=tenant_id or "",
-                kg=ONTOLOGY_KG if str(layer) == "tenant" else str(layer),
-                kind=kind,
-                datatype=lit_dt,
-                range_type=range_type,
-                description=r.get("attrComment") or "",
-                prop_key=prop_key,
-            )
-        )
-    return out
-
+    return await list_attributes_pg(gs, domain=type_name)
 
 # ---------------------------------------------------------------------------
 # Schema retrieval helper (future NL — minimal stub)
@@ -835,7 +681,6 @@ __all__ = [
     "VALID_CARDINALITIES",
     "classify_attr_range",
     "get_type_pg",
-    "graph_backend",
     "layer_from_scope",
     "list_attributes",
     "list_attributes_pg",

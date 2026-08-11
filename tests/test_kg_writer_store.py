@@ -22,7 +22,6 @@ from infona_client.graph.facts import (
 from infona_client.graph.iri import IRI_BASE
 from infona_client.graph.kg_writer import (
     delete_facts,
-    graph_backend,
     insert_facts,
     refresh_after_write,
     rewrite_subject,
@@ -30,7 +29,12 @@ from infona_client.graph.kg_writer import (
 from infona_client.graph.memory_store import MemoryGraphStore
 from infona_client.graph.ontology_queries import entity_uri
 from infona_client.graph.scope import GraphScope, GraphScopeError
-from infona_client.graph.store import configure_graph_store, reset_graph_store_for_tests
+from infona_client.graph.store import (
+    GraphConfigError,
+    configure_graph_store,
+    graph_backend,
+    reset_graph_store_for_tests,
+)
 
 
 @pytest.fixture
@@ -47,6 +51,14 @@ def _graph(tenant: str = "demo-tenant", kg: str = "bookstore") -> str:
 def test_graph_backend_default_neo4j(monkeypatch):
     monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
     assert graph_backend() == "neo4j"
+
+
+@pytest.mark.parametrize("legacy", ["neptune", "fuseki", "NEPTUNE", " neptune "])
+def test_graph_backend_rejects_legacy_sparql_backends(monkeypatch, legacy):
+    """ONTA-527: a leftover env value must fail loudly, not select SPARQL."""
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", legacy)
+    with pytest.raises(GraphConfigError, match="not a supported graph backend"):
+        graph_backend()
 
 
 def test_sanitize_prop_key_and_reserved():
@@ -305,21 +317,26 @@ def test_scope_isolation_across_kgs(store):
     asyncio.run(run())
 
 
-def test_neptune_path_untouched_without_store():
-    """Without store/session and default backend, still hits Neptune client."""
+def test_write_without_a_configured_store_fails_closed():
+    """ONTA-527: no SPARQL fallback — a write with no store raises, never no-ops.
+
+    Replaces the old "still hits the Neptune client" test. `neptune` is now a
+    vestigial argument, so a writer that reaches insert_facts with no process
+    store configured must fail loudly rather than silently write nowhere.
+    """
 
     async def run():
         from unittest.mock import AsyncMock
 
+        reset_graph_store_for_tests()
         neptune = AsyncMock()
         person = entity_uri("Person", "z")
         triples = [
             (person, f"{IRI_BASE}/types/Person/attrs/email", "z@x.com"),
         ]
-        await insert_facts(neptune, _graph(), triples)
-        assert neptune.update.await_count >= 1
-        sparql = neptune.update.await_args_list[0].args[0]
-        assert "INSERT" in sparql.upper() or "DATA" in sparql.upper()
+        with pytest.raises(GraphConfigError):
+            await insert_facts(neptune, _graph(), triples)
+        assert neptune.update.await_count == 0
 
     asyncio.run(run())
 

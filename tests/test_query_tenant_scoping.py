@@ -659,7 +659,9 @@ def test_every_route_on_the_passthrough_router_is_guarded():
 
     A new route added to this router that forgot its guard would be a raw
     passthrough with nothing but path-level tenant auth in front of it, which is
-    exactly the bug this ticket fixed. Fail in CI rather than in review.
+    exactly the bug ONTA-412 fixed. Since ONTA-527 the whole router is a 410
+    tombstone, so "guarded" now means "rejects unconditionally" — a route that
+    reintroduced execution without a scope guard fails here.
     """
     import inspect
 
@@ -668,10 +670,8 @@ def test_every_route_on_the_passthrough_router_is_guarded():
     for route in query_routes.router.routes:
         source = inspect.getsource(route.endpoint)
         guarded = (
-            "enforce_query_scope" in source
+            "reject_raw_sparql()" in source
+            or "enforce_query_scope" in source
             or "require_raw_update_access" in source
         )
         assert guarded, f"{route.path} has no tenant-confinement guard"
-        assert "reject_raw_sparql_if_neo4j" in source, (
-            f"{route.path} missing neo4j SPARQL hard-break (E9)"
-        )

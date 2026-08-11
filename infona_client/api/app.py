@@ -286,8 +286,18 @@ def _load_router_plugins(app: FastAPI) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging(settings.log_level)
-    logger.info("starting", neptune_endpoint=settings.neptune_endpoint)
-    app.state.neptune_client = NeptuneClient(settings.neptune_endpoint, backend=settings.graph_backend)
+    # Fail fast on a legacy backend selection (ONTA-527): a deploy that still
+    # carries INFONA_GRAPH_BACKEND=neptune must not boot and then serve reads
+    # from a store that no longer exists. graph_backend() raises GraphConfigError
+    # on anything but "neo4j".
+    from infona_client.graph.store import graph_backend
+
+    logger.info("starting", graph_backend=graph_backend())
+    # Vestigial SPARQL client (ONTA-527): no route executes SPARQL any more, but
+    # a number of handlers still declare `Depends(get_neptune_client)` and read
+    # `app.state.neptune_client` for ontology / explore reads that have not been
+    # ported to GraphStore yet. Constructing it opens no connection.
+    app.state.neptune_client = NeptuneClient(settings.neptune_endpoint, backend="neptune")
     # ONTA-399: re-hydrate durable Enhanced global skills into the process
     # mirror so authored layer-B content survives restart/redeploy without
     # depending on the image's file seed. Best-effort — never blocks startup.

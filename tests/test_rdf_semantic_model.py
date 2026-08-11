@@ -21,7 +21,8 @@ from infona_client.graph.assertion_model import (
 )
 from infona_client.graph.facts import Fact
 from infona_client.graph.iri import IRI_BASE
-from infona_client.graph.kg_writer import graph_backend, insert_facts
+from infona_client.graph.kg_writer import insert_facts
+from infona_client.graph.store import GraphConfigError, graph_backend
 from infona_client.graph.memory_store import MemoryGraphStore
 from infona_client.graph.ontology_queries import entity_uri, type_uri
 from infona_client.graph.rdf_model import (
@@ -507,37 +508,15 @@ def test_instance_of_evicted_when_type_assertion_deleted(store):
     asyncio.run(run())
 
 
-def test_neptune_legacy_path_without_store(monkeypatch):
-    """Legacy neptune backend: insert_facts without store does not require GraphStore."""
+def test_legacy_neptune_backend_env_is_rejected(monkeypatch):
+    """ONTA-527: the legacy backend value is a hard error, not a SPARQL path.
+
+    Replaces `test_neptune_legacy_path_without_store`, which asserted that
+    INFONA_GRAPH_BACKEND=neptune let insert_facts run without a GraphStore.
+    """
     monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
-    assert graph_backend() == "neptune"
-
-    class _FakeNeptune:
-        def __init__(self):
-            self.updates: list[str] = []
-
-        async def update(self, sparql: str):
-            self.updates.append(sparql)
-
-        async def query(self, sparql: str):
-            return {"results": {"bindings": []}}
-
-    async def run():
-        nep = _FakeNeptune()
-        person = entity_uri("Person", "x")
-        triples = [
-            (
-                person,
-                "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-                f"{IRI_BASE}/types/Person",
-            ),
-        ]
-        # No store → SPARQL path (may no-op companions); must not raise GraphConfigError
-        await insert_facts(nep, _graph(), triples)
-        assert len(nep.updates) >= 1
-        assert "INSERT" in nep.updates[0].upper() or "insert" in nep.updates[0].lower() or "DATA" in nep.updates[0]
-
-    asyncio.run(run())
+    with pytest.raises(GraphConfigError):
+        graph_backend()
 
 
 def test_descendants_of_helper():
