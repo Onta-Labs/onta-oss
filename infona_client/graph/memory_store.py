@@ -669,6 +669,8 @@ class MemoryGraphStore:
         self._onto_types: dict[tuple[str, str, str, str], _OntoTypeRow] = {}
         # Catalog: (tenant_id, kg, layer, domain, name)
         self._onto_attrs: dict[tuple[str, str, str, str, str], _OntoAttrRow] = {}
+        # KG registry: (tenant_id, name) → {name, description, triple_count}
+        self._kg_registry: dict[tuple[str, str], dict[str, Any]] = {}
         self._bootstrapped: list[str] = []
 
     def session(self, scope: GraphScope) -> GraphSession:
@@ -697,7 +699,49 @@ class MemoryGraphStore:
         self._instance_of.clear()
         self._onto_types.clear()
         self._onto_attrs.clear()
+        self._kg_registry.clear()
         self._bootstrapped.clear()
+
+    async def kg_registry_list(self, tenant_id: str) -> list[dict[str, Any]]:
+        out: dict[str, dict[str, Any]] = {}
+        for (t, name), row in self._kg_registry.items():
+            if t == tenant_id:
+                out[name] = dict(row)
+        for (t, k, _), _ in self._entities.items():
+            if t == tenant_id and k and k not in out:
+                out[k] = {"name": k, "description": "", "triple_count": 0}
+        return [out[n] for n in sorted(out)]
+
+    async def kg_registry_upsert(
+        self,
+        tenant_id: str,
+        name: str,
+        *,
+        description: str = "",
+        triple_count: int | None = None,
+        only_if_absent: bool = False,
+    ) -> dict[str, Any]:
+        key = (tenant_id, name)
+        existing = self._kg_registry.get(key)
+        if existing is not None and only_if_absent:
+            return dict(existing)
+        if existing is None:
+            row = {
+                "name": name,
+                "description": description or "",
+                "triple_count": int(triple_count or 0),
+            }
+        else:
+            row = dict(existing)
+            if description:
+                row["description"] = description
+            if triple_count is not None:
+                row["triple_count"] = int(triple_count)
+        self._kg_registry[key] = row
+        return dict(row)
+
+    async def kg_registry_delete(self, tenant_id: str, name: str) -> None:
+        self._kg_registry.pop((tenant_id, name), None)
 
     def assertion_count(
         self, *, tenant_id: str | None = None, kg: str | None = None
