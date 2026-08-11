@@ -137,7 +137,7 @@ class EntityPage:
 
 def graph_backend() -> str:
     """Same switch as :func:`infona_client.graph.kg_writer.graph_backend`."""
-    return (os.environ.get("INFONA_GRAPH_BACKEND") or "neptune").strip().lower()
+    return (os.environ.get("INFONA_GRAPH_BACKEND") or "neo4j").strip().lower()
 
 
 def resolve_explore_session(

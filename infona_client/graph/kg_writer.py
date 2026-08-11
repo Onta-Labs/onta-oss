@@ -156,15 +156,14 @@ def _provenance_enabled(*, store_path: bool = False) -> bool:
 
 
 def graph_backend() -> str:
-    """Active instance backend: ``neptune`` (default) or ``neo4j``.
+    """Active instance backend: ``neo4j`` (default) or legacy ``neptune``/``fuseki``.
 
-    Dual-backend migration switch (E3). Prefer an explicit ``store`` /
-    ``session`` on write primitives; when those are omitted, this flag decides
-    whether :func:`get_graph_store` is consulted (``neo4j``) or the legacy
-    Neptune SPARQL path is used (``neptune``). **Do not delete the Neptune path
-    until the cutover gate lands.**
+    Prefer an explicit ``store`` / ``session`` on write primitives; when those
+    are omitted, this flag decides whether :func:`get_graph_store` is consulted
+    (``neo4j``, the production default) or the legacy SPARQL path is used
+    (``neptune`` / ``fuseki`` only).
     """
-    return (os.environ.get("INFONA_GRAPH_BACKEND") or "neptune").strip().lower()
+    return (os.environ.get("INFONA_GRAPH_BACKEND") or "neo4j").strip().lower()
 
 
 def _resolve_graph_session(
