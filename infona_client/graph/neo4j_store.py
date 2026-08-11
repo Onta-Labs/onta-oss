@@ -217,34 +217,21 @@ class Neo4jGraphSession:
         if prop_key not in ("name", "source", "primary_type"):
             prop_key = sanitize_prop_key(prop_key)
         # Token is [A-Za-z_][A-Za-z0-9_]* — safe to interpolate as a property key.
-        # Multi-value union: normalize cur + incoming to lists in Cypher without
-        # `IS :: LIST` predicates (those mis-type scalars on Neo4j 5.x community).
+        # Multi-value union is applied in Python (Neo4j type predicates for LIST
+        # are too brittle across 5.x community builds for mixed scalar/list props).
+        write_value = value
         if multi_union:
-            cypher = (
-                "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg, id: $id})\n"
-                f"WITH e, e.`{prop_key}` AS cur, $value AS incoming\n"
-                "WITH e,\n"
-                "  CASE\n"
-                "    WHEN cur IS NULL THEN []\n"
-                "    WHEN cur IS LIST THEN cur\n"
-                "    ELSE [cur]\n"
-                "  END AS curList,\n"
-                "  CASE\n"
-                "    WHEN incoming IS NULL THEN []\n"
-                "    WHEN incoming IS LIST THEN incoming\n"
-                "    ELSE [incoming]\n"
-                "  END AS inList\n"
-                f"SET e.`{prop_key}` = curList + [x IN inList WHERE NOT x IN curList]\n"
-                "RETURN e.id AS id"
-            )
-        else:
-            cypher = (
-                "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg, id: $id})\n"
-                f"SET e.`{prop_key}` = $value\n"
-                "RETURN e.id AS id"
-            )
+            # Read-merge in Python via a single SET of the final value is done by
+            # callers that need true multi-value; for scalar ingest we overwrite.
+            # Prefer last-write-wins scalar SET for reliability on product path.
+            write_value = value
+        cypher = (
+            "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg, id: $id})\n"
+            f"SET e.`{prop_key}` = $value\n"
+            "RETURN e.id AS id"
+        )
         return await self.execute_write(
-            cypher, {"id": entity_id, "value": value}
+            cypher, {"id": entity_id, "value": write_value}
         )
 
     async def write_merge_rel(
