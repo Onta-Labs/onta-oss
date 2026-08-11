@@ -44,7 +44,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Mapping, Optional
 
-from infona_client.graph.facts import RESERVED_ENTITY_PROPERTY_KEYS
+from infona_client.graph.facts import (
+    RESERVED_ENTITY_PROPERTY_KEYS,
+    is_internal_property_key,
+)
 from infona_client.graph.labels import sanitize_domain_label
 from infona_client.graph.queries import (
     InvalidTypeName,
@@ -446,6 +449,15 @@ async def grep_literals_pg(
 
     Returns ``(hits, truncated)`` where ``truncated`` is True when the store
     produced more than ``limit`` rows (caller asked for ``limit + 1``).
+
+    **Internal keys never reach a caller.** The scan already excludes them (the
+    ``entity_literal_grep`` template and the Memory store both filter on
+    :func:`~infona_client.graph.facts.is_internal_property_key`); this repeats
+    the check as the authority, in the ONE place that owns the page, so a store
+    whose scan-level exclusion drifts still cannot leak. Order matters: the
+    check runs BEFORE the page is cut, so an internal row can never occupy a
+    slot the caller paid for and hand back a short page marked ``truncated:
+    false``.
     """
     if not isinstance(needle, str) or not needle:
         raise GraphScopeError("grep needle must be a non-empty string")
@@ -469,14 +481,13 @@ async def grep_literals_pg(
             "limit": fetch_limit,
         },
     )
-    truncated = len(rows) > page_limit
-    hits: list[GrepHit] = []
-    for r in rows[:page_limit]:
+    kept: list[GrepHit] = []
+    for r in rows:
         d = r.to_dict() if hasattr(r, "to_dict") else dict(r)
         attr = str(d.get("attr") or "")
-        if not attr:
+        if not attr or is_internal_property_key(attr):
             continue
-        hits.append(
+        kept.append(
             GrepHit(
                 entity_uri=str(d.get("entity_uri") or d.get("id") or ""),
                 label=d.get("label"),
@@ -485,7 +496,8 @@ async def grep_literals_pg(
                 value=str(d.get("value") if d.get("value") is not None else ""),
             )
         )
-    return hits, truncated
+    truncated = len(kept) > page_limit
+    return kept[:page_limit], truncated
 
 
 # ---------------------------------------------------------------------------

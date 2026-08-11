@@ -24,7 +24,7 @@ from infona_client.graph.iri import (
     ONTO_PRED_PREFIX,
     TYPE_URI_PREFIX,
 )
-from infona_client.graph.predicates import RDF_TYPE, RDFS_NS
+from infona_client.graph.predicates import INTERNAL_ONTO_MARKERS, RDF_TYPE, RDFS_NS
 from infona_client.graph.scope import GraphScopeError
 
 FactKind = Literal["literal", "rel", "type"]
@@ -255,6 +255,79 @@ def is_er_index_leaf(leaf: str) -> bool:
     return leaf == _ER_BLOCK_KEY_LEAF or leaf.startswith(_ER_SIGNAL_PREFIX)
 
 
+# ---------------------------------------------------------------------------
+# Read-side inverse of the flattening (ONTA-527 grep leak)
+# ---------------------------------------------------------------------------
+#
+# `classify_triple` FLATTENS a namespaced predicate down to a bare Entity
+# property key: `…/onto/er/blockKey` → `blockKey`, `…/onto/batch_id` →
+# `batch_id`. That is what the property-graph model wants, but it destroys the
+# one signal `predicates.is_internal_predicate` classifies on — the namespace.
+# A reader holding only `keys(e)` therefore CANNOT call `is_internal_predicate`
+# (`ONTO_PRED_PREFIX + "blockKey"` is not an internal URI) and, before this
+# existed, every property-graph reader that tried simply leaked the internals.
+#
+# So the inverse mapping lives HERE, next to the forward one, on purpose: the
+# two are the same fact stated in two directions, and a marker added to the
+# classifier without a matching entry here would be a silent leak. The exact
+# names are DERIVED from `predicates.INTERNAL_ONTO_MARKERS` rather than
+# restated, so that half cannot drift at all.
+#
+# Known, accepted limitation: flattening is lossy, so a user attribute literally
+# named `blockKey` / `batch_id` is indistinguishable from the housekeeping
+# marker and is hidden with it. That collision already exists one layer deeper —
+# both write to the SAME Entity property key, so the values collide in storage
+# before any reader sees them — and hiding a rare same-named user attribute is
+# the strictly safer half of that pre-existing ambiguity.
+
+#: Public alias for the ER signal key prefix (`erSignal_email`, …).
+ER_SIGNAL_PROPERTY_KEY_PREFIX = _ER_SIGNAL_PREFIX
+
+#: Entity property keys that carry the DISPLAY label. Internal as PREDICATES
+#: (`rdfs:label` is in `predicates.SYSTEM_PREDICATES`) but deliberately NOT
+#: internal as property keys: finding a thing by its displayed name is the
+#: single commonest reason to read one, so every caller of
+#: :func:`is_internal_property_key` keeps them.
+DISPLAY_PROPERTY_KEYS: frozenset[str] = frozenset({"name", "label"})
+
+#: Exact Entity property keys `classify_triple` mints for predicates that
+#: `predicates.is_internal_predicate` calls internal — the ER block index plus
+#: the curated `…/onto/` housekeeping markers, minus the display keys. The
+#: `erSignal_*` family is a PREFIX, not a member (see
+#: :data:`ER_SIGNAL_PROPERTY_KEY_PREFIX`).
+INTERNAL_PROPERTY_KEYS: frozenset[str] = frozenset(
+    {_ER_BLOCK_KEY_LEAF}
+    | {
+        marker[len(ONTO_PRED_PREFIX) :]
+        for marker in INTERNAL_ONTO_MARKERS
+        if marker.startswith(ONTO_PRED_PREFIX)
+    }
+) - DISPLAY_PROPERTY_KEYS
+
+
+def is_internal_property_key(key: str) -> bool:
+    """True if Entity property ``key`` is internal/housekeeping, not domain data.
+
+    The property-graph counterpart of
+    :func:`infona_client.graph.predicates.is_internal_predicate`: that one takes
+    a predicate URI (and is still the authority wherever a URI survives), this
+    one takes the flattened key such a predicate becomes on an ``:Entity`` node.
+
+    Callers hold ``keys(e)`` and nothing else, so this is the only classifier
+    available to them. ``name`` / ``label`` are always kept.
+    """
+    if not isinstance(key, str):
+        return True
+    k = key.strip()
+    if not k:
+        return True
+    if k in DISPLAY_PROPERTY_KEYS:
+        return False
+    if k in INTERNAL_PROPERTY_KEYS:
+        return True
+    return is_er_index_leaf(k)
+
+
 def classify_triple(s: str, p: str, o: str) -> Fact | None:
     """Map one RDF-era triple to a :class:`Fact`, or ``None`` if skipped.
 
@@ -353,12 +426,16 @@ def primary_type_from_facts(subject_facts: Sequence[Fact]) -> str | None:
 
 
 __all__ = [
+    "DISPLAY_PROPERTY_KEYS",
+    "ER_SIGNAL_PROPERTY_KEY_PREFIX",
+    "INTERNAL_PROPERTY_KEYS",
     "RESERVED_ENTITY_PROPERTY_KEYS",
     "Fact",
     "FactKind",
     "classify_triple",
     "group_facts_by_subject",
     "is_er_index_leaf",
+    "is_internal_property_key",
     "primary_type_from_facts",
     "sanitize_prop_key",
     "sanitize_rel_type",

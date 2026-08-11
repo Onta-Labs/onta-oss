@@ -18,9 +18,14 @@ for admin/bootstrap/tests only; see ``docs/neo4j-local.md``).
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
+from infona_client.graph.facts import (
+    ER_SIGNAL_PROPERTY_KEY_PREFIX,
+    INTERNAL_PROPERTY_KEYS,
+)
 from infona_client.graph.rdfs_helpers import (
     ASSERTIONS_FOR_SUBJECT_CYPHER,
     ENTITIES_OF_TYPE_COUNT_CYPHER,
@@ -29,6 +34,9 @@ from infona_client.graph.rdfs_helpers import (
     RELATED_ENTITIES_CYPHER,
     SUBCLASS_OF_CLOSURE_CYPHER,
 )
+
+#: Bare-identifier guard for property-key names interpolated into a template.
+_SAFE_PROPERTY_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 # (name, cypher) — name is returned by bootstrap for logging / tests.
 # Cypher uses Neo4j 5 IF NOT EXISTS so Community + Aura both accept it.
@@ -338,20 +346,66 @@ RETURN coalesce(r.attr, type(r)) AS attr, type(r) AS rel_type,
        'in' AS direction
 """.strip()
 
+# Property keys a literal grep must never return, pushed INTO the scan.
+#
+# Two groups, and the second is the load-bearing one:
+#   * store plumbing (`id`, `tenant_id`, `kg`, …) — never was domain data;
+#   * INTERNAL keys (`blockKey`, `batch_id`, …) — the flattened form of the
+#     predicates `predicates.is_internal_predicate` hides on every other
+#     surface, taken from `facts.INTERNAL_PROPERTY_KEYS` rather than restated.
+#
+# Excluding them HERE rather than after the scan is what keeps `LIMIT` honest:
+# these keys sort ahead of most domain attributes (`aliasOf` < `batch_id` <
+# `blockKey` < … < `name`), so a post-filter would let housekeeping rows eat the
+# caller's page and hand back a short one with `truncated: false`.
+#
+# `name` is deliberately absent — grep exists to find things by displayed name.
+_GREP_EXCLUDED_PROPERTY_KEYS: tuple[str, ...] = tuple(
+    sorted(
+        {
+            "id",
+            "tenant_id",
+            "kg",
+            "primary_type",
+            "source",
+            "created_at",
+            "updated_at",
+            "elementId",
+            "labels",
+            "props",
+        }
+        | set(INTERNAL_PROPERTY_KEYS)
+    )
+)
+# These are code constants, never caller input, but they are interpolated into
+# Cypher rather than bound as parameters (a list literal inside a comprehension
+# cannot be a parameter without changing every caller's params dict). Fail at
+# import if one ever stops being a bare identifier, so a quote can never reach
+# the query text.
+if not all(
+    _SAFE_PROPERTY_KEY.match(k)
+    for k in (*_GREP_EXCLUDED_PROPERTY_KEYS, ER_SIGNAL_PROPERTY_KEY_PREFIX)
+):
+    raise ValueError(
+        "grep property-key exclusions must be bare identifiers: "
+        f"{_GREP_EXCLUDED_PROPERTY_KEYS!r} / {ER_SIGNAL_PROPERTY_KEY_PREFIX!r}"
+    )
+_GREP_EXCLUDED_KEY_LIST = ", ".join(f"'{k}'" for k in _GREP_EXCLUDED_PROPERTY_KEYS)
+
 # Index-free literal substring scan over Entity properties (grep dual-backend).
-# System keys are excluded so tenant_id/kg/id never appear as "matches".
+# System + internal keys are excluded before UNWIND so neither tenant_id/kg/id
+# nor ER/ingest housekeeping ever appears as a "match" — or consumes the LIMIT.
 # ``$type_name`` / ``$predicate_leaf`` may be null (no filter). Over-fetch with
 # ``LIMIT $limit`` (caller passes limit+1 for honest truncation).
-ENTITY_LITERAL_GREP_CYPHER = """
-MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})
-WHERE ($type_name IS NULL OR e.primary_type = $type_name OR EXISTS {
-  MATCH (e)-[:INSTANCE_OF]->(c:Class {tenant_id: $tenant_id, kg: $kg})
+ENTITY_LITERAL_GREP_CYPHER = f"""
+MATCH (e:Entity {{tenant_id: $tenant_id, kg: $kg}})
+WHERE ($type_name IS NULL OR e.primary_type = $type_name OR EXISTS {{
+  MATCH (e)-[:INSTANCE_OF]->(c:Class {{tenant_id: $tenant_id, kg: $kg}})
   WHERE c.name = $type_name OR c.id = $type_name
-})
+}})
 WITH e, [k IN keys(e) WHERE NOT k IN [
-  'id', 'tenant_id', 'kg', 'primary_type', 'source',
-  'created_at', 'updated_at', 'elementId', 'labels', 'props'
-]] AS prop_keys
+  {_GREP_EXCLUDED_KEY_LIST}
+] AND NOT k STARTS WITH '{ER_SIGNAL_PROPERTY_KEY_PREFIX}'] AS prop_keys
 UNWIND prop_keys AS prop_key
 WITH e, prop_key, e[prop_key] AS val
 WHERE val IS NOT NULL

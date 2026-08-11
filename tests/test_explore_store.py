@@ -19,6 +19,7 @@ from infona_client.graph.explore_store import (
     TypeCountRow,
     count_entities,
     get_entity_detail,
+    grep_literals_pg,
     list_entities_by_type,
     resolve_explore_session,
     type_counts,
@@ -464,3 +465,76 @@ def test_list_entities_include_subclasses(store):
         assert ids == {person, emp}
 
     asyncio.run(run())
+
+
+# ---------------------------------------------------------------------------
+# grep_literals_pg — internal keys are excluded BEFORE the page is cut
+# ---------------------------------------------------------------------------
+
+
+class _StubGrepSession:
+    """A session whose scan hands back internal rows the real templates exclude.
+
+    Both shipped stores (the ``entity_literal_grep`` Cypher and the Memory scan)
+    drop internal keys inside the scan, so through them the page filter never
+    sees one. That is the belt; this stub removes it to test the braces — the
+    ordering inside :func:`grep_literals_pg`, which owns the page and is the
+    authority if a store's scan-level exclusion ever drifts.
+    """
+
+    def __init__(self, rows: list[dict]):
+        self._rows = rows
+        self.asked_for: int | None = None
+
+    async def execute_template(self, name: str, params: dict):
+        assert name == "entity_literal_grep"
+        self.asked_for = params["limit"]
+        return [dict(r) for r in self._rows[: params["limit"]]]
+
+
+def _row(attr: str, value: str = "matrix", eid: str = "e1") -> dict:
+    return {
+        "entity_uri": eid,
+        "label": "The Matrix",
+        "type": "Movie",
+        "attr": attr,
+        "value": value,
+    }
+
+
+def test_grep_literals_pg_filters_before_cutting_the_page():
+    """Filter THEN cut, never cut then filter.
+
+    The store honours ``LIMIT`` on its side, so of the four rows here only the
+    over-fetched three come back: ``blockKey``, ``name``, ``tagline``. Filtering
+    first fills the caller's page of 2 with both domain rows; cutting first
+    would spend a slot on ``blockKey`` and hand back a page of ONE — short, with
+    nothing in the response to say why. Internal keys sort ahead of domain ones
+    in both real scan orders, so that is the common case, not a corner.
+    """
+    session = _StubGrepSession(
+        [_row("blockKey"), _row("name"), _row("tagline"), _row("title")]
+    )
+
+    hits, truncated = asyncio.run(grep_literals_pg(session, "matrix", limit=2))
+
+    assert session.asked_for == 3, "over-fetch one row for honest truncation"
+    assert [h.attr for h in hits] == ["name", "tagline"]
+    # `title` matches too but was never fetched: the internal row consumed the
+    # over-fetch, so `truncated` under-reports. That residue is exactly why the
+    # exclusion is ALSO pushed into the scan (`entity_literal_grep` / Memory),
+    # where no internal row is fetched in the first place — the end-to-end
+    # property is pinned by tests/test_grep_route.py.
+    assert truncated is False
+
+
+def test_grep_literals_pg_keeps_the_display_name():
+    """``name`` is internal as a PREDICATE (rdfs:label) and kept as a KEY.
+
+    Finding a thing by its displayed name is grep's commonest use, so the one
+    exemption in ``facts.is_internal_property_key`` is pinned here.
+    """
+    session = _StubGrepSession([_row("blockKey"), _row("name")])
+    hits, truncated = asyncio.run(grep_literals_pg(session, "matrix", limit=50))
+    assert [h.attr for h in hits] == ["name"]
+    assert truncated is False

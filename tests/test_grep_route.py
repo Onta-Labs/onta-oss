@@ -280,23 +280,42 @@ def test_hostile_needles_are_matched_as_text_and_widen_nothing(
 # --- internal predicates ------------------------------------------------------ #
 
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG (pre-dates ONTA-527, surfaced by it): the property-graph grep does "
-        "NOT filter internal predicates. api/routes/grep.py runs "
-        "is_internal_predicate on every SPARQL row (the authoritative filter) "
-        "plus a prefilter pushed into the scan, but its GraphStore branch maps "
-        "every hit straight into GrepMatch. So on Neo4j — i.e. in production — "
-        "grep returns ER blocking keys and other internal machinery to any "
-        "client, and those rows also consume the LIMIT and shrink the page "
-        "invisibly, which is exactly what the SPARQL prefilter exists to "
-        "prevent. Not fixed here because the fix is write-side: classify_triple "
-        "flattens er/blockKey to the property key 'blockKey', so the internal "
-        "namespace is lost before grep can see it and a read-side filter cannot "
-        "tell it from a user attribute of the same name."
-    ),
-    strict=True,
+#: Internal triples whose flattened Entity property key must never be returned.
+#: ``classify_triple`` writes each of these as a bare key (``er/blockKey`` →
+#: ``blockKey``), so the namespace the shared predicate classifier keys on is
+#: gone by read time — the store path filters on
+#: ``facts.is_internal_property_key`` instead.
+_INTERNAL_TRIPLES = (
+    (f"{IRI_BASE}/attr_meta/Movie/title/source_url", "matrix-source"),
+    (f"{IRI_BASE}/onto/er/blockKey", "matrix-block"),
+    (f"{IRI_BASE}/er/erSignal_email", "matrix@example.com"),
+    (f"{IRI_BASE}/onto/batch_id", "matrix-batch"),
+    (f"{IRI_BASE}/onto/ingested_at", "matrix-2026"),
+    (f"{IRI_BASE}/onto/coreSlot", "matrix-slot"),
+    (f"{IRI_BASE}/onto/aliasOf", "matrix-alias"),
+    (f"{IRI_BASE}/onto/lambda_refreshed_at", "matrix-lambda"),
 )
+
+#: The bare property keys the above land on — what a leak actually looks like.
+_INTERNAL_ATTRS = frozenset(
+    {
+        "source_url",
+        "title_source_url",
+        "blockKey",
+        "erSignal_email",
+        "batch_id",
+        "ingested_at",
+        "coreSlot",
+        "aliasOf",
+        "lambda_refreshed_at",
+    }
+)
+
+
+def _internal_noise(subject):
+    return [(subject, pred, value) for pred, value in _INTERNAL_TRIPLES]
+
+
 def test_internal_predicates_are_filtered_but_label_is_kept(store, client, auth_headers):
     subject = entity_uri("Movie", "m3")
     _seed(
@@ -305,15 +324,82 @@ def test_internal_predicates_are_filtered_but_label_is_kept(store, client, auth_
         [
             (subject, RDF_TYPE, MOVIE_TYPE),
             (subject, LABEL, "Matrix Revolutions"),
-            (subject, f"{IRI_BASE}/attr_meta/Movie/title/source_url", "matrix-source"),
-            (subject, f"{IRI_BASE}/onto/er/blockKey", "matrix-block"),
+            *_internal_noise(subject),
         ],
     )
     res = _post(client, {"q": "matrix", "kg_name": KG}, auth_headers)
     assert res.status_code == 200, res.text
     attrs = {m["attr"] for m in res.json()["matches"] if m["entity_uri"] == subject}
     assert attrs, "the labelled subject should still match"
+    assert not (attrs & _INTERNAL_ATTRS), f"internal keys leaked: {attrs}"
     assert not {a for a in attrs if "source_url" in a or "blockKey" in a}
+
+
+def test_asking_for_an_internal_predicate_by_name_returns_nothing(
+    store, client, auth_headers
+):
+    """The `predicate` filter is not a way back in.
+
+    Exclusion happens while the scan chooses which property keys to visit, so a
+    caller who names an internal key explicitly narrows the scan to keys it will
+    never visit — an empty page, not a leak.
+    """
+    subject = entity_uri("Movie", "m5")
+    _seed(
+        store,
+        GRAPH,
+        [
+            (subject, RDF_TYPE, MOVIE_TYPE),
+            (subject, LABEL, "Matrix Revolutions"),
+            *_internal_noise(subject),
+        ],
+    )
+    for pred in ("blockKey", "erSignal_email", "batch_id"):
+        res = _post(
+            client, {"q": "matrix", "kg_name": KG, "predicate": pred}, auth_headers
+        )
+        assert res.status_code == 200, res.text
+        assert res.json()["matches"] == [], pred
+
+
+def test_internal_rows_do_not_consume_the_limit(store, client, auth_headers):
+    """Exclusion happens BEFORE the page is cut, not after.
+
+    The regression this pins is not "internal rows are visible" — the test above
+    covers that — but "internal rows are invisible AND still ate the page". Both
+    scan orders put housekeeping keys ahead of the domain ones (Cypher's
+    ``ORDER BY prop_key`` sorts ``aliasOf`` < ``batch_id`` < ``blockKey`` <
+    ``title``), so a post-filter applied after ``LIMIT`` returns a page that is
+    short, or empty, while cheerfully reporting ``truncated: false``.
+    """
+    subject = entity_uri("Movie", "m4")
+    _seed(
+        store,
+        GRAPH,
+        [
+            (subject, RDF_TYPE, MOVIE_TYPE),
+            (subject, LABEL, "Matrix Revolutions"),
+            (subject, TITLE, "Matrix Revolutions"),
+            (subject, TAGLINE, "Matrix everywhere"),
+            *_internal_noise(subject),
+        ],
+    )
+
+    # A page of 2 must be TWO domain matches — the 8 internal rows that sort
+    # ahead of them may not take the slots.
+    res = _post(client, {"q": "matrix", "kg_name": KG, "limit": 2}, auth_headers)
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["count"] == 2, body
+    assert len(body["matches"]) == 2
+    assert not ({m["attr"] for m in body["matches"]} & _INTERNAL_ATTRS)
+    # Three domain attributes match, so a page of 2 really is truncated.
+    assert body["truncated"] is True
+
+    # And the full page is exactly the domain attributes, un-truncated.
+    every = _post(client, {"q": "matrix", "kg_name": KG, "limit": 200}, auth_headers)
+    assert {m["attr"] for m in every.json()["matches"]} == {"name", "title", "tagline"}
+    assert every.json()["truncated"] is False
 
 
 # --- snippets ----------------------------------------------------------------- #

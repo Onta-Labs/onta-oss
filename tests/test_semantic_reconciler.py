@@ -256,6 +256,36 @@ def _chunk(entity_n: int, text: str, *, attr: str = "description") -> SemanticCh
     )
 
 
+def _capture_text_kind_verdicts(monkeypatch) -> dict[tuple[str, str], str]:
+    """Record every ``SET_TEXT_KIND`` the candidacy pass COMMITS, as
+    ``{(type, attr): kind}``.
+
+    Ported by ONTA-527. The candidacy verdicts used to be observable as the
+    SPARQL ``textKind`` upsert :class:`FakeNeptune` parsed back into
+    ``markers``; ``_apply_default_candidacy`` goes through
+    ``ontology_commit.commit_ontology`` now, which takes its GraphStore branch
+    and emits no SPARQL. The MUTATION is what the reconciler decides and is
+    still live — what is dead is the persistence behind it (see the strict
+    xfail below), so the verdicts are captured at the commit call instead of at
+    the wire. The real ``commit_ontology`` is still invoked, so nothing about
+    the run changes.
+    """
+    import infona_client.graph.ontology_commit as oc
+    from infona_client.models.ontology import OntologyOpKind
+
+    seen: dict[tuple[str, str], str] = {}
+    real = oc.commit_ontology
+
+    async def recording(neptune, graph_uri, mutations, **kwargs):
+        for mut in mutations:
+            if mut.op is OntologyOpKind.SET_TEXT_KIND:
+                seen[(mut.type_name, mut.slot_name)] = mut.text_kind
+        return await real(neptune, graph_uri, mutations, **kwargs)
+
+    monkeypatch.setattr(oc, "commit_ontology", recording)
+    return seen
+
+
 # ---------------------------------------------------------------------------
 # Reconcile: backfill, unchanged-hash skip, ghosts, candidacy
 # ---------------------------------------------------------------------------
@@ -474,11 +504,67 @@ def test_reconcile_marker_added_indexes_existing_data():
     asyncio.run(run())
 
 
-def test_reconcile_default_candidacy_heuristic():
+def test_reconcile_default_candidacy_heuristic(monkeypatch):
     """ONTA-177 hand-off: attributes with NO verdict get the name-blind
-    heuristic on sampled values — long prose → durable free_text (then indexed
-    this same run); codes → durable decided-no; both written via
-    upsert_attribute_text_kind so every consumer sees them."""
+    heuristic on sampled values — long prose → free_text, codes → decided-no —
+    and each verdict is committed as a ``SET_TEXT_KIND`` ontology mutation so
+    every consumer can see it.
+
+    Ported by ONTA-527: the verdicts are read off the commit seam rather than
+    off the SPARQL the commit used to emit (see
+    :func:`_capture_text_kind_verdicts`). Whether the committed verdict then
+    SURVIVES — and whether the freshly-marked attr is indexed in the same run,
+    which needs the marker to be readable back — is the strict xfail below.
+    """
+    entities = {
+        _entity(i): {
+            RDF_TYPE: [DOC_TYPE],
+            SUMMARY_PRED: [f"{PROSE} Extended remarks for session {i}."],
+            SKU_PRED: [f"SKU-{i:04d}"],
+        }
+        for i in range(1, 5)
+    }
+    neptune = _kg(entities)  # NO markers at all
+    index = InMemorySemanticIndex()
+    verdicts = _capture_text_kind_verdicts(monkeypatch)
+
+    async def run():
+        counters = await rec.reconcile_kg(neptune, TENANT, KG, index=index)
+        assert counters["attrs_marked_free_text"] == 1
+        assert counters["attrs_marked_not_text"] == 1
+        assert verdicts == {
+            ("Doc", "summary"): "free_text",
+            ("Doc", "sku"): rec.TEXT_KIND_NOT_TEXT,
+        }
+
+    asyncio.run(run())
+
+
+@pytest.mark.xfail(
+    reason=(
+        "LOST CAPABILITY (pre-dates ONTA-527, surfaced by it): a textKind "
+        "candidacy verdict is not durable on the property-graph path, so the "
+        "ONTA-177 hand-off never completes. "
+        "graph/ontology_commit.py::_commit_ontology_graph_store handles "
+        "UPSERT_TYPE / UPSERT_ATTRIBUTE / UPSERT_RELATIONSHIP / SET_SUBCLASS "
+        "and drops everything else into an `else` that logs "
+        "`ontology_store_op_skipped` — SET_TEXT_KIND included — and that "
+        "branch is taken whenever a process GraphStore exists (always, in "
+        "production). Nothing in graph/ontology_catalog.py represents a text "
+        "kind at all, in either direction: the only reader is the SPARQL "
+        "text_kind_map_query behind rec._fetch_marker_map / "
+        "text_markers.get_free_text_map. So the reconciler decides a verdict "
+        "(the test above still passes), commits it into a void, and re-samples "
+        "the same attribute on every future run — and because `marked` stays "
+        "empty, no free-text attribute is ever scanned or chunked by the "
+        "reconciler either. Not fixed here: it needs a text-kind port to the "
+        "catalog on BOTH sides, not a test change."
+    ),
+    strict=True,
+)
+def test_heuristic_verdict_is_durable_and_indexed_in_the_same_run():
+    """A committed verdict must be visible to the reconciler's OWN next marker
+    read, and the freshly-marked attr indexed in the same run."""
     entities = {
         _entity(i): {
             RDF_TYPE: [DOC_TYPE],
@@ -492,12 +578,11 @@ def test_reconcile_default_candidacy_heuristic():
 
     async def run():
         counters = await rec.reconcile_kg(neptune, TENANT, KG, index=index)
-        assert counters["attrs_marked_free_text"] == 1
-        assert counters["attrs_marked_not_text"] == 1
-        # Verdicts are durable in the ontology graph...
-        assert neptune.markers[("Doc", "summary")] == "free_text"
-        assert neptune.markers[("Doc", "sku")] == rec.TEXT_KIND_NOT_TEXT
-        # ...and the freshly-marked attr was indexed in the SAME run.
+        # Durable: the map the reconciler itself reads carries the verdicts.
+        marker_map = await rec._fetch_marker_map(neptune, TENANT)
+        assert marker_map.get(SUMMARY_PRED) is True
+        assert SKU_PRED in marker_map and marker_map[SKU_PRED] is False
+        # …and the freshly-marked attr was indexed in the SAME run.
         assert counters["chunks_written"] == 4
         rows = await index.fetch_pending(limit=100)
         assert {r.attr for r in rows} == {"summary"}
@@ -527,14 +612,15 @@ def test_candidacy_cap_randomizes_selection_and_logs_the_backlog(monkeypatch):
     }
     neptune = _kg(entities)  # both attrs undecided
     index = InMemorySemanticIndex()
+    verdicts = _capture_text_kind_verdicts(monkeypatch)
 
     async def run():
         with structlog.testing.capture_logs() as logs:
             counters = await rec.reconcile_kg(neptune, TENANT, KG, index=index)
         # Only the capped, shuffled pick was classified this run…
         assert counters["attrs_marked_free_text"] == 1
-        assert ("Doc", "zzz_last") in neptune.markers  # the reversed pick
-        assert ("Doc", "aaa_first") not in neptune.markers  # waits for a later run
+        assert ("Doc", "zzz_last") in verdicts  # the reversed pick
+        assert ("Doc", "aaa_first") not in verdicts  # waits for a later run
         # …and the truncation reported the full backlog, never silently.
         [capped] = [e for e in logs if e["event"] == "semantic_candidacy_capped"]
         assert capped["undecided"] == 2
@@ -543,25 +629,37 @@ def test_candidacy_cap_randomizes_selection_and_logs_the_backlog(monkeypatch):
     asyncio.run(run())
 
 
-def test_reconcile_heuristic_verdicts_stick_across_runs():
-    """A decided verdict (either way) is NOT re-sampled on later runs — absence
-    means undecided, presence means decided."""
+def test_reconcile_skips_attributes_that_already_carry_a_verdict(monkeypatch):
+    """A decided verdict (either way) is NOT re-sampled — absence means
+    undecided, presence means decided.
+
+    Ported by ONTA-527. This used to run the reconciler TWICE and prove run 2
+    left run 1's verdict alone, which only works if the verdict round-trips
+    through the ontology graph — the half that is dead (see the strict xfail
+    above). What is under test here is the reconciler's rule, so the decided
+    state is seeded into the marker map directly: an attribute PRESENT in the
+    map (with either polarity) is skipped, an absent one is classified.
+    """
     entities = {
         _entity(1): {RDF_TYPE: [DOC_TYPE], SKU_PRED: ["SKU-1", "SKU-2", "SKU-3"]}
     }
-    neptune = _kg(entities)
     index = InMemorySemanticIndex()
+    verdicts = _capture_text_kind_verdicts(monkeypatch)
 
     async def run():
-        await rec.reconcile_kg(neptune, TENANT, KG, index=index)
-        first_updates = len(neptune.updates)
-        # ONTA-403: commit_ontology writes the textKind marker + revision +
-        # changelog (≥1 schema write). Marker presence is the durable signal.
-        assert first_updates >= 1
-        assert ("Doc", "sku") in neptune.markers
-        counters = await rec.reconcile_kg(neptune, TENANT, KG, index=index)
-        assert len(neptune.updates) == first_updates  # nothing rewritten
-        assert counters["attrs_marked_not_text"] == 0
+        # Undecided → the heuristic classifies it (and commits the verdict).
+        counters = await rec.reconcile_kg(_kg(entities), TENANT, KG, index=index)
+        assert counters["attrs_marked_not_text"] == 1
+        assert verdicts == {("Doc", "sku"): rec.TEXT_KIND_NOT_TEXT}
+
+        # Already decided (either polarity) → never re-sampled, never rewritten.
+        for kind in (rec.TEXT_KIND_NOT_TEXT, "free_text"):
+            verdicts.clear()
+            decided = _kg(entities, {("Doc", "sku"): kind})
+            counters = await rec.reconcile_kg(decided, TENANT, KG, index=index)
+            assert counters["attrs_marked_not_text"] == 0
+            assert counters["attrs_marked_free_text"] == 0
+            assert verdicts == {}
 
     asyncio.run(run())
 
