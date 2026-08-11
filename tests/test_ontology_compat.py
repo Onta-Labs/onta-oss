@@ -1,19 +1,33 @@
 """ONTA-404 — backward-compatibility classifier + publish gate.
 
-Table-driven pure classifier tests + gated release integration via MemNeptune.
+Table-driven pure classifier tests + the gated release path.
+
+**Ported by ONTA-527.** The integration half ran the publish gate over a
+~300-line in-file SPARQL emulator (``MemNeptune``): it seeded schema by letting
+``commit_ontology`` emit ``INSERT DATA``, then let ``snapshot_ontology`` copy
+named graphs around with ``INSERT { GRAPH … } WHERE { GRAPH … }``. Production is
+Neo4j-only: schema now lands in the ontology catalog (``:OntoType`` /
+``:OntoAttr``) and there is no SPARQL endpoint to copy graphs in, so the
+emulator was the only thing keeping those tests alive. It is deleted; the cases
+are re-expressed on the shipped path — seed through ``commit_ontology`` (which
+takes its GraphStore branch), then publish — and marked ``strict=True`` xfail.
+
+The gap they now document is worse than "unported". ``load_ontology_shape``
+early-returns an EMPTY :class:`OntologyShape` whenever a GraphStore is
+configured, so if the SPARQL endpoint were still up, every release would read an
+empty live schema AND an empty parent: the diff would always be empty, every
+release would classify ADDITIVE, and the ONTA-404 gate could never block a
+breaking change nor fail closed. The pure classifier below is unaffected — it is
+the wiring into live schema that is gone.
 """
 
 from __future__ import annotations
-
-import re
-from collections import defaultdict
 
 import pytest
 
 from infona_client.graph.ontology_commit import (
     OntologyShape,
     commit_ontology,
-    fingerprint_ontology,
     load_ontology_shape,
 )
 from infona_client.graph.ontology_compat import (
@@ -373,360 +387,103 @@ def test_assert_publishable_blocks_and_allows():
     assert v.stored_compat_class == "breaking"
 
 
+
+
 # ---------------------------------------------------------------------------
-# MemNeptune for gate + deprecation integration
+# Deprecation diff (pure)
 # ---------------------------------------------------------------------------
 
 
-class MemNeptune:
-    """Minimal triple store for commit + snapshot + deprecation (ONTA-404)."""
+def test_diff_shapes_emits_deprecate():
+    a = OntologyShape(types={"Person": ""})
+    b = OntologyShape(
+        types={"Person": ""},
+        deprecated_types={"Person": "Entity"},
+    )
+    recs = diff_shapes(a, b)
+    assert any(r.kind is ChangeKind.DEPRECATE and r.type_name == "Person" for r in recs)
+    v = classify_diff(recs)
+    assert v.overall is CompatClass.DEPRECATING
 
-    def __init__(self) -> None:
-        self.triples: set[tuple[str, str, str, str]] = set()
-        self.updates: list[str] = []
-        self.queries: list[str] = []
 
-    async def update(self, sparql: str) -> None:
-        self.updates.append(sparql)
-        s_up = sparql
+# ---------------------------------------------------------------------------
+# Publish gate over live schema (ported — see module docstring)
+# ---------------------------------------------------------------------------
 
-        for m in re.finditer(r"DROP\s+SILENT\s+GRAPH\s*<([^>]+)>", s_up, re.I):
-            g = m.group(1)
-            self.triples = {(gg, s, p, o) for gg, s, p, o in self.triples if gg != g}
 
-        for m in re.finditer(r"CLEAR\s+SILENT\s+GRAPH\s*<([^>]+)>", s_up, re.I):
-            g = m.group(1)
-            self.triples = {(gg, s, p, o) for gg, s, p, o in self.triples if gg != g}
+class _DecommissionedSparql:
+    """The SPARQL endpoint production no longer has.
 
-        m_copy = re.search(
-            r"INSERT\s*\{\s*GRAPH\s*<([^>]+)>\s*\{\s*\?s\s+\?p\s+\?o\s*\}\s*\}\s*"
-            r"WHERE\s*\{\s*GRAPH\s*<([^>]+)>\s*\{\s*\?s\s+\?p\s+\?o\s*\}\s*\}",
-            s_up,
-            re.I | re.S,
-        )
-        if m_copy:
-            tgt, src = m_copy.group(1), m_copy.group(2)
-            for gg, s, p, o in list(self.triples):
-                if gg == src:
-                    self.triples.add((tgt, s, p, o))
-
-        for m in re.finditer(
-            r"INSERT\s+DATA\s*\{\s*GRAPH\s*<([^>]+)>\s*\{",
-            s_up,
-            re.I | re.S,
-        ):
-            g = m.group(1)
-            body = self._extract_braced_body(s_up, m.end() - 1)
-            for s, p, o in self._parse_triples(body):
-                self.triples.add((g, s, p, o))
-
-        for m in re.finditer(
-            r"INSERT\s*\{\s*GRAPH\s*<([^>]+)>\s*\{([^}]*)\}\s*\}",
-            s_up,
-            re.I | re.S,
-        ):
-            if "?s" in m.group(2) and "?p" in m.group(2):
-                continue
-            if "INSERT DATA" in s_up[max(0, m.start() - 20) : m.start() + 20].upper():
-                continue
-            g, body = m.group(1), m.group(2)
-            for s, p, o in self._parse_triples(body):
-                self.triples.add((g, s, p, o))
-
-        for m in re.finditer(
-            r"DELETE\s*\{\s*GRAPH\s*<([^>]+)>\s*\{\s*<([^>]+)>\s*<([^>]+)>\s*\?(\w+)\s*\}\s*\}",
-            s_up,
-            re.I | re.S,
-        ):
-            g, s, p = m.group(1), m.group(2), m.group(3)
-            self.triples = {
-                (gg, ss, pp, oo)
-                for gg, ss, pp, oo in self.triples
-                if not (gg == g and ss == s and pp == p)
-            }
-
-        for m in re.finditer(
-            r"WITH\s*<([^>]+)>\s*DELETE\s*\{\s*<([^>]+)>\s*\?p\s*\?o\s*\}",
-            s_up,
-            re.I | re.S,
-        ):
-            g, s = m.group(1), m.group(2)
-            self.triples = {
-                (gg, ss, pp, oo)
-                for gg, ss, pp, oo in self.triples
-                if not (gg == g and ss == s)
-            }
+    Amazon Neptune was decommissioned 2026-08-11 and the execution path is
+    deleted, so every call the snapshot/release stack still makes through a
+    ``NeptuneClient`` fails in production. Standing it in here keeps these tests
+    from passing on a hand-rolled triple store that ships to nobody: once the
+    release path reads and writes through the GraphStore, this double is never
+    touched and the assertions below stand on their own.
+    """
 
     async def query(self, sparql: str) -> dict:
-        self.queries.append(sparql)
-        g_match = re.search(r"FROM\s*<([^>]+)>", sparql)
-        g = g_match.group(1) if g_match else ""
-        bindings: list[dict] = []
+        raise RuntimeError("Neptune is decommissioned (ONTA-527)")
 
-        if "?typeLabel" in sparql and "?attrLabel" in sparql:
-            class_uris = {
-                s for gg, s, p, o in self.triples
-                if gg == g and p.endswith("#type") and o.endswith("#Class")
-            }
-            labels = {
-                s: o.strip('"') for gg, s, p, o in self.triples
-                if gg == g and p.endswith("#label") and s in class_uris
-            }
-            comments = {
-                s: o.strip('"') for gg, s, p, o in self.triples
-                if gg == g and p.endswith("#comment") and s in class_uris
-            }
-            domains = {
-                s: o for gg, s, p, o in self.triples
-                if gg == g and p.endswith("#domain")
-            }
-            attr_labels = {
-                s: o.strip('"') for gg, s, p, o in self.triples
-                if gg == g and p.endswith("#label") and s in domains
-            }
-            attr_comments = {
-                s: o.strip('"') for gg, s, p, o in self.triples
-                if gg == g and p.endswith("#comment") and s in domains
-            }
-            ranges = {
-                s: o for gg, s, p, o in self.triples
-                if gg == g and p.endswith("#range")
-            }
-            cores = {
-                s for gg, s, p, o in self.triples
-                if gg == g and p.endswith("/coreSlot")
-            }
-            for t_uri, tlabel in labels.items():
-                attrs_for_t = [a for a, d in domains.items() if d == t_uri]
-                if not attrs_for_t:
-                    row = {
-                        "type": {"value": t_uri},
-                        "typeLabel": {"value": tlabel},
-                    }
-                    if t_uri in comments:
-                        row["typeComment"] = {"value": comments[t_uri]}
-                    bindings.append(row)
-                for a_uri in attrs_for_t:
-                    row = {
-                        "type": {"value": t_uri},
-                        "typeLabel": {"value": tlabel},
-                        "attr": {"value": a_uri},
-                        "attrLabel": {
-                            "value": attr_labels.get(a_uri, a_uri.rsplit("/", 1)[-1])
-                        },
-                    }
-                    if t_uri in comments:
-                        row["typeComment"] = {"value": comments[t_uri]}
-                    if a_uri in attr_comments:
-                        row["attrComment"] = {"value": attr_comments[a_uri]}
-                    if a_uri in ranges:
-                        row["range"] = {"value": ranges[a_uri]}
-                    if a_uri in cores:
-                        row["core"] = {"value": "true"}
-                    bindings.append(row)
-            return self._sparql_json(bindings)
-
-        if "?child" in sparql and "?parent" in sparql:
-            for gg, s, p, o in self.triples:
-                if gg == g and p.endswith("#subClassOf"):
-                    bindings.append({"child": {"value": s}, "parent": {"value": o}})
-            return self._sparql_json(bindings)
-
-        if "textKind" in sparql or "/textKind>" in sparql:
-            for gg, s, p, o in self.triples:
-                if gg == g and p.endswith("/textKind"):
-                    bindings.append({
-                        "attr": {"value": s},
-                        "kind": {"value": o.strip('"')},
-                    })
-            return self._sparql_json(bindings)
-
-        if "deprecatedAt" in sparql or "/deprecatedAt>" in sparql:
-            deps: dict[str, dict] = {}
-            for gg, s, p, o in self.triples:
-                if gg != g:
-                    continue
-                if p.endswith("/deprecatedAt"):
-                    deps.setdefault(s, {})["dep"] = o.split("^^")[0].strip('"')
-                if p.endswith("/supersededBy"):
-                    deps.setdefault(s, {})["sup"] = o
-            for s, info in deps.items():
-                if "dep" not in info:
-                    continue
-                row = {"s": {"value": s}, "dep": {"value": info["dep"]}}
-                if "sup" in info:
-                    row["sup"] = {"value": info["sup"]}
-                bindings.append(row)
-            return self._sparql_json(bindings)
-
-        if "workspaceRevision" in sparql:
-            for gg, s, p, o in self.triples:
-                if gg == g and p.endswith("/workspaceRevision"):
-                    bindings.append(
-                        {"r": {"value": o.split("^^")[0].strip('"')}}
-                    )
-            return self._sparql_json(bindings)
-
-        if "?old" in sparql and "?new" in sparql and "aliasOf" in sparql:
-            for gg, s, p, o in self.triples:
-                if gg == g and p.endswith("/aliasOf"):
-                    bindings.append({"old": {"value": s}, "new": {"value": o}})
-            return self._sparql_json(bindings)
-
-        if "snapshotGraph" in sparql or "/snapshotGraph>" in sparql or "?snap" in sparql:
-            by_s: dict[str, dict[str, str]] = defaultdict(dict)
-            for gg, s, p, o in self.triples:
-                if gg != g:
-                    continue
-                if "^^" in o:
-                    val = o.split("^^")[0].strip('"')
-                else:
-                    val = o.strip('"') if o.startswith('"') else o
-                by_s[s][p] = val
-            for s, props in by_s.items():
-                def _p(suffix: str) -> str | None:
-                    for k, v in props.items():
-                        if k.endswith(suffix) or k.endswith("/" + suffix.lstrip("/")):
-                            return v
-                    return None
-                version = _p("version")
-                snap = _p("snapshotGraph")
-                fp = _p("fingerprint")
-                kind = _p("snapshotKind")
-                layer = _p("layer")
-                if not (version and snap and fp):
-                    continue
-                row = {
-                    "s": {"value": s},
-                    "version": {"value": version},
-                    "snap": {"value": snap},
-                    "fp": {"value": fp},
-                    "kind": {"value": kind or "release"},
-                    "layer": {"value": layer or "tenant"},
-                }
-                parent = _p("parentVersion")
-                if parent:
-                    row["parent"] = {"value": parent}
-                pub = _p("publisher")
-                if pub:
-                    row["pub"] = {"value": pub}
-                ts = _p("timestamp")
-                if ts:
-                    row["ts"] = {"value": ts}
-                summary = _p("changeSummary")
-                if summary:
-                    row["sum"] = {"value": summary}
-                compat = _p("compatClass")
-                if compat:
-                    row["compat"] = {"value": compat}
-                delta = _p("changeDelta")
-                if delta:
-                    row["delta"] = {"value": delta}
-                bindings.append(row)
-            return self._sparql_json(bindings)
-
-        return self._sparql_json([])
-
-    @staticmethod
-    def _extract_braced_body(text: str, open_brace_idx: int) -> str:
-        depth = 0
-        in_str = False
-        escape = False
-        for i in range(open_brace_idx, len(text)):
-            ch = text[i]
-            if in_str:
-                if escape:
-                    escape = False
-                elif ch == "\\":
-                    escape = True
-                elif ch == '"':
-                    in_str = False
-                continue
-            if ch == '"':
-                in_str = True
-                continue
-            if ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0:
-                    return text[open_brace_idx + 1 : i]
-        return text[open_brace_idx + 1 :]
-
-    @staticmethod
-    def _parse_triples(body: str) -> list[tuple[str, str, str]]:
-        out: list[tuple[str, str, str]] = []
-        # <s> <p> <o> .  or  <s> <p> "lit" .  or typed literal
-        for m in re.finditer(
-            r"<([^>]+)>\s+<([^>]+)>\s+(?:<([^>]+)>|\"([^\"]*)\"(?:\^\^<([^>]+)>)?)\s*\.",
-            body,
-        ):
-            s, p = m.group(1), m.group(2)
-            if m.group(3) is not None:
-                o = m.group(3)
-            else:
-                lit = m.group(4) or ""
-                if m.group(5):
-                    o = f'"{lit}"^^{m.group(5)}'
-                else:
-                    o = f'"{lit}"'
-            out.append((s, p, o))
-        return out
-
-    @staticmethod
-    def _sparql_json(bindings: list[dict]) -> dict:
-        # parse_sparql_results only projects vars listed in head.vars.
-        vars_: list[str] = []
-        seen: set[str] = set()
-        for row in bindings:
-            for k in row:
-                if k not in seen:
-                    seen.add(k)
-                    vars_.append(k)
-        return {"head": {"vars": vars_}, "results": {"bindings": bindings}}
+    async def update(self, sparql: str) -> None:
+        raise RuntimeError("Neptune is decommissioned (ONTA-527)")
 
 
 PUBLIC = "https://graph.infona.ai/graphs/global/public"
 TENANT = "https://graph.infona.ai/graphs/acme"
 
+# `name` is a reserved Entity property key on the property graph and is rejected
+# at schema time (graph/facts.py::RESERVED_ENTITY_PROPERTY_KEYS), so the seeded
+# slot is `full_name`.
+SLOT = "full_name"
 
-async def _seed_type(n: MemNeptune, g: str, name: str = "Person") -> None:
+RELEASE_GAP = (
+    "BUG (ONTA-527 port gap): the ONTA-404 publish gate has nothing to classify "
+    "on Neo4j. graph/ontology_snapshots.py is SPARQL-only — plan_snapshot / "
+    "execute_snapshot / snapshot_ontology read shapes with neptune.query and "
+    "copy named graphs with INSERT { GRAPH … } WHERE { GRAPH … } — and "
+    "graph/ontology_commit.py::load_ontology_shape early-returns an EMPTY "
+    "OntologyShape whenever a GraphStore is configured. So the live schema sits "
+    "in the :OntoType/:OntoAttr catalog where neither the snapshot nor the diff "
+    "can see it. Against the decommissioned endpoint no release can be published "
+    "at all; were one still up, every release would read an empty shape, diff to "
+    "nothing, and publish as ADDITIVE."
+)
+
+
+async def _seed_person(graph_uri: str) -> None:
     await commit_ontology(
-        n,
-        g,
+        None,
+        graph_uri,
         [
-            OntologyMutation(op=OntologyOpKind.UPSERT_TYPE, type_name=name),
+            OntologyMutation(op=OntologyOpKind.UPSERT_TYPE, type_name="Person"),
             OntologyMutation(
                 op=OntologyOpKind.UPSERT_ATTRIBUTE,
-                type_name=name,
-                slot_name="name",
+                type_name="Person",
+                slot_name=SLOT,
                 datatype="string",
             ),
         ],
     )
 
 
-# ---------------------------------------------------------------------------
-# Publish gate
-# ---------------------------------------------------------------------------
-
-
+@pytest.mark.xfail(reason=RELEASE_GAP, strict=True)
 @pytest.mark.asyncio
-async def test_gate_blocks_breaking_release_by_default():
-    n = MemNeptune()
-    await _seed_type(n, PUBLIC)
-    r1 = await snapshot_ontology(n, PUBLIC, kind="release")
-    assert r1.compat_class == "additive"
+async def test_gate_blocks_a_breaking_release_by_default():
+    n = _DecommissionedSparql()
+    await _seed_person(PUBLIC)
+    first = await snapshot_ontology(n, PUBLIC, kind="release")
+    assert first.compat_class == "additive"
 
-    # Breaking mutation: remove an attribute.
+    # Breaking mutation: remove an attribute that v1 published.
     await commit_ontology(
-        n,
+        None,
         PUBLIC,
         [
             OntologyMutation(
                 op=OntologyOpKind.DELETE_ATTRIBUTE,
                 type_name="Person",
-                slot_name="name",
+                slot_name=SLOT,
             )
         ],
     )
@@ -736,96 +493,162 @@ async def test_gate_blocks_breaking_release_by_default():
     assert "declare_major" in str(ei.value)
 
 
+@pytest.mark.xfail(reason=RELEASE_GAP, strict=True)
 @pytest.mark.asyncio
-async def test_gate_allows_with_declare_major_and_stores_breaking():
-    n = MemNeptune()
-    await _seed_type(n, PUBLIC)
+async def test_declare_major_publishes_and_stores_breaking():
+    n = _DecommissionedSparql()
+    await _seed_person(PUBLIC)
     await snapshot_ontology(n, PUBLIC, kind="release")
     await commit_ontology(
-        n,
+        None,
         PUBLIC,
         [
             OntologyMutation(
                 op=OntologyOpKind.DELETE_ATTRIBUTE,
                 type_name="Person",
-                slot_name="name",
+                slot_name=SLOT,
             )
         ],
     )
-    rec = await snapshot_ontology(
-        n, PUBLIC, kind="release", declare_major=True,
-    )
+    rec = await snapshot_ontology(n, PUBLIC, kind="release", declare_major=True)
     assert rec.compat_class == "breaking"
     assert rec.version == 2
     assert any(r.kind is ChangeKind.REMOVE_ATTRIBUTE for r in rec.change_records)
 
 
+@pytest.mark.xfail(reason=RELEASE_GAP, strict=True)
 @pytest.mark.asyncio
-async def test_gate_ignores_freeform_compat_class_on_release():
-    n = MemNeptune()
-    await _seed_type(n, PUBLIC)
-    rec = await snapshot_ontology(
-        n, PUBLIC, kind="release", compat_class="major",
-    )
-    # First release empty delta → classifier wins over free-form "major".
+async def test_freeform_compat_class_never_overrides_the_classifier():
+    """A caller-supplied compat_class is advisory; the classifier decides."""
+    n = _DecommissionedSparql()
+    await _seed_person(PUBLIC)
+    rec = await snapshot_ontology(n, PUBLIC, kind="release", compat_class="major")
+    # First release, empty delta → classifier says additive, not "major".
     assert rec.compat_class == "additive"
 
 
+@pytest.mark.xfail(reason=RELEASE_GAP, strict=True)
 @pytest.mark.asyncio
-async def test_revision_not_gated_on_breaking():
-    n = MemNeptune()
-    await _seed_type(n, TENANT)
+async def test_revision_snapshot_is_not_gated_on_breaking():
+    """Workspace revisions checkpoint whatever is live — they never refuse."""
+    n = _DecommissionedSparql()
+    await _seed_person(TENANT)
     await commit_ontology(
-        n,
+        None,
         TENANT,
         [
             OntologyMutation(
                 op=OntologyOpKind.DELETE_ATTRIBUTE,
                 type_name="Person",
-                slot_name="name",
+                slot_name=SLOT,
             )
         ],
     )
-    # Revisions must not refuse even when the live shape would be breaking vs
-    # a prior revision (no parent → empty delta → additive; if parent exists
-    # with remove, still no raise).
     rec = await snapshot_ontology(n, TENANT, kind="revision")
     assert rec.kind == "revision"
-    assert rec.compat_class in ("additive", "breaking", "annotative", "deprecating")
 
 
+@pytest.mark.xfail(reason=RELEASE_GAP, strict=True)
 @pytest.mark.asyncio
-async def test_dry_run_also_enforces_gate():
-    n = MemNeptune()
-    await _seed_type(n, PUBLIC)
+async def test_dry_run_release_enforces_the_same_gate():
+    """A dry run must refuse what the real publish would refuse."""
+    n = _DecommissionedSparql()
+    await _seed_person(PUBLIC)
     await snapshot_ontology(n, PUBLIC, kind="release")
     await commit_ontology(
-        n,
+        None,
         PUBLIC,
-        [
-            OntologyMutation(
-                op=OntologyOpKind.DELETE_TYPE, type_name="Person",
-            )
-        ],
+        [OntologyMutation(op=OntologyOpKind.DELETE_TYPE, type_name="Person")],
     )
     plan = await plan_snapshot(n, PUBLIC, kind="release")
     with pytest.raises(OntologyCompatError):
         await execute_snapshot(n, plan, dry_run=True)
 
 
-# ---------------------------------------------------------------------------
-# Deprecation as first-class
-# ---------------------------------------------------------------------------
-
-
+@pytest.mark.xfail(
+    reason=(
+        RELEASE_GAP
+        + " This case is the sharpest consequence: the B1 fail-closed guard "
+        "compares the parent's RECORDED fingerprint against the fingerprint of "
+        "the shape it just loaded, so with load_ontology_shape stubbed to empty "
+        "both sides are the empty digest e3b0c44298fc1c14, the guard sees a "
+        "clean parent load, and an unreadable/absent parent can no longer raise "
+        "'cannot classify release vs parent'."
+    ),
+    strict=True,
+)
 @pytest.mark.asyncio
-async def test_deprecate_op_keeps_type_and_sets_marker():
-    n = MemNeptune()
-    await _seed_type(n, TENANT)
-    fp_before = await fingerprint_ontology(n, TENANT)
+async def test_release_fails_closed_when_the_parent_shape_is_unreadable():
+    n = _DecommissionedSparql()
+    await _seed_person(PUBLIC)
+    await snapshot_ontology(n, PUBLIC, kind="release")
+    await commit_ontology(
+        None,
+        PUBLIC,
+        [
+            OntologyMutation(
+                op=OntologyOpKind.UPSERT_ATTRIBUTE,
+                type_name="Person",
+                slot_name="email",
+                datatype="string",
+            )
+        ],
+    )
+    # The parent release's content is gone / unreadable. Publishing must refuse
+    # rather than silently classify the release additive.
+    with pytest.raises(RuntimeError, match="cannot classify release vs parent"):
+        await snapshot_ontology(n, PUBLIC, kind="release")
 
+
+@pytest.mark.xfail(reason=RELEASE_GAP, strict=True)
+@pytest.mark.asyncio
+async def test_rename_release_does_not_require_declare_major():
+    """B2: a rename that keeps the alias is additive, not breaking."""
+    n = _DecommissionedSparql()
+    await _seed_person(PUBLIC)
+    r1 = await snapshot_ontology(n, PUBLIC, kind="release")
+    assert r1.version == 1
+
+    await commit_ontology(
+        None,
+        PUBLIC,
+        [
+            OntologyMutation(
+                op=OntologyOpKind.RENAME_ATTRIBUTE,
+                type_name="Person",
+                alias_from=SLOT,
+                alias_to="display_name",
+            )
+        ],
+    )
+    rec = await snapshot_ontology(n, PUBLIC, kind="release")
+    assert rec.version == 2
+    assert rec.compat_class == "additive"
+    assert {r.kind for r in rec.change_records} & {
+        ChangeKind.REMOVE_ATTRIBUTE,
+        ChangeKind.ADD_ATTRIBUTE,
+        ChangeKind.RENAME_WITH_ALIAS,
+    }
+
+
+DEPRECATE_GAP = (
+    "BUG (ONTA-527 port gap): the DEPRECATE op is dropped on Neo4j. "
+    "graph/ontology_commit.py::_commit_ontology_graph_store implements four op "
+    "kinds and sends DEPRECATE to its `else:` arm (logged "
+    "ontology_store_op_skipped, no change record, still reported as a "
+    "successful commit); the catalog has no deprecatedAt / supersededBy column "
+    "and load_ontology_shape returns an empty shape, so nothing can read a "
+    "marker back either. Deprecation — ONTA-404's whole non-breaking retirement "
+    "path — is unavailable in production."
+)
+
+
+@pytest.mark.xfail(reason=DEPRECATE_GAP, strict=True)
+@pytest.mark.asyncio
+async def test_deprecate_marks_the_type_and_keeps_it():
+    await _seed_person(TENANT)
     result = await commit_ontology(
-        n,
+        None,
         TENANT,
         [
             OntologyMutation(
@@ -836,52 +659,41 @@ async def test_deprecate_op_keeps_type_and_sets_marker():
         ],
     )
     assert any(r.kind is ChangeKind.DEPRECATE for r in result.change_records)
-    assert result.version_after != fp_before  # deprecation shifts fingerprint
 
-    shape = await load_ontology_shape(n, TENANT)
-    assert "Person" in shape.types  # still loads
-    assert "Person" in shape.deprecated_types
-    assert shape.deprecated_types["Person"] == "Entity"
-
-    # Marker triples present.
-    assert any(
-        p.endswith("/deprecatedAt") and "Person" in s
-        for (_g, s, p, _o) in n.triples
-    )
-    assert any(
-        p.endswith("/supersededBy") and "Person" in s and "Entity" in o
-        for (_g, s, p, o) in n.triples
-    )
+    shape = await load_ontology_shape(_DecommissionedSparql(), TENANT)
+    assert "Person" in shape.types  # deprecation keeps the type readable
+    assert shape.deprecated_types.get("Person") == "Entity"
 
 
+@pytest.mark.xfail(reason=DEPRECATE_GAP, strict=True)
 @pytest.mark.asyncio
-async def test_deprecate_slot_marker():
-    n = MemNeptune()
-    await _seed_type(n, TENANT)
+async def test_deprecate_marks_a_slot_and_keeps_the_attribute():
+    await _seed_person(TENANT)
     await commit_ontology(
-        n,
+        None,
         TENANT,
         [
             OntologyMutation(
                 op=OntologyOpKind.DEPRECATE,
                 type_name="Person",
-                slot_name="name",
-                superseded_by="full_name",
+                slot_name=SLOT,
+                superseded_by="display_name",
             )
         ],
     )
-    shape = await load_ontology_shape(n, TENANT)
-    assert ("Person", "name") in shape.deprecated_slots
-    assert shape.attrs.get("Person", {}).get("name") == "string"  # still present
+    shape = await load_ontology_shape(_DecommissionedSparql(), TENANT)
+    assert ("Person", SLOT) in shape.deprecated_slots
+    assert shape.attrs.get("Person", {}).get(SLOT) == "string"  # still declared
 
 
+@pytest.mark.xfail(reason=DEPRECATE_GAP, strict=True)
 @pytest.mark.asyncio
-async def test_deprecation_release_is_minor_not_breaking():
-    n = MemNeptune()
-    await _seed_type(n, PUBLIC)
+async def test_a_deprecating_release_is_minor_not_breaking():
+    n = _DecommissionedSparql()
+    await _seed_person(PUBLIC)
     await snapshot_ontology(n, PUBLIC, kind="release")
     await commit_ontology(
-        n,
+        None,
         PUBLIC,
         [
             OntologyMutation(
@@ -895,131 +707,3 @@ async def test_deprecation_release_is_minor_not_breaking():
     rec = await snapshot_ontology(n, PUBLIC, kind="release")
     assert rec.compat_class == "deprecating"
     assert any(r.kind is ChangeKind.DEPRECATE for r in rec.change_records)
-
-
-@pytest.mark.asyncio
-async def test_diff_shapes_emits_deprecate():
-    a = OntologyShape(types={"Person": ""})
-    b = OntologyShape(
-        types={"Person": ""},
-        deprecated_types={"Person": "Entity"},
-    )
-    recs = diff_shapes(a, b)
-    assert any(r.kind is ChangeKind.DEPRECATE and r.type_name == "Person" for r in recs)
-    v = classify_diff(recs)
-    assert v.overall is CompatClass.DEPRECATING
-
-
-# ---------------------------------------------------------------------------
-# B1 — parent load failure fails closed (no silent additive publish)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_plan_snapshot_parent_load_failure_raises_for_release():
-    """Parent exists but content unreadable → RuntimeError, not empty additive.
-
-    load_ontology_shape swallows per-query errors; fail-closed is via the
-    recorded parent fingerprint vs the loaded (empty) shape fingerprint.
-    """
-    n = MemNeptune()
-    await _seed_type(n, PUBLIC)
-    await snapshot_ontology(n, PUBLIC, kind="release")
-
-    parent_snap = f"{PUBLIC}/v1"
-    original_query = n.query
-
-    async def flaky_query(sparql: str):
-        # Fail shape reads against the parent snapshot content graph only.
-        if f"FROM <{parent_snap}>" in sparql or f"FROM <{parent_snap}>" in sparql.replace(
-            " ", ""
-        ):
-            raise ConnectionError("simulated parent snapshot unavailable")
-        # full_ontology_detail uses FROM <uri>
-        if parent_snap in sparql and "?typeLabel" in sparql:
-            raise ConnectionError("simulated parent snapshot unavailable")
-        if parent_snap in sparql and "?child" in sparql:
-            raise ConnectionError("simulated parent snapshot unavailable")
-        if parent_snap in sparql and "deprecatedAt" in sparql:
-            raise ConnectionError("simulated parent snapshot unavailable")
-        if parent_snap in sparql and "textKind" in sparql:
-            raise ConnectionError("simulated parent snapshot unavailable")
-        if parent_snap in sparql and "aliasOf" in sparql:
-            raise ConnectionError("simulated parent snapshot unavailable")
-        return await original_query(sparql)
-
-    n.query = flaky_query  # type: ignore[method-assign]
-
-    with pytest.raises(RuntimeError, match="cannot classify release vs parent"):
-        await plan_snapshot(n, PUBLIC, kind="release")
-
-
-@pytest.mark.asyncio
-async def test_execute_snapshot_cannot_publish_when_parent_diff_unavailable():
-    """End-to-end: parent load failure blocks release (no silent additive)."""
-    n = MemNeptune()
-    await _seed_type(n, PUBLIC)
-    await snapshot_ontology(n, PUBLIC, kind="release")
-    await commit_ontology(
-        n,
-        PUBLIC,
-        [
-            OntologyMutation(
-                op=OntologyOpKind.UPSERT_ATTRIBUTE,
-                type_name="Person",
-                slot_name="email",
-                datatype="string",
-            )
-        ],
-    )
-
-    parent_snap = f"{PUBLIC}/v1"
-    original_query = n.query
-
-    async def flaky_query(sparql: str):
-        if parent_snap in sparql and "?typeLabel" in sparql:
-            raise OSError("parent graph gone")
-        return await original_query(sparql)
-
-    n.query = flaky_query  # type: ignore[method-assign]
-
-    with pytest.raises(RuntimeError, match="cannot classify release vs parent"):
-        await snapshot_ontology(n, PUBLIC, kind="release")
-
-
-# ---------------------------------------------------------------------------
-# B2 — rename-with-alias release does not require declare_major
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_rename_attribute_release_without_declare_major():
-    """RENAME_ATTRIBUTE then publish release: additive, no declare_major."""
-    n = MemNeptune()
-    await _seed_type(n, PUBLIC)
-    r1 = await snapshot_ontology(n, PUBLIC, kind="release")
-    assert r1.version == 1
-
-    await commit_ontology(
-        n,
-        PUBLIC,
-        [
-            OntologyMutation(
-                op=OntologyOpKind.RENAME_ATTRIBUTE,
-                type_name="Person",
-                alias_from="name",
-                alias_to="full_name",
-            )
-        ],
-    )
-    # Must succeed without declare_major — rename bundle is additive.
-    rec = await snapshot_ontology(n, PUBLIC, kind="release")
-    assert rec.version == 2
-    assert rec.compat_class == "additive"
-    kinds = {r.kind for r in rec.change_records}
-    # Structural delta vs parent includes remove/add and/or alias edge.
-    assert kinds & {
-        ChangeKind.REMOVE_ATTRIBUTE,
-        ChangeKind.ADD_ATTRIBUTE,
-        ChangeKind.RENAME_WITH_ALIAS,
-    }

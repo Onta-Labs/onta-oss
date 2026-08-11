@@ -291,6 +291,37 @@ def auth_headers():
     return {"X-API-Key": "test-key"}
 
 
+@pytest.fixture
+def seeded_movie():
+    """One Movie in the tenant's KG on the process GraphStore.
+
+    The autouse ``_hermetic_graph_store`` fixture installs a fresh
+    MemoryGraphStore per test, which is what the Explorer read paths resolve —
+    so a route that is served from the store has something to return.
+    """
+    import asyncio
+
+    from infona_client.graph.kg_writer import insert_facts
+    from infona_client.graph.ontology_queries import entity_uri
+    from infona_client.graph.store import get_graph_store
+
+    uri = entity_uri("Movie", "m1")
+    triples = [
+        (uri, "http://www.w3.org/1999/02/22-rdf-syntax-ns#type", type_uri("Movie")),
+        (uri, "http://www.w3.org/2000/01/rdf-schema#label", "The Matrix"),
+        (uri, attr_uri("Movie", "title"), "The Matrix"),
+    ]
+    asyncio.get_event_loop_policy().new_event_loop().run_until_complete(
+        insert_facts(
+            None,
+            f"{GRAPH_URI_PREFIX}{TENANT}/kg/{KG}",
+            triples,
+            store=get_graph_store(),
+        )
+    )
+    return uri
+
+
 # A path-segment payload cannot contain "/" (the ASGI server percent-decodes the
 # path before routing, so `%2F` becomes a separator and the route stops
 # matching). It does not need to: `>` alone is the escape.
@@ -312,14 +343,27 @@ def test_explore_type_routes_422_before_touching_the_store(
 
 @pytest.mark.parametrize("suffix", ["summary", "records"])
 def test_a_legitimate_type_name_is_unaffected(
-    client, auth_headers, mock_neptune, suffix
+    client, auth_headers, mock_neptune, seeded_movie, suffix
 ):
+    """The guard must not over-reject: a normal name is served, not 422'd.
+
+    Ported by ONTA-527. This used to prove "served, not short-circuited" with
+    ``mock_neptune.query.await_count > 0``. ``/records`` reads the property graph
+    now (``_records_from_explore_store`` returns before any SPARQL is built), so
+    that proxy reported zero for a request that was in fact served end to end.
+    The seeded row is the direct evidence instead; ``/summary`` still falls back
+    to SPARQL, so it keeps the original probe.
+    """
     res = client.get(
         f"/graphs/{TENANT}/explore/kgs/{KG}/types/Movie/{suffix}",
         headers=auth_headers,
     )
     assert res.status_code == 200, res.text
-    assert mock_neptune.query.await_count > 0
+    if suffix == "records":
+        assert [r["id"] for r in res.json()["rows"]] == [seeded_movie]
+        mock_neptune.query.assert_not_called()
+    else:
+        assert mock_neptune.query.await_count > 0
 
 
 def test_ontology_write_route_fails_closed_before_the_update(
