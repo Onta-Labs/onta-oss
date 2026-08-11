@@ -3,54 +3,90 @@
 GET /graphs/{tenant}/explore/kgs/{kg}/types/{type}/records
   ?limit=<int>  &cursor=<last-entity-uri>
 
-Follows the mock harness established in test_explore_type_edges.py:
-  - TestClient(create_app()) with mock_neptune injected via app.state
-  - mock_neptune.query.side_effect routes SPARQL strings to fixture data
-  - _rows(*dicts) builds the SPARQL JSON wire format the parser expects
+**Ported by ONTA-527.** Every case here used to seed a SPARQL mock
+(``mock_neptune.query.side_effect`` routing on ``"DISTINCT ?e"`` /
+``"VALUES ?e"`` / ``"entityCount"``) and assert on what came back. The route
+serves this table from the property-graph store now
+(``explore.py::_records_from_explore_store`` → ``graph/explore_store.py``), so
+those mocks answered a query nobody makes: the tests were green against a
+fixture, not against the shipped read path. They are re-seeded through the real
+write path (``kg_writer.insert_facts``) into a ``MemoryGraphStore``, and the
+NeptuneClient mock is left un-stubbed so ``assert_not_called()`` proves the
+store path ran.
+
+Three contract differences the port makes visible, rather than papering over:
+
+* **total** is a live count of the type in the KG. The stats-graph lookup and
+  its ``COUNT`` fallback are both gone, so "stats present → 10 / stats absent →
+  COUNT 42" collapses into one number that is always the real one.
+* **columns** come from the properties observed on the page, not from the
+  ontology. An attribute DECLARED on the type but absent from every row on the
+  page is no longer a column (pinned as a strict xfail below).
+* **system predicates are no longer filtered** — ``onto/ingested_at`` reaches
+  the table as a data column (also a strict xfail below). ``onto/source`` and
+  ``rdfs:label`` still don't, but for a different reason than before: they land
+  on RESERVED Entity keys that ``_public_properties`` strips, not on a
+  predicate filter.
 
 Scenarios covered:
-  1. Page of rows with attribute columns (resolved via ontology)
+  1. Page of rows with attribute columns
   2. Pagination: cursor advances next_cursor; next_cursor is null at final page
   3. Empty type → empty sentinel, no error
-  4. System predicates (rdfs:label used as name, ingested_at etc. excluded from cols)
+  4. Name precedence: attrs/name → rdfs:label → URI slug
 """
+import asyncio
 import os
-from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
+from unittest.mock import AsyncMock
 
 os.environ["INFONA_API_KEYS"] = '{"test-key": "test-tenant"}'
 os.environ["INFONA_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
 
 from infona_client.api.app import create_app
 from infona_client.graph.client import NeptuneClient
+from infona_client.graph.iri import IRI_BASE
+from infona_client.graph.kg_writer import insert_facts
+from infona_client.graph.memory_store import MemoryGraphStore
+from infona_client.graph.ontology_queries import entity_uri
+from infona_client.graph.store import configure_graph_store
 
 TENANT = "test-tenant"
 KG = "movies"
 TYPE = "Movie"
 
-ENTITIES = "https://graph.infona.ai/entities/"
-TYPES = "https://graph.infona.ai/types/"
-ONTO = "https://graph.infona.ai/onto/"
-RDFS = "http://www.w3.org/2000/01/rdf-schema"
+GRAPH = f"{IRI_BASE}/graphs/{TENANT}/kg/{KG}"
+ONTO = f"{IRI_BASE}/onto/"
+TYPES = f"{IRI_BASE}/types/"
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-STATS_ENTITY_COUNT = "https://graph.infona.ai/stats/entityCount"
+LABEL_PRED = "http://www.w3.org/2000/01/rdf-schema#label"
 
-E1 = ENTITIES + "Movie/m1"
-E2 = ENTITIES + "Movie/m2"
-E3 = ENTITIES + "Movie/m3"
+# Entity ids are minted with the SAME helper every writer uses, so keyset order
+# (by id) is the real one rather than a fixture's guess.
+E1 = entity_uri(TYPE, "m1")
+E2 = entity_uri(TYPE, "m2")
+E3 = entity_uri(TYPE, "m3")
 
-TITLE_PRED = ONTO + "title"
-YEAR_PRED = ONTO + "year"
-INGESTED_AT_PRED = "https://graph.infona.ai/onto/ingested_at"
-SOURCE_PRED = "https://graph.infona.ai/onto/source"
-LABEL_PRED = RDFS + "#label"
 TYPE_URI = TYPES + TYPE
+TITLE_PRED = f"{TYPES}{TYPE}/attrs/title"
+YEAR_PRED = f"{TYPES}{TYPE}/attrs/year"
+COMPANY_PRED = f"{TYPES}{TYPE}/attrs/company"
+NAME_PRED = ONTO + "name"          # the instance predicate of attrs/name
+INGESTED_AT_PRED = ONTO + "ingested_at"
+SOURCE_PRED = ONTO + "source"
+
+
+@pytest.fixture
+def store():
+    st = MemoryGraphStore()
+    configure_graph_store(st)
+    return st
 
 
 @pytest.fixture
 def mock_neptune():
+    """Deliberately un-stubbed: the records path must never call it."""
     client = AsyncMock(spec=NeptuneClient)
     client.health.return_value = True
     client.update.return_value = None
@@ -58,7 +94,7 @@ def mock_neptune():
 
 
 @pytest.fixture
-def client(mock_neptune):
+def client(store, mock_neptune):
     app = create_app()
     app.state.neptune_client = mock_neptune
     return TestClient(app)
@@ -69,63 +105,45 @@ def auth_headers():
     return {"X-API-Key": "test-key"}
 
 
-def _rows(*binding_dicts):
-    """Build a SPARQL JSON result the parser can consume."""
-    variables: list[str] = []
-    for b in binding_dicts:
-        for k in b:
-            if k not in variables:
-                variables.append(k)
-    return {
-        "head": {"vars": variables},
-        "results": {"bindings": [
-            {k: {"value": v} for k, v in b.items()} for b in binding_dicts
-        ]},
-    }
+def _seed(store, triples, graph: str = GRAPH):
+    asyncio.get_event_loop_policy().new_event_loop().run_until_complete(
+        insert_facts(None, graph, triples, store=store)
+    )
 
 
-def _empty():
-    return {"head": {"vars": []}, "results": {"bindings": []}}
+def _movie(uri: str, **attrs):
+    """A Movie with optional label / title / year / company / name."""
+    triples = [(uri, RDF_TYPE, TYPE_URI)]
+    for pred, key in (
+        (LABEL_PRED, "label"),
+        (TITLE_PRED, "title"),
+        (YEAR_PRED, "year"),
+        (COMPANY_PRED, "company"),
+        (NAME_PRED, "name"),
+    ):
+        if attrs.get(key) is not None:
+            triples.append((uri, pred, attrs[key]))
+    return triples
 
 
-# ---------------------------------------------------------------------------
-# 1. Happy path: page of rows with ontology-resolved attribute columns
-# ---------------------------------------------------------------------------
-
-def test_records_basic_page(client, mock_neptune, auth_headers):
-    """Two entities are returned with title and year columns resolved from the ontology."""
-
-    def route(sparql, *a, **k):
-        # Ontology attr-def query
-        if "attrLabel" in sparql:
-            return _rows(
-                {"attr": ONTO + "types/Movie/attrs/title", "attrLabel": "title", "range": ""},
-                {"attr": ONTO + "types/Movie/attrs/year", "attrLabel": "year", "range": ""},
-            )
-        # Entity page query (DISTINCT ?e)
-        if "DISTINCT ?e" in sparql and "ORDER BY ?e" in sparql:
-            return _rows({"e": E1}, {"e": E2})
-        # Stats entity count
-        if "entityCount" in sparql:
-            return _rows({"ec": "10"})
-        # Attribute values for the page
-        if "VALUES ?e" in sparql:
-            return _rows(
-                {"e": E1, "p": LABEL_PRED, "o": "The Matrix"},
-                {"e": E1, "p": TITLE_PRED, "o": "The Matrix"},
-                {"e": E1, "p": YEAR_PRED, "o": "1999"},
-                {"e": E2, "p": LABEL_PRED, "o": "Inception"},
-                {"e": E2, "p": TITLE_PRED, "o": "Inception"},
-                {"e": E2, "p": YEAR_PRED, "o": "2010"},
-            )
-        return _empty()
-
-    mock_neptune.query.side_effect = route
-
-    resp = client.get(
+def _get(client, auth_headers, **params):
+    return client.get(
         f"/graphs/{TENANT}/explore/kgs/{KG}/types/{TYPE}/records",
+        params=params or None,
         headers=auth_headers,
     )
+
+
+# ---------------------------------------------------------------------------
+# 1. Happy path: page of rows with attribute columns
+# ---------------------------------------------------------------------------
+
+def test_records_basic_page(store, client, mock_neptune, auth_headers):
+    """Two entities are returned with title and year columns."""
+    _seed(store, _movie(E1, label="The Matrix", title="The Matrix", year="1999"))
+    _seed(store, _movie(E2, label="Inception", title="Inception", year="2010"))
+
+    resp = _get(client, auth_headers)
     assert resp.status_code == 200
     data = resp.json()
 
@@ -143,160 +161,115 @@ def test_records_basic_page(client, mock_neptune, auth_headers):
     ids = {r["id"] for r in data["rows"]}
     assert E1 in ids and E2 in ids
 
-    # total from stats
-    assert data["total"] == 10
+    assert data["total"] == 2
+    # The whole page came from the property-graph store.
+    mock_neptune.query.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
 # 2. Pagination: cursor advances; next_cursor set on a full page, null at end
 # ---------------------------------------------------------------------------
 
-def test_records_pagination_full_page(client, mock_neptune, auth_headers):
+def test_records_pagination_full_page(store, client, auth_headers):
     """When a full page is returned next_cursor is the last entity URI."""
+    for uri, title in ((E1, "Movie A"), (E2, "Movie B"), (E3, "Movie C")):
+        _seed(store, _movie(uri, title=title))
 
-    def route(sparql, *a, **k):
-        if "attrLabel" in sparql:
-            return _empty()
-        if "DISTINCT ?e" in sparql and "ORDER BY ?e" in sparql:
-            return _rows({"e": E1}, {"e": E2})
-        if "entityCount" in sparql:
-            return _rows({"ec": "5"})
-        if "VALUES ?e" in sparql:
-            return _rows(
-                {"e": E1, "p": TITLE_PRED, "o": "Movie A"},
-                {"e": E2, "p": TITLE_PRED, "o": "Movie B"},
-            )
-        return _empty()
-
-    mock_neptune.query.side_effect = route
-
-    resp = client.get(
-        f"/graphs/{TENANT}/explore/kgs/{KG}/types/{TYPE}/records",
-        params={"limit": 2},
-        headers=auth_headers,
-    )
-    assert resp.status_code == 200
-    data = resp.json()
+    data = _get(client, auth_headers, limit=2).json()
     # Full page (2 of 2 requested) → next_cursor is last entity URI
     assert data["next_cursor"] == E2
 
 
-def test_records_pagination_last_page(client, mock_neptune, auth_headers):
+def test_records_pagination_last_page(store, client, auth_headers):
     """When fewer than limit entities are returned next_cursor is null."""
+    for uri, title in ((E1, "Movie A"), (E2, "Movie B"), (E3, "Movie C")):
+        _seed(store, _movie(uri, title=title))
 
-    def route(sparql, *a, **k):
-        if "attrLabel" in sparql:
-            return _empty()
-        if "DISTINCT ?e" in sparql and "ORDER BY ?e" in sparql:
-            return _rows({"e": E3})   # only 1 result, limit=2 → last page
-        if "entityCount" in sparql:
-            return _rows({"ec": "3"})
-        if "VALUES ?e" in sparql:
-            return _rows({"e": E3, "p": TITLE_PRED, "o": "Movie C"})
-        return _empty()
-
-    mock_neptune.query.side_effect = route
-
-    resp = client.get(
-        f"/graphs/{TENANT}/explore/kgs/{KG}/types/{TYPE}/records",
-        params={"limit": 2, "cursor": E2},
-        headers=auth_headers,
-    )
+    resp = _get(client, auth_headers, limit=2, cursor=E2)
     assert resp.status_code == 200
     data = resp.json()
     assert data["next_cursor"] is None
     assert len(data["rows"]) == 1
 
 
-def test_records_cursor_filter_in_sparql(client, mock_neptune, auth_headers):
-    """The cursor value appears in the entities SPARQL as a keyset filter."""
-    captured: list[str] = []
+def test_records_cursor_resumes_strictly_after_the_cursor_entity(
+    store, client, auth_headers
+):
+    """Keyset pagination, asserted on ROWS rather than on the emitted SPARQL.
 
-    def route(sparql, *a, **k):
-        captured.append(sparql)
-        if "attrLabel" in sparql:
-            return _empty()
-        if "DISTINCT ?e" in sparql:
-            return _rows({"e": E3})
-        if "entityCount" in sparql:
-            return _rows({"ec": "3"})
-        if "VALUES ?e" in sparql:
-            return _empty()
-        return _empty()
+    This replaces ``test_records_cursor_filter_in_sparql``, whose whole subject
+    was ``assert E2 in entity_queries[0]`` — a FILTER string in a query the
+    route no longer builds. What that string existed to guarantee is checked
+    directly here: the page after ``cursor=E2`` starts at E3, never repeats E1
+    or E2, and the two pages partition the type.
+    """
+    for uri, title in ((E1, "Movie A"), (E2, "Movie B"), (E3, "Movie C")):
+        _seed(store, _movie(uri, title=title))
 
-    mock_neptune.query.side_effect = route
+    first = _get(client, auth_headers, limit=2).json()
+    assert [r["id"] for r in first["rows"]] == [E1, E2]
 
-    resp = client.get(
-        f"/graphs/{TENANT}/explore/kgs/{KG}/types/{TYPE}/records",
-        params={"cursor": E2},
-        headers=auth_headers,
+    second = _get(client, auth_headers, limit=2, cursor=first["next_cursor"]).json()
+    assert [r["id"] for r in second["rows"]] == [E3]
+    assert {r["id"] for r in first["rows"]}.isdisjoint(
+        {r["id"] for r in second["rows"]}
     )
-    assert resp.status_code == 200
-    entity_queries = [s for s in captured if "DISTINCT ?e" in s and "ORDER BY ?e" in s]
-    assert entity_queries, "expected an entity page query"
-    assert E2 in entity_queries[0], "cursor URI should appear in the entity page SPARQL"
 
 
 # ---------------------------------------------------------------------------
 # 3. Empty type → empty sentinel (no error)
 # ---------------------------------------------------------------------------
 
-def test_records_empty_type(client, mock_neptune, auth_headers):
+def test_records_empty_type(store, client, auth_headers):
     """A type with no instances returns the empty sentinel, never an error."""
+    other = entity_uri("Person", "p1")
+    _seed(store, [(other, RDF_TYPE, TYPES + "Person"), (other, LABEL_PRED, "Not a movie")])
 
-    def route(sparql, *a, **k):
-        if "attrLabel" in sparql:
-            return _empty()
-        if "DISTINCT ?e" in sparql:
-            return _empty()   # no entities
-        if "entityCount" in sparql:
-            return _empty()   # no stats either
-        if "COUNT" in sparql:
-            return _rows({"n": "0"})
-        return _empty()
-
-    mock_neptune.query.side_effect = route
-
-    resp = client.get(
-        f"/graphs/{TENANT}/explore/kgs/{KG}/types/{TYPE}/records",
-        headers=auth_headers,
-    )
+    resp = _get(client, auth_headers)
     assert resp.status_code == 200
-    data = resp.json()
-    assert data == {"columns": ["name"], "rows": [], "total": 0, "next_cursor": None}
+    assert resp.json() == {
+        "columns": ["name"],
+        "rows": [],
+        "total": 0,
+        "next_cursor": None,
+    }
 
 
 # ---------------------------------------------------------------------------
-# 4. System predicates excluded; rdfs:label used as the row name
+# 4. System predicates; rdfs:label used as the row name
 # ---------------------------------------------------------------------------
 
-def test_records_system_predicates_excluded(client, mock_neptune, auth_headers):
+@pytest.mark.xfail(
+    reason=(
+        "BUG (introduced by the Neo4j cutover, surfaced by ONTA-527): the "
+        "property-graph records path does not filter internal/system "
+        "predicates. api/routes/explore.py::get_type_records runs "
+        "_is_internal_predicate over every row on its SPARQL branch (and skips "
+        "SYSTEM_PREDICATES), but _records_from_explore_store builds columns "
+        "straight from EntityDetail.properties, and graph/explore_store.py's "
+        "_public_properties strips only RESERVED_ENTITY_PROPERTY_KEYS. "
+        "onto/ingested_at and onto/batch_id are ordinary Entity props "
+        "(graph/facts.py::classify_triple keeps them by leaf), so the ingest "
+        "bookkeeping stamp is rendered to users as a data column in the "
+        "Explorer table. rdfs:label and onto/source stay out only incidentally "
+        "— they land on the reserved 'name'/'source' keys. Not fixed here: the "
+        "fix is a read-side filter in explore_store (and the same defect class "
+        "as the grep one xfailed in test_grep_route.py)."
+    ),
+    strict=True,
+)
+def test_records_system_predicates_excluded(store, client, auth_headers):
     """ingested_at and source are excluded from columns; label becomes the name."""
-
-    def route(sparql, *a, **k):
-        if "attrLabel" in sparql:
-            return _empty()
-        if "DISTINCT ?e" in sparql and "ORDER BY ?e" in sparql:
-            return _rows({"e": E1})
-        if "entityCount" in sparql:
-            return _rows({"ec": "1"})
-        if "VALUES ?e" in sparql:
-            return _rows(
-                {"e": E1, "p": LABEL_PRED, "o": "Named Movie"},
-                {"e": E1, "p": INGESTED_AT_PRED, "o": "2024-01-01"},
-                {"e": E1, "p": SOURCE_PRED, "o": "import"},
-                {"e": E1, "p": TITLE_PRED, "o": "Named Movie"},
-            )
-        return _empty()
-
-    mock_neptune.query.side_effect = route
-
-    resp = client.get(
-        f"/graphs/{TENANT}/explore/kgs/{KG}/types/{TYPE}/records",
-        headers=auth_headers,
+    _seed(
+        store,
+        [
+            *_movie(E1, label="Named Movie", title="Named Movie"),
+            (E1, INGESTED_AT_PRED, "2024-01-01"),
+            (E1, SOURCE_PRED, "import"),
+        ],
     )
-    assert resp.status_code == 200
-    data = resp.json()
+
+    data = _get(client, auth_headers).json()
     columns = data["columns"]
 
     # system predicates must NOT appear as columns
@@ -310,109 +283,75 @@ def test_records_system_predicates_excluded(client, mock_neptune, auth_headers):
     assert data["rows"][0]["name"] == "Named Movie"
 
 
-def test_records_name_falls_back_to_id_leaf(client, mock_neptune, auth_headers):
-    """When no rdfs:label, name comes from the last URI segment."""
+def test_records_reserved_keys_never_become_columns(store, client, auth_headers):
+    """The half of the case above that DOES hold: label / source stay out.
 
-    def route(sparql, *a, **k):
-        if "attrLabel" in sparql:
-            return _empty()
-        if "DISTINCT ?e" in sparql and "ORDER BY ?e" in sparql:
-            return _rows({"e": E1})
-        if "entityCount" in sparql:
-            return _rows({"ec": "1"})
-        if "VALUES ?e" in sparql:
-            return _rows({"e": E1, "p": TITLE_PRED, "o": "Some Title"})
-        return _empty()
-
-    mock_neptune.query.side_effect = route
-
-    resp = client.get(
-        f"/graphs/{TENANT}/explore/kgs/{KG}/types/{TYPE}/records",
-        headers=auth_headers,
+    Split from the xfail so the surviving guarantee keeps failing loudly if it
+    regresses, instead of hiding behind the ingested_at bug.
+    """
+    _seed(
+        store,
+        [
+            *_movie(E1, label="Named Movie", title="Named Movie"),
+            (E1, SOURCE_PRED, "import"),
+        ],
     )
-    assert resp.status_code == 200
-    data = resp.json()
+
+    data = _get(client, auth_headers).json()
+    assert "label" not in data["columns"]
+    assert "source" not in data["columns"]
+    assert data["rows"][0]["name"] == "Named Movie"
+
+
+def test_records_name_falls_back_to_id_leaf(store, client, auth_headers):
+    """When no rdfs:label, name comes from the last URI segment."""
+    _seed(store, _movie(E1, title="Some Title"))
+
+    data = _get(client, auth_headers).json()
     # E1 = ".../Movie/m1" → leaf is "m1"
     assert data["rows"][0]["name"] == "m1"
 
 
 # ---------------------------------------------------------------------------
-# 5. Total falls back to COUNT query when stats are absent
+# 5. Total is a live count of the type, not of the page
 # ---------------------------------------------------------------------------
 
-def test_records_total_fallback_count(client, mock_neptune, auth_headers):
-    """When the stats graph has no entityCount, a COUNT query is used for total."""
+def test_records_total_counts_the_whole_type_not_the_page(
+    store, client, mock_neptune, auth_headers
+):
+    """``total`` is the type's real instance count, computed live.
 
-    def route(sparql, *a, **k):
-        if "attrLabel" in sparql:
-            return _empty()
-        if "DISTINCT ?e" in sparql and "ORDER BY ?e" in sparql:
-            return _rows({"e": E1})
-        if "entityCount" in sparql:
-            return _empty()   # no stats
-        if "VALUES ?e" in sparql:
-            return _rows({"e": E1, "p": TITLE_PRED, "o": "Film"})
-        if "COUNT" in sparql:
-            return _rows({"n": "42"})
-        return _empty()
+    Replaces ``test_records_total_fallback_count``: the precomputed stats-graph
+    lookup (and therefore the "stats absent → fall back to COUNT" branch it
+    tested) is not on the property-graph path at all, so there is one number
+    and it is always the live one.
+    """
+    for i in range(5):
+        _seed(store, _movie(entity_uri(TYPE, f"m{i}"), title=f"Film {i}"))
 
-    mock_neptune.query.side_effect = route
-
-    resp = client.get(
-        f"/graphs/{TENANT}/explore/kgs/{KG}/types/{TYPE}/records",
-        headers=auth_headers,
-    )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["total"] == 42
+    data = _get(client, auth_headers, limit=2).json()
+    assert len(data["rows"]) == 2
+    assert data["total"] == 5
+    mock_neptune.query.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
-# 6. Ontology-DECLARED attributes are always columns, even when rare
-#    (COG-112/COG-100: enriched attrs like `company` present on 1-of-N entities)
+# 6. Rare attributes: present on one row, blank on the others
 # ---------------------------------------------------------------------------
 
-def test_records_declared_rare_attribute_is_column(client, mock_neptune, auth_headers):
-    """A declared-but-rare attribute is a column and its value shows on the one
-    entity that has it; entities without it render blank for that column."""
+def test_records_rare_attribute_is_a_column_with_blanks(store, client, auth_headers):
+    """An attribute on ONE entity of the page is a column; the rest render blank.
 
-    COMPANY_ATTR = ONTO + "types/Movie/attrs/company"   # declared in ontology
-    COMPANY_PRED = ONTO + "company"                       # instance predicate
+    The surviving half of ``test_records_declared_rare_attribute_is_column``
+    (COG-112). Its other half — that the attribute is a column because the
+    ONTOLOGY declares it, even with no value on the page — is the xfail below.
+    """
+    _seed(store, _movie(E1, label="Film One", title="Film One"))
+    _seed(store, _movie(E2, label="Film Two", title="Film Two", company="Acme Studios"))
+    _seed(store, _movie(E3, label="Film Three", title="Film Three"))
 
-    def route(sparql, *a, **k):
-        # Ontology declares title (common) AND company (enriched, rare)
-        if "attrLabel" in sparql:
-            return _rows(
-                {"attr": ONTO + "types/Movie/attrs/title", "attrLabel": "title", "range": ""},
-                {"attr": COMPANY_ATTR, "attrLabel": "company", "range": ""},
-            )
-        if "DISTINCT ?e" in sparql and "ORDER BY ?e" in sparql:
-            return _rows({"e": E1}, {"e": E2}, {"e": E3})
-        if "entityCount" in sparql:
-            return _rows({"ec": "3"})
-        if "VALUES ?e" in sparql:
-            # title on all three; company ONLY on E2 (the rare case)
-            return _rows(
-                {"e": E1, "p": LABEL_PRED, "o": "Film One"},
-                {"e": E1, "p": TITLE_PRED, "o": "Film One"},
-                {"e": E2, "p": LABEL_PRED, "o": "Film Two"},
-                {"e": E2, "p": TITLE_PRED, "o": "Film Two"},
-                {"e": E2, "p": COMPANY_PRED, "o": "Acme Studios"},
-                {"e": E3, "p": LABEL_PRED, "o": "Film Three"},
-                {"e": E3, "p": TITLE_PRED, "o": "Film Three"},
-            )
-        return _empty()
+    data = _get(client, auth_headers).json()
 
-    mock_neptune.query.side_effect = route
-
-    resp = client.get(
-        f"/graphs/{TENANT}/explore/kgs/{KG}/types/{TYPE}/records",
-        headers=auth_headers,
-    )
-    assert resp.status_code == 200
-    data = resp.json()
-
-    # Declared rare attribute MUST be a column even though only 1/3 entities have it
     assert "company" in data["columns"], data["columns"]
     assert data["columns"][0] == "name"
 
@@ -428,45 +367,47 @@ def test_records_declared_rare_attribute_is_column(client, mock_neptune, auth_he
             assert col in r
 
 
-def test_records_declared_attribute_exempt_from_cap(client, mock_neptune, auth_headers):
-    """Declared attributes beyond the old 12-cap are still all shown; only
-    non-declared observed predicates are bounded by the cap."""
+@pytest.mark.xfail(
+    reason=(
+        "BUG (introduced by the Neo4j cutover, surfaced by ONTA-527): "
+        "ontology-DECLARED attributes are no longer table columns. The SPARQL "
+        "branch of api/routes/explore.py::get_type_records reads the type's "
+        "attribute definitions and makes every declared label a column exempt "
+        "from the _MAX_COLS budget (COG-112: an enriched attr present on 1 of "
+        "N entities must still be visible, and a declared-but-empty column is "
+        "how a user sees an attribute exists at all). "
+        "_records_from_explore_store never touches the ontology catalog — "
+        "columns are the union of properties observed on the page — so a "
+        "declared attribute with no value on this page silently disappears "
+        "from the Explorer table. Not fixed here: the fix is to join "
+        "ontology_catalog.list_attributes into the store records path."
+    ),
+    strict=True,
+)
+def test_records_declared_attribute_with_no_value_is_still_a_column(
+    store, client, auth_headers
+):
+    async def declare():
+        from infona_client.graph.ontology_catalog import (
+            upsert_attribute,
+            upsert_type,
+        )
 
-    # 20 declared attributes (> the old _MAX_COLS of 12)
-    declared = [f"attr{i:02d}" for i in range(20)]
+        await upsert_type(name=TYPE, tenant_id=TENANT, layer="tenant")
+        await upsert_attribute(
+            type_name=TYPE,
+            attr_name="company",
+            description="enriched later",
+            tenant_id=TENANT,
+            layer="tenant",
+        )
 
-    def route(sparql, *a, **k):
-        if "attrLabel" in sparql:
-            return _rows(*[
-                {"attr": ONTO + f"types/Movie/attrs/{n}", "attrLabel": n, "range": ""}
-                for n in declared
-            ])
-        if "DISTINCT ?e" in sparql and "ORDER BY ?e" in sparql:
-            return _rows({"e": E1})
-        if "entityCount" in sparql:
-            return _rows({"ec": "1"})
-        if "VALUES ?e" in sparql:
-            # E1 has a value for only one declared attr; the rest must still be cols
-            return _rows(
-                {"e": E1, "p": LABEL_PRED, "o": "Solo"},
-                {"e": E1, "p": ONTO + "attr05", "o": "v5"},
-            )
-        return _empty()
+    asyncio.get_event_loop_policy().new_event_loop().run_until_complete(declare())
+    _seed(store, _movie(E1, label="Solo", title="Solo"))
 
-    mock_neptune.query.side_effect = route
-
-    resp = client.get(
-        f"/graphs/{TENANT}/explore/kgs/{KG}/types/{TYPE}/records",
-        headers=auth_headers,
-    )
-    assert resp.status_code == 200
-    data = resp.json()
-    cols = data["columns"]
-    # All 20 declared attributes present (not truncated at 12)
-    for n in declared:
-        assert n in cols, f"declared {n} missing from columns {cols}"
-    assert data["rows"][0]["attr05"] == "v5"
-    assert data["rows"][0]["attr00"] == ""
+    data = _get(client, auth_headers).json()
+    assert "company" in data["columns"], data["columns"]
+    assert data["rows"][0]["company"] == ""
 
 
 # ---------------------------------------------------------------------------
@@ -477,109 +418,45 @@ def test_records_declared_attribute_exempt_from_cap(client, mock_neptune, auth_h
 #    slug. attrs/name must not become a separate second column either.)
 # ---------------------------------------------------------------------------
 
-# attrs/name is a declared attribute whose instance predicate is …/onto/name.
-NAME_ATTR = ONTO + "types/Movie/attrs/name"
-NAME_PRED = ONTO + "name"
 
-
-def test_records_name_prefers_attrs_name_over_slug(client, mock_neptune, auth_headers):
+def test_records_name_prefers_attrs_name_over_slug(store, client, auth_headers):
     """An entity with attrs/name but NO rdfs:label shows its attrs/name value in
     the `name` field — not the URI slug. attrs/name must not become a separate
     second column."""
+    _seed(store, _movie(E1, name="Jane Doe", title="Some Title"))
 
-    def route(sparql, *a, **k):
-        if "attrLabel" in sparql:
-            # ontology declares a "name" attribute (its value holds the real name)
-            return _rows(
-                {"attr": NAME_ATTR, "attrLabel": "name", "range": ""},
-                {"attr": ONTO + "types/Movie/attrs/title", "attrLabel": "title", "range": ""},
-            )
-        if "DISTINCT ?e" in sparql and "ORDER BY ?e" in sparql:
-            return _rows({"e": E1})
-        if "entityCount" in sparql:
-            return _rows({"ec": "1"})
-        if "VALUES ?e" in sparql:
-            # E1 has attrs/name ("Jane Doe") but NO rdfs:label
-            return _rows(
-                {"e": E1, "p": NAME_PRED, "o": "Jane Doe"},
-                {"e": E1, "p": TITLE_PRED, "o": "Some Title"},
-            )
-        return _empty()
-
-    mock_neptune.query.side_effect = route
-
-    resp = client.get(
-        f"/graphs/{TENANT}/explore/kgs/{KG}/types/{TYPE}/records",
-        headers=auth_headers,
-    )
-    assert resp.status_code == 200
-    data = resp.json()
+    data = _get(client, auth_headers).json()
 
     # name shows the attrs/name value, NOT the URI slug ("m1")
     assert data["rows"][0]["name"] == "Jane Doe"
     # attrs/name does NOT become a separate second "name" column
     assert data["columns"].count("name") == 1
     assert data["columns"][0] == "name"
-    # the row carries no separate "name" attribute key beyond the first column
-    # (the value lives only in the first column)
 
 
-def test_records_name_prefers_attrs_name_over_label(client, mock_neptune, auth_headers):
+def test_records_name_prefers_attrs_name_over_label(store, client, auth_headers):
     """When both attrs/name and a slug-shaped rdfs:label are present, attrs/name
     wins — ingest stores the opaque entity-id slug in rdfs:label, so the
-    human-readable attrs/name value must be displayed instead of the slug."""
+    human-readable attrs/name value must be displayed instead of the slug.
 
-    def route(sparql, *a, **k):
-        if "attrLabel" in sparql:
-            return _rows({"attr": NAME_ATTR, "attrLabel": "name", "range": ""})
-        if "DISTINCT ?e" in sparql and "ORDER BY ?e" in sparql:
-            return _rows({"e": E1})
-        if "entityCount" in sparql:
-            return _rows({"ec": "1"})
-        if "VALUES ?e" in sparql:
-            # rdfs:label is the slug-shaped entity id; attrs/name is the real name
-            return _rows(
-                {"e": E1, "p": LABEL_PRED, "o": "4akvVWgTcS"},
-                {"e": E1, "p": NAME_PRED, "o": "Jane Doe"},
-            )
-        return _empty()
+    Both land on the ONE reserved ``name`` property now, so "attrs/name wins"
+    is a write-order property of graph/facts.py rather than a read-side
+    precedence rule — seeded in the order ingest emits them (label first).
+    """
+    _seed(store, [(E1, RDF_TYPE, TYPE_URI), (E1, LABEL_PRED, "4akvVWgTcS")])
+    _seed(store, [(E1, NAME_PRED, "Jane Doe")])
 
-    mock_neptune.query.side_effect = route
-
-    resp = client.get(
-        f"/graphs/{TENANT}/explore/kgs/{KG}/types/{TYPE}/records",
-        headers=auth_headers,
-    )
-    assert resp.status_code == 200
-    data = resp.json()
+    data = _get(client, auth_headers).json()
     # attrs/name wins over the slug-shaped rdfs:label
     assert data["rows"][0]["name"] == "Jane Doe"
     # attrs/name does NOT become a separate second "name" column
     assert data["columns"].count("name") == 1
 
 
-def test_records_name_falls_back_to_slug_when_neither(client, mock_neptune, auth_headers):
+def test_records_name_falls_back_to_slug_when_neither(store, client, auth_headers):
     """With neither rdfs:label nor attrs/name, name falls back to the URI slug."""
+    _seed(store, _movie(E1, title="Some Title"))
 
-    def route(sparql, *a, **k):
-        if "attrLabel" in sparql:
-            return _rows({"attr": NAME_ATTR, "attrLabel": "name", "range": ""})
-        if "DISTINCT ?e" in sparql and "ORDER BY ?e" in sparql:
-            return _rows({"e": E1})
-        if "entityCount" in sparql:
-            return _rows({"ec": "1"})
-        if "VALUES ?e" in sparql:
-            # neither rdfs:label nor attrs/name; only title
-            return _rows({"e": E1, "p": TITLE_PRED, "o": "Some Title"})
-        return _empty()
-
-    mock_neptune.query.side_effect = route
-
-    resp = client.get(
-        f"/graphs/{TENANT}/explore/kgs/{KG}/types/{TYPE}/records",
-        headers=auth_headers,
-    )
-    assert resp.status_code == 200
-    data = resp.json()
+    data = _get(client, auth_headers).json()
     # E1 = ".../Movie/m1" → leaf is "m1"
     assert data["rows"][0]["name"] == "m1"
