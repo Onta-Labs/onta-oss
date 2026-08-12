@@ -769,10 +769,10 @@ def test_every_generated_sparql_execution_site_is_guarded():
         "this module builds with its own FROM clause, add its variable to "
         "BUILT_HERE_QUERY_VARS with a justification."
     )
-    # ONTA-534 retired the SPARQL ask() retry loop (one confined site gone).
-    # Remaining sites are residual helpers (enum discovery / label resolve etc.)
-    # that still call NeptuneClient until GraphStore ports land.
-    assert len(confined) == 2, (
+    # ONTA-534 retired the SPARQL ask() retry loop and select_entity_uris
+    # SPARQL execution. Remaining confined site(s) are residual helpers
+    # (e.g. name-lookup broaden) until GraphStore ports land.
+    assert len(confined) == 1, (
         "the set of confined execution sites changed; confirm each new one is "
         f"correct, then update this count (found {confined})"
     )

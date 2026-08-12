@@ -118,11 +118,68 @@ def _base_has_instances_query(*graphs: str) -> str:
     )
 
 
+async def _kg_data_status_graph_store(tenant_id: str, kg_name: str) -> str | None:
+    """GraphStore probe for :func:`kg_data_status` (ONTA-534).
+
+    Returns a verdict when a process GraphStore answers registration + instance
+    presence; ``None`` when the store path is unavailable so the caller may use
+    a duck-typed SPARQL double (unit tests).
+    """
+    from infona_client.graph.store import GraphConfigError, get_optional_graph_store
+
+    try:
+        from infona_client.graph.explore_store import count_entities
+        from infona_client.graph.kg_registry import list_registered_kgs
+
+        get_optional_graph_store()  # raise if no process store
+        entries = await list_registered_kgs(tenant_id)
+        registered = any(e.get("name") == kg_name for e in entries)
+        n = await count_entities(tenant_id=tenant_id, kg_name=kg_name)
+        has_data = bool(n and int(n) > 0)
+        if has_data:
+            return KG_OK
+        if not registered:
+            # Also treat entity-scoped orphan KGs as registered (registry list
+            # already unions orphans on Memory/Neo4j native paths).
+            return KG_MISSING
+        # Registered but empty per-KG: check whether *any* entity exists for the
+        # tenant (base-graph rescue analogue — other KGs or unscoped data).
+        # Keep semantics close to the SPARQL third ASK without scanning layers.
+        try:
+            from infona_client.graph.store import get_graph_store
+
+            store = get_graph_store()
+            entity_count = getattr(store, "entity_count", None)
+            if callable(entity_count):
+                # MemoryGraphStore: total tenant entities across KGs
+                total = int(entity_count(tenant_id=tenant_id) or 0)
+                if total > 0:
+                    return KG_OK
+        except Exception:  # noqa: BLE001
+            pass
+        return KG_EMPTY
+    except GraphConfigError:
+        return None
+    except Exception:  # noqa: BLE001 — fail open at caller
+        logger.warning(
+            "kg_status_graph_store_failed",
+            tenant=tenant_id,
+            kg_name=kg_name,
+            exc_info=True,
+        )
+        return None
+
+
 async def kg_data_status(neptune, tenant_id: str, kg_name: str) -> str:
     """Return :data:`KG_OK`, :data:`KG_EMPTY` or :data:`KG_MISSING`.
 
-    Two ASKs on the hot path, issued CONCURRENTLY so this costs one round-trip
-    of latency:
+    **ONTA-534:** when ``neptune`` is a real :class:`NeptuneClient` and a process
+    GraphStore is configured, the probe uses the registry + entity counts and
+    never POSTs SPARQL at a decommissioned endpoint. Duck-typed test doubles
+    keep the historical SPARQL ASK path.
+
+    Two ASKs on the legacy hot path, issued CONCURRENTLY so this costs one
+    round-trip of latency:
 
     * ``registered``: the ``<kgs/{tenant}/{name}> <onto/kg_name> "{name}"``
       record in the tenant base graph, the same record ``list_kgs`` reads.
@@ -193,6 +250,31 @@ async def kg_data_status(neptune, tenant_id: str, kg_name: str) -> str:
     cached = _kg_ok_cache.get((tenant_id, kg_name))
     if cached is not None and (time.time() - cached) < KG_STATUS_CACHE_TTL:
         return KG_OK
+
+    # GraphStore-first for a *real* NeptuneClient (production lifespan).
+    # Use ``type is`` not ``isinstance``: ``AsyncMock(spec=NeptuneClient)``
+    # makes isinstance True, which would wrongly take the empty hermetic store
+    # path and ignore the mock's ask() side effects.
+    try:
+        from infona_client.graph.client import NeptuneClient
+
+        if type(neptune) is NeptuneClient:
+            store_verdict = await _kg_data_status_graph_store(tenant_id, kg_name)
+            if store_verdict is not None:
+                if store_verdict == KG_OK:
+                    _kg_ok_cache[(tenant_id, kg_name)] = time.time()
+                elif store_verdict == KG_MISSING:
+                    logger.info(
+                        "kg_status_missing", tenant=tenant_id, kg_name=kg_name
+                    )
+                return store_verdict
+    except Exception:  # noqa: BLE001 — fall through to SPARQL / fail-open
+        logger.warning(
+            "kg_status_store_dispatch_failed",
+            tenant=tenant_id,
+            kg_name=kg_name,
+            exc_info=True,
+        )
 
     base = tenant_graph_uri(tenant_id)
     # kg_graph_uri validates kg_name (ONTA-414); an invalid name raises before
@@ -298,7 +380,27 @@ async def list_kg_names(neptune, tenant_id: str, limit: int = 25) -> list[str]:
     only the name so this stays a tiny lookup (no triple counts, no stats store,
     no per-KG scan). Best-effort: returns ``[]`` on any error, since this only
     ever enriches an error message.
+
+    **ONTA-534:** real :class:`NeptuneClient` uses the GraphStore registry when
+    configured; duck-typed doubles keep SPARQL.
     """
+    try:
+        from infona_client.graph.client import NeptuneClient
+
+        if type(neptune) is NeptuneClient:
+            from infona_client.graph.kg_registry import list_registered_kgs
+            from infona_client.graph.store import GraphConfigError, get_optional_graph_store
+
+            try:
+                get_optional_graph_store()
+                entries = await list_registered_kgs(tenant_id)
+                names = [str(e["name"]) for e in entries if e.get("name")]
+                return names[: int(limit)]
+            except GraphConfigError:
+                pass
+    except Exception:  # noqa: BLE001
+        logger.warning("kg_status_list_store_failed", tenant=tenant_id, exc_info=True)
+
     base = tenant_graph_uri(tenant_id)
     sparql = (
         f"SELECT DISTINCT ?name FROM <{base}> WHERE {{ ?kg <{KG_NAME_PRED}> ?name }} "

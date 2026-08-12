@@ -1548,8 +1548,21 @@ async def get_type_summary(
         result = pg_row.as_api_dict()
         _summary_cache[cache_key] = (time.monotonic(), result)
         return result
-    except GraphConfigError:
-        # No process GraphStore — fall through to legacy SPARQL (rare offline).
+    except GraphConfigError as exc:
+        # ONTA-534: a *real* NeptuneClient must not fall through to dead SPARQL
+        # HTTP (120s hang). ``type is`` not ``isinstance`` — AsyncMock(spec=
+        # NeptuneClient) fools isinstance. Duck-typed doubles keep the dual arm.
+        from infona_client.graph.client import NeptuneClient
+
+        if type(client) is NeptuneClient and not getattr(client, "_allow_http", False):
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Graph store is not configured. Neo4j GraphStore is required "
+                    f"(ONTA-534). {exc}"
+                ),
+            ) from exc
+        # Residual SPARQL dual-arm (hermetic unit tests / QC archaeology).
         pass
 
     # Layered resolve (ONTA-397): Public/Enhanced types are visible when the
@@ -2184,16 +2197,33 @@ async def get_type_records(
     require_valid_type_name(type_name)
     _EMPTY = {"columns": ["name"], "rows": [], "total": 0, "next_cursor": None}
 
-    pg = await _records_from_explore_store(
-        tenant_id=tenant.tenant_id,
-        kg_name=kg_name,
-        type_name=type_name,
-        limit=limit,
-        cursor=cursor,
-    )
+    from fastapi import HTTPException
+
+    from infona_client.graph.store import GraphConfigError
+
+    try:
+        pg = await _records_from_explore_store(
+            tenant_id=tenant.tenant_id,
+            kg_name=kg_name,
+            type_name=type_name,
+            limit=limit,
+            cursor=cursor,
+        )
+    except GraphConfigError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Graph store is not configured. Neo4j GraphStore is required "
+                f"(ONTA-534). {exc}"
+            ),
+        ) from exc
     if pg is not None:
         return pg
 
+    # ONTA-534: do not fall through to SPARQL when the store path returned None
+    # under a configured GraphStore (unknown/empty type uses empty sentinel).
+    # Residual SPARQL arm below remains for dual-arm archaeology only when
+    # explicitly reached; production GraphStore always answers above.
     kg_graph = kg_graph_uri(tenant.tenant_id, kg_name)
     resolved = await _resolve_layered_type(client, tenant, type_name)
     if resolved is not None:
@@ -2471,48 +2501,62 @@ async def get_entity_detail_route(
     if not eid:
         raise HTTPException(status_code=422, detail="entity_id is required")
 
-    # GraphStore path.
-    if resolve_explore_session(tenant_id=tenant.tenant_id, kg_name=kg_name) is not None:
-        detail = await pg_entity_detail(
-            tenant_id=tenant.tenant_id,
-            kg_name=kg_name,
-            entity_id=eid,
-        )
-        if detail is None:
-            raise HTTPException(status_code=404, detail=f"Entity '{eid}' not found")
-        return {
-            "id": detail.id,
-            "name": detail.name,
-            "primary_type": detail.primary_type,
-            "source": detail.source,
-            "labels": list(detail.labels),
-            "properties": dict(detail.properties),
-            "outgoing": [
-                {
-                    "attr": r.attr,
-                    "rel_type": r.rel_type,
-                    "other_id": r.other_id,
-                    "other_name": r.other_name,
-                    "other_type": r.other_type,
-                    "direction": r.direction,
-                }
-                for r in detail.outgoing
-            ],
-            "incoming": [
-                {
-                    "attr": r.attr,
-                    "rel_type": r.rel_type,
-                    "other_id": r.other_id,
-                    "other_name": r.other_name,
-                    "other_type": r.other_type,
-                    "direction": r.direction,
-                }
-                for r in detail.incoming
-            ],
-        }
+    # GraphStore path (ONTA-534: GraphConfigError → 503, no SPARQL hang).
+    from infona_client.graph.store import GraphConfigError
 
-    # Neptune SPARQL path — point-lookup properties + 1-hop edges.
-    kg_graph = kg_graph_uri(tenant.tenant_id, kg_name)
+    try:
+        resolve_explore_session(tenant_id=tenant.tenant_id, kg_name=kg_name)
+    except GraphConfigError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Graph store is not configured. Neo4j GraphStore is required "
+                f"(ONTA-534). {exc}"
+            ),
+        ) from exc
+
+    detail = await pg_entity_detail(
+        tenant_id=tenant.tenant_id,
+        kg_name=kg_name,
+        entity_id=eid,
+    )
+    if detail is None:
+        # ONTA-534: no SPARQL fallthrough — store answered "missing".
+        raise HTTPException(status_code=404, detail=f"Entity '{eid}' not found")
+    return {
+        "id": detail.id,
+        "name": detail.name,
+        "primary_type": detail.primary_type,
+        "source": detail.source,
+        "labels": list(detail.labels),
+        "properties": dict(detail.properties),
+        "outgoing": [
+            {
+                "attr": r.attr,
+                "rel_type": r.rel_type,
+                "other_id": r.other_id,
+                "other_name": r.other_name,
+                "other_type": r.other_type,
+                "direction": r.direction,
+            }
+            for r in detail.outgoing
+        ],
+        "incoming": [
+            {
+                "attr": r.attr,
+                "rel_type": r.rel_type,
+                "other_id": r.other_id,
+                "other_name": r.other_name,
+                "other_type": r.other_type,
+                "direction": r.direction,
+            }
+            for r in detail.incoming
+        ],
+    }
+
+    # Residual SPARQL path retired (ONTA-534) — kept below as unreachable
+    # archaeology only; GraphStore path always returns or 404s above.
+    kg_graph = kg_graph_uri(tenant.tenant_id, kg_name)  # pragma: no cover
     props_sparql = (
         f"SELECT ?p ?o FROM <{kg_graph}> WHERE {{\n"
         f"  <{eid}> ?p ?o .\n"

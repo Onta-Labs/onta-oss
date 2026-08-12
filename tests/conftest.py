@@ -131,8 +131,17 @@ def app(mock_neptune):
 
 
 @pytest.fixture
-def client(app):
-    return TestClient(app)
+def client(app, mock_neptune):
+    """HTTP client with residual SPARQL client mocked.
+
+    TestClient lifespan constructs a real ``NeptuneClient`` (ONTA-534 fail-closed
+    under GraphStore). Re-inject the mock so route tests that wire
+    ``mock_neptune.ask`` / ``.query`` still exercise duck-typed dual arms
+    without POSTing at a dead endpoint.
+    """
+    tc = TestClient(app)
+    app.state.neptune_client = mock_neptune
+    return tc
 
 
 @pytest.fixture
