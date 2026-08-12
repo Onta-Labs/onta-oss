@@ -1266,8 +1266,20 @@ program
       let summary: import("./client.js").TypeSummary;
       try {
         summary = await c.typeSummary(kg, typeName);
-      } catch {
-        fail(`Type '${typeName}' not found in KG '${kg}'.`);
+      } catch (err) {
+        // Backend is source of truth (P-A1a): 404 when type has neither
+        // instances in this KG nor a tenant-ontology declaration. Other
+        // failures (network, 5xx) keep a distinct message so overview vs
+        // drill-in divergence is not misread as "type missing".
+        const status = (err as { status?: number })?.status;
+        if (status === 404) {
+          fail(
+            `Type '${typeName}' not found in KG '${kg}' ` +
+              `(no instances here and not declared in the workspace ontology).`,
+          );
+        }
+        const msg = err instanceof Error ? err.message : String(err);
+        fail(`Could not load type summary for '${typeName}' in KG '${kg}': ${msg}`);
       }
 
       const { entity_count, attributes, relationships, description, parent_type } = summary;

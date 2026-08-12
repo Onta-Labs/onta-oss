@@ -350,6 +350,39 @@ RETURN coalesce(r.attr, type(r)) AS attr, type(r) AS rel_type,
        'in' AS direction
 """.strip()
 
+# --- Type summary live scan (P-A1a / vis drill-in) ----------------------------
+# Per-type attribute coverage: how many entities of ``$primary_type`` carry each
+# Entity property key. Callers filter reserved / internal keys post-scan.
+# Instance membership is ``INSTANCE_OF`` → Class (ADR 0013), matching type-counts.
+ENTITY_TYPE_ATTR_COVERAGE_CYPHER = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
+  tenant_id: $tenant_id, kg: $kg
+})
+WHERE c.name = $primary_type OR c.id = $primary_type
+WITH e, keys(e) AS ks
+UNWIND ks AS k
+WITH k, count(DISTINCT e) AS n
+WHERE k IS NOT NULL AND k <> ''
+RETURN k AS attr, n
+ORDER BY n DESC, attr ASC
+""".strip()
+
+# Per-type outgoing relationship coverage + edge totals for avg_degree.
+ENTITY_TYPE_REL_COVERAGE_CYPHER = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
+  tenant_id: $tenant_id, kg: $kg
+})
+WHERE c.name = $primary_type OR c.id = $primary_type
+MATCH (e)-[r]->(o:Entity {tenant_id: $tenant_id, kg: $kg})
+WHERE r.tenant_id = $tenant_id AND r.kg = $kg
+WITH coalesce(r.attr, type(r)) AS attr,
+     count(DISTINCT e) AS n,
+     count(r) AS rel_total,
+     collect(DISTINCT o.primary_type)[0] AS target_type
+RETURN attr, n, rel_total, target_type
+ORDER BY n DESC, attr ASC
+""".strip()
+
 # Property keys a literal grep must never return, pushed INTO the scan.
 #
 # Two groups, and the second is the load-bearing one:
@@ -554,6 +587,16 @@ TEMPLATES: Mapping[str, CypherTemplate] = {
     "entity_rels": CypherTemplate(
         name="entity_rels",
         cypher=ENTITY_RELS_CYPHER,
+        writing=False,
+    ),
+    "entity_type_attr_coverage": CypherTemplate(
+        name="entity_type_attr_coverage",
+        cypher=ENTITY_TYPE_ATTR_COVERAGE_CYPHER,
+        writing=False,
+    ),
+    "entity_type_rel_coverage": CypherTemplate(
+        name="entity_type_rel_coverage",
+        cypher=ENTITY_TYPE_REL_COVERAGE_CYPHER,
         writing=False,
     ),
     "entity_literal_grep": CypherTemplate(
