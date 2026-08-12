@@ -27,7 +27,7 @@ def _kg_uri(tenant: str = "demo-tenant", kg: str = "bookstore") -> str:
     return f"{IRI_BASE}/graphs/{tenant}/kg/{kg}"
 
 
-ONTOLOGY = "Type: Book\n  - title\nType: Author\n  - name\nType: Organization"
+ONTOLOGY = "Type: Book\n  - title\nType: Author\n  - name\nType: Organization\nType: Person"
 
 
 def test_stub_count_by_type_shape():
