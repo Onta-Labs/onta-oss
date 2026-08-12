@@ -109,6 +109,64 @@ def _skip_invalid_kg_name(name: str, op: str) -> bool:
     return True
 
 
+async def _neo4j_live_kg_counts(
+    tenant_id: str, kg_names: list[str]
+) -> dict[str, dict[str, int]]:
+    """Live Entity + Assertion counts per KG from GraphStore (best-effort).
+
+    Used when registry ``triple_count`` / durable stats are still zero after
+    ingest — common on OSS local Neo4j without Postgres ``kg_stats_store``.
+    """
+    if not kg_names:
+        return {}
+    try:
+        from infona_client.graph.store import get_graph_store
+
+        store = get_graph_store()
+    except Exception:  # noqa: BLE001
+        return {}
+    run = getattr(store, "_run", None)
+    if not callable(run):
+        return {}
+    cypher = """
+    UNWIND $kgs AS kg_name
+    OPTIONAL MATCH (e:Entity {tenant_id: $tenant_id, kg: kg_name})
+    WITH kg_name, count(e) AS entity_count
+    OPTIONAL MATCH (a:Assertion {tenant_id: $tenant_id, kg: kg_name})
+    RETURN kg_name AS name, entity_count, count(a) AS triple_count
+    """
+    try:
+        rows = await run(
+            cypher,
+            {"tenant_id": tenant_id, "kgs": list(kg_names)},
+            writing=False,
+            database=None,
+        )
+    except Exception:  # noqa: BLE001
+        return {}
+    out: dict[str, dict[str, int]] = {}
+    for r in rows or ():
+        name = str(r.get("name") or "")
+        if not name:
+            continue
+        try:
+            ent = int(r.get("entity_count") or 0)
+        except (TypeError, ValueError):
+            ent = 0
+        try:
+            trips = int(r.get("triple_count") or 0)
+        except (TypeError, ValueError):
+            trips = 0
+        # edge_count ≈ object Assertions / typed rels; use assertion count as
+        # a better "something is here" signal than sticky registry zeros.
+        out[name] = {
+            "entity_count": ent,
+            "triple_count": trips,
+            "edge_count": max(0, trips - ent) if trips else 0,
+        }
+    return out
+
+
 async def _live_triple_count(
     client: "NeptuneClient", tenant_id: str, name: str
 ) -> int:
@@ -277,16 +335,34 @@ async def list_kgs(
         except Exception:  # noqa: BLE001
             stats_by_kg = {}
         enriching = await _enriching_kgs(job_store, tenant.tenant_id)
+        # Live GraphStore counts when registry/stats are still zero after ingest.
+        # KnowledgeGraph.triple_count is only set at create; without Postgres
+        # kg_stats_store, entity_count stayed 0 forever (persona-eval trust bug).
+        live_by_kg = await _neo4j_live_kg_counts(
+            tenant.tenant_id, [e["name"] for e in entries]
+        )
         out: list[KGInfo] = []
         for e in entries:
             s = stats_by_kg.get(e["name"])
+            live = live_by_kg.get(e["name"]) or {}
+            reg_triples = int(e.get("triple_count") or 0)
+            ent = int(s.entity_count) if s and s.entity_count else 0
+            edge = int(s.edge_count) if s and s.edge_count else 0
+            if ent <= 0:
+                ent = int(live.get("entity_count") or 0)
+            if edge <= 0:
+                edge = int(live.get("edge_count") or 0)
+            # Prefer assertion/triple live count when registry stuck at 0.
+            triples = reg_triples if reg_triples > 0 else int(
+                live.get("triple_count") or 0
+            )
             out.append(
                 KGInfo(
                     name=e["name"],
                     description=e.get("description") or "",
-                    triple_count=int(e.get("triple_count") or 0),
-                    entity_count=s.entity_count if s else 0,
-                    edge_count=s.edge_count if s else 0,
+                    triple_count=triples,
+                    entity_count=ent,
+                    edge_count=edge,
                     status="enriching" if e["name"] in enriching else "active",
                     stats_updated_at=s.updated_at.isoformat() if s else None,
                     ai_description=s.ai_description if s else "",

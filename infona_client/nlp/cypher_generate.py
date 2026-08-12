@@ -264,12 +264,14 @@ _FILTER_RE = re.compile(
 )
 
 # "which books cost less than 15" / "books with price under 15 dollars"
+# / "books cheaper than 15" / "price under 15"
 _NUMERIC_FILTER_RE = re.compile(
     r"(?ix)^"
     r"(?:(?:list|show(?:\s+me)?|find|get|which|what)\s+)?"
     r"(?P<label>.+?)\s+"
     r"(?:"
-    r"(?:cost|priced?|costs?)\s+(?P<cost_op>less\s+than|under|below|more\s+than|over|above|at\s+least|at\s+most|exactly)\s+"
+    r"(?:cost|priced?|costs?|cheaper|more\s+expensive)\s+"
+    r"(?P<cost_op>less\s+than|under|below|more\s+than|over|above|at\s+least|at\s+most|exactly|than)\s+"
     r"(?:\$|USD\s*)?(?P<cost_num>\d+(?:\.\d+)?)\s*(?:dollars?|usd|\$)?"
     r"|"
     r"(?:with|having|where)\s+(?P<prop>[A-Za-z_][A-Za-z0-9_]*)\s+"
@@ -280,11 +282,13 @@ _NUMERIC_FILTER_RE = re.compile(
 )
 
 # "list books with genre Classic Fiction" / "books that have genre Romance"
+# / "which books are in the genre Classic Fiction" / "books of genre Fantasy"
 _REL_NAME_FILTER_RE = re.compile(
     r"(?ix)^"
     r"(?:(?:list|show(?:\s+me)?|find|get|which|what)\s+)?"
     r"(?P<label>.+?)\s+"
-    r"(?:with|having|that\s+have|have)\s+"
+    r"(?:with|having|that\s+have|have|in|of|from)\s+"
+    r"(?:the\s+)?"
     r"(?P<rel>genre|author|publisher|category)\s+"
     r"[\"']?(?P<value>.+?)[\"']?"
     r"$"
@@ -311,7 +315,8 @@ _CMP_OP_MAP = {
 }
 
 # Natural-language cost/price props for "cost less than N" phrases.
-_COST_PROP_CANDIDATES = ("price", "cost", "amount")
+# Prefer short leaves first (export dual-writes both `price` and `has_price`).
+_COST_PROP_CANDIDATES = ("price", "has_price", "cost", "has_cost", "amount")
 
 # "authors of books" / "list organizations related to people"
 _HOP_OF_RE = re.compile(
@@ -644,6 +649,17 @@ def try_numeric_filter_query(
     if m.group("cost_num") is not None:
         prop_key = _resolve_cost_prop(ontology_summary)
         op_raw = (m.group("cost_op") or "less than").strip().lower()
+        g0 = (m.group(0) or "").lower()
+        # Map "cheaper than" / "more expensive than" using the verb, not bare "than".
+        if "cheaper" in g0 and op_raw in ("than", "less than", "under", "below"):
+            op_raw = "less than"
+        elif "more expensive" in g0 and op_raw in (
+            "than",
+            "more than",
+            "over",
+            "above",
+        ):
+            op_raw = "more than"
         threshold = float(m.group("cost_num"))
     else:
         prop = (m.group("prop") or "").strip()
