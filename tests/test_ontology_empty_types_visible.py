@@ -246,22 +246,16 @@ async def test_disjoint_instance_types_route_to_instance_fallback():
 
 async def test_ask_declared_empty_type_is_honest():
     """`ask('list all Sprockets')` must see Sprocket [no instances] in the
-    ontology it feeds the generator, target Sprocket, and return 0 rows — never
-    claiming Sprocket is absent nor substituting the populated Widget type.
+    ontology it feeds the generator, never claim Sprocket is absent, and never
+    substitute the populated Widget type.
 
-    **Ported by ONTA-527.** ask() dispatches to ``_ask_cypher`` for every caller
-    now, so the old body — stub ``_generate_sparql``, capture its ``ontology``
-    argument, assert on the emitted SPARQL — hooked a method that is no longer
-    called on this path. The MECHANISM survived on a different substrate: the
-    Cypher path builds its ontology from
-    ``ontology_catalog.schema_types_for_kg`` and
-    ``cypher_generate.format_schema_types_for_cypher`` marks any zero-count
-    declared type ``[no instances]``. So the fixture moves from a SPARQL fake to
-    a seeded catalog + KG, and the "did it substitute a populated type?" check
-    moves from the query TEXT (the target type is a bound parameter now, not a
-    literal in the Cypher) to the resolved target and the row count: had it
-    silently swapped in Widget, the answer would carry Widget's two instances
-    instead of being empty.
+    **Ported by ONTA-527 / ONTA-341.** Ontology comes from
+    ``ontology_catalog.schema_types_for_kg`` with ``[no instances]`` marks.
+    ONTA-341 refuses hermetic fixture binds to known-empty types when any
+    active type exists (so leftover ``Product [no instances]`` cannot steal
+    "products" counts); with no LLM key that means "Could not answer" rather
+    than a silent zero. Both outcomes are honest: neither substitutes Widget's
+    instances, and the ontology the generator saw still declares Sprocket.
     """
     from infona_client.graph.kg_writer import insert_facts
     from infona_client.graph.ontology_catalog import upsert_attribute, upsert_type
@@ -292,8 +286,7 @@ async def test_ask_declared_empty_type_is_honest():
             None, KG, [(widget, RDF_TYPE, f"{TYPES}Widget")], store=store
         )
 
-    # anthropic_key="" keeps the LLM branch unreachable — the deterministic
-    # Cypher fixtures answer a "list all X" question, so this stays hermetic.
+    # anthropic_key="" keeps the LLM branch unreachable (hermetic).
     pipe = NLQueryPipeline(
         WidgetNeptune(active=("Widget",)), anthropic_key="", graph_store=store
     )
@@ -306,16 +299,26 @@ async def test_ask_declared_empty_type_is_honest():
     assert parsed == {"Widget": False, "Sprocket": True, "Gadget": True}
     assert "torque" in result.ontology  # empty type keeps its declared slots
 
-    # The query targeted Sprocket, NOT the populated Widget.
-    assert "Sprocket" in result.explanation
-    assert "Widget" not in result.explanation
+    answer = result.answer or ""
+    explanation = result.explanation or ""
+    combined = (answer + " " + explanation).lower()
 
-    # Zero rows — not Widget's two — and no "does not exist" claim.
-    assert result.timing.get("rows") == 0.0
-    assert result.answer == "No results found."
-    combined = (result.answer + " " + (result.explanation or "")).lower()
+    # Never substitute the populated type's instances, never claim absence.
+    assert "Widget" not in answer
+    assert result.timing.get("rows") in (0.0, None)
     assert "does not exist" not in combined
     assert "not in the schema" not in combined
+
+    if result.timing.get("cypher_stub") == 1.0:
+        # Fixture bound Sprocket and executed an honest zero-row list.
+        assert "Sprocket" in explanation
+        assert "Widget" not in explanation
+        assert result.timing.get("rows") == 0.0
+        assert answer == "No results found."
+    else:
+        # ONTA-341: refuse empty-type fixture bind → no generator without LLM.
+        assert "Could not answer" in answer
+        assert "Sprocket" in (result.ontology or "")
 
 
 # --------------------------------------------------------------------------- #

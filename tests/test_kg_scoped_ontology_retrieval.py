@@ -614,6 +614,10 @@ async def test_catalog_ontology_for_ask_is_scoped_to_the_target_kg():
     generator (never hidden — that is the ONTA-258 regression) and must be
     marked as holding nothing here, so the model writes an honest zero-row
     query instead of substituting the populated type.
+
+    ONTA-341 may refuse hermetic fixture binds to known-empty types when any
+    active type exists (fall through to LLM). With no key that is "Could not
+    answer" — still honest: never returns Widget's sibling-KG-scope rows.
     """
     from infona_client.graph.iri import IRI_BASE
     from infona_client.graph.kg_writer import insert_facts
@@ -641,8 +645,7 @@ async def test_catalog_ontology_for_ask_is_scoped_to_the_target_kg():
         [(sprocket, RDF_TYPE, f"{IRI_BASE}/types/Sprocket")], store=store,
     )
 
-    # anthropic_key="" keeps the LLM branch unreachable: the deterministic
-    # Cypher fixtures answer this question, so the test stays hermetic.
+    # anthropic_key="" keeps the LLM branch unreachable (hermetic).
     pipe = NLQueryPipeline(ProbeNeptune(), anthropic_key="", graph_store=store)
     result = await pipe.ask("list all Sprockets", GRAPH, instance_graph=KG)
 
@@ -650,11 +653,14 @@ async def test_catalog_ontology_for_ask_is_scoped_to_the_target_kg():
     ontology = _type_lines(result.ontology)
     # Both declared types are visible; only the in-KG one is unmarked.
     assert ontology == {"Widget": False, "Sprocket": True}
-    # ...and the question about the out-of-KG type gets an honest zero rows,
-    # not the populated Widget's instances.
-    assert result.timing.get("rows") == 0.0
-    assert result.answer == "No results found."
-    assert "Widget" not in result.answer
+    # Never substitute the populated Widget's instances for out-of-KG Sprocket.
+    assert "Widget" not in (result.answer or "")
+    assert result.timing.get("rows") in (0.0, None)
+    if result.timing.get("cypher_stub") == 1.0:
+        assert result.timing.get("rows") == 0.0
+        assert result.answer == "No results found."
+    else:
+        assert "Could not answer" in (result.answer or "")
 
 
 # --------------------------------------------------------------------------- #

@@ -37,6 +37,7 @@ from infona_client.api.routes.explore import (
     _is_internal_predicate,
 )
 from infona_client.graph.client import NeptuneClient
+from infona_client.graph.store import reset_graph_store_for_tests
 
 TENANT = "test-tenant"
 KG = "web"
@@ -106,7 +107,14 @@ def _empty():
 def test_summary_excludes_internal_predicates(client, mock_neptune, auth_headers):
     """A TTSModel whose entities carry onto/batch_id, er/blockKey,
     er/erSignal_name AND a real onto/score must report ONLY `score` as an
-    attribute — the internal predicates never appear in the panel."""
+    attribute — the internal predicates never appear in the panel.
+
+    Pure SPARQL-assembly unit test: leave the process GraphStore unconfigured
+    so get_type_summary falls through GraphConfigError to the mocked live-scan
+    path (P-A1a GraphStore is covered by test_type_summary_neo4j + unit
+    filters on ``_assemble_summary`` / ``is_internal_property_key``).
+    """
+    reset_graph_store_for_tests()
 
     def route(sparql, *a, **k):
         # Ontology label/comment/parent lookup
@@ -311,11 +319,16 @@ def test_assemble_summary_shows_real_source_relationship_hides_literal_source():
 def test_live_scan_keeps_entity_valued_source_relationship(client, mock_neptune, auth_headers):
     """End-to-end via the /summary live-scan path: a TTSModel whose entities have
     a real ``onto/source`` edge to an Organization AND a housekeeping literal
-    ``onto/batch_id`` → ``source`` shows as a relationship, batch_id is hidden."""
+    ``onto/batch_id`` → ``source`` shows as a relationship, batch_id is hidden.
+
+    SPARQL-assembly unit test (is_relationship exemption on INTERNAL_ONTO_MARKERS).
+    Unconfigure GraphStore so the route falls through to the mocked live-scan.
+    """
     # The /summary endpoint memoizes per (tenant, kg, type) in a module cache;
     # another test in this file warms the same key, so clear it to read fresh.
     from infona_client.api.routes import explore as _explore_mod
     _explore_mod._summary_cache.clear()
+    reset_graph_store_for_tests()
 
     def route(sparql, *a, **k):
         if "?label" in sparql and "subClassOf" in sparql:
