@@ -146,7 +146,11 @@ export function writeConfig(
 /**
  * Write the canonical local open-access config. Clears any cloud credentials
  * so a prior `infona login` cannot leak X-API-Key onto a no-auth local server.
- * Preserves `defaultKg` unless `replace` is true.
+ *
+ * Always preserves `defaultKg` (working graph context) even when `replace` is
+ * true — connection mode change must not wipe the user's last `infona use`.
+ * `replace` still clobbers connection fields (apiKey / email / apiUrl / tenant)
+ * by writing a full open-access shape via writeConfig({ replace: true }).
  */
 export function writeLocalOpenAccessConfig(opts?: {
   apiUrl?: string;
@@ -155,7 +159,7 @@ export function writeLocalOpenAccessConfig(opts?: {
 }): InfonaConfig {
   const apiUrl = opts?.apiUrl ?? LOCAL_API_URL;
   const tenant = opts?.tenant ?? LOCAL_DEFAULT_TENANT;
-  const prev = opts?.replace ? {} : readConfig();
+  const prev = readConfig();
   const next: InfonaConfig = {
     apiUrl,
     tenant,
@@ -163,7 +167,8 @@ export function writeLocalOpenAccessConfig(opts?: {
     apiKey: undefined,
     email: undefined,
   };
-  if (!opts?.replace && prev.defaultKg) {
+  // Keep defaultKg across connection rewrites (replace or merge).
+  if (prev.defaultKg) {
     next.defaultKg = prev.defaultKg;
   }
   writeConfig(next, { replace: true });

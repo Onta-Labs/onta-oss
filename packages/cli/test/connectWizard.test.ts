@@ -13,19 +13,31 @@
  *  SC8  hasResolvedConnection: env > config; flags are caller one-off
  *  SC9  --local / ensureConnected({local:true}) does not write config
  *  SC10 pure empty install never auto-writes local; non-interactive empty → hint
+ *  P0  connectLocal / init --local must not hang (no orphan readline)
+ *  P1  writeLocalOpenAccessConfig preserves defaultKg even with replace
+ *  P2  init --local clobber gate: non-TTY needs --force for different connection
  */
 
 import {
   afterEach,
+  beforeAll,
   beforeEach,
   describe,
   expect,
   it,
   vi,
 } from "vitest";
-import { mkdtempSync, readFileSync, existsSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import {
+  mkdtempSync,
+  readFileSync,
+  existsSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
+import { execFileSync, spawn } from "node:child_process";
 
 import {
   LOCAL_API_URL,
@@ -47,6 +59,7 @@ import {
   parseConnectChoice,
   runConnectWizard,
   setupLocalNonInteractive,
+  writeOnlyIo,
   type ConnectIo,
   type ProbeResult,
 } from "../src/connect.js";
@@ -173,17 +186,19 @@ describe("config connection helpers (SC1/SC8)", () => {
 // --- SC1: local open-access write shape ------------------------------------- #
 
 describe("writeLocalOpenAccessConfig / setupLocalNonInteractive (SC1)", () => {
-  it("writes apiUrl + tenant default and clears cloud apiKey", () => {
+  it("writes apiUrl + tenant default and clears cloud apiKey (P1: keeps defaultKg)", () => {
     writeConfig({ apiKey: "cloud-secret", email: "a@b.c", defaultKg: "keep-me" });
     const cfg = writeLocalOpenAccessConfig({ replace: true });
     expect(cfg).toEqual({
       apiUrl: LOCAL_API_URL,
       tenant: LOCAL_DEFAULT_TENANT,
+      defaultKg: "keep-me",
     });
     const disk = readConfigFile();
     expect(disk).toEqual({
       apiUrl: "http://localhost:8000",
       tenant: "default",
+      defaultKg: "keep-me",
     });
     expect(disk.apiKey).toBeUndefined();
     expect(disk.email).toBeUndefined();
@@ -427,10 +442,76 @@ describe("ensureConnected flags (SC9)", () => {
 describe("connectLocal / connectApiKey", () => {
   it("connectLocal skipProbe writes without fetch", async () => {
     const { io, counts } = scriptedIo([]);
-    const result = await connectLocal({ io, skipProbe: true, replace: true });
+    const result = await connectLocal({
+      io,
+      skipProbe: true,
+      replace: true,
+      force: true,
+    });
     expect(result.ok).toBe(true);
     expect(counts.probes).toHaveLength(0);
     expect(readConfigFile().apiUrl).toBe(LOCAL_API_URL);
+  });
+
+  it("connectLocal default path uses write-only IO (no hang) + preserves defaultKg", async () => {
+    writeConfig({ defaultKg: "books", apiKey: "x", apiUrl: "https://api.infona.ai" });
+    // force so we don't need TTY confirm; no custom io → writeOnlyIo factory
+    const result = await connectLocal({
+      skipProbe: true,
+      replace: true,
+      force: true,
+    });
+    expect(result.ok).toBe(true);
+    const disk = readConfigFile();
+    expect(disk.apiUrl).toBe(LOCAL_API_URL);
+    expect(disk.defaultKg).toBe("books");
+    expect(disk.apiKey).toBeUndefined();
+  });
+
+  it("P2: non-TTY connectLocal refuses clobber of different connection without force", async () => {
+    writeConfig({
+      apiKey: "cloud-secret",
+      apiUrl: "https://api.infona.ai",
+      tenant: "ws",
+    });
+    const writes: string[] = [];
+    const io: ConnectIo = {
+      isTty: false,
+      write: (s) => writes.push(s),
+      question: async () => {
+        throw new Error("non-TTY must not prompt");
+      },
+    };
+    const result = await connectLocal({
+      io,
+      skipProbe: true,
+      replace: true,
+      // force omitted
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toMatch(/--force/);
+    }
+    // Config unchanged
+    expect(readConfig().apiKey).toBe("cloud-secret");
+  });
+
+  it("P2: same local open-access rewrite is idempotent without force", async () => {
+    writeLocalOpenAccessConfig({ replace: true });
+    const io = writeOnlyIo();
+    // Override isTty false to simulate script
+    const scripted: ConnectIo = {
+      ...io,
+      isTty: false,
+      write: () => {},
+      probe: async () => ({ ok: true, requiresAuth: false, url: LOCAL_API_URL }),
+    };
+    const result = await connectLocal({
+      io: scripted,
+      skipProbe: true,
+      replace: true,
+    });
+    expect(result.ok).toBe(true);
   });
 
   it("connectApiKey with values is non-interactive", async () => {
@@ -451,6 +532,132 @@ describe("connectLocal / connectApiKey", () => {
       tenant: "t1",
     });
   });
+});
+
+// --- P0: no orphan readline hang (child process + timeout) ------------------ #
+
+describe("init --local does not hang (P0 readline regression)", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const pkgRoot = join(here, "..");
+  const cliPath = join(pkgRoot, "dist", "cli.js");
+
+  beforeAll(() => {
+    // Exercise the real published bin (same as cliSymlink tests).
+    execFileSync("npm", ["run", "build"], { cwd: pkgRoot, stdio: "pipe" });
+    if (!existsSync(cliPath)) {
+      throw new Error(`expected built CLI at ${cliPath}`);
+    }
+  }, 120_000);
+
+  it("infona init --local exits within timeout (success or probe-fail)", async () => {
+    const testHome = mkdtempSync(join(tmpdir(), "infona-hang-"));
+    try {
+      // Intentionally leave stdin open (pipe) — the old defaultIo() hang only
+      // shows up when readline owns an open stdin and is never closed.
+      const child = spawn(process.execPath, [cliPath, "init", "--local", "--force"], {
+        env: {
+          ...process.env,
+          HOME: testHome,
+          USERPROFILE: testHome,
+          NO_COLOR: "1",
+          // Ensure we don't inherit a real connection from the parent env.
+          INFONA_API_KEY: "",
+          INFONA_API_URL: "",
+          INFONA_TENANT: "",
+        },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+
+      let stdout = "";
+      let stderr = "";
+      child.stdout?.on("data", (d: Buffer) => {
+        stdout += d.toString();
+      });
+      child.stderr?.on("data", (d: Buffer) => {
+        stderr += d.toString();
+      });
+
+      const exitCode = await new Promise<number | null>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          child.kill("SIGKILL");
+          reject(
+            new Error(
+              `init --local hung >2s (readline leak?). stdout=${stdout} stderr=${stderr}`,
+            ),
+          );
+        }, 2000);
+        child.on("error", (err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
+        child.on("close", (code) => {
+          clearTimeout(timer);
+          resolve(code);
+        });
+      });
+
+      // 0 if a local API happens to be up; 1 on probe failure. Either is fine —
+      // the regression is hanging forever after printing success/error.
+      expect(exitCode === 0 || exitCode === 1).toBe(true);
+    } finally {
+      rmSync(testHome, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  it("connectLocal(skipProbe) child exits 0 with open stdin", async () => {
+    const testHome = mkdtempSync(join(tmpdir(), "infona-hang2-"));
+    const { readdirSync } = await import("node:fs");
+    const distFiles = readdirSync(join(pkgRoot, "dist"));
+    const connectChunk = distFiles.find(
+      (f) => f.startsWith("connect-") && f.endsWith(".js") && !f.endsWith(".map"),
+    );
+    expect(connectChunk).toBeTruthy();
+
+    const harness = join(testHome, "hang-check.mjs");
+    writeFileSync(
+      harness,
+      `import { connectLocal } from ${JSON.stringify(join(pkgRoot, "dist", connectChunk!))};
+const r = await connectLocal({ skipProbe: true, replace: true, force: true });
+if (!r.ok) { console.error(r.error); process.exit(2); }
+process.exit(0);
+`,
+      "utf-8",
+    );
+
+    try {
+      const child = spawn(process.execPath, [harness], {
+        env: {
+          ...process.env,
+          HOME: testHome,
+          USERPROFILE: testHome,
+          NO_COLOR: "1",
+        },
+        stdio: ["pipe", "pipe", "pipe"], // stdin open — hang repro condition
+        cwd: pkgRoot,
+      });
+      let stderr = "";
+      child.stderr?.on("data", (d: Buffer) => {
+        stderr += d.toString();
+      });
+      const exitCode = await new Promise<number | null>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          child.kill("SIGKILL");
+          reject(new Error(`connectLocal child hung >2s. stderr=${stderr}`));
+        }, 2000);
+        child.on("close", (code) => {
+          clearTimeout(timer);
+          resolve(code);
+        });
+        child.on("error", (err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
+      });
+      expect(exitCode, `stderr=${stderr}`).toBe(0);
+    } finally {
+      rmSync(testHome, { recursive: true, force: true });
+    }
+  }, 15_000);
 });
 
 // --- writeConfig replace / clear -------------------------------------------- #

@@ -26,7 +26,11 @@ cloud login and not a silent force-local):
 - **API key** is for CI/headless or self-hosted with auth.
 
 Re-run any time: `infona init` (confirms before overwriting saved credentials).
-Non-interactive local: `infona init --local`.
+Non-interactive local: `infona init --local` (probes `localhost:8000`, writes
+open-access config, **no readline** — safe for scripts). Re-writing the same
+local open-access config is idempotent; overwriting a *different* saved
+connection (e.g. cloud API key) requires a TTY confirm, or `--force` when
+non-interactive: `infona init --local --force`.
 
 Then the interactive shell:
 

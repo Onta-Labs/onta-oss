@@ -1479,7 +1479,11 @@ program
     "--local",
     "Non-interactive: probe localhost:8000 and write open-access config",
   )
-  .action(async (opts: { local?: boolean }) => {
+  .option(
+    "--force",
+    "With --local: overwrite an existing non-local connection without a TTY confirm",
+  )
+  .action(async (opts: { local?: boolean; force?: boolean }) => {
     await withErrors(async () => {
       const {
         connectLocal,
@@ -1490,8 +1494,20 @@ program
       const local = Boolean(opts.local || parentOpts.local);
       if (local) {
         // Non-interactive local path used by scripts and CI; never opens a browser.
-        const result = await connectLocal({ replace: true });
-        if (!result.ok) fail(`Error: ${result.error}`);
+        // Write-only IO (no readline) so the process exits after success/error.
+        // Existing different connection: TTY confirms; non-TTY needs --force
+        // (same local open-access rewrite stays idempotent without --force).
+        const result = await connectLocal({
+          replace: true,
+          force: Boolean(opts.force),
+        });
+        if (!result.ok) {
+          if (result.error === "cancelled") {
+            process.exitCode = 0;
+            return;
+          }
+          fail(`Error: ${result.error}`);
+        }
         return;
       }
       const result = await runConnectWizard({ force: true });
