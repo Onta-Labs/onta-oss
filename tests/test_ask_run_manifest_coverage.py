@@ -135,7 +135,6 @@ def _make_manifest() -> RunManifest:
 # --------------------------------------------------------------------------- #
 # 1. Threaded manifest / coverage → REAL A9 "N of M" caveat.
 # --------------------------------------------------------------------------- #
-@pytest.mark.xfail(strict=True, reason=_MANIFEST_NOT_THREADED)
 @pytest.mark.asyncio
 async def test_ask_with_manifest_emits_real_a9_coverage_caveat(pipeline):
     result = await _ask(pipeline, run_manifest=_make_manifest())
@@ -148,7 +147,6 @@ async def test_ask_with_manifest_emits_real_a9_coverage_caveat(pipeline):
     assert result.answer == "1"
 
 
-@pytest.mark.xfail(strict=True, reason=_MANIFEST_NOT_THREADED)
 @pytest.mark.asyncio
 async def test_ask_accepts_bare_run_coverage(pipeline):
     """A pre-computed RunCoverage (not the full manifest) threads through too."""
@@ -179,7 +177,6 @@ async def test_ask_without_manifest_has_empty_caveat_default(pipeline):
     assert result.answer == "1"
 
 
-@pytest.mark.xfail(strict=True, reason=_MANIFEST_NOT_THREADED)
 @pytest.mark.asyncio
 async def test_threading_manifest_changes_ONLY_the_caveat(pipeline):
     """Byte-identical default-path control: threading a manifest changes ONLY the

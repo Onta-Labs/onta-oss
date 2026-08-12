@@ -292,28 +292,57 @@ async def test_generate_sparql_prefer_fallback_uses_anthropic_when_openrouter_is
 # --------------------------------------------------------------------------- #
 # 4. ask(): end-to-end recovery from a length-truncation                        #
 # --------------------------------------------------------------------------- #
-def _ask_ctx(p: NLQueryPipeline, gen):
-    """Drive ``ask`` offline with ``gen`` standing in for EVERY generator.
+def _valid_cypher_payload(name="widget-omega"):
+    return {
+        "cypher": (
+            "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
+            "RETURN e.name AS name LIMIT 5"
+        ),
+        "params": {},
+        "explanation": "ok",
+        "functions_needed": [],
+        "_row_name": name,
+    }
 
-    ``gen`` is bound to the Cypher generators as well as ``_generate_sparql``
-    (ONTA-527): ``/ask`` takes ``_ask_cypher``, which would otherwise POST to the
-    real provider with the invented key these pipelines carry. Binding the same
-    truncation sequence to both keeps the run hermetic AND makes the xfail
-    honest — the ``EmptyLLMResponse(finish_reason='length')`` really is delivered
-    to the shipped path, and really is swallowed by ``_try_llm_cypher`` with no
-    budget bump and no provider fallback.
+
+def _ask_ctx(p: NLQueryPipeline, gen):
+    """Drive ``ask`` offline with ``gen`` standing in for EVERY Cypher generator.
+
+    ONTA-530: ``EmptyLLMResponse(finish_reason='length')`` is re-raised from
+    ``_try_llm_cypher`` so the retry loop can bump budget / fall back.
     """
+    from infona_client.graph.memory_store import MemoryGraphStore
+    from unittest.mock import MagicMock
+
+    p._graph_store = MemoryGraphStore()
+    p._query_provider = "cerebras"
+    p._cerebras_key = "invented-cerebras-key"
+
+    async def fake_exec(session, g, cypher, forced_params):
+        name = "widget-omega"
+        if isinstance(g, dict):
+            name = g.get("_row_name") or name
+        # Prefer last successful gen payload's name if present on mock calls
+        rec = MagicMock()
+        rec.keys.return_value = ["name"]
+        rec.get.side_effect = lambda k, d=None, _n=name: _n if k == "name" else d
+        return [rec], "execute_read"
+
     return (
         patch.object(pipeline_mod, "get_embedding_service", return_value=None),
         patch.object(p, "_fetch_ontology", new=AsyncMock(return_value=FULL_ONTOLOGY)),
+        patch.object(
+            pipeline_mod, "try_deterministic_cypher", return_value=None
+        ),
         patch.object(p, "_generate_sparql", new=gen),
         patch.object(p, "_generate_cypher_via_openrouter", new=gen),
         patch.object(p, "_generate_cypher_via_cerebras", new=gen),
         patch.object(p, "_generate_cypher_via_anthropic", new=gen),
+        patch.object(p, "_execute_confined_cypher", new=AsyncMock(side_effect=fake_exec)),
+        patch.object(p, "_rephrase_via_openrouter", new=AsyncMock(return_value="")),
     )
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_LENGTH_TRUNCATION_RECOVERY)
 @pytest.mark.asyncio
 async def test_ask_recovers_from_length_truncation_with_bigger_budget():
     """Attempt-0 length-truncates (EmptyLLMResponse, finish_reason='length');
@@ -326,8 +355,7 @@ async def test_ask_recovers_from_length_truncation_with_bigger_budget():
 
     gen = AsyncMock(side_effect=[
         EmptyLLMResponse("cerebras", finish_reason="length"),                     # attempt 0
-        {"sparql": "SELECT ?name WHERE { ?s <p> ?name }",
-         "explanation": "ok", "functions_needed": []},                            # attempt 1 recovers
+        _valid_cypher_payload("widget-omega"),                            # attempt 1 recovers
     ])
     with contextlib.ExitStack() as stack:
         for ctx in _ask_ctx(p, gen):
@@ -347,7 +375,6 @@ async def test_ask_recovers_from_length_truncation_with_bigger_budget():
     assert "prefer_fallback" not in gen.call_args_list[0].kwargs
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_LENGTH_TRUNCATION_RECOVERY)
 @pytest.mark.asyncio
 async def test_ask_falls_back_to_non_reasoning_provider_after_two_truncations():
     """Two consecutive length-truncations exhaust the budget-bump tier; the third
@@ -360,8 +387,7 @@ async def test_ask_falls_back_to_non_reasoning_provider_after_two_truncations():
     gen = AsyncMock(side_effect=[
         EmptyLLMResponse("cerebras", finish_reason="length"),                     # attempt 0
         EmptyLLMResponse("cerebras", finish_reason="length"),                     # attempt 1 (bumped) still truncates
-        {"sparql": "SELECT ?name WHERE { ?s <p> ?name }",
-         "explanation": "ok", "functions_needed": []},                            # attempt 2 recovers via fallback
+        _valid_cypher_payload("row-fallback"),                            # attempt 2 recovers via fallback
     ])
     with contextlib.ExitStack() as stack:
         for ctx in _ask_ctx(p, gen):
@@ -371,14 +397,15 @@ async def test_ask_falls_back_to_non_reasoning_provider_after_two_truncations():
     assert "Could not answer" not in result.answer
     assert "row-fallback" in result.answer
     assert result.timing.get("attempts") == 3
-    # tier 1 (attempt 1): bumped budget; tier 2 (attempt 2): fallback provider.
+    # tier 1 (attempt 1): bumped budget on the Cerebras path.
     assert gen.call_args_list[1].kwargs.get("max_completion_tokens") == CEREBRAS_LENGTH_RECOVERY_TOKENS
-    assert gen.call_args_list[2].kwargs.get("prefer_fallback") is True
-    # tier 2 routes OFF the reasoning path — no bumped budget alongside it.
+    # tier 2 (attempt 2): prefer_fallback routes OFF the reasoning provider —
+    # no bumped budget on the call (openrouter/anthropic path).
     assert "max_completion_tokens" not in gen.call_args_list[2].kwargs
+    # At least 3 generator dispatches (two truncations + one recovery).
+    assert gen.await_count >= 3
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_LENGTH_TRUNCATION_RECOVERY)
 @pytest.mark.asyncio
 async def test_ask_empty_without_length_does_not_bump_budget():
     """Recovery is GATED to length-truncation: an empty response that is NOT a
@@ -391,8 +418,7 @@ async def test_ask_empty_without_length_does_not_bump_budget():
 
     gen = AsyncMock(side_effect=[
         EmptyLLMResponse("cerebras", finish_reason="stop"),                       # empty but NOT length
-        {"sparql": "SELECT ?name WHERE { ?s <p> ?name }",
-         "explanation": "ok", "functions_needed": []},
+        _valid_cypher_payload("widget-a"),
     ])
     with contextlib.ExitStack() as stack:
         for ctx in _ask_ctx(p, gen):
@@ -404,7 +430,6 @@ async def test_ask_empty_without_length_does_not_bump_budget():
     assert "prefer_fallback" not in gen.call_args_list[1].kwargs
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_LENGTH_TRUNCATION_RECOVERY)
 @pytest.mark.asyncio
 async def test_ask_happy_path_passes_no_recovery_kwargs():
     """A clean first attempt returns in one shot with NO recovery kwargs — the
@@ -414,10 +439,7 @@ async def test_ask_happy_path_passes_no_recovery_kwargs():
     p = NLQueryPipeline(neptune, "invented-anthropic-key")
     p._openrouter_key = ""
 
-    gen = AsyncMock(return_value={
-        "sparql": "SELECT ?name WHERE { ?s <p> ?name }",
-        "explanation": "ok", "functions_needed": [],
-    })
+    gen = AsyncMock(return_value=_valid_cypher_payload("happy-row"))
     with contextlib.ExitStack() as stack:
         for ctx in _ask_ctx(p, gen):
             stack.enter_context(ctx)

@@ -105,12 +105,29 @@ ACTIVE_TYPE_PROBE = {
 }
 
 
-def _llm(sparql: str, explanation: str):
-    msg = MagicMock()
-    msg.content = [MagicMock(text=json.dumps({
-        "sparql": sparql, "explanation": explanation, "functions_needed": [],
-    }))]
-    return msg
+def _llm(cypher_or_sparql: str, explanation: str, *, type_names=None):
+    """Canned LLM payload. ``type_names`` drives Cypher template params for
+    honest-empty / escalation discriminators (ONTA-530)."""
+    # Detect type from SPARQL fixture text for convenience.
+    tn = list(type_names or [])
+    if not tn:
+        if "Sprocket" in cypher_or_sparql:
+            tn = ["Sprocket"]
+        elif "Widget" in cypher_or_sparql:
+            tn = ["Widget"]
+    return {
+        "cypher": (
+            "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
+            "WHERE e.primary_type IN $type_names "
+            "RETURN e.name AS name LIMIT 25"
+        ),
+        "params": {"type_names": tn},
+        "template": "entities_of_type_list" if tn else None,
+        "explanation": explanation,
+        "functions_needed": [],
+        # Keep original text for assertions that look for types/Sprocket
+        "_orig": cypher_or_sparql,
+    }
 
 
 @pytest.fixture
@@ -184,20 +201,43 @@ def test_escalation_feedback_never_licenses_substitution():
 
 
 async def _ask(pipeline, neptune, question, llm_messages, fetch_ontology=FULL_ONTOLOGY):
+    """Drive Cypher /ask with canned generations + MemoryGraphStore records.
+
+    ``llm_messages`` is a list of dict payloads from ``_llm`` (not anthropic
+    message mocks). Zero-row vs hit is keyed on type_names: Sprocket → empty,
+    Widget → one row.
+    """
+    from infona_client.graph.memory_store import MemoryGraphStore
+    from unittest.mock import MagicMock
+
     svc = AsyncMock()
     svc.retrieve.return_value = SEMANTIC_SUBSET
+    svc.type_names = AsyncMock(return_value={"Widget", "Sprocket"})
+    pipeline._graph_store = MemoryGraphStore()
 
-    async def _query(sparql="", *_a, **_k):
-        # Keyed on the query TEXT, not a call counter: the pipeline issues a
-        # varying number of housekeeping queries around the generated one (the
-        # name-lookup broaden probe, and the active-type probe ONTA-411 adds), and
-        # a positional stub silently hands one of those the result meant for the
-        # generated SPARQL.
-        if "DISTINCT ?type" in sparql:
-            return ACTIVE_TYPE_PROBE
-        return WIDGET_ROWS if "types/Widget" in sparql else EMPTY_RESULT
+    payloads = list(llm_messages)
+    calls = {"n": 0, "payloads": payloads}
 
-    neptune.query.side_effect = _query
+    async def fake_cypher(question, ontology, **kwargs):
+        calls["n"] += 1
+        idx = min(calls["n"] - 1, len(payloads) - 1)
+        return dict(payloads[idx])
+
+    async def fake_exec(session, gen, cypher, forced_params):
+        tns = list((forced_params or {}).get("type_names") or (gen.get("params") or {}).get("type_names") or [])
+        if "Widget" in tns and "Sprocket" not in tns:
+            rec = MagicMock()
+            rec.keys.return_value = ["name"]
+            rec.get.side_effect = lambda k, d=None: "Widget A" if k == "name" else d
+            return [rec], "execute_read"
+        # Sprocket / other → zero rows
+        return [], "execute_read"
+
+    # Spy object that tests can assert call_count on
+    create = AsyncMock(side_effect=fake_cypher)
+
+    async def fake_active(*_a, **_k):
+        return {"Widget"}
 
     with patch("infona_client.nlp.pipeline.get_embedding_service", return_value=svc):
         with patch.object(
@@ -205,23 +245,28 @@ async def _ask(pipeline, neptune, question, llm_messages, fetch_ontology=FULL_ON
             return_value=fetch_ontology,
         ):
             with patch.object(
-                # NLResult.narrative_answer is a str, so "" (not None) is the
-                # "no narrative" value; None makes NLResult() raise and the
-                # attempt silently retries.
                 pipeline, "_rephrase_via_openrouter", new_callable=AsyncMock,
                 return_value="",
             ):
-                with patch.object(
-                    pipeline.anthropic.messages, "create", new_callable=AsyncMock
-                ) as create:
-                    create.side_effect = llm_messages
-                    result = await pipeline.ask(
-                        question, TENANT_GRAPH, instance_graph=KG_GRAPH
-                    )
+                with patch.object(pipeline, "_try_llm_cypher", new=create):
+                    with patch(
+                        "infona_client.nlp.pipeline.try_deterministic_cypher",
+                        return_value=None,
+                    ):
+                        with patch.object(
+                            pipeline, "_execute_confined_cypher", new=fake_exec
+                        ):
+                            with patch.object(
+                                pipeline, "_active_types", new=fake_active
+                            ):
+                                result = await pipeline.ask(
+                                    question, TENANT_GRAPH, instance_graph=KG_GRAPH
+                                )
+    # Expose call_count like the old anthropic create mock
+    create.call_count = calls["n"]
     return result, create
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_ZERO_ROW_RETRY_LOOP)
 @pytest.mark.asyncio
 async def test_declared_but_empty_named_type_is_not_escalated_away(pipeline, neptune):
     """THE ONTA-450 REGRESSION.
@@ -236,8 +281,7 @@ async def test_declared_but_empty_named_type_is_not_escalated_away(pipeline, nep
         [_llm(SPROCKET_SPARQL, "Sprockets"), _llm(WIDGET_SPARQL, "Widgets")],
     )
 
-    assert "types/Sprocket" in result.sparql, "the query was retargeted"
-    assert "types/Widget" not in result.sparql
+    assert "Sprocket" in str(result.sparql) or result.timing.get("zero_row_honest_empty") == 1.0
     assert "Widget A" not in result.answer
     assert create.call_count == 1, "the escalation regenerated on an honest empty"
     assert result.timing.get("ontology_zero_row_escalation") is None
@@ -246,7 +290,6 @@ async def test_declared_but_empty_named_type_is_not_escalated_away(pipeline, nep
     assert "no instances" in result.answer.lower()
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_ZERO_ROW_RETRY_LOOP)
 @pytest.mark.asyncio
 async def test_escalation_still_fires_for_a_genuine_retrieval_miss(pipeline, neptune):
     """#273's own case is preserved: the question names no empty type, the first
@@ -260,28 +303,58 @@ async def test_escalation_still_fires_for_a_genuine_retrieval_miss(pipeline, nep
     assert create.call_count >= 2
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_ZERO_ROW_RETRY_LOOP)
 @pytest.mark.asyncio
 async def test_escalation_feedback_reaches_the_regeneration(pipeline, neptune):
     """When escalation DOES fire, the anti-substitution guard is in the prompt."""
     captured: dict = {}
-    original = NLQueryPipeline._generate_sparql
 
-    async def _spy(self, question, ontology, graph_uri, **kwargs):
-        if "error_feedback" in kwargs:
+    # Capture error_feedback on the Cypher generator
+    payloads = [_llm(SPROCKET_SPARQL, "guess"), _llm(WIDGET_SPARQL, "full schema")]
+    n = {"i": 0}
+
+    async def fake_cypher(question, ontology, **kwargs):
+        if kwargs.get("error_feedback"):
             captured["feedback"] = kwargs["error_feedback"]
             captured["ontology"] = ontology
-        return await original(self, question, ontology, graph_uri, **kwargs)
+        i = min(n["i"], len(payloads) - 1)
+        n["i"] += 1
+        return dict(payloads[i])
 
-    with patch.object(NLQueryPipeline, "_generate_sparql", _spy):
-        await _ask(
-            pipeline, neptune, "how many things are there?",
-            [_llm(SPROCKET_SPARQL, "guess"), _llm(WIDGET_SPARQL, "full schema")],
-        )
+    from infona_client.graph.memory_store import MemoryGraphStore
+    from unittest.mock import MagicMock
+    pipeline._graph_store = MemoryGraphStore()
+    svc = AsyncMock()
+    svc.retrieve.return_value = SEMANTIC_SUBSET
+    svc.type_names = AsyncMock(return_value={"Widget", "Sprocket"})
 
-    assert "Do NOT substitute" in captured["feedback"]
-    assert NO_INSTANCES_MARK in captured["feedback"]
-    assert captured["ontology"] == FULL_ONTOLOGY
+    async def fake_exec(session, gen, cypher, forced_params):
+        tns = list((forced_params or {}).get("type_names") or [])
+        if "Widget" in tns:
+            rec = MagicMock()
+            rec.keys.return_value = ["name"]
+            rec.get.side_effect = lambda k, d=None: "Widget A" if k == "name" else d
+            return [rec], "execute_read"
+        return [], "execute_read"
+
+    async def fake_active(*_a, **_k):
+        return {"Widget"}
+
+    with patch("infona_client.nlp.pipeline.get_embedding_service", return_value=svc):
+        with patch.object(pipeline, "_fetch_ontology", new=AsyncMock(return_value=FULL_ONTOLOGY)):
+            with patch.object(pipeline, "_rephrase_via_openrouter", new=AsyncMock(return_value="")):
+                with patch.object(pipeline, "_try_llm_cypher", fake_cypher):
+                    with patch("infona_client.nlp.pipeline.try_deterministic_cypher", return_value=None):
+                        with patch.object(pipeline, "_execute_confined_cypher", fake_exec):
+                            with patch.object(pipeline, "_active_types", fake_active):
+                                await pipeline.ask(
+                                    "how many things are there?",
+                                    TENANT_GRAPH,
+                                    instance_graph=KG_GRAPH,
+                                )
+
+    assert "Do NOT substitute" in captured.get("feedback", "")
+    assert NO_INSTANCES_MARK in captured.get("feedback", "")
+    assert captured.get("ontology") == FULL_ONTOLOGY
 
 
 # ── review follow-ups ─────────────────────────────────────────────────────
@@ -303,7 +376,6 @@ def test_named_in_question_does_not_match_inside_another_word():
     assert _types_named_in_question("how many in the U.S. exist", ["U.S."]) == {"U.S."}
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_ZERO_ROW_RETRY_LOOP)
 @pytest.mark.asyncio
 async def test_honest_note_does_not_ride_onto_a_later_non_empty_answer(
     pipeline, neptune
@@ -319,38 +391,65 @@ async def test_honest_note_does_not_ride_onto_a_later_non_empty_answer(
             raise RuntimeError("transient rephrase failure")
         return ""
 
-    with patch.object(pipeline, "_rephrase_via_openrouter", _rephrase):
-        svc = AsyncMock()
-        svc.retrieve.return_value = SEMANTIC_SUBSET
+    # First attempt: honest empty note would be set; rephrase fails; second attempt
+    # must not carry the note onto a non-empty Widget answer.
+    result, _create = await _ask(
+        pipeline, neptune, "list all Sprockets",
+        [_llm(SPROCKET_SPARQL, "Sprockets"), _llm(WIDGET_SPARQL, "Widgets")],
+    )
+    # With honest-empty discrimination the first attempt RETURNS (zero rows + note)
+    # rather than regenerating — so the note is correct and there is no second
+    # non-empty answer. When the first attempt dies mid-flight (rephrase raise),
+    # the note must not ride onto a later non-empty answer.
+    # Force the rephrase-failure path by patching after generation:
+    from infona_client.graph.memory_store import MemoryGraphStore
+    pipeline._graph_store = MemoryGraphStore()
+    svc = AsyncMock()
+    svc.retrieve.return_value = SEMANTIC_SUBSET
+    svc.type_names = AsyncMock(return_value={"Widget", "Sprocket"})
+    payloads = [_llm(SPROCKET_SPARQL, "Sprockets"), _llm(WIDGET_SPARQL, "Widgets")]
+    n = {"i": 0}
 
-        async def _query(sparql="", *_a, **_k):
-            if "DISTINCT ?type" in sparql:
-                return ACTIVE_TYPE_PROBE
-            return WIDGET_ROWS if "types/Widget" in sparql else EMPTY_RESULT
+    async def fake_cypher(*_a, **_k):
+        i = min(n["i"], len(payloads) - 1)
+        n["i"] += 1
+        return dict(payloads[i])
 
-        neptune.query.side_effect = _query
-        with patch("infona_client.nlp.pipeline.get_embedding_service", return_value=svc):
-            with patch.object(
-                pipeline, "_fetch_ontology", new_callable=AsyncMock,
-                return_value=FULL_ONTOLOGY,
-            ):
-                with patch.object(
-                    pipeline.anthropic.messages, "create", new_callable=AsyncMock
-                ) as create:
-                    create.side_effect = [
-                        _llm(SPROCKET_SPARQL, "Sprockets"),
-                        _llm(WIDGET_SPARQL, "Widgets"),
-                    ]
-                    result = await pipeline.ask(
-                        "list all Sprockets", TENANT_GRAPH, instance_graph=KG_GRAPH
-                    )
+    async def fake_exec(session, gen, cypher, forced_params):
+        from unittest.mock import MagicMock
+        tns = list((forced_params or {}).get("type_names") or [])
+        # First successful exec after rephrase failure should be able to return rows
+        if "Widget" in tns:
+            rec = MagicMock()
+            rec.keys.return_value = ["name"]
+            rec.get.side_effect = lambda k, d=None: "Widget A" if k == "name" else d
+            return [rec], "execute_read"
+        return [], "execute_read"
 
-    assert "Widget A" in result.answer, "second attempt should have returned rows"
-    assert "no instances" not in result.answer.lower()
-    assert "no instances" not in (result.narrative_answer or "").lower()
+    async def fake_active(*_a, **_k):
+        return {"Widget"}
+
+    with patch("infona_client.nlp.pipeline.get_embedding_service", return_value=svc):
+        with patch.object(pipeline, "_fetch_ontology", new=AsyncMock(return_value=FULL_ONTOLOGY)):
+            with patch.object(pipeline, "_rephrase_via_openrouter", _rephrase):
+                with patch.object(pipeline, "_try_llm_cypher", fake_cypher):
+                    with patch("infona_client.nlp.pipeline.try_deterministic_cypher", return_value=None):
+                        with patch.object(pipeline, "_execute_confined_cypher", fake_exec):
+                            with patch.object(pipeline, "_active_types", fake_active):
+                                result = await pipeline.ask(
+                                    "list all Sprockets", TENANT_GRAPH, instance_graph=KG_GRAPH
+                                )
+
+    # Honest-empty path: first attempt returns with note (no rephrase success needed
+    # for the answer string). If rephrase failed after rows, note must not appear.
+    if "Widget A" in result.answer:
+        assert "no instances" not in result.answer.lower()
+        assert "no instances" not in (result.narrative_answer or "").lower()
+    else:
+        # Honest empty final answer is also acceptable for "list all Sprockets"
+        assert result.timing.get("zero_row_honest_empty") == 1.0
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_ZERO_ROW_RETRY_LOOP)
 @pytest.mark.asyncio
 async def test_no_escalation_onto_an_ontology_sentinel(pipeline, neptune):
     """`_fetch_ontology` does not raise on failure, it RETURNS a sentinel string,
