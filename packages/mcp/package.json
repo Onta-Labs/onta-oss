@@ -5,7 +5,8 @@
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
-    "infona-mcp": "./dist/index.js"
+    "infona-mcp": "./dist/index.js",
+    "onta-mcp": "./dist/index.js"
   },
   "publishConfig": {
     "access": "public"

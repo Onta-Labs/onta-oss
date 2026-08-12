@@ -36,7 +36,10 @@ cp .env.example .env
 ```
 
 > Import path: `infona_client`. Graph IRIs: `https://graph.infona.ai/`.  
-> CLI: workspace packages use the `infona` bin (`npm ci && npm run build -w packages/cli`). Older published tarballs may still expose a legacy `onta` alias; prefer `infona`.
+> CLI/MCP: workspace + upcoming publishes use primary bins `infona` / `infona-mcp`
+> (`npm ci && npm run build -w packages/cli`). Dual aliases `onta` / `onta-mcp`
+> remain for back-compat. Prefer `infona`. Python package name is `infona-client`
+> (PyPI not yet published — install from this repo with `pip install -e .`).
 
 ### 2. Start Neo4j
 
