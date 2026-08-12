@@ -27,6 +27,7 @@ from infona_client.graph.rdfs_helpers import (
     ENTITIES_OF_TYPE_COUNT_CYPHER,
     ENTITIES_OF_TYPE_CYPHER,
     LITERAL_COMPARE_CYPHER,
+    LITERAL_AGGREGATE_CYPHER,
     LITERAL_VALUES_CYPHER,
     RELATED_ENTITIES_CYPHER,
     RELATED_ENTITY_NAME_FILTER_CYPHER,
@@ -87,6 +88,7 @@ _ENTITIES_OF_TYPE_NORM = _norm_cypher(ENTITIES_OF_TYPE_CYPHER)
 _ENTITIES_OF_TYPE_COUNT_NORM = _norm_cypher(ENTITIES_OF_TYPE_COUNT_CYPHER)
 _LITERAL_VALUES_NORM = _norm_cypher(LITERAL_VALUES_CYPHER)
 _LITERAL_COMPARE_NORM = _norm_cypher(LITERAL_COMPARE_CYPHER)
+_LITERAL_AGGREGATE_NORM = _norm_cypher(LITERAL_AGGREGATE_CYPHER)
 _RELATED_ENTITIES_NORM = _norm_cypher(RELATED_ENTITIES_CYPHER)
 _RELATED_ENTITY_NAME_FILTER_NORM = _norm_cypher(RELATED_ENTITY_NAME_FILTER_CYPHER)
 _SUBCLASS_OF_CLOSURE_NORM = _norm_cypher(SUBCLASS_OF_CLOSURE_CYPHER)
@@ -2205,6 +2207,68 @@ class MemoryGraphStore:
                 return out
         return out
 
+
+    def _literal_aggregate(
+        self,
+        tenant_id: str,
+        kg: str,
+        type_names: Any,
+        prop_key: str,
+        agg_op: str,
+    ) -> list[GraphRecord]:
+        """SUM/AVG/MIN/MAX over Assertion SoT + Entity property cache."""
+        from infona_client.graph.assertion_model import property_uri
+
+        op = (agg_op or "sum").strip().lower()
+        if op not in {"sum", "avg", "min", "max"}:
+            return [GraphRecord(data={"value": None})]
+        matched = self._entity_ids_via_instance_of(tenant_id, kg, type_names)
+        prop_id = property_uri(prop_key) if prop_key else None
+        nums: list[float] = []
+        seen: set[str] = set()
+
+        for (t, k, _), a in self._assertions.items():
+            if t != tenant_id or k != kg:
+                continue
+            if a.subject_id not in matched or a.literal_value is None:
+                continue
+            if prop_id is not None and a.property_id != prop_id:
+                prop_row = self._properties.get((tenant_id, kg, a.property_id))
+                if prop_row is None or prop_row.name != prop_key:
+                    continue
+            num = self._to_float_legacy(a.literal_value)
+            if num is None:
+                continue
+            if a.subject_id in seen:
+                continue
+            seen.add(a.subject_id)
+            nums.append(num)
+
+        for eid in matched:
+            if eid in seen:
+                continue
+            r = self._entities.get((tenant_id, kg, eid))
+            if r is None:
+                continue
+            raw = self._entity_prop_value(r, prop_key)
+            num = self._to_float_legacy(raw)
+            if num is None:
+                continue
+            seen.add(eid)
+            nums.append(num)
+
+        if not nums:
+            return [GraphRecord(data={"value": None})]
+        if op == "sum":
+            val = float(sum(nums))
+        elif op == "avg":
+            val = float(sum(nums)) / len(nums)
+        elif op == "min":
+            val = float(min(nums))
+        else:
+            val = float(max(nums))
+        return [GraphRecord(data={"value": val})]
+
     def _related_entities(
         self,
         tenant_id: str,
@@ -2734,6 +2798,15 @@ class MemoryGraphStore:
                 str(params.get("op") or "lt"),
                 params.get("threshold"),
                 int(lim) if lim is not None else 25,
+            )
+
+        if norm == _LITERAL_AGGREGATE_NORM:
+            return self._literal_aggregate(
+                tenant_id,
+                kg,
+                params.get("type_names"),
+                str(params.get("prop_key") or ""),
+                str(params.get("agg_op") or "sum"),
             )
 
         if norm == _RELATED_ENTITIES_NORM:

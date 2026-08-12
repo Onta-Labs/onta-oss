@@ -30,6 +30,7 @@ from infona_client.graph.rdfs_helpers import (
     ENTITIES_OF_TYPE_COUNT_CYPHER,
     ENTITIES_OF_TYPE_CYPHER,
     LITERAL_COMPARE_CYPHER,
+    LITERAL_AGGREGATE_CYPHER,
     LITERAL_VALUES_CYPHER,
     RELATED_ENTITIES_CYPHER,
     RELATED_ENTITY_NAME_FILTER_CYPHER,
@@ -37,6 +38,7 @@ from infona_client.graph.rdfs_helpers import (
     TEMPLATE_ENTITIES_OF_TYPE,
     TEMPLATE_ENTITIES_OF_TYPE_COUNT,
     TEMPLATE_LITERAL_COMPARE,
+    TEMPLATE_LITERAL_AGGREGATE,
     TEMPLATE_LITERAL_VALUES,
     TEMPLATE_RELATED_ENTITIES,
     TEMPLATE_RELATED_ENTITY_NAME_FILTER,
@@ -1334,15 +1336,15 @@ def _resolve_numeric_prop(prop: str | None, ontology_summary: str, type_name: st
     text = section or ontology_summary or ""
     if prop and _SAFE_PROP_RE.match(prop):
         # Prefer exact leaf in section; else accept the word if it appears.
-        if re.search(rf"(?im)^\\s*-\\s*{re.escape(prop)}\\b", text) or re.search(
-            rf"(?i)\\b{re.escape(prop)}\\b", text
+        if re.search(rf"(?im)^\s*-\s*{re.escape(prop)}\b", text) or re.search(
+            rf"(?i)\b{re.escape(prop)}\b", text
         ):
             return prop
         # Common "amount" when ontology uses value_usd etc. — fall through candidates.
     for cand in _NUMERIC_AGG_PROP_CANDIDATES:
-        if re.search(rf"(?im)^\\s*-\\s*{re.escape(cand)}\\b", text):
+        if re.search(rf"(?im)^\s*-\s*{re.escape(cand)}\b", text):
             return cand
-        if re.search(rf"(?i)\\b{re.escape(cand)}\\b", text):
+        if re.search(rf"(?i)\b{re.escape(cand)}\b", text):
             return cand
     if prop and _SAFE_PROP_RE.match(prop):
         return prop
@@ -1379,7 +1381,7 @@ def try_aggregate_query(
     label = (m.group("label") or "").strip()
     label = _TRAILING_PUNCT_RE.sub("", label)
     # Strip leading noise left in label ("all grants", "the widgets")
-    label = re.sub(r"(?i)^(all|the|of|for)\\s+", "", label).strip()
+    label = re.sub(r"(?i)^(all|the|of|for)\s+", "", label).strip()
     if not label:
         return None
     # "grant amount" style: prop may be empty and label ends with amount
@@ -1399,38 +1401,18 @@ def try_aggregate_query(
     expanded = type_names_with_subclasses(
         matched, ontology_summary=ontology_summary, include_subclasses=True
     )
-    # Free-form confined Cypher (not a registered template name) — Memory/Neo4j
-    # both support coalesce(literal, e[prop]) reads used by literal_compare.
-    cypher = f"""
-MATCH (e:Entity {{tenant_id: $tenant_id, kg: $kg}})-[:INSTANCE_OF]->(c:Class {{
-  tenant_id: $tenant_id, kg: $kg
-}})
-WHERE c.name IN $type_names OR c.id IN $type_names
-OPTIONAL MATCH (a:Assertion {{tenant_id: $tenant_id, kg: $kg, subject_id: e.id}})
-  -[:PREDICATE]->(p:Property {{tenant_id: $tenant_id, kg: $kg}})
-WHERE p.name = $prop_key
-WITH e, coalesce(a.literal_value, e[$prop_key]) AS raw
-WHERE raw IS NOT NULL
-WITH toFloat(
-  CASE
-    WHEN toString(raw) CONTAINS '^^' THEN split(toString(raw), '^^')[0]
-    ELSE toString(raw)
-  END
-) AS num
-WHERE num IS NOT NULL
-RETURN {op}(num) AS value
-""".strip()
     return _fixture(
-        cypher=cypher,
+        cypher=LITERAL_AGGREGATE_CYPHER,
         params={
             "type_names": expanded,
             "prop_key": prop_key,
+            "agg_op": op,
         },
         explanation=(
             f"{op.upper()} of {prop_key} for {matched} entities "
-            f"(Assertion literal coalesce Entity denorm; no HAS_ASSERTION)."
+            f"via literal_aggregate (no HAS_ASSERTION)."
         ),
-        template=None,
+        template=TEMPLATE_LITERAL_AGGREGATE,
     )
 
 

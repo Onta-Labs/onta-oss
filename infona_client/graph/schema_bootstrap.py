@@ -26,6 +26,7 @@ from infona_client.graph.rdfs_helpers import (
     ENTITIES_OF_TYPE_COUNT_CYPHER,
     ENTITIES_OF_TYPE_CYPHER,
     LITERAL_COMPARE_CYPHER,
+    LITERAL_AGGREGATE_CYPHER,
     LITERAL_VALUES_CYPHER,
     RELATED_ENTITIES_CYPHER,
     RELATED_ENTITY_NAME_FILTER_CYPHER,
@@ -535,6 +536,11 @@ TEMPLATES: Mapping[str, CypherTemplate] = {
     "literal_compare": CypherTemplate(
         name="literal_compare",
         cypher=LITERAL_COMPARE_CYPHER,
+        writing=False,
+    ),
+    "literal_aggregate": CypherTemplate(
+        name="literal_aggregate",
+        cypher=LITERAL_AGGREGATE_CYPHER,
         writing=False,
     ),
     "related_entities": CypherTemplate(
