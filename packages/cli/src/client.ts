@@ -426,6 +426,10 @@ export class Client {
   /** @internal */ pTypeCounts(kg: string): string {
     return `${this.pKg(kg)}/type-counts`;
   }
+  /** @internal KG export (F10) — JSON or CSV of instance rows. */
+  pExport(kg: string, query?: string): string {
+    return `${this.pKg(kg)}/export${query ?? ""}`;
+  }
   /** @internal */ pExploreSummary(kg: string, typeName: string): string {
     return `${this.base()}/explore/kgs/${encodeURIComponent(kg)}/types/${encodeURIComponent(typeName)}/summary`;
   }
@@ -992,6 +996,26 @@ export class Client {
       `${this.base()}/kgs/${encodeURIComponent(name)}`,
       undefined,
       30_000,
+    );
+  }
+
+  /**
+   * Export KG instance data (`GET /kgs/{kg}/export`).
+   * JSON → parsed object; CSV → raw string body.
+   */
+  async exportKg(
+    kg: string,
+    opts: { format?: "json" | "csv"; type?: string; limit?: number } = {},
+  ): Promise<Record<string, unknown> | string> {
+    const qs = new URLSearchParams();
+    qs.set("format", opts.format ?? "json");
+    if (opts.type) qs.set("type", opts.type);
+    if (opts.limit != null) qs.set("limit", String(opts.limit));
+    return this.request<Record<string, unknown> | string>(
+      "GET",
+      this.pExport(kg, `?${qs.toString()}`),
+      undefined,
+      120_000,
     );
   }
 
@@ -2585,6 +2609,23 @@ export class RawApi {
   /** `GET /graphs/{tenant}/kgs/{kg}/type-counts`. */
   typeCounts(kg: string, init?: RawInit): Promise<Response> {
     return this.client.requestRaw("GET", this.client.pTypeCounts(kg), init);
+  }
+
+  /** `GET /graphs/{tenant}/kgs/{kg}/export?format&type&limit` (F10). */
+  exportKg(
+    kg: string,
+    opts: { format?: "json" | "csv"; type?: string; limit?: number } = {},
+    init?: RawInit,
+  ): Promise<Response> {
+    const qs = new URLSearchParams();
+    qs.set("format", opts.format ?? "json");
+    if (opts.type) qs.set("type", opts.type);
+    if (opts.limit != null) qs.set("limit", String(opts.limit));
+    return this.client.requestRaw(
+      "GET",
+      this.client.pExport(kg, `?${qs.toString()}`),
+      init,
+    );
   }
 
   /** `POST /graphs/{tenant}/search` — canonical semantic instance search
