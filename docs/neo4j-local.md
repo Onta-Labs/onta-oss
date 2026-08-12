@@ -44,10 +44,12 @@ Hard rules:
    graph carried `old_value`; that field is empty until the property-graph
    ValueHistory port lands.
 
-Residual SPARQL reads (Explorer aggregates, NL→SPARQL generation, ontology
-reads, QC invariants) are still in-tree awaiting their GraphStore ports — see
-the purge tracker in the parent repo's `docs/plans/neo4j-sparql-inventory.md`
-§0. They may shrink, never grow.
+Residual SPARQL reads (Explorer aggregates, ontology reads, QC invariants) are
+still in-tree awaiting their GraphStore ports — see
+[onta-534-neptune-purge-residual.md](./onta-534-neptune-purge-residual.md)
+and the parent-repo historical map
+`docs/plans/neo4j-sparql-inventory.md`. They may shrink, never grow.
+**NL→SPARQL production `/ask` is retired** (ONTA-534); only Cypher remains.
 
 CI: hermetic MemoryGraphStore / golden / isolation tests always run; live
 `@pytest.mark.neo4j` runs against an optional Neo4j service container.
@@ -286,9 +288,11 @@ Hermetic tests: `tests/test_rails_graph_store_write.py`,
 
 `POST /graphs/{tenant}/ask` (and `NLQueryPipeline.ask`) generate **Cypher over
 the RDF-semantic model** and execute via GraphStore. `neo4j_ask_enabled()` no
-longer consults the env — only an explicit `use_cypher=False` from an
-eval/archive harness still reaches the legacy SPARQL generator, which is
-awaiting deletion (ONTA-527 follow-up).
+longer consults the env. Explicit `use_cypher=False` is **fail-closed**
+(ONTA-534): it raises `SparqlAskPathRetired` instead of running SPARQL against
+a decommissioned store. Residual NeptuneClient call sites (Explorer dual arms,
+ontology, QC) are inventoried in
+[onta-534-neptune-purge-residual.md](./onta-534-neptune-purge-residual.md).
 
 **Quality bar:** answers are measured by the **golden-query suite** (expected
 answer sets vs gold) — **not** by SPARQL string match or SPARQL↔Cypher text

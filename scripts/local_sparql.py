@@ -1,24 +1,22 @@
-"""Local SPARQL store for development — no Docker, no Java.
+"""Local SPARQL store for development — **QUARANTINED (ONTA-534)**.
+
+**Status:** Legacy only. Production and OSS product paths are Neo4j-only
+(ONTA-527 / ONTA-534). ``INFONA_GRAPH_BACKEND=fuseki`` raises
+``GraphConfigError`` at process start. Prefer ``docker compose up neo4j`` and
+``INFONA_GRAPH_BACKEND=neo4j`` (or unset). Residual inventory:
+``docs/onta-534-neptune-purge-residual.md``.
 
 Wraps an embedded pyoxigraph Store behind the three HTTP paths the
-`fuseki` backend of NeptuneClient expects (/ds/query, /ds/update,
-/$/ping), so the infona API server runs against it unchanged:
+``fuseki`` backend of NeptuneClient expects (/ds/query, /ds/update,
+/$/ping). Useful only for QC / migration archaeology that still speaks SPARQL:
 
     python scripts/local_sparql.py                 # in-memory
     python scripts/local_sparql.py --data ./graph  # persisted to disk
 
-then start the API with:
-
-    INFONA_GRAPH_BACKEND=fuseki INFONA_NEPTUNE_ENDPOINT=http://localhost:3030 \
-        uvicorn infona_client.api.app:app --port 8000
-
-Dataset semantics:
-- Queries **with** ``FROM`` / ``FROM NAMED`` honor those clauses (named-graph
-  isolation). This is required for multi-tenant local dogfood — unioning all
-  graphs would silently leak across tenants and ontology layers.
-- Queries **without** a dataset clause still use the default graph as the
-  union of all named graphs, matching Neptune's default-graph semantics for
-  the single-tenant quickstart path.
+Dataset semantics (historical):
+- Queries **with** ``FROM`` / ``FROM NAMED`` honor those clauses.
+- Queries **without** a dataset clause use the default graph as the union of
+  all named graphs (former Neptune default-graph semantics).
 """
 
 from __future__ import annotations
