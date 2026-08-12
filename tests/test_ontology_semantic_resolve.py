@@ -437,16 +437,37 @@ async def test_resolve_relationship_attr_uses_semantic_under_guards():
     assert hit == "stored_in"
 
 
+def test_resolve_relationship_attr_range_type_warehouse_hermetic():
+    """ONTA-538: range WarehouseNode binds 'warehouse' without embeddings."""
+    onto = (
+        "Type: InventorySKU\n"
+        "  - stored_in -> WarehouseNode (relationship, key=stored_in)\n"
+        "  - has_phase -> PhaseNode (relationship, key=has_phase)\n"
+    )
+    hit = _resolve_relationship_attr(
+        "warehouse",
+        type_name="InventorySKU",
+        ontology_summary=onto,
+    )
+    assert hit == "stored_in"
+
+
 @pytest.mark.asyncio
 async def test_resolve_relationship_attr_skips_semantic_on_partial_rel_index():
-    """Partial rel embeddings must not rank only the embedded subset."""
+    """Partial rel embeddings must not rank only the embedded subset.
+
+    Use a pure synonym (``depot``) that neither leaf-token nor range-type
+    string paths can bind — ONTA-538 range matching now maps ``warehouse``
+    → ``stored_in`` via range ``WarehouseNode``, which is correct hermetic
+    behavior and no longer exercises the partial-index guard.
+    """
     fe = _default_fake()
     idx = OntologyMentionIndex()
     idx.upsert_rel(
         "stored_in",
         domain="InventorySKU",
         range_type="WarehouseNode",
-        description="warehouse edge",
+        description="depot location edge",
     )
     # has_phase known to ontology section but NOT in index → partial.
     await idx.embed_missing(fe)
@@ -455,17 +476,17 @@ async def test_resolve_relationship_attr_skips_semantic_on_partial_rel_index():
         "  - stored_in -> WarehouseNode (relationship, key=stored_in)\n"
         "  - has_phase -> PhaseNode (relationship, key=has_phase)\n"
     )
-    q = (await fe(["warehouse"]))[0]
+    q = (await fe(["depot"]))[0]
     with semantic_resolve_context(
         idx,
-        query_embeddings={"warehouse": q},
+        query_embeddings={"depot": q},
     ):
         hit = _resolve_relationship_attr(
-            "warehouse",
+            "depot",
             type_name="InventorySKU",
             ontology_summary=onto,
         )
-    # String path cannot map "warehouse" → stored_in; partial skips semantic.
+    # String/range paths cannot map "depot" → stored_in; partial skips semantic.
     assert hit is None
 
 
