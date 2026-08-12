@@ -871,6 +871,165 @@ def test_reconcile_truncated_scan_skips_ghost_deletion(monkeypatch):
     asyncio.run(run())
 
 
+def test_scan_triples_store_hard_cap_marks_truncated_and_skips_ghosts(monkeypatch):
+    """ONTA-533 BLOCKER: Memory/Neo4j clamp history at 10000; requesting a
+    larger logical limit must NOT treat a full hard-cap page as complete.
+
+    Pre-fix: ``limit = page_size * max_pages`` (2e6) + ``truncated =
+    len(rows) > limit`` was always False because the store never returns more
+    than 10000 — ghost-delete then wiped healthy docs past the silent cutoff.
+
+    With N > hard-cap assertions for a scan property: ``truncated=True`` and
+    reconcile performs zero ghost deletes (fail closed).
+    """
+    from infona_client.graph.assertion_model import (
+        make_assertion_id,
+        property_uri,
+        type_membership_property_id,
+    )
+    from infona_client.graph.memory_store import MemoryGraphStore
+    from infona_client.graph.store import configure_graph_store, get_graph_store
+
+    # Tiny hard cap so the test stays O(N) with N just above the ceiling.
+    hard_cap = 5
+    monkeypatch.setattr(rec, "_ASSERTION_HISTORY_HARD_CAP", hard_cap)
+
+    store = MemoryGraphStore()
+    configure_graph_store(store)
+    assert get_graph_store() is store
+
+    desc_prop = property_uri("description")
+    type_prop = type_membership_property_id()
+    n_assertions = hard_cap + 3  # strictly above the hard cap
+    for i in range(1, n_assertions + 1):
+        subj = _entity(i)
+        store._upsert_assertion(
+            TENANT,
+            KG,
+            assertion_id=make_assertion_id(
+                subj, type_prop, object_key=DOC_TYPE
+            ),
+            subject_id=subj,
+            property_id=type_prop,
+            object_class_id=DOC_TYPE,
+        )
+        text = f"{PROSE} Session {i}."
+        store._upsert_assertion(
+            TENANT,
+            KG,
+            assertion_id=make_assertion_id(
+                subj, desc_prop, object_key=text
+            ),
+            subject_id=subj,
+            property_id=desc_prop,
+            literal_value=text,
+        )
+
+    # Unit: the store scan itself reports truncated when N > hard cap.
+    async def unit():
+        triples, truncated = await rec._scan_triples_store(
+            TENANT, KG, [DESC_PRED, RDF_TYPE]
+        )
+        assert truncated is True
+        # Predicate-scoped: at most hard_cap description rows land.
+        desc_rows = [t for t in triples if t[1] == desc_prop or "description" in t[1]]
+        assert len(desc_rows) == hard_cap
+        assert len(desc_rows) < n_assertions
+
+    asyncio.run(unit())
+
+    # Integration: ghost deletion must not fire against a partial expected set.
+    # Seed a healthy index doc for an entity past the hard-cap window — pre-fix
+    # that doc would be "absent from expected" and ghost-deleted.
+    index = InMemorySemanticIndex()
+    past_cap_entity = hard_cap + 1
+    # SPARQL client is a no-op stub: GraphStore is preferred and has the data.
+    neptune = FakeNeptune({}, {("Doc", "description"): "free_text"})
+
+    async def integrate():
+        await index.upsert_chunks(
+            [_chunk(past_cap_entity, f"{PROSE} Session {past_cap_entity}.")]
+        )
+        # Also seed a genuine ghost (entity 999 never written to the store).
+        await index.upsert_chunks([_chunk(999, "stale merged-away doc")])
+        with structlog.testing.capture_logs() as logs:
+            counters = await rec.reconcile_kg(
+                neptune, TENANT, KG, index=index
+            )
+        assert counters["ghosts_deleted"] == 0
+        docs = await index.list_docs(TENANT, kg_name=KG)
+        surviving = {e for e, *_rest in docs}
+        assert _entity(past_cap_entity) in surviving
+        assert _entity(999) in surviving  # even genuine ghosts survive truncation
+        assert any(e["event"] == "semantic_scan_truncated" for e in logs)
+        assert any(
+            e["event"] == "semantic_reconcile_ghosts_skipped_scan_truncated"
+            for e in logs
+        )
+
+    asyncio.run(integrate())
+
+
+def test_scan_triples_prefers_graph_store_over_sparql(monkeypatch):
+    """When the process GraphStore has assertions, the scan must use them —
+    not a vestigial SPARQL client that may return empty/wrong results."""
+    from infona_client.graph.assertion_model import (
+        make_assertion_id,
+        property_uri,
+        type_membership_property_id,
+    )
+    from infona_client.graph.memory_store import MemoryGraphStore
+    from infona_client.graph.queries import kg_graph_uri
+    from infona_client.graph.store import configure_graph_store
+
+    store = MemoryGraphStore()
+    configure_graph_store(store)
+    desc_prop = property_uri("description")
+    type_prop = type_membership_property_id()
+    text = f"{PROSE} From the store."
+    subj = _entity(1)
+    store._upsert_assertion(
+        TENANT,
+        KG,
+        assertion_id=make_assertion_id(subj, type_prop, object_key=DOC_TYPE),
+        subject_id=subj,
+        property_id=type_prop,
+        object_class_id=DOC_TYPE,
+    )
+    store._upsert_assertion(
+        TENANT,
+        KG,
+        assertion_id=make_assertion_id(subj, desc_prop, object_key=text),
+        subject_id=subj,
+        property_id=desc_prop,
+        literal_value=text,
+    )
+
+    # SPARQL client has DIFFERENT (wrong) data — if SPARQL won, the scan
+    # would return the wrong prose.
+    neptune = _kg(
+        {
+            subj: {
+                RDF_TYPE: [DOC_TYPE],
+                DESC_PRED: [f"{PROSE} From SPARQL only."],
+            }
+        }
+    )
+
+    async def run():
+        triples, truncated = await rec._scan_triples(
+            neptune,
+            kg_graph_uri(TENANT, KG),
+            [DESC_PRED, RDF_TYPE],
+        )
+        assert truncated is False
+        texts = {o for _, _, o in triples}
+        assert text in texts
+        assert "From SPARQL only." not in " ".join(texts)
+
+    asyncio.run(run())
+
+
 def test_reconcile_repairs_attrs_when_text_unchanged():
     """The enrichment-shaped attrs drift: a chunk born with attrs={} (a hook
     write whose triple batch carried no rdf:type/label rows) must get its

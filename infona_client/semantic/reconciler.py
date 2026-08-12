@@ -205,6 +205,14 @@ _CANDIDACY_SAMPLE_SIZE = 100
 _UPSERT_BATCH_CHUNKS = 500
 #: Defensive bound on sweep iterations (each drains up to ``limit`` rows).
 _MAX_SWEEP_ITERATIONS = 1000
+#: Hard ceiling on :meth:`GraphSession.read_assertion_history` pages.
+#: MemoryGraphStore and Neo4jGraphStore both clamp ``limit`` with
+#: ``min(limit, 10000)`` — requesting more is silently truncated to this
+#: value. Detection must use THIS constant (or ``len(rows) == hard_cap``),
+#: not a larger logical budget like ``page_size * max_pages``: a full hard-cap
+#: page means the store may have more rows and the scan is PARTIAL (ghost
+#: deletion must fail closed). Monkeypatched in tests.
+_ASSERTION_HISTORY_HARD_CAP = 10000
 
 
 # --- env knobs (read per call — tests/ops tune without re-import) -------------
@@ -1006,141 +1014,218 @@ def _scan_query(
     )
 
 
+def _store_property_ids_for_scan(predicates: Sequence[str]) -> list[str]:
+    """Map RDF/attrs scan predicates onto GraphStore ``property_id`` IRIs.
+
+    Assertion SoT uses ``https://graph.infona.ai/properties/<leaf>`` (and the
+    well-known type-membership property for ``rdf:type``). The reconciler's
+    scan predicate set is attrs/RDF-shaped; history is property-scoped.
+    """
+    from infona_client.graph.assertion_model import (
+        property_uri,
+        type_membership_property_id,
+    )
+
+    prop_ids: set[str] = set()
+    type_prop = type_membership_property_id()
+    for p in predicates:
+        if not isinstance(p, str) or not p:
+            continue
+        if p == _RDF_TYPE or p == type_prop or p.endswith("/properties/rdf_type"):
+            prop_ids.add(type_prop)
+            continue
+        if "/properties/" in p:
+            prop_ids.add(p)
+            continue
+        leaf = _local_name(p, lower=False)
+        if not leaf:
+            continue
+        try:
+            prop_ids.add(property_uri(leaf))
+        except Exception:  # noqa: BLE001 — skip unmappable foreign preds
+            continue
+    return sorted(prop_ids)
+
+
 async def _scan_triples_store(
     tenant_id: str, kg_name: str, predicates: Sequence[str]
 ) -> tuple[list[Triple], bool] | None:
-    """GraphStore full-KG scan of Assertions for the requested predicates.
+    """GraphStore scan of Assertions for the requested predicates.
 
-    Returns ``None`` when no GraphStore is available. Truncation is not
-    modelled on this path yet (a single history read with a large limit); when
-    the store returns fewer than the limit we treat the scan as complete.
+    Returns ``None`` when no GraphStore / history seam is available.
+
+    **Hard-cap fail-closed (ONTA-533 BLOCKER):** Memory and Neo4j clamp
+    ``read_assertion_history(limit=…)`` at
+    :data:`_ASSERTION_HISTORY_HARD_CAP` (10000). A naïve
+    ``truncated = len(rows) > (page_size * max_pages)`` is always False because
+    the store never returns more than the hard cap — and ghost-delete would
+    then wipe healthy docs past the silent cutoff. A full hard-cap page is
+    therefore treated as ``truncated=True``.
+
+    **Predicate-scoped pages:** each scan property is fetched with its own
+    hard-cap budget (not one global 10k window that may never include free-text
+    rows). Full entity-keyset pagination is not available on the history API
+    (``since`` is verified_at-only); incomplete pages fail closed.
     """
-    from infona_client.graph.assertion_model import type_membership_property_id
     from infona_client.graph.scope import GraphScope
-    from infona_client.graph.store import GraphConfigError, get_optional_graph_store
+    from infona_client.graph.store import GraphConfigError
 
-    store = get_optional_graph_store()
+    try:
+        from infona_client.graph.store import get_optional_graph_store
+
+        store = get_optional_graph_store()
+    except GraphConfigError:
+        return None
     if store is None:
-        try:
-            from infona_client.graph.store import get_graph_store
-
-            store = get_graph_store()
-        except GraphConfigError:
-            return None
+        return None
     session = store.session(GraphScope.for_instance(tenant_id, kg_name))
     history = getattr(session, "read_assertion_history", None)
     if not callable(history):
         return None
 
-    pred_set = set(predicates)
-    # Also accept property IRIs whose local name matches a marked/local scan
-    # predicate (the extractor matches locals too).
-    pred_locals = {_local_name(p) for p in pred_set}
-    type_prop = type_membership_property_id()
-    if _RDF_TYPE in pred_set:
-        pred_set.add(type_prop)
+    prop_ids = _store_property_ids_for_scan(predicates)
+    if not prop_ids:
+        return [], False
 
-    # Hard cap: page_size * max_pages, same bound as the SPARQL path.
-    limit = _scan_page_size() * _MAX_SCAN_PAGES
-    rows = await history(limit=limit + 1)
+    hard_cap = max(1, int(_ASSERTION_HISTORY_HARD_CAP))
     triples: list[Triple] = []
-    for row in rows[:limit]:
-        if not isinstance(row, dict):
-            continue
-        prop = row.get("property_id") or ""
-        if prop not in pred_set and _local_name(prop) not in pred_locals:
-            # Always include type membership when rdf:type was requested.
-            if not (prop == type_prop and _RDF_TYPE in predicates):
+    truncated = False
+    hit_cap_props: list[str] = []
+    for prop_id in prop_ids:
+        # Request exactly the hard cap: the store clamps higher values to the
+        # same ceiling, so over-fetch (limit+1) cannot observe "more than cap".
+        rows = await history(prop_id=prop_id, limit=hard_cap)
+        if len(rows) >= hard_cap:
+            # Full hard-cap page ⇒ store may hold more for this property.
+            # Fail closed: partial expected set must not drive ghost deletes.
+            truncated = True
+            hit_cap_props.append(prop_id)
+        for row in rows:
+            if not isinstance(row, dict):
                 continue
-        triples.extend(_assertion_row_to_semantic_triples(row))
-    truncated = len(rows) > limit
+            triples.extend(_assertion_row_to_semantic_triples(row))
+
     if truncated:
         logger.warning(
             "semantic_scan_truncated",
             tenant_id=tenant_id,
             kg_name=kg_name,
-            pages=_MAX_SCAN_PAGES,
-            page_size=_scan_page_size(),
             path="graph_store",
+            hard_cap=hard_cap,
+            properties_at_cap=hit_cap_props,
+            reason=(
+                "read_assertion_history hit the store hard cap for one or more "
+                "scan properties; expected set is partial so ghost deletion "
+                "must be skipped"
+            ),
         )
     triples.sort()
     return triples, truncated
 
 
+async def _scan_triples_sparql(
+    neptune: Any, kg_graph: str, predicates: Sequence[str]
+) -> tuple[list[Triple], bool]:
+    """SPARQL keyset-paginated scan (hermetic FakeNeptune / legacy)."""
+    from infona_client.graph.parser import parse_sparql_results
+
+    page = _scan_page_size()
+    triples: list[Triple] = []
+    after: Optional[str] = None  # last completely-scanned entity
+    for _page_ix in range(_MAX_SCAN_PAGES):
+        sparql = _scan_query(kg_graph, predicates, page, after_entity=after)
+        _, rows = parse_sparql_results(await neptune.query(sparql))
+        page_triples: list[Triple] = []
+        for row in rows:
+            e, p = row.get("e", ""), row.get("p", "")
+            if e and p:
+                page_triples.append((e, p, row.get("o", "")))
+        if len(rows) < page:
+            triples.extend(page_triples)
+            return triples, False
+        if not page_triples:
+            continue
+        last_entity = page_triples[-1][0]
+        complete = [t for t in page_triples if t[0] != last_entity]
+        if complete:
+            triples.extend(complete)
+            after = complete[-1][0]
+        else:
+            logger.warning(
+                "semantic_scan_entity_exceeds_page",
+                kg_graph=kg_graph,
+                entity_uri=last_entity,
+                page_size=page,
+            )
+            triples.extend(page_triples)
+            after = last_entity
+    logger.warning(
+        "semantic_scan_truncated",
+        kg_graph=kg_graph,
+        pages=_MAX_SCAN_PAGES,
+        page_size=page,
+    )
+    return triples, True
+
+
 async def _scan_triples(
     neptune: Any, kg_graph: str, predicates: Sequence[str]
 ) -> tuple[list[Triple], bool]:
-    """Scan ``?e ?p ?o`` for the given predicates via keyset pagination by
-    entity, bounded by the page cap.
+    """Scan ``?e ?p ?o`` for the given predicates.
 
-    Each full page holds back its trailing entity group — the page boundary
-    may have cut that entity's rows mid-group — and the next page re-fetches
-    from ``FILTER(STR(?e) > "<last complete entity>")``, so every entity's
-    rows arrive CONTIGUOUS AND COMPLETE. That grouping is load-bearing for
-    ``extract_semantic_chunks``: its intra-entity doc dedup and per-entity
-    chunk cap assume they see all of an entity's values together.
+    **GraphStore first (ONTA-533):** when a process store is configured, the
+    Assertion SoT is the product path — vestigial SPARQL clients must not win
+    over Neo4j. Predicate-scoped history with hard-cap truncation detection
+    (see :func:`_scan_triples_store`).
 
-    Returns ``(triples, truncated)``. ``truncated=True`` means the page cap
-    (:data:`_MAX_SCAN_PAGES`) was exhausted and the scan is PARTIAL — logged
-    here, and the caller must NOT ghost-delete against it (a partial expected
+    **SPARQL fallback:** hermetic FakeNeptune tests (and any environment with
+    no GraphStore) use keyset pagination by entity, bounded by the page cap.
+    Each full page holds back its trailing entity group so every entity's
+    rows arrive CONTIGUOUS AND COMPLETE for ``extract_semantic_chunks``.
+
+    Returns ``(triples, truncated)``. ``truncated=True`` means the scan is
+    PARTIAL — the caller must NOT ghost-delete against it (a partial expected
     set would mass-delete perfectly healthy docs).
-
-    Prefers SPARQL when the client can answer (hermetic FakeNeptune); falls
-    back to GraphStore Assertion history on the Neo4j product path (ONTA-533).
     """
-    from infona_client.graph.parser import parse_sparql_results
     from infona_client.graph.queries import parse_kg_graph_uri
+
+    # Prefer GraphStore whenever a process store is available (production
+    # Neo4j). An empty complete store scan falls through to SPARQL so
+    # FakeNeptune hermetic tests that seed only SPARQL keep working under
+    # conftest's empty MemoryGraphStore.
+    scope = parse_kg_graph_uri(kg_graph)
+    if scope is not None:
+        tenant_id, kg_name = scope
+        try:
+            store_result = await _scan_triples_store(
+                tenant_id, kg_name, predicates
+            )
+        except Exception:  # noqa: BLE001 — fall through to SPARQL
+            store_result = None
+        if store_result is not None:
+            store_triples, store_truncated = store_result
+            if store_triples or store_truncated:
+                return store_result
+            # Empty complete store scan: try SPARQL for hermetic FakeNeptune.
+            # Production empty KGs get empty SPARQL too (or an exception).
 
     if neptune is not None and hasattr(neptune, "query"):
         try:
-            page = _scan_page_size()
-            triples: list[Triple] = []
-            after: Optional[str] = None  # last completely-scanned entity
-            for _page_ix in range(_MAX_SCAN_PAGES):
-                sparql = _scan_query(kg_graph, predicates, page, after_entity=after)
-                _, rows = parse_sparql_results(await neptune.query(sparql))
-                page_triples: list[Triple] = []
-                for row in rows:
-                    e, p = row.get("e", ""), row.get("p", "")
-                    if e and p:
-                        page_triples.append((e, p, row.get("o", "")))
-                if len(rows) < page:
-                    triples.extend(page_triples)
-                    return triples, False
-                if not page_triples:
-                    continue
-                last_entity = page_triples[-1][0]
-                complete = [t for t in page_triples if t[0] != last_entity]
-                if complete:
-                    triples.extend(complete)
-                    after = complete[-1][0]
-                else:
-                    logger.warning(
-                        "semantic_scan_entity_exceeds_page",
-                        kg_graph=kg_graph,
-                        entity_uri=last_entity,
-                        page_size=page,
-                    )
-                    triples.extend(page_triples)
-                    after = last_entity
-            logger.warning(
-                "semantic_scan_truncated",
-                kg_graph=kg_graph,
-                pages=_MAX_SCAN_PAGES,
-                page_size=page,
-            )
-            return triples, True
+            return await _scan_triples_sparql(neptune, kg_graph, predicates)
         except Exception:
-            pass  # fall through to store
+            pass
 
-    scope = parse_kg_graph_uri(kg_graph)
-    if scope is None:
-        return [], False
-    tenant_id, kg_name = scope
-    store_result = await _scan_triples_store(tenant_id, kg_name, predicates)
-    if store_result is None:
-        return [], False
-    return store_result
+    # Store was empty/unavailable and SPARQL failed or was absent.
+    if scope is not None:
+        try:
+            store_result = await _scan_triples_store(
+                scope[0], scope[1], predicates
+            )
+            if store_result is not None:
+                return store_result
+        except Exception:  # noqa: BLE001
+            pass
+    return [], False
 
 
 async def _upsert_in_doc_batches(idx: SemanticIndex, chunks: list[SemanticChunk]) -> None:
