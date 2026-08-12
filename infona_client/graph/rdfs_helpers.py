@@ -194,6 +194,30 @@ LIMIT $limit
 
 # Filter subjects of a type by a related entity's display name / name
 # (e.g. Book --HAS_GENRE--> Genre{display_name: "Classic Fiction"}).
+
+# Reverse of related_entity_name_filter: "products made by Acme" when the
+# edge is Organization-[:makes]->Product (object is the thing we return).
+RELATED_ENTITY_NAME_FILTER_INVERSE_CYPHER = """
+MATCH (maker:Entity {tenant_id: $tenant_id, kg: $kg})
+WHERE (
+    toLower(coalesce(maker.display_name, '')) = toLower($target_name)
+    OR toLower(coalesce(maker.name, '')) = toLower($target_name)
+    OR toLower(replace(coalesce(maker.name, ''), '_', ' ')) = toLower($target_name)
+    OR toLower(coalesce(maker.display_name, maker.name, '')) CONTAINS toLower($target_name)
+  )
+MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg})-[:SUBJECT]->(maker)
+MATCH (a)-[:OBJECT]->(e:Entity {tenant_id: $tenant_id, kg: $kg})
+MATCH (a)-[:PREDICATE]->(p:Property {tenant_id: $tenant_id, kg: $kg})
+WHERE p.name = $rel_attr
+MATCH (e)-[:INSTANCE_OF]->(c:Class {tenant_id: $tenant_id, kg: $kg})
+WHERE c.name IN $type_names OR c.id IN $type_names
+RETURN DISTINCT e.id AS id, coalesce(e.title, e.display_name, e.name) AS title,
+       e.primary_type AS primary_type,
+       coalesce(maker.display_name, maker.name) AS related_name
+ORDER BY e.id
+LIMIT $limit
+""".strip()
+
 RELATED_ENTITY_NAME_FILTER_CYPHER = """
 MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
   tenant_id: $tenant_id, kg: $kg
@@ -207,6 +231,7 @@ WHERE p.name = $rel_attr
     toLower(coalesce(t.display_name, '')) = toLower($target_name)
     OR toLower(coalesce(t.name, '')) = toLower($target_name)
     OR toLower(replace(coalesce(t.name, ''), '_', ' ')) = toLower($target_name)
+    OR toLower(coalesce(t.display_name, t.name, '')) CONTAINS toLower($target_name)
   )
 RETURN DISTINCT e.id AS id, coalesce(e.title, e.name) AS title,
        e.primary_type AS primary_type,
@@ -995,6 +1020,7 @@ __all__ = [
     "LITERAL_VALUES_CYPHER",
     "RELATED_ENTITIES_CYPHER",
     "RELATED_ENTITY_NAME_FILTER_CYPHER",
+    "RELATED_ENTITY_NAME_FILTER_INVERSE_CYPHER",
     "SUBCLASS_OF_CLOSURE_CYPHER",
     "SUBPROPERTY_DESCENDANTS_CYPHER",
     "TEMPLATE_ASSERTIONS_FOR_SUBJECT",
