@@ -8,21 +8,13 @@ Acceptance:
     (no tenant_id, no tenant_custom sources, no tenant skills)
   * ``require_operator`` remains router-wide on the operator router
 
-**Ported by ONTA-527.** The three ROUTE cases used to seed a ``FakeNeptune``
-with per-layer triples, because ``GET /graphs/{tenant}/ontology`` read through
-a SPARQL ``LayerStack``. It reads the TENANT layer of
-:mod:`infona_client.graph.ontology_catalog` now
-(``api/routes/ontology.py::_workspace_ontology_store``), so those three are
-re-seeded through the catalog. The isolation assertions — this file's whole
-subject — are unchanged in strength: two workspaces each declare a private
-``Hotel`` and neither may see the other's description or slots.
-
-Two things the route no longer does are pinned as strict xfails rather than
-dropped: the ``layers`` status strip (empty for every workspace, including its
-OWN tenant layer) here, and Public/Enhanced visibility in
-``tests/test_layered_reads.py``. The ``fetch_ontology`` UNIT tests below still
-pass — that reader still merges layers correctly; it simply has no route caller
-any more.
+**Ported by ONTA-527; layered catalog merge restored by ONTA-535.** Workspace
+routes read :mod:`infona_client.graph.ontology_catalog` with Tenant > Enhanced
+(entitled) > Public shadowing. Isolation assertions are unchanged: two
+workspaces each declare a private ``Hotel`` and neither may see the other's
+description or slots. The ``layers`` status strip is populated per visible
+layer. ``fetch_ontology`` UNIT tests still pin the SPARQL reader used by the
+operator global browser.
 
 All mocked — no live Neptune, no live Neo4j, no LLM, no network.
 """
@@ -237,10 +229,8 @@ def _spec(slug: str, kinds: list[str]) -> ApiSourceSpec:
 def test_workspace_route_does_not_leak_peer_tenant_types(store):
     """Tenant B must never see Tenant A's private Hotel description/slots.
 
-    (Public ``BaseHotel`` was asserted visible to both here; the route no longer
-    reads the Public layer at all — see the layered-read xfails in
-    tests/test_layered_reads.py. The isolation half, which is what this file is
-    for, is unchanged and now runs against the catalog.)
+    Isolation is the subject: each workspace's private Hotel description and
+    slots must never appear in the peer's payload (ONTA-535 catalog merge).
     """
     _seed_private_hotels(store)
     a = _ontology_app(_dead_neptune(), TENANT_A).get(f"/graphs/{TENANT_A}/ontology")
@@ -512,23 +502,8 @@ def test_workspace_route_returns_workspace_model_shape(store):
     neptune.query.assert_not_called()
 
 
-@pytest.mark.xfail(
-    reason=(
-        "LOST CAPABILITY (ONTA-527): the viewer's `layers` status strip is "
-        "always EMPTY — including the workspace's own tenant layer. It was "
-        "built by graph/global_ontology.py::fetch_ontology, which reported per "
-        "layer whether the read succeeded (`available`) and how many types it "
-        "held; api/routes/ontology.py::_workspace_ontology_store returns "
-        "WorkspaceOntologyResponse(..., layers=[]) unconditionally. So the "
-        "Explorer's layer strip has nothing to render and cannot distinguish "
-        "'this layer is empty' from 'this layer failed to load' — the tenant "
-        "row is missing even though the tenant layer IS the one being read. "
-        "Cheapest first step of the catalog-layer port: emit a tenant row with "
-        "available=True and the type count already in hand."
-    ),
-    strict=True,
-)
 def test_workspace_route_reports_the_tenant_layer_status(store):
+    """ONTA-535: layers status strip includes the tenant row (and Public)."""
     _seed_private_hotels(store)
     r = _ontology_app(_dead_neptune(), TENANT_A).get(f"/graphs/{TENANT_A}/ontology")
     assert r.status_code == 200
@@ -536,3 +511,6 @@ def test_workspace_route_reports_the_tenant_layer_status(store):
     assert "tenant" in layers
     assert layers["tenant"]["available"] is True
     assert layers["tenant"]["type_count"] == 1
+    # Non-entitled stacks also report Public (may be empty).
+    assert "public" in layers
+    assert layers["public"]["available"] is True

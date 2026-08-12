@@ -20,8 +20,9 @@ rather than quietly dropped: attribute ALIASES (register / rename / retire),
 per-type computed FUNCTIONS in the viewer payload, and a 4xx for a reserved
 attribute name. Each xfail names the module and mechanism.
 
-Still SPARQL, deliberately untouched here: ``GET /kgs/{kg}/types/{type}/usage``
-has no GraphStore path yet, so its tests below still mock ``neptune.query``.
+``GET /kgs/{kg}/types/{type}/usage`` was ported to GraphStore by ONTA-535
+(via ``explore_store.type_summary``); its tests seed the catalog + instances
+and assert ``mock_neptune.query`` is never called.
 """
 
 from __future__ import annotations
@@ -588,216 +589,118 @@ def test_type_counts_are_scoped_to_one_kg_of_one_tenant(
 
 
 # ---------------------------------------------------------------------------
-# /kgs/{kg}/types/{name}/usage — STILL SPARQL (no GraphStore path yet)
+# /kgs/{kg}/types/{name}/usage — GraphStore path (ONTA-535)
 # ---------------------------------------------------------------------------
 #
-# api/routes/knowledge_graphs.py::get_type_usage has no explore_store branch, so
-# it still builds SPARQL and awaits client.query. These cases therefore keep
-# mocking neptune — they pin the route as it is written today. They are NOT
-# evidence the endpoint works in production: prod has no SPARQL engine behind
-# that client. Porting them belongs with porting the route.
-
-
-def _binding(**kwargs):
-    """Build one SPARQL JSON binding row from {var: literal_or_uri}."""
-    out = {}
-    for k, v in kwargs.items():
-        if isinstance(v, str) and (v.startswith("http://") or v.startswith("https://")):
-            out[k] = {"type": "uri", "value": v}
-        else:
-            out[k] = {"type": "literal", "value": str(v)}
-    return out
-
-
-def _results(vars_, *rows):
-    return {
-        "head": {"vars": list(vars_)},
-        "results": {"bindings": list(rows)},
-    }
+# Ported onto explore_store.type_summary + list_entities_by_type. Seeded
+# through insert_facts / ontology_catalog; mock_neptune must never be called.
 
 
 def test_type_usage_unknown_type_returns_404(client, auth_headers, mock_neptune):
-    # Ontology lookup empty AND entity count is 0 → 404.
-    mock_neptune.query.side_effect = [
-        _results(["label", "comment", "parent"]),  # ontology empty
-        _results(["attr", "attrLabel", "attrComment", "range"]),  # no attrs
-        _results(["n"], _binding(n="0")),  # zero entities
-    ]
+    """Neither catalog declaration nor instances → 404."""
     response = client.get(
         f"/graphs/{TENANT}/kgs/mentors/types/Nope/usage",
         headers=auth_headers,
     )
     assert response.status_code == 404
+    mock_neptune.query.assert_not_called()
 
 
-def test_type_usage_combines_ontology_and_kg_counts(client, auth_headers, mock_neptune):
-    name_attr = "https://graph.infona.ai/types/Mentor/attrs/name"
-    level_attr = "https://graph.infona.ai/types/Mentor/attrs/level"
-    industry_attr = "https://graph.infona.ai/types/Mentor/attrs/industry"
-    industry_target = "https://graph.infona.ai/types/Industry"
+def test_type_usage_combines_ontology_and_kg_counts(
+    client, auth_headers, mock_neptune, store
+):
+    """Ontology description + populated attrs/rels + sample entities."""
+    _seed_type(store, "Mentor", description="An ADPList mentor")
+    _seed_attr(store, "Mentor", "level", datatype="string")
+    _seed_attr(store, "Mentor", "headline", datatype="string")
+    _seed_attr(store, "Mentor", "industry", datatype="Industry")  # relationship
+    _seed_type(store, "Industry")
 
-    mock_neptune.query.side_effect = [
-        # 1) Ontology definition
-        _results(
-            ["label", "comment", "parent"],
-            _binding(label="Mentor", comment="An ADPList mentor"),
-        ),
-        # 2) Attribute definitions in ontology
-        _results(
-            ["attr", "attrLabel", "attrComment", "range"],
-            {
-                "attr": {"type": "uri", "value": name_attr},
-                "attrLabel": {"type": "literal", "value": "name"},
-                "range": {"type": "uri", "value": "http://www.w3.org/2001/XMLSchema#string"},
-            },
-            {
-                "attr": {"type": "uri", "value": level_attr},
-                "attrLabel": {"type": "literal", "value": "level"},
-                "range": {"type": "uri", "value": "http://www.w3.org/2001/XMLSchema#string"},
-            },
-            {
-                "attr": {"type": "uri", "value": industry_attr},
-                "attrLabel": {"type": "literal", "value": "industry"},
-                "range": {"type": "uri", "value": industry_target},
-            },
-        ),
-        # 3) Entity count for Mentor
-        _results(["n"], _binding(n="988")),
-        # 4) Predicate usage in KG
-        _results(
-            ["p", "cnt", "sample"],
-            {
-                "p": {"type": "uri", "value": name_attr},
-                "cnt": {"type": "literal", "value": "988"},
-                "sample": {"type": "literal", "value": "Karthikeyan"},
-            },
-            {
-                "p": {"type": "uri", "value": level_attr},
-                "cnt": {"type": "literal", "value": "412"},
-                "sample": {"type": "literal", "value": "Senior"},
-            },
-            {
-                "p": {"type": "uri", "value": industry_attr},
-                "cnt": {"type": "literal", "value": "740"},
-                "sample": {
-                    "type": "uri",
-                    "value": "https://graph.infona.ai/entities/Industry/Tech",
-                },
-            },
-        ),
-        # 5) Sample entities
-        _results(
-            ["e", "name", "title", "label", "headline"],
-            {
-                "e": {"type": "uri", "value": "https://graph.infona.ai/entities/Mentor/karthikeyan"},
-                "name": {"type": "literal", "value": "Karthikeyan Rajasekaran"},
-                "title": {"type": "literal", "value": "Principal Software Engineer"},
-            },
-        ),
+    graph = f"{IRI_BASE}/graphs/{TENANT}/kg/mentors"
+    industry = entity_uri("Industry", "Tech")
+    triples = [
+        (industry, RDF_TYPE, f"{IRI_BASE}/types/Industry"),
+        (industry, LABEL, "Tech"),
     ]
+    # 3 mentors with level; 2 with headline; 2 with industry rel.
+    for i in range(3):
+        uri = entity_uri("Mentor", f"m{i}")
+        triples.append((uri, RDF_TYPE, f"{IRI_BASE}/types/Mentor"))
+        triples.append((uri, LABEL, f"Mentor {i}"))
+        triples.append((uri, f"{IRI_BASE}/onto/level", "Senior"))
+        if i < 2:
+            triples.append((uri, f"{IRI_BASE}/onto/headline", f"Headline {i}"))
+            triples.append((uri, f"{IRI_BASE}/onto/industry", industry))
+    _run(insert_facts(None, graph, triples, store=store))
+
     response = client.get(
         f"/graphs/{TENANT}/kgs/mentors/types/Mentor/usage",
         headers=auth_headers,
     )
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     data = response.json()
     assert data["name"] == "Mentor"
     assert data["description"] == "An ADPList mentor"
-    assert data["entity_count"] == 988
-    # Two literal attributes (name, level), one relationship (industry).
-    assert [a["name"] for a in data["attributes"]] == ["name", "level"]
-    assert data["attributes"][0]["count"] == 988
-    assert data["attributes"][1]["count"] == 412
+    assert data["entity_count"] == 3
+
+    attrs_by_name = {a["name"]: a for a in data["attributes"]}
+    assert "level" in attrs_by_name
+    assert attrs_by_name["level"]["count"] == 3
+    assert "headline" in attrs_by_name
+    assert attrs_by_name["headline"]["count"] == 2
+    # Reserved Entity key "name" is never an attribute column.
+    assert "name" not in attrs_by_name
+
     assert len(data["relationships"]) == 1
     assert data["relationships"][0]["name"] == "industry"
     assert data["relationships"][0]["target_type"] == "Industry"
-    assert data["relationships"][0]["count"] == 740
-    assert len(data["samples"]) == 1
-    assert data["samples"][0]["label"] == "Karthikeyan Rajasekaran"
+    assert data["relationships"][0]["count"] == 2
+
+    assert len(data["samples"]) >= 1
+    assert data["samples"][0]["uri"]
+    mock_neptune.query.assert_not_called()
 
 
-def test_type_usage_hides_system_predicates_by_default(client, auth_headers, mock_neptune):
-    """Auto-attached system predicates (rdfs:label, ingested_at, source) are
-    100% on every entity and crowd out the columns the user actually cares
-    about. /type usage filters them out by default; ?include_system=true
-    opts back in."""
-    name_attr = "https://graph.infona.ai/types/Mentor/attrs/name"
-    sys_label = "http://www.w3.org/2000/01/rdf-schema#label"
-    sys_ingested = "https://graph.infona.ai/onto/ingested_at"
-    sys_source = "https://graph.infona.ai/onto/source"
+def test_type_usage_hides_system_predicates_by_default(
+    client, auth_headers, mock_neptune, store
+):
+    """Internal/housekeeping keys never surface as attribute columns.
 
-    def _build_responses():
-        return [
-            # ontology
-            _results(
-                ["label", "comment", "parent"],
-                _binding(label="Mentor"),
-            ),
-            # attribute defs
-            _results(
-                ["attr", "attrLabel", "attrComment", "range"],
-                {
-                    "attr": {"type": "uri", "value": name_attr},
-                    "attrLabel": {"type": "literal", "value": "name"},
-                    "range": {"type": "uri", "value": "http://www.w3.org/2001/XMLSchema#string"},
-                },
-            ),
-            # entity count
-            _results(["n"], _binding(n="1000")),
-            # predicate usage — three system + one user
-            _results(
-                ["p", "cnt", "sample"],
-                {
-                    "p": {"type": "uri", "value": sys_label},
-                    "cnt": {"type": "literal", "value": "1000"},
-                    "sample": {"type": "literal", "value": "Some Mentor"},
-                },
-                {
-                    "p": {"type": "uri", "value": sys_ingested},
-                    "cnt": {"type": "literal", "value": "1000"},
-                    "sample": {"type": "literal", "value": "2026-04-28T00:00:00Z"},
-                },
-                {
-                    "p": {"type": "uri", "value": sys_source},
-                    "cnt": {"type": "literal", "value": "1000"},
-                    "sample": {"type": "literal", "value": "client"},
-                },
-                {
-                    "p": {"type": "uri", "value": name_attr},
-                    "cnt": {"type": "literal", "value": "988"},
-                    "sample": {"type": "literal", "value": "Karthikeyan"},
-                },
-            ),
-            # samples
-            _results(["e", "name", "title", "label", "headline"]),
-        ]
+    On the GraphStore path the summary filter is ``is_internal_property_key``
+    (same authority as grep/records). ``include_system`` is a SPARQL-branch
+    opt-in and is ignored here — internals never become domain columns.
+    """
+    _seed_type(store, "Mentor")
+    _seed_attr(store, "Mentor", "headline", datatype="string")
 
-    # Default: system predicates filtered out.
-    mock_neptune.query.side_effect = _build_responses()
-    response = client.get(
-        f"/graphs/{TENANT}/kgs/mentors/types/Mentor/usage",
-        headers=auth_headers,
+    graph = f"{IRI_BASE}/graphs/{TENANT}/kg/mentors"
+    uri = entity_uri("Mentor", "m1")
+    _run(
+        insert_facts(
+            None,
+            graph,
+            [
+                (uri, RDF_TYPE, f"{IRI_BASE}/types/Mentor"),
+                (uri, LABEL, "Some Mentor"),
+                (uri, f"{IRI_BASE}/onto/headline", "Principal Engineer"),
+                (uri, f"{IRI_BASE}/onto/ingested_at", "2026-04-28T00:00:00Z"),
+                (uri, f"{IRI_BASE}/onto/source", "client"),
+                (uri, f"{IRI_BASE}/onto/batch_id", "b-1"),
+            ],
+            store=store,
+        )
     )
-    assert response.status_code == 200
-    data = response.json()
-    names = [a["name"] for a in data["attributes"]]
-    assert names == ["name"]
-    assert "rdf-schema#label" not in names
-    assert "ingested_at" not in names
-    assert "source" not in names
 
-    # Opt-in: all four predicates present.
-    mock_neptune.reset_mock()
-    mock_neptune.query.side_effect = _build_responses()
-    response = client.get(
-        f"/graphs/{TENANT}/kgs/mentors/types/Mentor/usage?include_system=true",
-        headers=auth_headers,
-    )
-    assert response.status_code == 200
-    data = response.json()
-    names = [a["name"] for a in data["attributes"]]
-    assert len(names) == 4
-    assert "rdf-schema#label" in names
-    assert "ingested_at" in names
-    assert "source" in names
-    assert "name" in names
+    for qs in ("", "?include_system=true"):
+        response = client.get(
+            f"/graphs/{TENANT}/kgs/mentors/types/Mentor/usage{qs}",
+            headers=auth_headers,
+        )
+        assert response.status_code == 200, response.text
+        names = [a["name"] for a in response.json()["attributes"]]
+        assert "headline" in names
+        assert "ingested_at" not in names
+        assert "source" not in names
+        assert "batch_id" not in names
+        assert "label" not in names
+    mock_neptune.query.assert_not_called()
