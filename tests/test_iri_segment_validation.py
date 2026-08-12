@@ -291,14 +291,8 @@ def auth_headers():
     return {"X-API-Key": "test-key"}
 
 
-@pytest.fixture
-def seeded_movie():
-    """One Movie in the tenant's KG on the process GraphStore.
-
-    The autouse ``_hermetic_graph_store`` fixture installs a fresh
-    MemoryGraphStore per test, which is what the Explorer read paths resolve —
-    so a route that is served from the store has something to return.
-    """
+def _seed_movie_in_store(tenant_id: str, kg_name: str = KG) -> str:
+    """Write one Movie into the process GraphStore under ``tenant_id``/``kg_name``."""
     import asyncio
 
     from infona_client.graph.kg_writer import insert_facts
@@ -314,12 +308,23 @@ def seeded_movie():
     asyncio.get_event_loop_policy().new_event_loop().run_until_complete(
         insert_facts(
             None,
-            f"{GRAPH_URI_PREFIX}{TENANT}/kg/{KG}",
+            f"{GRAPH_URI_PREFIX}{tenant_id}/kg/{kg_name}",
             triples,
             store=get_graph_store(),
         )
     )
     return uri
+
+
+@pytest.fixture
+def seeded_movie():
+    """One Movie in the tenant's KG on the process GraphStore.
+
+    The autouse ``_hermetic_graph_store`` fixture installs a fresh
+    MemoryGraphStore per test, which is what the Explorer read paths resolve —
+    so a route that is served from the store has something to return.
+    """
+    return _seed_movie_in_store(TENANT)
 
 
 # A path-segment payload cannot contain "/" (the ASGI server percent-decodes the
@@ -347,12 +352,10 @@ def test_a_legitimate_type_name_is_unaffected(
 ):
     """The guard must not over-reject: a normal name is served, not 422'd.
 
-    Ported by ONTA-527. This used to prove "served, not short-circuited" with
-    ``mock_neptune.query.await_count > 0``. ``/records`` reads the property graph
-    now (``_records_from_explore_store`` returns before any SPARQL is built), so
-    that proxy reported zero for a request that was in fact served end to end.
-    The seeded row is the direct evidence instead; ``/summary`` still falls back
-    to SPARQL, so it keeps the original probe.
+    Ported by ONTA-527 / P-A1a. Both ``/records`` and ``/summary`` read the
+    process GraphStore now, so "served, not short-circuited" is proven by the
+    seeded row (and that SPARQL is never touched) rather than
+    ``mock_neptune.query.await_count > 0``.
     """
     res = client.get(
         f"/graphs/{TENANT}/explore/kgs/{KG}/types/Movie/{suffix}",
@@ -361,9 +364,11 @@ def test_a_legitimate_type_name_is_unaffected(
     assert res.status_code == 200, res.text
     if suffix == "records":
         assert [r["id"] for r in res.json()["rows"]] == [seeded_movie]
-        mock_neptune.query.assert_not_called()
     else:
-        assert mock_neptune.query.await_count > 0
+        body = res.json()
+        assert body["name"] == "Movie"
+        assert body["entity_count"] == 1
+    mock_neptune.query.assert_not_called()
 
 
 def test_ontology_write_route_fails_closed_before_the_update(
@@ -593,8 +598,12 @@ def test_open_access_still_serves_an_ordinary_workspace(
     open_access, client, mock_neptune
 ):
     """The guard must not cost a self-hosted install its normal operation."""
+    # P-A1a: /summary is GraphStore-backed — seed the open-access workspace.
+    _seed_movie_in_store("my_local_ws")
     res = client.get(f"/graphs/my_local_ws/explore/kgs/{KG}/types/Movie/summary")
     assert res.status_code == 200, res.text
+    assert res.json()["name"] == "Movie"
+    mock_neptune.query.assert_not_called()
 
 
 def test_with_auth_configured_the_path_segment_was_never_the_tenant(
@@ -607,7 +616,7 @@ def test_with_auth_configured_the_path_segment_was_never_the_tenant(
     verifier authorizes the path against a grant list. Matching path still
     resolves to the key's tenant graph (not a crafted segment).
     """
-    # Foreign path → 403 (no silent reroute, no Neptune query under a crafted id).
+    # Foreign path → 403 (no silent reroute, no store read under a crafted id).
     foreign = client.get(
         "/graphs/whatever-the-caller-typed/explore/kgs/movies/types/Movie/summary",
         headers=auth_headers,
@@ -615,11 +624,17 @@ def test_with_auth_configured_the_path_segment_was_never_the_tenant(
     assert foreign.status_code == 403, foreign.text
     assert "whatever-the-caller-typed" in foreign.json()["detail"]
 
+    # Matching path is served from the key's tenant GraphStore scope (P-A1a).
+    movie_uri = _seed_movie_in_store(TENANT, "movies")
     res = client.get(
         f"/graphs/{TENANT}/explore/kgs/movies/types/Movie/summary",
         headers=auth_headers,
     )
     assert res.status_code == 200, res.text
-    graph_uris = " ".join(str(c.args[0]) for c in mock_neptune.query.await_args_list)
-    assert f"{GRAPH_URI_PREFIX}{TENANT}" in graph_uris
-    assert "whatever-the-caller-typed" not in graph_uris
+    body = res.json()
+    assert body["name"] == "Movie"
+    assert body["entity_count"] == 1
+    # No SPARQL under either the real tenant or a crafted segment.
+    mock_neptune.query.assert_not_called()
+    # Seeded under TENANT only — a crafted id would 404 if the path were trusted.
+    assert movie_uri.startswith("https://graph.infona.ai/entities/")
