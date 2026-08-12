@@ -237,6 +237,7 @@ async def ingest_csv_rows(
 
     ONTA-386: tracked ``category=ingest`` job + live stage_trace (P0/P2/P5/P6).
     """
+    from infona_client.graph.facts import coerce_ontology_attr_leaf
     from infona_client.resolver.csv_resolver import CSVResolver
     from infona_client.resolver.models import ExtractionResult
 
@@ -244,6 +245,49 @@ async def ingest_csv_rows(
 
     def _mget_early(obj, key, default=None):
         return obj.get(key, default) if isinstance(obj, dict) else getattr(obj, key, default)
+
+    def _rewrite_reserved_attr_names_dict(mapping: dict) -> None:
+        """In-place rewrite reserved leaves on a mapping dict."""
+        for col in mapping.get("columns") or []:
+            if not isinstance(col, dict):
+                continue
+            an = col.get("attribute_name")
+            if isinstance(an, str) and an.strip():
+                col["attribute_name"] = coerce_ontology_attr_leaf(
+                    an.lower().replace(" ", "_")
+                )
+        for ext_t in ((mapping.get("ontology_extensions") or {}).get("types") or []):
+            if not isinstance(ext_t, dict):
+                continue
+            for slot in ext_t.get("core_slots") or []:
+                if not isinstance(slot, dict):
+                    continue
+                sn = slot.get("name")
+                if isinstance(sn, str) and sn.strip():
+                    slot["name"] = coerce_ontology_attr_leaf(
+                        sn.lower().replace(" ", "_")
+                    )
+
+    # Mutate the posted mapping before pre-register + row resolve.
+    # Keep the original type (dict or pydantic) — CSVResolver.apply_mapping
+    # expects attribute access (mapping.entities), not a bare dict dump.
+    if isinstance(body.mapping, dict):
+        _rewrite_reserved_attr_names_dict(body.mapping)
+    elif hasattr(body.mapping, "model_dump") and hasattr(type(body.mapping), "model_validate"):
+        dumped = body.mapping.model_dump()
+        _rewrite_reserved_attr_names_dict(dumped)
+        body.mapping = type(body.mapping).model_validate(dumped)
+    elif hasattr(body.mapping, "columns"):
+        # Best-effort pydantic/attr object mutation.
+        for col in getattr(body.mapping, "columns", None) or []:
+            an = getattr(col, "attribute_name", None)
+            if isinstance(an, str) and an.strip():
+                try:
+                    col.attribute_name = coerce_ontology_attr_leaf(
+                        an.lower().replace(" ", "_")
+                    )
+                except Exception:
+                    pass
 
     mapping_type = _mget_early(body.mapping, "entity_type", "") or ""
     mapping_attrs: list[str] = []
@@ -325,6 +369,8 @@ async def ingest_csv_rows(
                 col_role = _mget(col, "role", "")
                 raw_name = _mget(col, "attribute_name") or _mget(col, "column_name", "")
                 col_name = raw_name.lower().replace(" ", "_") if raw_name else ""
+                if col_name:
+                    col_name = coerce_ontology_attr_leaf(col_name)
                 col_datatype = _mget(col, "datatype", "string")
                 col_target = _mget(col, "target_type")
 
@@ -388,6 +434,8 @@ async def ingest_csv_rows(
             for slot in _mget(ext, "core_slots", []) or []:
                 raw_slot = _mget(slot, "name", "")
                 slot_name = raw_slot.lower().replace(" ", "_") if raw_slot else ""
+                if slot_name:
+                    slot_name = coerce_ontology_attr_leaf(slot_name)
                 if not slot_name:
                     continue
                 slot_kind = _mget(slot, "kind", "attribute")
