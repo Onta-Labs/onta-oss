@@ -649,10 +649,17 @@ def try_numeric_filter_query(
     if m.group("cost_num") is not None:
         prop_key = _resolve_cost_prop(ontology_summary)
         op_raw = (m.group("cost_op") or "less than").strip().lower()
-        # "cheaper than 15" / bare "than" after cheaper → lt
-        if op_raw == "than" or "cheaper" in (m.group(0) or "").lower():
-            if op_raw in ("than", "less than", "under", "below"):
-                op_raw = "less than"
+        g0 = (m.group(0) or "").lower()
+        # Map "cheaper than" / "more expensive than" using the verb, not bare "than".
+        if "cheaper" in g0 and op_raw in ("than", "less than", "under", "below"):
+            op_raw = "less than"
+        elif "more expensive" in g0 and op_raw in (
+            "than",
+            "more than",
+            "over",
+            "above",
+        ):
+            op_raw = "more than"
         threshold = float(m.group("cost_num"))
     else:
         prop = (m.group("prop") or "").strip()

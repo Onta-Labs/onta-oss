@@ -374,6 +374,23 @@ def test_in_the_genre_and_cheaper_than_fixtures():
     assert g2["params"]["op"] == "lt"
     assert g2["params"]["threshold"] == 15.0
 
+    g3 = try_deterministic_cypher(
+        "books cheaper than 15",
+        onto,
+        type_names=["Book"],
+    )
+    assert g3 is not None
+    assert g3["params"]["op"] == "lt"
+
+    g4 = try_deterministic_cypher(
+        "Which books are more expensive than 15?",
+        onto,
+        type_names=["Book"],
+    )
+    assert g4 is not None
+    assert g4["params"]["op"] == "gt"
+    assert g4["params"]["threshold"] == 15.0
+
 
 def test_missing_template_params_helper():
     from infona_client.nlp.pipeline import _missing_template_params
