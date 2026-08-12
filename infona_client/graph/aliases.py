@@ -91,11 +91,26 @@ async def register_alias(neptune, graph_uri: str, old_attr_uri: str, new_attr_ur
     """Record `old_attr_uri aliasOf new_attr_uri` in the (tenant) ontology graph.
 
     Production authoring goes through :func:`commit_ontology`
-    (``REGISTER_ALIAS`` / ``RENAME_ATTRIBUTE``). This is the SPARQL writer that
-    commit applies — do not call from a second production path.
+    (``REGISTER_ALIAS`` / ``RENAME_ATTRIBUTE``). Direct calls still land on
+    the GraphStore companion bag when a store is configured (ONTA-531).
     """
     if old_attr_uri == new_attr_uri:
         raise ValueError(f"alias must point to a different attribute, got {old_attr_uri} -> itself")
+    from infona_client.graph.store import GraphConfigError, get_graph_store
+
+    try:
+        get_graph_store()
+        from infona_client.graph.ontology_companion import (
+            get_ontology_companion,
+            live_graph_uri,
+        )
+
+        live = live_graph_uri(graph_uri)
+        bag = get_ontology_companion()
+        bag.aliases.setdefault(live, {})[old_attr_uri] = new_attr_uri
+        return
+    except GraphConfigError:
+        pass
     await neptune.update(
         f"INSERT DATA {{\n"
         f"  GRAPH <{graph_uri}> {{\n"
@@ -123,6 +138,27 @@ async def retire_alias(
         remaining = await count_attr_references(neptune, data_graph_uri, old_attr_uri)
         if remaining > 0:
             raise AliasStillReferencedError(old_attr_uri, remaining, data_graph_uri)
+
+    from infona_client.graph.store import GraphConfigError, get_graph_store
+
+    try:
+        get_graph_store()
+        from infona_client.graph.ontology_companion import (
+            get_ontology_companion,
+            live_graph_uri,
+        )
+
+        live = live_graph_uri(graph_uri)
+        bag = get_ontology_companion()
+        amap = bag.aliases.get(live) or {}
+        amap.pop(old_attr_uri, None)
+        if amap:
+            bag.aliases[live] = amap
+        else:
+            bag.aliases.pop(live, None)
+        return
+    except GraphConfigError:
+        pass
     await neptune.update(
         f"DELETE WHERE {{ GRAPH <{graph_uri}> {{ <{old_attr_uri}> <{ALIAS_OF}> ?new }} }}"
     )
@@ -145,9 +181,35 @@ async def fetch_alias_map(neptune, graph_uri: str) -> dict[str, str]:
     single hop. Entries whose chain hits a cycle (including self-aliases) are
     dropped — see module docstring.
     """
-    raw = await neptune.query(alias_map_query(graph_uri))
-    _, bindings = parse_sparql_results(raw)
-    edges = {row["old"]: row["new"] for row in bindings if row.get("old") and row.get("new")}
+    from infona_client.graph.store import GraphConfigError, get_graph_store
+
+    edges: dict[str, str] = {}
+    try:
+        get_graph_store()
+        from infona_client.graph.ontology_companion import (
+            get_ontology_companion,
+            live_graph_uri,
+        )
+
+        live = live_graph_uri(graph_uri)
+        edges = dict(get_ontology_companion().aliases.get(live) or {})
+    except GraphConfigError:
+        try:
+            raw = await neptune.query(alias_map_query(graph_uri))
+            _, bindings = parse_sparql_results(raw)
+            edges = {
+                row["old"]: row["new"]
+                for row in bindings
+                if row.get("old") and row.get("new")
+            }
+        except Exception:
+            logger.warning(
+                "alias_map_fetch_failed", graph_uri=graph_uri, exc_info=True
+            )
+            return {}
+    except Exception:
+        logger.warning("alias_map_fetch_failed", graph_uri=graph_uri, exc_info=True)
+        return {}
 
     resolved: dict[str, str] = {}
     for old in edges:
@@ -192,11 +254,29 @@ async def count_attr_references(neptune, data_graph_uri: str, attr_uri: str) -> 
     The real reference check behind :func:`retire_alias` / ``RETIRE_ALIAS`` —
     retirement is refused while this returns > 0.
     """
-    raw = await neptune.query(_count_attr_query(data_graph_uri, attr_uri))
-    _, bindings = parse_sparql_results(raw)
+    from infona_client.graph.store import GraphConfigError, get_graph_store
+
     try:
+        get_graph_store()
+        from infona_client.graph.ontology_commit import (
+            _count_attr_references_graph_store,
+        )
+
+        return await _count_attr_references_graph_store(data_graph_uri, attr_uri)
+    except GraphConfigError:
+        pass
+    except Exception:
+        logger.warning(
+            "attr_reference_count_graph_store_failed",
+            data_graph_uri=data_graph_uri,
+            attr=attr_uri,
+            exc_info=True,
+        )
+    try:
+        raw = await neptune.query(_count_attr_query(data_graph_uri, attr_uri))
+        _, bindings = parse_sparql_results(raw)
         return int(bindings[0].get("n", "0")) if bindings else 0
-    except (ValueError, TypeError):
+    except Exception:
         return 0
 
 
