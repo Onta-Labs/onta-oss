@@ -512,6 +512,35 @@ async def _commit_ontology_graph_store(
                 )
             )
             applied.append(mut)
+        elif op is OntologyOpKind.SET_TEXT_KIND:
+            # ONTA-533: durable free-text candidacy on the property-graph catalog.
+            if not mut.slot_name:
+                raise ValueError("SET_TEXT_KIND requires slot_name")
+            kind = mut.text_kind or ""
+            await oc.set_attribute_text_kind(
+                type_name=mut.type_name,
+                attr_name=mut.slot_name,
+                text_kind=kind,
+                tenant_id=tenant_id or None,
+            )
+            # Make the just-written marker visible to request-path consumers
+            # before the TTL expires (same invalidation the SPARQL path used).
+            try:
+                from infona_client.graph.text_markers import invalidate
+
+                if tenant_id:
+                    invalidate(tenant_id)
+            except Exception:  # noqa: BLE001 — never fail a commit on cache
+                pass
+            change_records.append(
+                ChangeRecord(
+                    kind=ChangeKind.CHANGE_TEXT_KIND,
+                    type_name=mut.type_name,
+                    slot_name=mut.slot_name,
+                    new_value=kind or None,
+                )
+            )
+            applied.append(mut)
         else:
             logger.warning(
                 "ontology_store_op_skipped",

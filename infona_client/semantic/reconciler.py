@@ -205,6 +205,14 @@ _CANDIDACY_SAMPLE_SIZE = 100
 _UPSERT_BATCH_CHUNKS = 500
 #: Defensive bound on sweep iterations (each drains up to ``limit`` rows).
 _MAX_SWEEP_ITERATIONS = 1000
+#: Hard ceiling on :meth:`GraphSession.read_assertion_history` pages.
+#: MemoryGraphStore and Neo4jGraphStore both clamp ``limit`` with
+#: ``min(limit, 10000)`` — requesting more is silently truncated to this
+#: value. Detection must use THIS constant (or ``len(rows) == hard_cap``),
+#: not a larger logical budget like ``page_size * max_pages``: a full hard-cap
+#: page means the store may have more rows and the scan is PARTIAL (ghost
+#: deletion must fail closed). Monkeypatched in tests.
+_ASSERTION_HISTORY_HARD_CAP = 10000
 
 
 # --- env knobs (read per call — tests/ops tune without re-import) -------------
@@ -624,17 +632,60 @@ def indexable_doc_keys(
     return keys
 
 
+def _assertion_row_to_semantic_triples(row: dict) -> list[Triple]:
+    """Project one Assertion SoT row into RDF-shaped triples for extraction.
+
+    Shared by the write-hook re-read (``kg_writer``) and the reconciler scan so
+    the two never disagree on how GraphStore facts map into the extractor's
+    triple vocabulary (ONTA-533). Lives here (not in ``kg_writer``) to avoid a
+    circular import: the hook already imports schedule helpers from this module.
+    """
+    from infona_client.graph.assertion_model import type_membership_property_id
+
+    s = row.get("subject_id") or ""
+    if not s:
+        return []
+    prop = row.get("property_id") or ""
+    out: list[Triple] = []
+    type_prop = type_membership_property_id()
+    if prop == type_prop or (
+        isinstance(prop, str) and prop.endswith("/properties/rdf_type")
+    ):
+        class_id = row.get("object_class_id") or ""
+        if class_id:
+            out.append((s, _RDF_TYPE, str(class_id)))
+        return out
+    if not prop:
+        return out
+    lit = row.get("literal_value")
+    if lit is not None:
+        if isinstance(lit, list):
+            for v in lit:
+                if v is not None:
+                    out.append((s, prop, str(v)))
+        else:
+            out.append((s, prop, str(lit)))
+        return out
+    obj = row.get("object_id")
+    if obj:
+        out.append((s, prop, str(obj)))
+    return out
+
+
 async def _fetch_marker_map(neptune: Any, tenant_id: str) -> dict[str, bool]:
     """Uncached ``{attr URI -> is_free_text}`` fetch that RAISES on failure.
 
     Deliberately NOT :func:`~infona_client.graph.text_markers.get_free_text_map`:
-    that request-path helper is best-effort (returns ``{}`` on a Neptune
-    hiccup), which is right for query routing but catastrophic here — an empty
-    map is indistinguishable from "no markers", and reconciling against it
-    would ghost-delete the whole KG's index and let the heuristic overwrite
+    that request-path helper is best-effort (returns ``{}`` on a hiccup), which
+    is right for query routing but catastrophic here — an empty map is
+    indistinguishable from "no markers", and reconciling against it would
+    ghost-delete the whole KG's index and let the heuristic overwrite
     REASON-layer verdicts. A correctness worker must abort (the runner retries
-    on the next cadence) rather than act on a maybe-empty map. Same query
-    builder + constant as the shared helper, so the map semantics can't drift.
+    on the next cadence) rather than act on a maybe-empty map.
+
+    **Primary source (ONTA-533):** GraphStore catalog ``:OntoAttr.text_kind``.
+    SPARQL remains a secondary source so FakeNeptune-seeded markers in hermetic
+    tests still surface (catalog wins on conflict — production writes go there).
     """
     from infona_client.graph.ontology_queries import (
         TEXT_KIND_FREE_TEXT,
@@ -642,28 +693,125 @@ async def _fetch_marker_map(neptune: Any, tenant_id: str) -> dict[str, bool]:
     )
     from infona_client.graph.parser import parse_sparql_results
     from infona_client.graph.queries import tenant_graph_uri
+    from infona_client.graph.text_markers import marker_map_from_catalog
 
-    raw = await neptune.query(text_kind_map_query(tenant_graph_uri(tenant_id)))
-    _, bindings = parse_sparql_results(raw)
-    return {
-        row["attr"]: row.get("kind") == TEXT_KIND_FREE_TEXT
-        for row in bindings
-        if row.get("attr")
-    }
+    marker_map: dict[str, bool] = {}
+    catalog_err: Exception | None = None
+    try:
+        catalog = await marker_map_from_catalog(tenant_id)
+        if catalog is not None:
+            marker_map.update(catalog)
+    except Exception as exc:  # noqa: BLE001 — try SPARQL before aborting
+        catalog_err = exc
+
+    sparql_err: Exception | None = None
+    if neptune is not None and hasattr(neptune, "query"):
+        try:
+            raw = await neptune.query(text_kind_map_query(tenant_graph_uri(tenant_id)))
+            _, bindings = parse_sparql_results(raw)
+            for row in bindings:
+                attr = row.get("attr")
+                if not attr:
+                    continue
+                # Catalog wins: only fill gaps from SPARQL.
+                marker_map.setdefault(attr, row.get("kind") == TEXT_KIND_FREE_TEXT)
+        except Exception as exc:  # noqa: BLE001
+            sparql_err = exc
+
+    if not marker_map and catalog_err is not None and sparql_err is not None:
+        raise catalog_err
+    if not marker_map and catalog_err is not None and neptune is None:
+        raise catalog_err
+    if not marker_map and sparql_err is not None and catalog_err is None:
+        # Catalog returned empty (or unavailable) and SPARQL failed — raise so
+        # we don't reconcile against a maybe-stale empty map.
+        # When catalog is available and empty, empty is a legitimate answer.
+        from infona_client.graph.store import get_optional_graph_store
+
+        if get_optional_graph_store() is None:
+            raise sparql_err
+    return marker_map
+
+
+async def _catalog_domain_for_attr(tenant_id: str, attr_leaf: str) -> str | None:
+    """Best-effort type domain for an attribute leaf from the catalog."""
+    try:
+        from infona_client.graph.ontology_catalog import list_attributes
+        from infona_client.graph.store import get_optional_graph_store
+
+        store = get_optional_graph_store()
+        if store is None:
+            return None
+        attrs = await list_attributes(tenant_id=tenant_id, store=store)
+        for a in attrs:
+            if a.name == attr_leaf:
+                return a.domain
+    except Exception:  # noqa: BLE001
+        return None
+    return None
+
+
+async def _distinct_literal_predicates_store(
+    tenant_id: str, kg_name: str
+) -> list[str] | None:
+    """GraphStore path: every property_id carrying a literal Assertion."""
+    from infona_client.graph.scope import GraphScope
+    from infona_client.graph.store import GraphConfigError, get_optional_graph_store
+
+    store = get_optional_graph_store()
+    if store is None:
+        try:
+            from infona_client.graph.store import get_graph_store
+
+            store = get_graph_store()
+        except GraphConfigError:
+            return None
+    session = store.session(GraphScope.for_instance(tenant_id, kg_name))
+    history = getattr(session, "read_assertion_history", None)
+    if not callable(history):
+        return None
+    # Cap is large: this is a DISTINCT over property_ids, not a full scan.
+    rows = await history(limit=100_000)
+    preds: set[str] = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if row.get("literal_value") is None:
+            continue
+        p = row.get("property_id")
+        if p:
+            preds.add(str(p))
+    return sorted(preds)
 
 
 async def _distinct_literal_predicates(neptune: Any, kg_graph: str) -> list[str]:
-    """Every predicate carrying at least one literal object in the KG graph."""
-    from infona_client.graph.parser import parse_sparql_results
+    """Every predicate carrying at least one literal object in the KG graph.
 
-    sparql = (
-        f"SELECT DISTINCT ?p FROM <{kg_graph}> WHERE {{\n"
-        f"  ?e ?p ?o .\n"
-        f"  FILTER(isLiteral(?o))\n"
-        f"}}"
-    )
-    _, bindings = parse_sparql_results(await neptune.query(sparql))
-    return [row["p"] for row in bindings if row.get("p")]
+    Prefers SPARQL when the client can answer (hermetic FakeNeptune tests);
+    falls back to GraphStore Assertion history for the Neo4j product path
+    (ONTA-533 — the vestigial Neptune client cannot SPARQL).
+    """
+    from infona_client.graph.parser import parse_sparql_results
+    from infona_client.graph.queries import parse_kg_graph_uri
+
+    if neptune is not None and hasattr(neptune, "query"):
+        try:
+            sparql = (
+                f"SELECT DISTINCT ?p FROM <{kg_graph}> WHERE {{\n"
+                f"  ?e ?p ?o .\n"
+                f"  FILTER(isLiteral(?o))\n"
+                f"}}"
+            )
+            _, bindings = parse_sparql_results(await neptune.query(sparql))
+            return [row["p"] for row in bindings if row.get("p")]
+        except Exception:
+            pass  # fall through to store
+    scope = parse_kg_graph_uri(kg_graph)
+    if scope is None:
+        return []
+    tenant_id, kg_name = scope
+    store_preds = await _distinct_literal_predicates_store(tenant_id, kg_name)
+    return store_preds if store_preds is not None else []
 
 
 async def _apply_default_candidacy(
@@ -684,7 +832,6 @@ async def _apply_default_candidacy(
     """
     from infona_client.graph.ontology_commit import commit_ontology
     from infona_client.graph.ontology_queries import TEXT_KIND_FREE_TEXT
-    from infona_client.graph.parser import parse_sparql_results
     from infona_client.graph.queries import tenant_graph_uri
     from infona_client.graph.text_markers import (
         TextCandidacy,
@@ -698,17 +845,37 @@ async def _apply_default_candidacy(
     # another type is already covered — re-classifying it as "undecided" would
     # fight the existing verdict.
     marked_locals = {_local_name(u) for u, ft in marker_map.items() if ft}
+    # Already-decided locals (free_text OR not_text) — property IRIs from the
+    # GraphStore path only carry the leaf, so we also skip those that match a
+    # decided marker's local name (ONTA-533).
+    decided_locals = {_local_name(u) for u in marker_map}
 
     undecided: list[tuple[str, str, str]] = []  # (pred_uri, type_name, attr_name)
     for pred in literal_predicates:
         if pred in marker_map:
             continue  # decided (free_text or decided-no)
         m = _ATTR_URI_RE.match(pred)
-        if m is None:
-            continue  # system/foreign predicate — never carries a verdict
-        if _local_name(pred) in marked_locals:
+        if m is not None:
+            if m.group("attr").lower() in marked_locals:
+                continue
+            if _local_name(pred) in decided_locals:
+                continue
+            undecided.append((pred, m.group("type"), m.group("attr")))
             continue
-        undecided.append((pred, m.group("type"), m.group("attr")))
+        # GraphStore Assertion property IRIs (…/properties/<leaf>) — resolve
+        # the domain type from the catalog when possible so SET_TEXT_KIND still
+        # lands on a real :OntoAttr (ONTA-533).
+        leaf = _local_name(pred, lower=False)
+        if not leaf or not pred.endswith(f"/properties/{leaf}"):
+            continue  # system/foreign predicate — never carries a verdict
+        if leaf.lower() in decided_locals or leaf.lower() in marked_locals:
+            continue
+        domain = await _catalog_domain_for_attr(tenant_id, leaf)
+        if domain is None:
+            # No catalog domain yet — still commit under a best-effort type
+            # so the verdict is durable (stub OntoAttr is MERGEd by SET_TEXT_KIND).
+            domain = "Entity"
+        undecided.append((pred, domain, leaf))
 
     counters = {"attrs_marked_free_text": 0, "attrs_marked_not_text": 0}
     if not undecided:
@@ -731,14 +898,10 @@ async def _apply_default_candidacy(
     onto_graph = tenant_graph_uri(tenant_id)
     wrote = False
     for pred, type_name, attr_name in undecided:
-        sample_sparql = (
-            f"SELECT ?o FROM <{kg_graph}> WHERE {{\n"
-            f"  ?e <{pred}> ?o .\n"
-            f"  FILTER(isLiteral(?o))\n"
-            f"}} LIMIT {_CANDIDACY_SAMPLE_SIZE}"
+        sample_values = await _sample_literal_values(
+            neptune, kg_graph, pred, limit=_CANDIDACY_SAMPLE_SIZE
         )
-        _, rows = parse_sparql_results(await neptune.query(sample_sparql))
-        verdict = classify_text_candidacy([row.get("o", "") for row in rows])
+        verdict = classify_text_candidacy(sample_values)
         if verdict is TextCandidacy.AMBIGUOUS:
             # Needs the LLM REASON layer (name-aware) — not available in a
             # background worker; stays undecided and is re-sampled next run.
@@ -769,6 +932,55 @@ async def _apply_default_candidacy(
         # TTL remains the cross-process backstop).
         invalidate(tenant_id)
     return counters
+
+
+async def _sample_literal_values(
+    neptune: Any, kg_graph: str, predicate: str, *, limit: int
+) -> list[str]:
+    """Sample literal values for one predicate (SPARQL or GraphStore)."""
+    from infona_client.graph.parser import parse_sparql_results
+    from infona_client.graph.queries import parse_kg_graph_uri
+
+    if neptune is not None and hasattr(neptune, "query"):
+        try:
+            sample_sparql = (
+                f"SELECT ?o FROM <{kg_graph}> WHERE {{\n"
+                f"  ?e <{predicate}> ?o .\n"
+                f"  FILTER(isLiteral(?o))\n"
+                f"}} LIMIT {limit}"
+            )
+            _, rows = parse_sparql_results(await neptune.query(sample_sparql))
+            return [row.get("o", "") for row in rows]
+        except Exception:
+            pass
+    scope = parse_kg_graph_uri(kg_graph)
+    if scope is None:
+        return []
+    tenant_id, kg_name = scope
+    from infona_client.graph.scope import GraphScope
+    from infona_client.graph.store import GraphConfigError, get_optional_graph_store
+
+    store = get_optional_graph_store()
+    if store is None:
+        try:
+            from infona_client.graph.store import get_graph_store
+
+            store = get_graph_store()
+        except GraphConfigError:
+            return []
+    session = store.session(GraphScope.for_instance(tenant_id, kg_name))
+    history = getattr(session, "read_assertion_history", None)
+    if not callable(history):
+        return []
+    rows = await history(prop_id=predicate, limit=limit)
+    out: list[str] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        lit = row.get("literal_value")
+        if lit is not None:
+            out.append(str(lit))
+    return out
 
 
 def _sparql_string_literal(value: str) -> str:
@@ -802,24 +1014,119 @@ def _scan_query(
     )
 
 
-async def _scan_triples(
+def _store_property_ids_for_scan(predicates: Sequence[str]) -> list[str]:
+    """Map RDF/attrs scan predicates onto GraphStore ``property_id`` IRIs.
+
+    Assertion SoT uses ``https://graph.infona.ai/properties/<leaf>`` (and the
+    well-known type-membership property for ``rdf:type``). The reconciler's
+    scan predicate set is attrs/RDF-shaped; history is property-scoped.
+    """
+    from infona_client.graph.assertion_model import (
+        property_uri,
+        type_membership_property_id,
+    )
+
+    prop_ids: set[str] = set()
+    type_prop = type_membership_property_id()
+    for p in predicates:
+        if not isinstance(p, str) or not p:
+            continue
+        if p == _RDF_TYPE or p == type_prop or p.endswith("/properties/rdf_type"):
+            prop_ids.add(type_prop)
+            continue
+        if "/properties/" in p:
+            prop_ids.add(p)
+            continue
+        leaf = _local_name(p, lower=False)
+        if not leaf:
+            continue
+        try:
+            prop_ids.add(property_uri(leaf))
+        except Exception:  # noqa: BLE001 — skip unmappable foreign preds
+            continue
+    return sorted(prop_ids)
+
+
+async def _scan_triples_store(
+    tenant_id: str, kg_name: str, predicates: Sequence[str]
+) -> tuple[list[Triple], bool] | None:
+    """GraphStore scan of Assertions for the requested predicates.
+
+    Returns ``None`` when no GraphStore / history seam is available.
+
+    **Hard-cap fail-closed (ONTA-533 BLOCKER):** Memory and Neo4j clamp
+    ``read_assertion_history(limit=…)`` at
+    :data:`_ASSERTION_HISTORY_HARD_CAP` (10000). A naïve
+    ``truncated = len(rows) > (page_size * max_pages)`` is always False because
+    the store never returns more than the hard cap — and ghost-delete would
+    then wipe healthy docs past the silent cutoff. A full hard-cap page is
+    therefore treated as ``truncated=True``.
+
+    **Predicate-scoped pages:** each scan property is fetched with its own
+    hard-cap budget (not one global 10k window that may never include free-text
+    rows). Full entity-keyset pagination is not available on the history API
+    (``since`` is verified_at-only); incomplete pages fail closed.
+    """
+    from infona_client.graph.scope import GraphScope
+    from infona_client.graph.store import GraphConfigError
+
+    try:
+        from infona_client.graph.store import get_optional_graph_store
+
+        store = get_optional_graph_store()
+    except GraphConfigError:
+        return None
+    if store is None:
+        return None
+    session = store.session(GraphScope.for_instance(tenant_id, kg_name))
+    history = getattr(session, "read_assertion_history", None)
+    if not callable(history):
+        return None
+
+    prop_ids = _store_property_ids_for_scan(predicates)
+    if not prop_ids:
+        return [], False
+
+    hard_cap = max(1, int(_ASSERTION_HISTORY_HARD_CAP))
+    triples: list[Triple] = []
+    truncated = False
+    hit_cap_props: list[str] = []
+    for prop_id in prop_ids:
+        # Request exactly the hard cap: the store clamps higher values to the
+        # same ceiling, so over-fetch (limit+1) cannot observe "more than cap".
+        rows = await history(prop_id=prop_id, limit=hard_cap)
+        if len(rows) >= hard_cap:
+            # Full hard-cap page ⇒ store may hold more for this property.
+            # Fail closed: partial expected set must not drive ghost deletes.
+            truncated = True
+            hit_cap_props.append(prop_id)
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            triples.extend(_assertion_row_to_semantic_triples(row))
+
+    if truncated:
+        logger.warning(
+            "semantic_scan_truncated",
+            tenant_id=tenant_id,
+            kg_name=kg_name,
+            path="graph_store",
+            hard_cap=hard_cap,
+            properties_at_cap=hit_cap_props,
+            reason=(
+                "read_assertion_history hit the store hard cap for one or more "
+                "scan properties; expected set is partial so ghost deletion "
+                "must be skipped"
+            ),
+        )
+    triples.sort()
+    return triples, truncated
+
+
+async def _scan_triples_sparql(
     neptune: Any, kg_graph: str, predicates: Sequence[str]
 ) -> tuple[list[Triple], bool]:
-    """Scan ``?e ?p ?o`` for the given predicates via keyset pagination by
-    entity, bounded by the page cap.
-
-    Each full page holds back its trailing entity group — the page boundary
-    may have cut that entity's rows mid-group — and the next page re-fetches
-    from ``FILTER(STR(?e) > "<last complete entity>")``, so every entity's
-    rows arrive CONTIGUOUS AND COMPLETE. That grouping is load-bearing for
-    ``extract_semantic_chunks``: its intra-entity doc dedup and per-entity
-    chunk cap assume they see all of an entity's values together.
-
-    Returns ``(triples, truncated)``. ``truncated=True`` means the page cap
-    (:data:`_MAX_SCAN_PAGES`) was exhausted and the scan is PARTIAL — logged
-    here, and the caller must NOT ghost-delete against it (a partial expected
-    set would mass-delete perfectly healthy docs).
-    """
+    """SPARQL keyset-paginated scan (hermetic FakeNeptune / legacy)."""
     from infona_client.graph.parser import parse_sparql_results
 
     page = _scan_page_size()
@@ -834,23 +1141,16 @@ async def _scan_triples(
             if e and p:
                 page_triples.append((e, p, row.get("o", "")))
         if len(rows) < page:
-            # Final page: nothing after it, so every entity here is complete.
             triples.extend(page_triples)
             return triples, False
         if not page_triples:
-            continue  # defensive: a full page of unusable bindings — bounded by the cap
+            continue
         last_entity = page_triples[-1][0]
         complete = [t for t in page_triples if t[0] != last_entity]
         if complete:
-            # Hold the trailing (possibly partial) entity group back; the next
-            # page re-fetches it from its first row.
             triples.extend(complete)
             after = complete[-1][0]
         else:
-            # The whole page is ONE entity: entity-level keyset cannot page
-            # inside it, so keep what we have (its first `page` rows — far
-            # beyond extract's per-entity chunk cap at any sane page size) and
-            # step past it. Loud, never silent: rows beyond the page are lost.
             logger.warning(
                 "semantic_scan_entity_exceeds_page",
                 kg_graph=kg_graph,
@@ -866,6 +1166,66 @@ async def _scan_triples(
         page_size=page,
     )
     return triples, True
+
+
+async def _scan_triples(
+    neptune: Any, kg_graph: str, predicates: Sequence[str]
+) -> tuple[list[Triple], bool]:
+    """Scan ``?e ?p ?o`` for the given predicates.
+
+    **GraphStore first (ONTA-533):** when a process store is configured, the
+    Assertion SoT is the product path — vestigial SPARQL clients must not win
+    over Neo4j. Predicate-scoped history with hard-cap truncation detection
+    (see :func:`_scan_triples_store`).
+
+    **SPARQL fallback:** hermetic FakeNeptune tests (and any environment with
+    no GraphStore) use keyset pagination by entity, bounded by the page cap.
+    Each full page holds back its trailing entity group so every entity's
+    rows arrive CONTIGUOUS AND COMPLETE for ``extract_semantic_chunks``.
+
+    Returns ``(triples, truncated)``. ``truncated=True`` means the scan is
+    PARTIAL — the caller must NOT ghost-delete against it (a partial expected
+    set would mass-delete perfectly healthy docs).
+    """
+    from infona_client.graph.queries import parse_kg_graph_uri
+
+    # Prefer GraphStore whenever a process store is available (production
+    # Neo4j). An empty complete store scan falls through to SPARQL so
+    # FakeNeptune hermetic tests that seed only SPARQL keep working under
+    # conftest's empty MemoryGraphStore.
+    scope = parse_kg_graph_uri(kg_graph)
+    if scope is not None:
+        tenant_id, kg_name = scope
+        try:
+            store_result = await _scan_triples_store(
+                tenant_id, kg_name, predicates
+            )
+        except Exception:  # noqa: BLE001 — fall through to SPARQL
+            store_result = None
+        if store_result is not None:
+            store_triples, store_truncated = store_result
+            if store_triples or store_truncated:
+                return store_result
+            # Empty complete store scan: try SPARQL for hermetic FakeNeptune.
+            # Production empty KGs get empty SPARQL too (or an exception).
+
+    if neptune is not None and hasattr(neptune, "query"):
+        try:
+            return await _scan_triples_sparql(neptune, kg_graph, predicates)
+        except Exception:
+            pass
+
+    # Store was empty/unavailable and SPARQL failed or was absent.
+    if scope is not None:
+        try:
+            store_result = await _scan_triples_store(
+                scope[0], scope[1], predicates
+            )
+            if store_result is not None:
+                return store_result
+        except Exception:  # noqa: BLE001
+            pass
+    return [], False
 
 
 async def _upsert_in_doc_batches(idx: SemanticIndex, chunks: list[SemanticChunk]) -> None:

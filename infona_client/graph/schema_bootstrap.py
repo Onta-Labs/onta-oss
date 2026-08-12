@@ -263,7 +263,8 @@ RETURN a.name AS name, a.domain AS domain, a.kind AS kind,
        a.datatype AS datatype, a.range_type AS range_type,
        a.cardinality AS cardinality, coalesce(a.description, '') AS description,
        a.prop_key AS prop_key, a.layer AS layer,
-       a.tenant_id AS tenant_id, a.kg AS kg
+       a.tenant_id AS tenant_id, a.kg AS kg,
+       a.text_kind AS text_kind
 """.strip()
 
 ONTO_ATTR_RANGE_TYPE_CYPHER = """
@@ -279,6 +280,32 @@ MERGE (a)-[:RANGE_TYPE]->(rt)
 RETURN a.name AS name, rt.name AS range_type
 """.strip()
 
+# ONTA-533: durable free-text candidacy on :OntoAttr (SET_TEXT_KIND / reconciler).
+# Empty $text_kind clears the marker (candidacy becomes undecided again).
+ONTO_ATTR_SET_TEXT_KIND_CYPHER = """
+MERGE (a:OntoAttr {
+  tenant_id: $tenant_id, kg: $kg, layer: $layer, domain: $domain, name: $name
+})
+ON CREATE SET
+  a.kind = 'literal',
+  a.datatype = 'string',
+  a.cardinality = '1:1',
+  a.description = '',
+  a.text_kind = CASE WHEN $text_kind = '' THEN null ELSE $text_kind END
+ON MATCH SET
+  a.text_kind = CASE WHEN $text_kind = '' THEN null ELSE $text_kind END
+WITH a
+MERGE (t:OntoType {tenant_id: $tenant_id, kg: $kg, layer: $layer, name: $domain})
+ON CREATE SET t.label_token = $domain_label_token
+MERGE (t)-[:DECLARES]->(a)
+RETURN a.name AS name, a.domain AS domain, a.kind AS kind,
+       a.datatype AS datatype, a.range_type AS range_type,
+       a.cardinality AS cardinality, coalesce(a.description, '') AS description,
+       a.prop_key AS prop_key, a.layer AS layer,
+       a.tenant_id AS tenant_id, a.kg AS kg,
+       a.text_kind AS text_kind
+""".strip()
+
 ONTO_ATTR_LIST_CYPHER = """
 MATCH (a:OntoAttr {tenant_id: $tenant_id, kg: $kg})
 WHERE ($domain IS NULL OR a.domain = $domain)
@@ -287,7 +314,8 @@ RETURN a.name AS name, a.domain AS domain, a.kind AS kind,
        a.datatype AS datatype, a.range_type AS range_type,
        a.cardinality AS cardinality, coalesce(a.description, '') AS description,
        a.prop_key AS prop_key, a.layer AS layer,
-       a.tenant_id AS tenant_id, a.kg AS kg
+       a.tenant_id AS tenant_id, a.kg AS kg,
+       a.text_kind AS text_kind
 ORDER BY a.domain, a.name
 """.strip()
 
@@ -552,6 +580,11 @@ TEMPLATES: Mapping[str, CypherTemplate] = {
     "onto_attr_range_type": CypherTemplate(
         name="onto_attr_range_type",
         cypher=ONTO_ATTR_RANGE_TYPE_CYPHER,
+        writing=True,
+    ),
+    "onto_attr_set_text_kind": CypherTemplate(
+        name="onto_attr_set_text_kind",
+        cypher=ONTO_ATTR_SET_TEXT_KIND_CYPHER,
         writing=True,
     ),
     "onto_attr_list": CypherTemplate(
