@@ -71,22 +71,10 @@ async def test_generation_failure_degrades_gracefully(pipeline):
     # No exception escaped; we got a well-formed NLResult explaining the failure.
     assert "Could not answer" in result.answer
     assert result.sparql == ""
-    assert gen.await_count == 1
+    assert gen.await_count == 3
 
 
 # --------------------------------------------------- Fix 3: zero-bind columns
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "LOST CAPABILITY (ONTA-527): the unbound-projection report (a projected "
-        "column that binds in ZERO rows is named in the answer, plus "
-        "timing['unbound_projection_vars']) is computed in nlp/pipeline.py::ask's "
-        "SPARQL branch from the result head's declared vars. _ask_cypher goes "
-        "straight from records_to_bindings to _format_answer with no missing_vars "
-        "argument, so an all-null column is silently dropped from the answer "
-        "instead of reported."
-    ),
-)
 @pytest.mark.asyncio
 async def test_unbound_projection_column_reported(pipeline, mock_neptune):
     """A projected var that binds in zero rows is reported, not silently omitted.

@@ -579,9 +579,11 @@ def test_ask_route_degrades_and_never_forwards_the_foreign_query(
 
     ``/ask`` always returns an NLResult, so a failure inside the pipeline must
     not turn into a bare 500 — and nothing about the failed query may ride out
-    in the response. Driven here by making generation raise, which is the shape
-    that still escapes ``_ask_cypher`` (``_try_llm_cypher`` is called outside
-    its try/except), so the route's safety net is what has to catch it.
+    in the response. Driven here by making generation raise
+    :class:`CrossTenantQueryError`: ``_ask_cypher`` must **re-raise** it (not
+    fold the message into ``last_error`` / retry feedback), so the route's
+    safety net degrades to the generic "internal error" NLResult and the
+    foreign graph URI never appears in the answer body.
     """
     from unittest.mock import AsyncMock as _AsyncMock
     from unittest.mock import patch
@@ -607,12 +609,15 @@ def test_ask_route_degrades_and_never_forwards_the_foreign_query(
 
     assert res.status_code == 200
     gen.assert_awaited()  # the fixture path must not have short-circuited it
-    NLResult(**res.json())
-    # The ROUTE's degraded message: the error PROPAGATED rather than the model
-    # being handed its own rejection to iterate against.
-    assert "internal error" in res.json()["answer"]
-    assert not res.json()["sparql"]
+    body = res.json()
+    NLResult(**body)
+    # The ROUTE's degraded message: the error PROPAGATED rather than being
+    # folded into "Could not answer after N attempts. Last error: …<victim>…".
+    assert "internal error" in body["answer"]
+    assert "Could not answer after" not in body["answer"]
+    assert not body["sparql"]
     assert VICTIM_GRAPH not in res.text
+    assert VICTIM_GRAPH not in body["answer"]
     for call in mock_neptune.query.await_args_list + mock_neptune.query.call_args_list:
         assert VICTIM_GRAPH not in str(call), call
 

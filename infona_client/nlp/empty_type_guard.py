@@ -88,21 +88,44 @@ def empty_declared_types(ontology: str) -> set[str]:
     }
 
 
-def types_referenced(sparql: str) -> set[str]:
-    """Type names a SPARQL query references, via bare-type or attribute URIs."""
+def types_referenced(query: str, params: dict | None = None) -> set[str]:
+    """Type names a SPARQL *or* Cypher query references.
+
+    SPARQL: bare-type / attribute IRIs in ``<…/types/…>`` form.
+    Cypher: ``params['type_names']`` / ``params['primary_type']`` (templates
+    and confined generators) plus string literals next to ``primary_type``.
+    """
     from infona_client.graph.layers import type_name_from_uri
 
     out: set[str] = set()
-    for m in _TYPE_URI_RE.finditer(sparql or ""):
+    for m in _TYPE_URI_RE.finditer(query or ""):
         # `type_name_from_uri` already reduces `…/types/Sprocket/attrs/name` and
         # the layered `…/types/public/Person` forms to the bare type name.
         name = type_name_from_uri(m.group(1))
         if name:
             out.add(name)
+    if params:
+        for tn in params.get("type_names") or []:
+            if isinstance(tn, str) and tn.strip():
+                out.add(tn.strip())
+        pt = params.get("primary_type")
+        if isinstance(pt, str) and pt.strip():
+            out.add(pt.strip())
+    # Cypher free-form: primary_type = 'Place' / = "Place"
+    for m in re.finditer(
+        r"""primary_type\s*=\s*['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]""",
+        query or "",
+    ):
+        out.add(m.group(1))
     return out
 
 
-def honest_empty_targets(question: str, sparql: str, full_ontology: str) -> set[str]:
+def honest_empty_targets(
+    question: str,
+    sparql: str,
+    full_ontology: str,
+    params: dict | None = None,
+) -> set[str]:
     """Named-in-the-question, declared, empty types the query correctly targeted.
 
     A non-empty result means the zero-row answer is the ONTA-258 honest answer and
@@ -113,7 +136,7 @@ def honest_empty_targets(question: str, sparql: str, full_ontology: str) -> set[
     empty = empty_declared_types(full_ontology)
     if not empty:
         return set()
-    referenced = types_referenced(sparql)
+    referenced = types_referenced(sparql, params)
     if not referenced:
         return set()
     # Match the question against every DECLARED type (not just the referenced
@@ -136,7 +159,7 @@ def zero_row_escalation_feedback(full_ontology_has_marks: bool) -> str:
     moment of maximum substitution pressure.
     """
     text = (
-        "The previous SPARQL was VALID but returned ZERO rows. You are now being "
+        "The previous query was VALID but returned ZERO rows. You are now being "
         "shown the FULL ontology schema for this graph; the subset you saw before "
         "may have been incomplete. Change the types or predicates you target ONLY "
         "if the previous query used a URI that does not appear in the schema below, "
