@@ -1,21 +1,13 @@
-services:
-  # Legacy SPARQL local store (still used until the Neo4j cutover lands).
-  fuseki:
-    image: stain/jena-fuseki:latest
-    ports:
-      - "3030:3030"
-    environment:
-      - ADMIN_PASSWORD=admin
-      - FUSEKI_DATASET_1=ds
-    volumes:
-      - fuseki-data:/fuseki/databases
+# Local graph stores for Infona OSS.
+#
+# Default: Neo4j only (production path, ADR 0012/0013).
+# Legacy SPARQL (Fuseki): docker compose --profile legacy-sparql up -d
+#
+#   NEO4J_URI=bolt://localhost:7687
+#   NEO4J_USER=neo4j
+#   NEO4J_PASSWORD=infona-dev-password
 
-  # Wave-1 Neo4j property graph (ADR 0012 / G6). Community-compatible 5.x.
-  # BYOK-style local creds only — never ship platform keys.
-  # Connect with:
-  #   NEO4J_URI=bolt://localhost:7687
-  #   NEO4J_USER=neo4j
-  #   NEO4J_PASSWORD=infona-dev-password
+services:
   neo4j:
     image: neo4j:5-community
     ports:
@@ -23,7 +15,6 @@ services:
       - "7687:7687"   # Bolt
     environment:
       NEO4J_AUTH: neo4j/infona-dev-password
-      # Single-DB Wave-1 model; raise heap only if local dev needs it.
       NEO4J_server_memory_heap_initial__size: 512m
       NEO4J_server_memory_heap_max__size: 512m
     volumes:
@@ -35,6 +26,18 @@ services:
       retries: 10
       start_period: 30s
 
+  # Legacy SPARQL local store — not started by default.
+  fuseki:
+    profiles: ["legacy-sparql"]
+    image: stain/jena-fuseki:latest
+    ports:
+      - "3030:3030"
+    environment:
+      - ADMIN_PASSWORD=admin
+      - FUSEKI_DATASET_1=ds
+    volumes:
+      - fuseki-data:/fuseki/databases
+
 volumes:
-  fuseki-data:
   neo4j-data:
+  fuseki-data:

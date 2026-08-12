@@ -1,8 +1,16 @@
 # Infona Architecture
 
+> **Stale / historical (as of Neo4j cutover).** Production default is **Neo4j +
+> Cypher** (`INFONA_GRAPH_BACKEND=neo4j`, ADR 0012/0013). This document still
+> describes the earlier Neptune RDF + SPARQL path. For the current edition line
+> and local boot, see [docs/BOUNDARY.md](docs/BOUNDARY.md) and
+> [docs/neo4j-local.md](docs/neo4j-local.md). Do not treat SPARQL/Fuseki/Neptune
+> sections below as the OSS quickstart path.
+
 Knowledge graph platform that ingests structured and unstructured data, resolves it
 against a shared ontology, stores it in Neptune (RDF), and answers natural language
 questions via LLM-generated SPARQL.
+
 
 ## Design Principles
 
