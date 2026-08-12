@@ -235,6 +235,39 @@ async def test_commit_batch_applies_every_op():
 
 
 @pytest.mark.asyncio
+async def test_bare_re_upsert_type_preserves_subclass_parent():
+    """ONTA-531: bare UPSERT_TYPE must not clear SUBCLASS_OF (SPARQL parity).
+
+    SPARQL path uses insert_type / upsert_type_comment when parent_type is
+    unset — never clears hierarchy. GraphStore must mirror that: only set or
+    replace parent when parent_type is explicit.
+    """
+    await commit_ontology(
+        None,
+        GRAPH,
+        [
+            _upsert_type("Person"),
+            _upsert_type("Employee", parent_type="Person"),
+        ],
+    )
+    assert (await _types())["Employee"].parent_type == "Person"
+
+    # Bare re-UPSERT (no parent_type, no description) — hierarchy must remain.
+    await commit_ontology(None, GRAPH, [_upsert_type("Employee")])
+    assert (await _types())["Employee"].parent_type == "Person"
+
+    # Description-only re-UPSERT — still must not clear parent.
+    await commit_ontology(
+        None,
+        GRAPH,
+        [_upsert_type("Employee", description="works for an org")],
+    )
+    types = await _types()
+    assert types["Employee"].parent_type == "Person"
+    assert types["Employee"].description == "works for an org"
+
+
+@pytest.mark.asyncio
 async def test_commit_distinguishes_literal_attributes_from_relationships():
     await commit_ontology(
         None,

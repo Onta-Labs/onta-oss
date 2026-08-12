@@ -516,11 +516,15 @@ async def _apply_one_graph_store(
 
     op = mut.op
     if op is OntologyOpKind.UPSERT_TYPE:
+        # Mirror SPARQL _apply_upsert_type: only set/replace parent when
+        # parent_type is explicitly provided. Bare re-UPSERT_TYPE and
+        # description-only updates must preserve existing SUBCLASS_OF
+        # (SPARQL uses insert_type / upsert_type_comment, never clear).
         await oc.upsert_type(
             name=mut.type_name,
             description=mut.description or "",
             parent_type=mut.parent_type,
-            clear_parent=mut.parent_type is not None or mut.description is None,
+            clear_parent=False,
             **cat_kw,
         )
         records = [ChangeRecord(kind=ChangeKind.ADD_TYPE, type_name=mut.type_name)]
@@ -941,7 +945,11 @@ async def _apply_retire_alias_graph_store(
 async def _count_attr_references_graph_store(
     data_graph_uri: str, attr_uri_s: str
 ) -> int:
-    """Count instance facts that still use ``attr_uri_s`` (leaf property)."""
+    """Count instance facts that still use ``attr_uri_s`` (leaf property).
+
+    Fail-closed: unparseable data graph URI or a failed store probe raises so
+    ``RETIRE_ALIAS`` cannot succeed without a real zero-count check.
+    """
     from infona_client.graph.store import get_graph_store
     from infona_client.graph.scope import GraphScope
 
@@ -952,7 +960,10 @@ async def _count_attr_references_graph_store(
     if not m:
         m = re.search(r"/graphs/([^/]+)", data_graph_uri or "")
         if not m:
-            return 0
+            raise ValueError(
+                f"cannot parse tenant/kg from data_graph_uri={data_graph_uri!r} "
+                f"for attribute reference count; refusing RETIRE_ALIAS"
+            )
         tenant_id, kg = m.group(1), "main"
     else:
         tenant_id, kg = m.group(1), m.group(2)
@@ -981,11 +992,9 @@ async def _count_attr_references_graph_store(
                 n += 1
         return n
 
-    # Neo4j: best-effort COUNT via session template entity list is too heavy;
-    # fall back to 0 only when the store has no in-memory indexes.
+    # Neo4j: COUNT entities that have the property key set.
     try:
         session = store.session(GraphScope.for_instance(tenant_id, kg))
-        # Count entities that have the property key set.
         rows = await session.execute_read(
             "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
             f"WHERE e.`{leaf}` IS NOT NULL "
@@ -994,14 +1003,18 @@ async def _count_attr_references_graph_store(
         )
         if rows:
             return int(rows[0].get("n") or 0)
-    except Exception:
+        return 0
+    except Exception as exc:
         logger.warning(
             "attr_reference_count_failed",
             data_graph_uri=data_graph_uri,
             attr=attr_uri_s,
             exc_info=True,
         )
-    return 0
+        raise RuntimeError(
+            f"attribute reference count failed for {attr_uri_s!r} in "
+            f"{data_graph_uri!r}; refusing RETIRE_ALIAS"
+        ) from exc
 
 
 async def _bump_revision_graph_store(graph_uri: str) -> int:
