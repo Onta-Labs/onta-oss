@@ -2029,10 +2029,11 @@ def records_to_bindings(records: list[GraphRecord]) -> tuple[list[str], list[dic
 def neo4j_ask_enabled(*, explicit: bool | None = None) -> bool:
     """True when the NL path should generate Cypher — always, unless overridden.
 
-    Neo4j is the only graph backend (ONTA-527), so the NL target language is
-    Cypher. ``explicit=False`` still forces the legacy SPARQL generator for the
-    eval/archive harnesses that compare against stored SPARQL gold; nothing in
-    the product passes it.
+    Neo4j is the only graph backend (ONTA-527 / ONTA-534), so the NL target
+    language is Cypher. ``explicit=False`` is retained only as a fail-closed
+    gate: :meth:`infona_client.nlp.pipeline.NLQueryPipeline.ask` raises
+    :class:`~infona_client.nlp.pipeline.SparqlAskPathRetired` instead of
+    running the retired SPARQL generator. Nothing in the product passes it.
     """
     if explicit is not None:
         return bool(explicit)

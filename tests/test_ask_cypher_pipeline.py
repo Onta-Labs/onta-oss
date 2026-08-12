@@ -492,8 +492,10 @@ async def test_ask_cypher_retry_on_graph_query_error():
 
 
 @pytest.mark.asyncio
-async def test_ask_default_path_does_not_enter_cypher_when_disabled(monkeypatch):
-    """use_cypher=False must not call _ask_cypher (Neptune SPARQL remains default)."""
+async def test_ask_use_cypher_false_is_fail_closed():
+    """ONTA-534: use_cypher=False no longer reaches SPARQL; raises fail-closed."""
+    from infona_client.nlp.pipeline import SparqlAskPathRetired
+
     neptune = MagicMock()
     pipe = NLQueryPipeline(neptune, anthropic_key="test-key", graph_store=None)
     called = {"cypher": False}
@@ -503,37 +505,19 @@ async def test_ask_default_path_does_not_enter_cypher_when_disabled(monkeypatch)
         raise AssertionError("_ask_cypher must not run when use_cypher=False")
 
     pipe._ask_cypher = _boom  # type: ignore[method-assign]
-
-    pipe._fetch_ontology = AsyncMock(return_value="Type: Movie")  # type: ignore[method-assign]
     pipe._generate_sparql = AsyncMock(  # type: ignore[method-assign]
-        return_value={
-            "sparql": (
-                f"SELECT (COUNT(?m) AS ?n) FROM <{_kg_uri('demo-tenant', 'imdb')}> "
-                "WHERE { ?m <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> "
-                f"<{IRI_BASE}/types/Movie> }}"
-            ),
-            "explanation": "count movies",
-            "functions_needed": [],
-        }
+        side_effect=AssertionError("_generate_sparql must not run on retired path")
     )
-    neptune.query = AsyncMock(
-        return_value={
-            "head": {"vars": ["n"]},
-            "results": {"bindings": [{"n": {"type": "literal", "value": "9"}}]},
-        }
-    )
-    pipe._rephrase_via_openrouter = AsyncMock(return_value="")  # type: ignore[method-assign]
-    pipe._resolve_uri_labels = AsyncMock(return_value={})  # type: ignore[method-assign]
 
-    result = await pipe.ask(
-        "How many movies?",
-        graph_uri=f"{IRI_BASE}/graphs/demo-tenant",
-        instance_graph=_kg_uri("demo-tenant", "imdb"),
-        use_cypher=False,
-    )
+    with pytest.raises(SparqlAskPathRetired, match="ONTA-534"):
+        await pipe.ask(
+            "How many movies?",
+            graph_uri=f"{IRI_BASE}/graphs/demo-tenant",
+            instance_graph=_kg_uri("demo-tenant", "imdb"),
+            use_cypher=False,
+        )
     assert called["cypher"] is False
-    assert result.timing.get("query_language") != "cypher"
-    assert "9" in result.answer or "count" in result.explanation.lower() or result.answer
+    pipe._generate_sparql.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -587,7 +571,7 @@ def test_graph_backend_default_neo4j(monkeypatch):
 
 
 def test_neo4j_ask_enabled_ignores_the_env(monkeypatch):
-    """ONTA-527: Cypher is the NL target language; only `explicit` overrides it.
+    """ONTA-527/534: Cypher is the NL target language; only `explicit` overrides it.
 
     Previously this asserted the reverse — that a `neptune` env value put /ask
     back on the SPARQL generator. That backend is gone, so the env no longer
@@ -600,7 +584,8 @@ def test_neo4j_ask_enabled_ignores_the_env(monkeypatch):
     assert neo4j_ask_enabled() is True
     monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neo4j")
     assert neo4j_ask_enabled() is True
-    # Explicit False still wins — the eval/archive harnesses use it.
+    # Explicit False still returns False so ask() can fail-closed (ONTA-534);
+    # it no longer reaches a live SPARQL generator.
     assert neo4j_ask_enabled(explicit=False) is False
 
 
