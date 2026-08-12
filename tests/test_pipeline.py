@@ -130,17 +130,28 @@ async def test_ask_refuses_a_generated_mutation(pipeline, store):
     property is the same one, and it is now asserted against the STORE rather
     than only against the answer string.
     """
-    fake, _calls = _llm_cypher(
-        {
+    async def fake(question, ontology, **kw):
+        if "delete" in (question or "").lower():
+            return {
+                "cypher": (
+                    "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
+                    "DETACH DELETE e"
+                ),
+                "params": {},
+                "explanation": "Tried to delete",
+                "functions_needed": [],
+            }
+        return {
             "cypher": (
                 "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
-                "DETACH DELETE e"
+                "WHERE e.primary_type IN $type_names RETURN count(*) AS n"
             ),
-            "params": {},
-            "explanation": "Tried to delete",
+            "params": {"type_names": ["Place"]},
+            "template": "entities_of_type_count",
+            "explanation": "count places",
             "functions_needed": [],
         }
-    )
+
     pipeline._try_llm_cypher = fake  # type: ignore[method-assign]
 
     result = await pipeline.ask("Delete everything", TENANT_GRAPH, KG_GRAPH)
@@ -302,8 +313,6 @@ async def test_ask_escalates_semantic_to_full_on_zero_rows(pipeline, store):
 
     with patch(
         "infona_client.nlp.pipeline.get_embedding_service", return_value=svc
-    ), patch(
-        "infona_client.nlp.pipeline.try_deterministic_cypher", return_value=None
     ), patch.object(
         pipeline, "_execute_confined_cypher", new=fake_exec
     ):

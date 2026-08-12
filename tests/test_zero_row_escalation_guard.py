@@ -249,19 +249,15 @@ async def _ask(pipeline, neptune, question, llm_messages, fetch_ontology=FULL_ON
                 return_value="",
             ):
                 with patch.object(pipeline, "_try_llm_cypher", new=create):
-                    with patch(
-                        "infona_client.nlp.pipeline.try_deterministic_cypher",
-                        return_value=None,
+                    with patch.object(
+                        pipeline, "_execute_confined_cypher", new=fake_exec
                     ):
                         with patch.object(
-                            pipeline, "_execute_confined_cypher", new=fake_exec
+                            pipeline, "_active_types", new=fake_active
                         ):
-                            with patch.object(
-                                pipeline, "_active_types", new=fake_active
-                            ):
-                                result = await pipeline.ask(
-                                    question, TENANT_GRAPH, instance_graph=KG_GRAPH
-                                )
+                            result = await pipeline.ask(
+                                question, TENANT_GRAPH, instance_graph=KG_GRAPH
+                            )
     # Expose call_count like the old anthropic create mock
     create.call_count = calls["n"]
     return result, create
@@ -343,14 +339,13 @@ async def test_escalation_feedback_reaches_the_regeneration(pipeline, neptune):
         with patch.object(pipeline, "_fetch_ontology", new=AsyncMock(return_value=FULL_ONTOLOGY)):
             with patch.object(pipeline, "_rephrase_via_openrouter", new=AsyncMock(return_value="")):
                 with patch.object(pipeline, "_try_llm_cypher", fake_cypher):
-                    with patch("infona_client.nlp.pipeline.try_deterministic_cypher", return_value=None):
-                        with patch.object(pipeline, "_execute_confined_cypher", fake_exec):
-                            with patch.object(pipeline, "_active_types", fake_active):
-                                await pipeline.ask(
-                                    "how many things are there?",
-                                    TENANT_GRAPH,
-                                    instance_graph=KG_GRAPH,
-                                )
+                    with patch.object(pipeline, "_execute_confined_cypher", fake_exec):
+                        with patch.object(pipeline, "_active_types", fake_active):
+                            await pipeline.ask(
+                                "how many things are there?",
+                                TENANT_GRAPH,
+                                instance_graph=KG_GRAPH,
+                            )
 
     assert "Do NOT substitute" in captured.get("feedback", "")
     assert NO_INSTANCES_MARK in captured.get("feedback", "")
@@ -433,12 +428,11 @@ async def test_honest_note_does_not_ride_onto_a_later_non_empty_answer(
         with patch.object(pipeline, "_fetch_ontology", new=AsyncMock(return_value=FULL_ONTOLOGY)):
             with patch.object(pipeline, "_rephrase_via_openrouter", _rephrase):
                 with patch.object(pipeline, "_try_llm_cypher", fake_cypher):
-                    with patch("infona_client.nlp.pipeline.try_deterministic_cypher", return_value=None):
-                        with patch.object(pipeline, "_execute_confined_cypher", fake_exec):
-                            with patch.object(pipeline, "_active_types", fake_active):
-                                result = await pipeline.ask(
-                                    "list all Sprockets", TENANT_GRAPH, instance_graph=KG_GRAPH
-                                )
+                    with patch.object(pipeline, "_execute_confined_cypher", fake_exec):
+                        with patch.object(pipeline, "_active_types", fake_active):
+                            result = await pipeline.ask(
+                                "list all Sprockets", TENANT_GRAPH, instance_graph=KG_GRAPH
+                            )
 
     # Honest-empty path: first attempt returns with note (no rephrase success needed
     # for the answer string). If rephrase failed after rows, note must not appear.
