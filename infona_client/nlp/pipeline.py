@@ -1720,6 +1720,11 @@ class NLQueryPipeline:
 
             bank = get_example_bank()
             if bank and bank._examples:
+                # retrieve() has no language= yet (ONTA-539). Do not pass
+                # language="cypher" here — TypeError is swallowed below and
+                # silently empties few-shots on every cypher ask (R1).
+                # format_examples_for_prompt(language="cypher") still drops
+                # SPARQL-only rows after retrieval.
                 examples = await bank.retrieve(
                     question=question,
                     ontology_context=ontology,
@@ -1743,9 +1748,95 @@ class NLQueryPipeline:
             pass
 
         # 1) Deterministic fixtures (count / list / filter / 1-hop).
-        gen = try_deterministic_cypher(
-            question, ontology, type_names=type_names or None
+        # ONTA-537: when a healthy ontology mention index exists, bind a
+        # semantic resolve context so fixtures rank type mentions by embed
+        # similarity + hierarchy + instance prior (not string-only).
+        # Fail-closed is **opt-in** via INFONA_REQUIRE_SEMANTIC_RESOLVE=1
+        # until cold-start full-catalog reindex is solid; default is
+        # best-effort semantic when ready, else string heuristics.
+        from infona_client.nlp.ontology_mention_index import (
+            EmbedConfigError,
+            get_process_mention_index,
+            openrouter_embed_fn,
+            semantic_resolve_context,
         )
+
+        mention_index = get_process_mention_index()
+        require_sem = os.environ.get(
+            "INFONA_REQUIRE_SEMANTIC_RESOLVE", ""
+        ).strip().lower() in ("1", "true", "yes")
+        if require_sem and (mention_index is None or not mention_index.is_healthy()):
+            raise EmbedConfigError(
+                "INFONA_REQUIRE_SEMANTIC_RESOLVE is set but no healthy ontology "
+                "mention embed index is available. Configure "
+                "INFONA_OPENROUTER_API_KEY / OPENROUTER_API_KEY (and optional "
+                "INFONA_EMBED_MODEL), reindex the catalog after ontology "
+                "writes, then retry. Refusing string-only type resolution."
+            )
+
+        query_embeddings: dict[str, list[float]] = {}
+        if mention_index is not None and mention_index.is_healthy():
+            try:
+                # One embed of the full question is a cheap proxy for the
+                # type phrase; fixtures also match exact leaves via string
+                # fast path under a healthy index.
+                fn = openrouter_embed_fn(self._openrouter_key or None)
+                vecs = await fn([question])
+                if vecs:
+                    # Seed common type tokens from the ontology so
+                    # resolve_type_name can look up the label substring.
+                    from infona_client.nlp.cypher_generate import (
+                        extract_type_names_from_ontology,
+                    )
+
+                    labels = list(type_names or []) or extract_type_names_from_ontology(
+                        ontology
+                    )
+                    # Also embed candidate plural-ish labels for synonym path.
+                    seed_phrases = {question.strip().lower()}
+                    for tn in labels:
+                        seed_phrases.add(tn.lower())
+                        seed_phrases.add(tn.lower() + "s")
+                    # Extract "how many X" / "list X" label loosely
+                    import re as _re
+
+                    m = _re.match(
+                        r"(?is)^\s*(?:how\s+many|list|show(?:\s+me)?|count)\s+(.+?)[\s?!.]*$",
+                        question.strip(),
+                    )
+                    if m:
+                        seed_phrases.add(m.group(1).strip().lower())
+                    phrase_list = sorted(p for p in seed_phrases if p)
+                    if phrase_list:
+                        pvecs = await fn(phrase_list)
+                        query_embeddings = {
+                            p: list(v) for p, v in zip(phrase_list, pvecs)
+                        }
+                    else:
+                        query_embeddings = {question.strip().lower(): list(vecs[0])}
+            except EmbedConfigError:
+                if require_sem:
+                    raise
+            except Exception:
+                # Best-effort: fall through to string fixtures when embed fails
+                # unless fail-closed is forced.
+                if require_sem:
+                    raise
+                query_embeddings = {}
+
+        if mention_index is not None and mention_index.is_healthy() and query_embeddings:
+            with semantic_resolve_context(
+                mention_index,
+                query_embeddings=query_embeddings,
+                require_semantic=require_sem,
+            ):
+                gen = try_deterministic_cypher(
+                    question, ontology, type_names=type_names or None
+                )
+        else:
+            gen = try_deterministic_cypher(
+                question, ontology, type_names=type_names or None
+            )
         if gen is None:
             # 2) Optional LLM Cypher generation when keys exist.
             gen = await self._try_llm_cypher(
