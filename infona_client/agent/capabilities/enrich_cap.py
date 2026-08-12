@@ -596,13 +596,14 @@ class EnrichCapability:
     ) -> list[str]:
         """Resolve a ranked/specific subset to the concrete entity IRIs it names.
 
-        Reuses the shared NL→SPARQL engine (:meth:`NLQueryPipeline.select_entity_uris`,
-        the same pipeline the question capability/``/ask`` route use) so "the 5
-        brokers with the most listings" becomes those 5 IRIs — no new query engine,
-        no client-side ranking. The subset's own LIMIT is honored by the generated
-        SPARQL; ``_SUBSET_MAX`` is an outer safety cap so a runaway/unbounded subset
-        can't fan out to thousands of paid calls. Returns ``[]`` on any failure —
-        the caller fails closed rather than enriching the whole type by accident.
+        Reuses the shared NL entity selector
+        (:meth:`NLQueryPipeline.select_entity_uris` — GraphStore Cypher after
+        ONTA-534; SPARQL execution retired) so "the 5 brokers with the most
+        listings" becomes those 5 IRIs — no new query engine, no client-side
+        ranking. The subset's own LIMIT is honored; ``_SUBSET_MAX`` is an outer
+        safety cap so a runaway/unbounded subset can't fan out to thousands of
+        paid calls. Returns ``[]`` on any failure — the caller fails closed
+        rather than enriching the whole type by accident.
         """
         description = str(subset.get("description") or "").strip()
         if not description:

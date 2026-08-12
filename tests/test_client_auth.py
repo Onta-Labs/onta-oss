@@ -19,8 +19,13 @@ from infona_client.graph.client import NeptuneClient
 
 @pytest.mark.asyncio
 async def test_constructor_wires_auth_and_defaults_off():
-    with_auth = NeptuneClient("http://store.local", backend="fuseki", auth=("admin", "admin"))
-    without = NeptuneClient("http://neptune.local")
+    with_auth = NeptuneClient(
+        "http://store.local",
+        backend="fuseki",
+        auth=("admin", "admin"),
+        allow_http=True,
+    )
+    without = NeptuneClient("http://neptune.local", allow_http=True)
     try:
         assert with_auth._client.auth is not None  # BasicAuth wired onto the httpx client
         assert without._client.auth is None  # default: Neptune needs no auth
@@ -39,7 +44,12 @@ async def test_update_carries_basic_auth_header():
         seen["authz"] = request.headers.get("Authorization")
         return httpx.Response(200)
 
-    c = NeptuneClient("http://store.local", backend="fuseki", auth=("admin", "admin"))
+    c = NeptuneClient(
+        "http://store.local",
+        backend="fuseki",
+        auth=("admin", "admin"),
+        allow_http=True,
+    )
     # Swap only the transport, REUSING the auth the constructor produced, so this
     # exercises the constructor wiring rather than re-declaring credentials.
     c._client = httpx.AsyncClient(
@@ -64,7 +74,7 @@ async def test_no_auth_sends_no_authorization_header():
         seen["authz"] = request.headers.get("Authorization")
         return httpx.Response(200, json={"head": {"vars": []}, "results": {"bindings": []}})
 
-    c = NeptuneClient("http://neptune.local")
+    c = NeptuneClient("http://neptune.local", allow_http=True)
     c._client = httpx.AsyncClient(
         base_url="http://neptune.local",
         transport=httpx.MockTransport(handler),

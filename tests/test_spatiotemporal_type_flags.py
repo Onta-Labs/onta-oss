@@ -74,7 +74,9 @@ def mock_neptune():
 def client(mock_neptune):
     app = create_app()
     app.state.neptune_client = mock_neptune
-    return TestClient(app)
+    tc = TestClient(app)
+    app.state.neptune_client = mock_neptune  # re-inject after lifespan
+    return tc
 
 
 @pytest.fixture

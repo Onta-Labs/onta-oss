@@ -73,7 +73,11 @@ def mock_neptune():
 def client(mock_neptune):
     app = create_app()
     app.state.neptune_client = mock_neptune
-    return TestClient(app)
+    tc = TestClient(app)
+    # Lifespan constructs a real NeptuneClient; re-inject the mock so dual-arm
+    # SPARQL unit tests (store reset → fallthrough) still route query().
+    app.state.neptune_client = mock_neptune
+    return tc
 
 
 @pytest.fixture

@@ -2482,50 +2482,134 @@ class NLQueryPipeline:
         Turns a ranked/specific subset — e.g. "the 5 brokers with the most
         property listings" — into the concrete entity IRIs it names, so a caller
         (the agent's enrich planner) can enrich exactly those via ``entity_uris``
-        instead of the whole type. Reuses the SAME NL→SPARQL generation +
-        validation as :meth:`ask` (one query engine, no divergence); it only
-        constrains the projection to the entity IRI (``?uri``) and extracts it.
+        instead of the whole type.
 
-        Returns a deduped, order-preserving list capped at ``limit``. Returns
-        ``[]`` on any failure (unparseable/invalid SPARQL, Neptune error, a
-        generated query that could not be confined to this workspace, or no IRI
-        column) — never raises; the caller decides how to handle "couldn't
-        resolve". ``[]`` is the fail-closed outcome here: the store is never
-        called, and a confinement failure is logged as its own security event by
-        ``graph/sparql_scope.py`` before it is swallowed.
+        **ONTA-534:** the NL→SPARQL execution path is retired. This method no
+        longer POSTs SPARQL at Neptune (hang / silent-empty risk under Neo4j).
+        When a GraphStore is available it runs a Cypher projection of the same
+        subset question; otherwise it raises :class:`SparqlAskPathRetired`.
+        Callers that treat any failure as ``[]`` (e.g. enrich subset resolution)
+        keep fail-closed semantics without enriching the whole type by accident.
         """
         data_graph = instance_graph or graph_uri
-        try:
-            ontology = await self._fetch_ontology(graph_uri, data_graph)
-        except Exception:
-            logger.warning("select_entity_uris_ontology_failed", exc_info=True)
+        store = self._graph_store
+        if store is None:
+            try:
+                from infona_client.graph.store import get_graph_store
+
+                store = get_graph_store()
+            except Exception:
+                store = None
+
+        if store is None:
+            raise SparqlAskPathRetired(
+                "select_entity_uris NL→SPARQL was retired with the Neptune "
+                "cutover (ONTA-534). Configure a GraphStore (Neo4j / Memory) "
+                "for Cypher subset resolution, or pass entity_uris explicitly."
+            )
+
+        from infona_client.graph.queries import parse_kg_graph_uri
+        from infona_client.graph.store import GraphScope
+        from infona_client.nlp.cypher_generate import (
+            ontology_from_graph_store,
+            records_to_bindings,
+            try_deterministic_cypher,
+        )
+
+        parsed = parse_kg_graph_uri(data_graph)
+        if parsed:
+            tenant_id, kg_name = parsed
+        else:
+            tenant_id = tenant_of_graph(data_graph) or ""
+            kg_name = data_graph.rstrip("/").rsplit("/", 1)[-1] if data_graph else ""
+        if not tenant_id or not kg_name:
+            logger.warning(
+                "select_entity_uris_bad_graph",
+                data_graph=data_graph,
+            )
             return []
+
+        # 1) Deterministic Cypher fixtures (list / filter / hop) — no SPARQL.
+        try:
+            ontology, type_names = await ontology_from_graph_store(
+                store, tenant_id=tenant_id, kg=kg_name
+            )
+            gen = try_deterministic_cypher(
+                f"list {type_name}: {description}",
+                ontology or "",
+                type_names=type_names or [type_name],
+            )
+            if gen and gen.get("cypher"):
+                params = dict(gen.get("params") or {})
+                if limit is not None and "limit" in params:
+                    params["limit"] = min(int(params["limit"]), int(limit))
+                elif limit is not None:
+                    params["limit"] = int(limit)
+                cypher, forced = confine_generated_cypher(
+                    gen["cypher"],
+                    tenant_id=tenant_id,
+                    kg=kg_name,
+                    params=params,
+                )
+                session = store.session(GraphScope.for_instance(tenant_id, kg_name))
+                records, _path = await self._execute_confined_cypher(
+                    session, gen, cypher, forced
+                )
+                _vars, bindings = records_to_bindings(records)
+                uris = self._entity_uris_from_bindings(bindings, limit)
+                if uris:
+                    return uris
+        except Exception:
+            logger.warning("select_entity_uris_deterministic_failed", exc_info=True)
+
+        # 2) Full Cypher NL path — extract IRIs from the answer when present.
         cap = f" Return at most {int(limit)} rows." if limit else ""
         question = (
-            f"Return ONLY the IRI of each {type_name} entity in this set: "
-            f"{description}. The SELECT must project a single column named ?uri, "
-            f"bound by `?uri a` the {type_name} class. Apply any ranking/ordering "
-            f"and limit the set describes, but keep ?uri in the SELECT — do NOT "
-            f"aggregate it away or replace it with a label.{cap}"
+            f"Return ONLY the entity id/IRI of each {type_name} entity in this set: "
+            f"{description}. Project a single identifier column (id or uri) for "
+            f"each {type_name}. Apply any ranking/ordering and limit the set "
+            f"describes; do not aggregate the id away or replace it with a label only."
+            f"{cap}"
         )
         try:
-            resp = await self._generate_sparql(question, ontology, data_graph)
-            sparql = normalize_sparql(resp.get("sparql", ""))
-            sparql = self._fix_attribute_uris(sparql, ontology)
-            sparql = self._fix_common_sparql_issues(sparql, ontology)
-            is_valid, error = validate_sparql(sparql)
-            if not is_valid:
-                logger.warning("select_entity_uris_invalid_sparql", error=error)
-                return []
-            # ONTA-424: same enforcement as ask(); this path generates SPARQL
-            # from the same prompt and runs it against the same store.
-            sparql = self._confine_generated(sparql, data_graph)
-            raw = await self.neptune.query(sparql)
-            _, bindings = parse_sparql_results(raw)
+            result = await self._ask_cypher(
+                question,
+                graph_uri=graph_uri,
+                data_graph=data_graph,
+            )
+            uris = self._entity_uris_from_answer_text(result.answer, limit)
+            if uris:
+                return uris
         except Exception:
-            logger.warning("select_entity_uris_failed", exc_info=True)
+            logger.warning("select_entity_uris_cypher_failed", exc_info=True)
+
+        # Fail closed: never hit residual SPARQL / dead Neptune HTTP.
+        logger.warning(
+            "select_entity_uris_unresolved",
+            type_name=type_name,
+            description=(description or "")[:120],
+        )
+        return []
+
+    @staticmethod
+    def _entity_uris_from_answer_text(
+        answer: str, limit: int | None = None
+    ) -> list[str]:
+        """Best-effort scrape of entity IRIs from an NL answer string."""
+        if not answer:
             return []
-        return self._entity_uris_from_bindings(bindings, limit)
+        found = re.findall(r"https?://[^\s\"'<>]+", answer)
+        out: list[str] = []
+        seen: set[str] = set()
+        for u in found:
+            u = u.rstrip(".,);]")
+            if u in seen:
+                continue
+            seen.add(u)
+            out.append(u)
+            if limit is not None and len(out) >= int(limit):
+                break
+        return out
 
     @staticmethod
     def _entity_uris_from_bindings(
@@ -2533,9 +2617,9 @@ class NLQueryPipeline:
     ) -> list[str]:
         """Pull entity IRIs out of result bindings, order-preserving and deduped.
 
-        Prefers the ``?uri`` column the resolver prompt asks for; if a row lacks
-        it, falls back to the first http(s)-IRI value in that row. Caps at
-        ``limit`` when given.
+        Prefers the ``?uri`` / ``id`` column the resolver prompt asks for; if a
+        row lacks it, falls back to the first http(s)-IRI value in that row.
+        Caps at ``limit`` when given.
         """
         out: list[str] = []
         seen: set[str] = set()
@@ -2544,14 +2628,17 @@ class NLQueryPipeline:
             return isinstance(v, str) and v.startswith(("http://", "https://"))
 
         for row in bindings:
-            val = row.get("uri")
-            if not _is_iri(val):
+            val = row.get("uri") or row.get("id") or row.get("entity_id")
+            if not isinstance(val, str) or not val:
                 val = next((v for v in row.values() if _is_iri(v)), None)
-            if val and val not in seen:
-                seen.add(val)
-                out.append(val)
-                if limit and len(out) >= int(limit):
-                    break
+            if not isinstance(val, str) or not val:
+                continue
+            if val in seen:
+                continue
+            seen.add(val)
+            out.append(val)
+            if limit is not None and len(out) >= int(limit):
+                break
         return out
 
     # ── Active-type probe (ONTA-427) ──────────────────────────────────────── #

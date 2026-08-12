@@ -39,7 +39,9 @@ _MALFORMED_BODY = {
 
 
 def _client_with(handler) -> NeptuneClient:
-    client = NeptuneClient("http://neptune.local")  # http -> no TLS verify
+    # allow_http: residual SPARQL HTTP unit tests under hermetic GraphStore
+    # (ONTA-534 fail-closed gate would otherwise raise SparqlClientRetired).
+    client = NeptuneClient("http://neptune.local", allow_http=True)
     client._client = httpx.AsyncClient(
         base_url="http://neptune.local", transport=httpx.MockTransport(handler)
     )

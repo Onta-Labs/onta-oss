@@ -1076,210 +1076,70 @@ async def get_type_usage(
 
     # GraphStore path (ONTA-535) — same TypeUsage shape as the SPARQL branch.
     # When a store is configured, None means unknown type → 404 (do not fall
-    # through to SPARQL mocks that no production engine answers).
-    if resolve_explore_session(tenant_id=tenant.tenant_id, kg_name=kg_name) is not None:
-        try:
-            pg_row = await pg_type_summary(
-                tenant_id=tenant.tenant_id,
-                kg_name=kg_name,
-                type_name=type_name,
-            )
-        except GraphConfigError:
-            pg_row = None
-        if pg_row is None:
-            raise HTTPException(
-                status_code=404,
-                detail=(
-                    f"Type '{type_name}' not found in tenant ontology "
-                    f"or KG '{kg_name}'"
-                ),
-            )
-        del include_system  # store path never surfaces internal keys
-        samples: list[EntitySample] = []
-        try:
-            page = await pg_list_entities(
-                tenant_id=tenant.tenant_id,
-                kg_name=kg_name,
-                type_name=type_name,
-                limit=3,
-            )
-            if page is not None:
-                for ent in page.entities:
-                    samples.append(
-                        EntitySample(
-                            uri=ent.id,
-                            label=ent.name or ent.id.rstrip("/").split("/")[-1],
-                        )
-                    )
-        except Exception:
-            samples = []
-        return TypeUsage(
-            name=pg_row.name,
-            description=pg_row.description or "",
-            parent_type=pg_row.parent_type,
-            entity_count=pg_row.entity_count,
-            attributes=[
-                AttributeUsage(
-                    name=a.name,
-                    datatype=a.datatype or "string",
-                    count=a.count,
-                )
-                for a in pg_row.attributes
-            ],
-            relationships=[
-                RelationshipUsage(
-                    name=r.name,
-                    target_type=r.target_type,
-                    count=r.count,
-                )
-                for r in pg_row.relationships
-            ],
-            samples=samples,
-        )
-
-    # Legacy SPARQL path (no process GraphStore configured).
-    tenant_graph = tenant_graph_uri(tenant.tenant_id)
-    kg_graph = kg_graph_uri(tenant.tenant_id, kg_name)
-    t_uri = type_uri(type_name)
-
-    # 1) Ontology definition for this type (tenant-global graph).
-    onto_sparql = (
-        f"SELECT ?label ?comment ?parent FROM <{tenant_graph}> WHERE {{\n"
-        f"  <{t_uri}> <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n"
-        f"  OPTIONAL {{ <{t_uri}> <http://www.w3.org/2000/01/rdf-schema#comment> ?comment }}\n"
-        f"  OPTIONAL {{ <{t_uri}> <http://www.w3.org/2000/01/rdf-schema#subClassOf> ?parent }}\n"
-        f"}}"
-    )
-    _, onto_rows = parse_sparql_results(await client.query(onto_sparql))
-
-    # Tenant-global attribute definitions for this type — gives us the
-    # canonical name + datatype, which we'll join with per-KG usage counts.
-    _, attr_def_rows = parse_sparql_results(
-        await client.query(get_type_attributes_query(tenant_graph, type_name))
-    )
-    attr_def: dict[str, dict[str, str]] = {}
-    for r in attr_def_rows:
-        a_uri = r.get("attr", "")
-        if not a_uri:
-            continue
-        attr_def[a_uri] = {
-            "name": r.get("attrLabel", ""),
-            "range": r.get("range", ""),
-        }
-
-    # 2) Entity count for this type within this KG.
-    count_sparql = (
-        f"SELECT (COUNT(DISTINCT ?e) AS ?n) FROM <{kg_graph}> WHERE {{\n"
-        f"  ?e <{RDF_TYPE}> <{t_uri}>\n"
-        f"}}"
-    )
-    _, count_rows = parse_sparql_results(await client.query(count_sparql))
+    # through to SPARQL). ONTA-534: GraphConfigError → 503 (no hang).
     try:
-        entity_count = int(count_rows[0].get("n", "0")) if count_rows else 0
-    except ValueError:
-        entity_count = 0
-
-    if entity_count == 0 and not onto_rows:
-        # Nothing in the ontology and nothing in the KG → 404 so the CLI can
-        # tell the user "no such type" instead of silently returning zeros.
+        resolve_explore_session(tenant_id=tenant.tenant_id, kg_name=kg_name)
+        pg_row = await pg_type_summary(
+            tenant_id=tenant.tenant_id,
+            kg_name=kg_name,
+            type_name=type_name,
+        )
+    except GraphConfigError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Graph store is not configured. Neo4j GraphStore is required "
+                f"(ONTA-534). {exc}"
+            ),
+        ) from exc
+    if pg_row is None:
         raise HTTPException(
             status_code=404,
-            detail=f"Type '{type_name}' not found in tenant ontology or KG '{kg_name}'",
+            detail=(
+                f"Type '{type_name}' not found in tenant ontology "
+                f"or KG '{kg_name}'"
+            ),
         )
-
-    # 3) Per-predicate usage in this KG. SAMPLE(?o) lets us classify
-    # attribute (literal) vs. relationship (typed entity) without a second
-    # round-trip per predicate.
-    pred_sparql = (
-        f"SELECT ?p (COUNT(DISTINCT ?e) AS ?cnt) (SAMPLE(?o) AS ?sample)\n"
-        f"FROM <{kg_graph}> WHERE {{\n"
-        f"  ?e <{RDF_TYPE}> <{t_uri}> .\n"
-        f"  ?e ?p ?o .\n"
-        f"  FILTER(?p != <{RDF_TYPE}>)\n"
-        f"}} GROUP BY ?p ORDER BY DESC(?cnt)"
-    )
-    _, pred_rows = parse_sparql_results(await client.query(pred_sparql))
-
-    attributes: list[AttributeUsage] = []
-    relationships: list[RelationshipUsage] = []
-    for r in pred_rows:
-        p_uri = r.get("p", "")
-        if not include_system and p_uri in SYSTEM_PREDICATES:
-            continue
-        try:
-            cnt = int(r.get("cnt", "0"))
-        except ValueError:
-            cnt = 0
-        sample = r.get("sample", "")
-        defn = attr_def.get(p_uri, {})
-        # Predicate name: prefer ontology label, fall back to URI tail.
-        name = defn.get("name") or p_uri.rstrip("/").split("/")[-1]
-        rng = defn.get("range", "")
-        # Classify: object pointing into the entities/types namespace OR
-        # ontology-declared range that's another type → relationship.
-        is_rel = (
-            sample.startswith(ENTITY_URI_PREFIX)
-            or sample.startswith(TYPE_URI_PREFIX)
-            or rng.startswith(TYPE_URI_PREFIX)
-        )
-        if is_rel:
-            target: str | None = None
-            if rng.startswith(TYPE_URI_PREFIX):
-                target = rng[len(TYPE_URI_PREFIX):]
-            elif sample.startswith(ENTITY_URI_PREFIX):
-                # Entity URIs are .../entities/{TypeName}/{slug}; pull the
-                # type out so the CLI can render "industries → Industry"
-                # even when the ontology hasnf't declared a typed range.
-                tail = sample[len(f"{IRI_BASE}/entities/"):]
-                head = tail.split("/", 1)[0]
-                if head:
-                    target = head
-            relationships.append(
-                RelationshipUsage(name=name, target_type=target, count=cnt)
-            )
-        else:
-            attributes.append(
-                AttributeUsage(
-                    name=name,
-                    datatype=_xsd_to_datatype(rng),
-                    count=cnt,
-                )
-            )
-
-    # 4) Up to 3 sample entities with a name-like label, picked by trying
-    # the conventional label attributes in order. Cheap one-shot query.
-    label_optionals = "\n".join(
-        f'    OPTIONAL {{ ?e <{TYPE_URI_PREFIX}{type_name}/attrs/{a}> ?{a} }}'
-        for a in NAME_ATTRS
-    )
-    label_vars = " ".join(f"?{a}" for a in NAME_ATTRS)
-    sample_sparql = (
-        f"SELECT ?e {label_vars} FROM <{kg_graph}> WHERE {{\n"
-        f"  ?e <{RDF_TYPE}> <{t_uri}> .\n"
-        f"{label_optionals}\n"
-        f"}} LIMIT 3"
-    )
+    del include_system  # store path never surfaces internal keys
     samples: list[EntitySample] = []
     try:
-        _, sample_rows = parse_sparql_results(await client.query(sample_sparql))
-        for r in sample_rows:
-            uri = r.get("e", "")
-            label = next((r[a] for a in NAME_ATTRS if r.get(a)), "")
-            samples.append(EntitySample(uri=uri, label=label))
+        page = await pg_list_entities(
+            tenant_id=tenant.tenant_id,
+            kg_name=kg_name,
+            type_name=type_name,
+            limit=3,
+        )
+        if page is not None:
+            for ent in page.entities:
+                samples.append(
+                    EntitySample(
+                        uri=ent.id,
+                        label=ent.name or ent.id.rstrip("/").split("/")[-1],
+                    )
+                )
     except Exception:
-        # Sample fetch is decorative; don't blow up the whole response if
-        # the SPARQL chokes on something we didn't anticipate.
         samples = []
-
-    onto_row = onto_rows[0] if onto_rows else {}
-    parent = onto_row.get("parent", "")
     return TypeUsage(
-        name=type_name,
-        description=onto_row.get("comment", ""),
-        parent_type=parent.rstrip("/").split("/")[-1] if parent else None,
-        entity_count=entity_count,
-        attributes=attributes,
-        relationships=relationships,
+        name=pg_row.name,
+        description=pg_row.description or "",
+        parent_type=pg_row.parent_type,
+        entity_count=pg_row.entity_count,
+        attributes=[
+            AttributeUsage(
+                name=a.name,
+                datatype=a.datatype or "string",
+                count=a.count,
+            )
+            for a in pg_row.attributes
+        ],
+        relationships=[
+            RelationshipUsage(
+                name=r.name,
+                target_type=r.target_type,
+                count=r.count,
+            )
+            for r in pg_row.relationships
+        ],
         samples=samples,
     )
 
