@@ -309,7 +309,13 @@ def guess_type_name(label: str) -> str | None:
 
 
 def resolve_type_name(
-    label: str, type_names: list[str] | None, ontology_summary: str = ""
+    label: str,
+    type_names: list[str] | None,
+    ontology_summary: str = "",
+    *,
+    mention_index: Any | None = None,
+    query_embedding: Any | None = None,
+    require_semantic: bool = False,
 ) -> str | None:
     """Resolve a free-text type mention to an ontology leaf.
 
@@ -321,17 +327,119 @@ def resolve_type_name(
     type (tenant pollution: ``Product [no instances]`` while ``InventoryItem``
     has rows) yields silent wrong zeros — better to fall through to the LLM
     which sees the full schema.
+
+    **Semantic path (ONTA-537):** when ``mention_index`` is an
+    :class:`~infona_client.nlp.ontology_mention_index.OntologyMentionIndex`
+    with **every allowed candidate embedded**
+    (:meth:`~OntologyMentionIndex.types_fully_embedded`) and a
+    ``query_embedding`` is provided, rank by cosine + hierarchy + instance
+    prior. A partial index (only some types embedded) skips semantic entirely
+    so a product synonym cannot bind an unrelated embedded leaf.
+
+    Activity and hierarchy are **call-local only** — this function never
+    mutates the process-global index (``merge_activity`` / ``set_hierarchy``).
+
+    **Fail-closed is opt-in:** ``require_semantic=True`` or
+    ``INFONA_REQUIRE_SEMANTIC_RESOLVE=1`` without a ready index / embed config
+    raises
+    :class:`~infona_client.nlp.ontology_mention_index.EmbedConfigError`.
+    Default remains best-effort (semantic when ready, else string). Until
+    cold-start reindex is solid, production should leave the env flag off.
     """
+    from infona_client.nlp.ontology_mention_index import (
+        EmbedConfigError,
+        OntologyMentionIndex,
+        get_process_mention_index,
+        get_resolve_context,
+        lookup_query_embedding,
+    )
+
+    ctx = get_resolve_context()
+    if mention_index is None and ctx is not None and ctx.mention_index is not None:
+        mention_index = ctx.mention_index
+    if not require_semantic and ctx is not None and ctx.require_semantic:
+        require_semantic = True
+    if query_embedding is None and ctx is not None:
+        query_embedding = lookup_query_embedding(label, ctx)
+
+    index = mention_index if mention_index is not None else get_process_mention_index()
+
     names = (
         list(type_names)
         if type_names is not None
         else extract_type_names_from_ontology(ontology_summary)
     )
+
+    # require_semantic: need index + every candidate embedded + query vector.
+    if require_semantic:
+        if (
+            not isinstance(index, OntologyMentionIndex)
+            or not index.types_fully_embedded(names if names else None)
+            or query_embedding is None
+        ):
+            # Allow tests that pass require_semantic without a query vector to
+            # fail early when the index itself is missing/unhealthy; if names
+            # is empty, invent is forbidden below.
+            if not isinstance(index, OntologyMentionIndex) or not index.is_healthy():
+                raise EmbedConfigError(
+                    "NL type resolution with require_semantic / "
+                    "INFONA_REQUIRE_SEMANTIC_RESOLVE needs a healthy ontology "
+                    "mention embed index (set INFONA_OPENROUTER_API_KEY / "
+                    "OPENROUTER_API_KEY, reindex types, or inject "
+                    "OntologyMentionIndex for tests). Fail-closed is opt-in."
+                )
+            if names and not index.types_fully_embedded(names):
+                raise EmbedConfigError(
+                    "Partial ontology mention index: not every allowed type "
+                    "candidate is embedded. Refusing semantic resolve under "
+                    "require_semantic (would risk binding a wrong leaf)."
+                )
+            if query_embedding is None and isinstance(index, OntologyMentionIndex):
+                # Index present but no vector for this mention — miss, not invent.
+                if names:
+                    return None
+
     if not names:
         # Bootstrap / empty ontology only — invent PascalCase for hermetic tests.
+        # Semantic path still refuses invent when require_semantic.
+        if require_semantic:
+            return None
         return guess_type_name(label)
 
     activity = extract_type_activity_from_ontology(ontology_summary)
+
+    # Call-local hierarchy from ontology text (do not set_hierarchy on index).
+    hierarchy_overlay: dict[str, str] | None = None
+    if ontology_summary:
+        from infona_client.graph.rdfs_helpers import (
+            extract_subclass_map_from_ontology,
+        )
+
+        smap = extract_subclass_map_from_ontology(ontology_summary)
+        if smap:
+            hierarchy_overlay = smap
+
+    # Semantic resolve only when every allowed candidate is embedded.
+    if (
+        isinstance(index, OntologyMentionIndex)
+        and index.types_fully_embedded(names)
+        and query_embedding is not None
+    ):
+        hit = index.resolve_type(
+            label,
+            query_embedding=query_embedding,
+            activity=activity or None,
+            type_names=names,
+            hierarchy=hierarchy_overlay,
+        )
+        if hit is not None:
+            return hit
+        # Semantic miss: do not invent; string path only when not require_semantic
+        # (fast path for exact/plural — still subject to empty-leftover rules).
+        if require_semantic:
+            return None
+
+    # String heuristics (fast path / hermetic fixtures / partial index).
     active = [t for t in names if activity.get(t, -1) > 0]
     if active:
         hit = match_type_name(label, active, ontology_summary=ontology_summary)
@@ -344,6 +452,69 @@ def resolve_type_name(
         return empty_hit
 
     return match_type_name(label, names, ontology_summary=ontology_summary)
+
+
+async def resolve_type_name_async(
+    label: str,
+    type_names: list[str] | None,
+    ontology_summary: str = "",
+    *,
+    mention_index: Any | None = None,
+    require_semantic: bool = False,
+    embed_fn: Any | None = None,
+) -> str | None:
+    """Async resolve: embed ``label`` then :func:`resolve_type_name` (ONTA-537).
+
+    Prefer this when a mention index may be ready. Inject ``embed_fn`` in
+    hermetic tests (FakeEmbedder); omit to use the OpenRouter client
+    (raises :class:`EmbedConfigError` when ``require_semantic`` and no key).
+    """
+    from infona_client.nlp.ontology_mention_index import (
+        EmbedConfigError,
+        OntologyMentionIndex,
+        get_process_mention_index,
+        openrouter_embed_fn,
+    )
+
+    index = mention_index if mention_index is not None else get_process_mention_index()
+    names = (
+        list(type_names)
+        if type_names is not None
+        else extract_type_names_from_ontology(ontology_summary)
+    )
+    ready = isinstance(index, OntologyMentionIndex) and index.types_fully_embedded(
+        names if names else None
+    )
+    use_semantic = require_semantic or ready
+    if not use_semantic:
+        return resolve_type_name(
+            label, type_names, ontology_summary, require_semantic=require_semantic
+        )
+
+    if not ready:
+        if require_semantic:
+            raise EmbedConfigError(
+                "require_semantic set but ontology mention index is missing "
+                "or partial (not every allowed type candidate is embedded)."
+            )
+        return resolve_type_name(label, type_names, ontology_summary)
+
+    fn = embed_fn
+    if fn is None:
+        fn = openrouter_embed_fn()
+    vecs = await fn([label.strip()])
+    if not vecs:
+        if require_semantic:
+            return None
+        return resolve_type_name(label, type_names, ontology_summary)
+    return resolve_type_name(
+        label,
+        type_names,
+        ontology_summary,
+        mention_index=index,
+        query_embedding=vecs[0],
+        require_semantic=require_semantic,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -874,6 +1045,12 @@ def _resolve_relationship_attr(
 
     Only returns leaves that the ontology marks as **relationships** on the
     subject type. No bare-text fallback onto literals.
+
+    **Semantic path (ONTA-537):** when a resolve context carries a mention
+    index with **every allowed rel leaf embedded** and a query embedding for
+    ``rel_word``, rank leaves via :meth:`OntologyMentionIndex.resolve_rel`
+    after the exact/token string fast path misses. Partial indexes skip
+    semantic (same guard as type resolve).
     """
     rel = (rel_word or "").strip()
     if not rel or not _SAFE_PROP_RE.match(rel):
@@ -897,7 +1074,37 @@ def _resolve_relationship_attr(
         parts = set(leaf.lower().split("_")) - {"has", "by", "the", "a", "an"}
         if rel_l in parts or sing in parts:
             return leaf
-    return None
+
+    # Semantic synonym path (e.g. "warehouse" → stored_in) under same guards
+    # as type resolve: full candidate embedding set + query vector.
+    from infona_client.nlp.ontology_mention_index import (
+        OntologyMentionIndex,
+        get_process_mention_index,
+        get_resolve_context,
+        lookup_query_embedding,
+    )
+
+    ctx = get_resolve_context()
+    index = (
+        ctx.mention_index
+        if ctx is not None and ctx.mention_index is not None
+        else get_process_mention_index()
+    )
+    if not isinstance(index, OntologyMentionIndex):
+        return None
+    if not index.rels_fully_embedded(leaves):
+        return None
+    query_embedding = lookup_query_embedding(rel, ctx)
+    if query_embedding is None:
+        # Also try singular form seed from pipeline phrase list.
+        query_embedding = lookup_query_embedding(sing, ctx)
+    if query_embedding is None:
+        return None
+    return index.resolve_rel(
+        rel,
+        query_embedding=query_embedding,
+        rel_names=leaves,
+    )
 
 
 def _attr_is_relationship(attr: str, type_name: str, ontology_summary: str) -> bool:
@@ -1669,6 +1876,7 @@ __all__ = [
     "ontology_from_graph_store",
     "records_to_bindings",
     "resolve_type_name",
+    "resolve_type_name_async",
     "try_deterministic_cypher",
     "try_filter_query",
     "try_hop_query",
