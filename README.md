@@ -78,14 +78,19 @@ No API key required for local open-access (`INFONA_API_KEYS` empty → tenant `d
 ### 4. Ingest, ask, export
 
 ```bash
-# Prefer workspace CLI until export is on a published release:
-node packages/cli/dist/cli.js --local --tenant default ingest examples/bookstore.csv --kg bookstore
-node packages/cli/dist/cli.js --local --tenant default ask "How many books are there?" --kg bookstore
+# Workspace CLI (until a published release ships export + local tenant defaults):
+node packages/cli/dist/cli.js --local ingest examples/bookstore.csv --kg bookstore
+node packages/cli/dist/cli.js --local ask "How many books are there?" --kg bookstore
 
 # Get data back out (F10)
-node packages/cli/dist/cli.js --local --tenant default export --kg bookstore -f json -o bookstore.json
-node packages/cli/dist/cli.js --local --tenant default export --kg bookstore -f csv --type Book -o books.csv
+node packages/cli/dist/cli.js --local export --kg bookstore -f json -o bookstore.json
+node packages/cli/dist/cli.js --local export --kg bookstore -f csv --type Book -o books.csv
 ```
+
+`--local` targets `http://localhost:8000` and defaults the tenant to **`default`**
+(open-access when `INFONA_API_KEYS` is empty). Reserved attribute leaves such as
+`name` are rewritten to ontology-safe names (e.g. `display_name`) so Neo4j ingest
+does not 500 on model B2 collisions.
 
 HTTP:
 
@@ -108,10 +113,11 @@ CSV / JSON / text
 ## CLI (self-hosted)
 
 ```bash
-infona --local                    # shell → http://localhost:8000
+infona --local                    # shell → http://localhost:8000, tenant default
 infona --local kg list
 infona --local ingest data.csv --kg my-dataset
 infona --local ask "How many records?" --kg my-dataset
+infona --local export --kg my-dataset -f json -o out.json
 infona --local export --kg my-dataset -f csv -o out.csv
 infona --local ontology types
 ```

@@ -45,6 +45,43 @@ RESERVED_ENTITY_PROPERTY_KEYS: frozenset[str] = frozenset(
     }
 )
 
+# Schema inference and CSV mappings often use reserved leaves (esp. ``name``)
+# for human labels. Entity system props own those keys; ontology attrs must
+# rename. Stable renames so re-ingest is idempotent (do not mint random suffixes).
+_RESERVED_ONTOLOGY_ATTR_RENAMES: dict[str, str] = {
+    "id": "external_id",
+    "tenant_id": "external_tenant_id",
+    "kg": "external_kg",
+    "primary_type": "external_primary_type",
+    "name": "display_name",
+    "label": "display_label",
+    "source": "source_label",
+    "created_at": "source_created_at",
+    "updated_at": "source_updated_at",
+    "elementId": "external_element_id",
+}
+
+
+def coerce_ontology_attr_leaf(name: str) -> str:
+    """Rewrite reserved Entity property keys to ontology-safe attribute leaves.
+
+    Catalog :func:`upsert_attribute` still **rejects** reserved keys (B2).
+    Call this at **schema / mapping time** so ingest and NL-inferred schemas
+    never hit a 500 on the golden path (e.g. ``Author.name`` → ``display_name``).
+    """
+    if not isinstance(name, str):
+        return name
+    raw = name.strip()
+    if not raw:
+        return raw
+    # Match ingest / attribute_resolver normalization loosely for the reserved set.
+    key = raw.lower().replace(" ", "_").replace("-", "_")
+    if key in _RESERVED_ONTOLOGY_ATTR_RENAMES:
+        return _RESERVED_ONTOLOGY_ATTR_RENAMES[key]
+    if raw in RESERVED_ENTITY_PROPERTY_KEYS:
+        return _RESERVED_ONTOLOGY_ATTR_RENAMES.get(raw, f"attr_{raw}")
+    return raw
+
 # ER block-index leaves written as literal Assertions on the store path.
 # Must stay findable by GraphStoreBlocker (not dropped as "noise").
 _ER_BLOCK_KEY_LEAF = "blockKey"

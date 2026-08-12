@@ -212,9 +212,18 @@ export class Client {
     const url =
       opts.baseUrl ?? envVar("API_URL") ?? cfg.apiUrl ?? "https://api.infona.ai";
     this.baseUrl = url.replace(/\/+$/, "");
+    // Local/self-hosted open-access uses tenant "default". Hosted SDK default
+    // remains demo-tenant. --local passes baseUrl=http://localhost:8000.
+    const isLocalHost = /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:|\/|$)/i.test(
+      this.baseUrl,
+    );
     // May still be a Clerk user id from a legacy login; healTenantIfNeeded()
     // rewrites it to a real workspace on the first graph request.
-    this.tenant = opts.tenant ?? envVar("TENANT") ?? cfg.tenant ?? "demo-tenant";
+    this.tenant =
+      opts.tenant ??
+      envVar("TENANT") ??
+      cfg.tenant ??
+      (isLocalHost ? "default" : "demo-tenant");
     this.raw = new RawApi(this);
   }
 

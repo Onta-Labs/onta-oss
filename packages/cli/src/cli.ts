@@ -25,9 +25,17 @@ function client(): Client {
   // Honor the global flags: --tenant overrides the saved default for this
   // command; --local points at a self-hosted backend. Both fall through to
   // env / ~/.infona/config.json when not passed.
+  //
+  // When --local and no explicit --tenant, force tenant "default" so a
+  // leftover ~/.infona config (demo-tenant from cloud login) cannot steal
+  // open-access local traffic (matches shell mode).
   const g = program.opts() as { tenant?: string; local?: boolean };
   return new Client({
-    ...(g.tenant ? { tenant: g.tenant } : {}),
+    ...(g.tenant
+      ? { tenant: g.tenant }
+      : g.local
+        ? { tenant: "default" }
+        : {}),
     ...(g.local ? { baseUrl: "http://localhost:8000" } : {}),
   });
 }
