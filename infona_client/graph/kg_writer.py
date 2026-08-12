@@ -75,12 +75,13 @@ from infona_client.graph.queries import (
     is_valid_kg_name,
     kg_meta_uri,
     parse_kg_graph_uri,
+    parse_tenant_graph_uri,
     rewrite_predicate_update,
     select_subject_predicate_objects_query,
     tenant_graph_uri,
 )
 from infona_client.graph.facts import Fact, triples_to_facts
-from infona_client.graph.scope import GraphScope, GraphScopeError
+from infona_client.graph.scope import GraphScope, GraphScopeError, ONTOLOGY_KG
 
 # NOTE: `graph_backend` used to be defined here as well as in `graph/store.py`.
 # Two copies of a backend switch is exactly the drift ONTA-527 removes — the one
@@ -161,6 +162,14 @@ def _resolve_graph_session(
     2. Explicit ``store`` + scope derived from graph URI or tenant/kg
     3. Process :func:`get_optional_graph_store` (Neo4j / injected test store)
 
+    Scope derivation from ``instance_graph``:
+
+    * per-KG URI (``…/graphs/<t>/kg/<kg>``) → :meth:`GraphScope.for_instance`
+    * bare tenant ontology URI (``…/graphs/<t>``) →
+      :meth:`GraphScope.for_catalog` (``layer='tenant'``, ``kg=__ontology__``) —
+      the path tenant-config stores use (normalization rules, clean/verify
+      policies; ONTA-529)
+
     Never returns ``None``: Neo4j is the only backend (ONTA-527), so there is
     no SPARQL path to fall back to. Raises :class:`GraphConfigError` when no
     store is configured and :class:`GraphScopeError` when the scope cannot be
@@ -171,8 +180,8 @@ def _resolve_graph_session(
         # closed if they disagree — silent cross-scope writes are worse than a
         # loud GraphScopeError (isolation / ADR 0012).
         if instance_graph:
-            scope_pair = parse_kg_graph_uri(instance_graph)
             sess_scope = getattr(session, "scope", None)
+            scope_pair = parse_kg_graph_uri(instance_graph)
             if (
                 scope_pair is not None
                 and sess_scope is not None
@@ -186,6 +195,20 @@ def _resolve_graph_session(
                     f"{getattr(sess_scope, 'kg', None)!r}) does not match "
                     f"instance_graph ({scope_pair[0]!r}/{scope_pair[1]!r})"
                 )
+            catalog_tid = parse_tenant_graph_uri(instance_graph)
+            if (
+                catalog_tid is not None
+                and sess_scope is not None
+                and (
+                    getattr(sess_scope, "tenant_id", None) != catalog_tid
+                    or getattr(sess_scope, "kg", None) != ONTOLOGY_KG
+                )
+            ):
+                raise GraphScopeError(
+                    f"session scope ({getattr(sess_scope, 'tenant_id', None)!r}/"
+                    f"{getattr(sess_scope, 'kg', None)!r}) does not match "
+                    f"tenant catalog graph ({catalog_tid!r}/{ONTOLOGY_KG!r})"
+                )
         return session
     if store is None:
         from infona_client.graph.store import get_optional_graph_store
@@ -194,12 +217,20 @@ def _resolve_graph_session(
     tid, kg = tenant_id, kg_name
     if (not tid or not kg) and instance_graph:
         scope_pair = parse_kg_graph_uri(instance_graph)
-        if scope_pair is None:
+        if scope_pair is not None:
+            tid, kg = scope_pair
+        else:
+            # Tenant ontology graph → catalog scope (rules / policies / schema
+            # metadata live here, never in a per-KG instance scope).
+            catalog_tid = parse_tenant_graph_uri(instance_graph)
+            if catalog_tid is not None:
+                return store.session(
+                    GraphScope.for_catalog(layer="tenant", tenant_id=catalog_tid)
+                )
             raise GraphScopeError(
                 f"Cannot derive tenant/kg scope from instance_graph={instance_graph!r}; "
-                "pass tenant_id+kg_name or a per-KG graph URI"
+                "pass tenant_id+kg_name, a per-KG graph URI, or a tenant ontology graph URI"
             )
-        tid, kg = scope_pair
     if not tid or not kg:
         raise GraphScopeError(
             "Neo4j write path requires tenant_id and kg (or a parseable instance_graph)"

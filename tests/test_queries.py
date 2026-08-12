@@ -200,3 +200,19 @@ def test_kg_graph_uri_round_trips_through_parse():
     from infona_client.graph.queries import kg_graph_uri, parse_kg_graph_uri
 
     assert parse_kg_graph_uri(kg_graph_uri("acme", "imdb")) == ("acme", "imdb")
+
+
+def test_tenant_graph_uri_round_trips_through_parse():
+    """ONTA-529: bare tenant ontology graph is distinct from per-KG URIs."""
+    from infona_client.graph.queries import (
+        kg_graph_uri,
+        parse_kg_graph_uri,
+        parse_tenant_graph_uri,
+        tenant_graph_uri,
+    )
+
+    assert parse_tenant_graph_uri(tenant_graph_uri("acme")) == "acme"
+    # Per-KG and companion URIs must NOT parse as tenant catalog graphs.
+    assert parse_tenant_graph_uri(kg_graph_uri("acme", "imdb")) is None
+    assert parse_tenant_graph_uri(tenant_graph_uri("acme") + "/versions") is None
+    assert parse_kg_graph_uri(tenant_graph_uri("acme")) is None

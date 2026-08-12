@@ -1,24 +1,22 @@
 """Tests for the inferred data-normalization subsystem.
 
 Three layers:
-  1. Rule store roundtrip (save -> list/get -> update_status) against a fake
-     Neptune that maintains a real quad store and evaluates the handful of SPARQL
-     shapes the store/executor emit.
+  1. Rule store roundtrip (save -> list/get -> update_status) against a
+     :class:`~infona_client.graph.memory_store.MemoryGraphStore` (ONTA-529 —
+     catalog scope + GraphStore reads).
   2. Inference: stub openrouter_chat and assert a ranked suggested rule is built
      for a delimited sample, and NO rule for atomic samples.
   3. Execution (the important one): seed composite `speaks` edges, apply_rule, and
      assert canonical-IRI dedup, edge rewrite, composite drop, and idempotency.
 
-**ONTA-527 — read this before "fixing" anything here.** Layers 1 and 3 are
-xfail(strict) on TWO product bugs; nothing in them was fixed or loosened, and the
-FakeNeptune below is kept because it is still what the module under test READS
-through:
+**ONTA-527 / ONTA-529 — read this before "fixing" anything here.**
 
-* ``_RULE_STORE_WRITE_BUG`` — ``NormalizationRuleStore.save`` cannot write on the
-  Neo4j path, which also takes every ``/normalize`` route down with it (layer 4).
-* ``_EXECUTOR_SPLIT_BRAIN_BUG`` — ``normalization/execute.py`` READS through
-  SPARQL and WRITES through the converged GraphStore path, so ``apply_rule``
-  cannot observe its own writes.
+* ``_RULE_STORE_WRITE_BUG`` — FIXED in ONTA-529. ``NormalizationRuleStore`` now
+  writes via ``GraphScope.for_catalog(layer='tenant')`` and reads via GraphStore.
+  Layer 1 and the ``/normalize`` route surface (layer 4) are green.
+* ``_EXECUTOR_SPLIT_BRAIN_BUG`` — STILL OPEN. ``normalization/execute.py`` READS
+  through SPARQL and WRITES through the converged GraphStore path, so
+  ``apply_rule`` cannot observe its own writes. Layer 3 stays xfail(strict).
 
 Layer 2 (inference) still passes and is left alone: it only READS, and its
 decision logic — which predicates warrant which rules, ranked how — is
@@ -38,6 +36,10 @@ import re
 
 import pytest
 
+from infona_client.graph import pg_ops
+from infona_client.graph.memory_store import MemoryGraphStore
+from infona_client.graph.scope import GraphScope
+from infona_client.graph.store import configure_graph_store, reset_graph_store_for_tests
 from infona_client.normalization import execute as execute_mod
 from infona_client.normalization import inference as inference_mod
 from infona_client.normalization.execute import apply_rule
@@ -59,34 +61,9 @@ KG = "june-16"
 
 
 # --------------------------------------------------------------------------- #
-# The two product bugs this file is xfailed on (ONTA-527). Both are write-path
-# defects in shipped code; neither is a harness problem, and neither can be
-# worked around from a test.
+# Remaining product bug this file is still xfailed on (ONTA-527). Store write
+# + read (ONTA-529) is fixed; the executor split-brain is not.
 # --------------------------------------------------------------------------- #
-_RULE_STORE_WRITE_BUG = (
-    "BUG (surfaced by ONTA-527): NormalizationRuleStore cannot persist a rule on "
-    "the Neo4j path, so the whole /normalize surface is down. "
-    "normalization/rules.py::save (rules.py:151) does its clear-then-write "
-    "through the converged write path — kg_writer.delete_facts then insert_facts "
-    "— passing the TENANT ONTOLOGY graph (queries.tenant_graph_uri -> "
-    "'.../graphs/<tenant>'), because a rule row is tenant config, not instance "
-    "data. kg_writer._resolve_graph_session only ever derives "
-    "GraphScope.for_instance from a PER-KG uri ('.../graphs/<t>/kg/<kg>') via "
-    "parse_kg_graph_uri, so a tenant/ontology graph raises GraphScopeError "
-    "'Cannot derive tenant/kg scope'. Route-visible: POST "
-    "/graphs/{t}/normalize/suggest (normalize.py:204) and POST "
-    "/graphs/{t}/normalize/rules (normalize.py:188) both 500 with that "
-    "GraphScopeError, so no rule can be suggested, created, confirmed or "
-    "applied. The scope it needs already exists — "
-    "GraphScope.for_catalog(layer='tenant', tenant_id=...) (kg='__ontology__'); "
-    "insert_facts writes fine when handed that session explicitly — so the fix is "
-    "one branch in _resolve_graph_session (or the store passing a catalog "
-    "session), NOT a change to these tests. get()/list() are independently dead: "
-    "they still issue raw SPARQL through NeptuneClient. Identical defect in "
-    "normalization/policy.py::CleanPolicyStore and "
-    "verification/policy.py::VerifyPolicyStore."
-)
-
 _EXECUTOR_SPLIT_BRAIN_BUG = (
     "BUG (surfaced by ONTA-527): normalization/execute.py is split-brained — it "
     "READS through SPARQL (`await neptune.query(...)` for the explode SELECT, the "
@@ -546,13 +523,21 @@ def _unescape(s: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# 1. Rule store roundtrip
+# 1. Rule store roundtrip (GraphStore / catalog scope — ONTA-529)
 # --------------------------------------------------------------------------- #
-@pytest.mark.xfail(reason=_RULE_STORE_WRITE_BUG, strict=True)
+@pytest.fixture
+def memory_store():
+    """Install a hermetic MemoryGraphStore for catalog config writes/reads."""
+    reset_graph_store_for_tests()
+    store = MemoryGraphStore()
+    configure_graph_store(store)
+    yield store
+    reset_graph_store_for_tests()
+
+
 @pytest.mark.asyncio
-async def test_rule_store_roundtrip():
-    neptune = FakeNeptune()
-    store = NormalizationRuleStore(neptune)
+async def test_rule_store_roundtrip(memory_store):
+    store = NormalizationRuleStore(FakeNeptune())  # neptune arg is vestigial
     rule = NormalizationRule(
         id=make_rule_id(KG, "Mentor", "speaks"),
         kg_name=KG,
@@ -585,15 +570,18 @@ async def test_rule_store_roundtrip():
     # Wrong-status filter returns nothing.
     assert await store.list(TENANT, status="confirmed") == []
 
-    # update_status flips status (and is idempotent on re-save: no dup triples).
+    # update_status flips status (and is idempotent on re-save: no stale status).
     updated = await store.update_status(TENANT, rule.id, "confirmed")
     assert updated is not None and updated.status == "confirmed"
     again = await store.get(TENANT, rule.id)
     assert again.status == "confirmed"
-    # exactly one status triple after the flip (no stale "suggested" left behind)
-    graph = neptune.graphs["https://graph.infona.ai/graphs/t1"]
-    status_triples = [t for t in graph if t[0] == rule.uri and t[1].endswith("/status")]
-    assert len(status_triples) == 1 and status_triples[0][2] == "confirmed"
+    # Exactly one status value on the entity after the flip (clear-then-write).
+    sess = memory_store.session(
+        GraphScope.for_catalog(layer="tenant", tenant_id=TENANT)
+    )
+    ent = await pg_ops.get_entity(sess, rule.uri)
+    assert ent is not None
+    assert ent["props"].get("norm_status") == "confirmed"
 
     # update_status of a missing rule returns None.
     assert await store.update_status(TENANT, "nope", "applied") is None
@@ -1530,13 +1518,21 @@ def route_client(monkeypatch):
 
     from infona_client.api.app import create_app
 
+    # Rule store writes/reads go to GraphStore (ONTA-529); inference SELECTs
+    # still hit the vestigial SPARQL client (FakeNeptune) until execute is ported.
+    reset_graph_store_for_tests()
+    gstore = MemoryGraphStore()
+    configure_graph_store(gstore)
     neptune = FakeNeptune()
     app = create_app()
     app.state.neptune_client = neptune
-    return TestClient(app), neptune
+    client = TestClient(app)
+    try:
+        yield client, neptune
+    finally:
+        reset_graph_store_for_tests()
 
 
-@pytest.mark.xfail(reason=_RULE_STORE_WRITE_BUG, strict=True)
 def test_route_suggest_persists_and_lists(route_client, monkeypatch):
     client, neptune = route_client
     # Seed ontology + a composite instance for the fake under the test-tenant.
@@ -1589,10 +1585,7 @@ def test_route_suggest_persists_and_lists(route_client, monkeypatch):
 
 
 def test_route_apply_missing_rule_404(route_client):
-    # Passes only because the store's READ half is still SPARQL and the fake
-    # answers it with no rows (_RULE_STORE_WRITE_BUG covers the write half). In
-    # production that read reaches the vestigial NeptuneClient, so a missing rule
-    # surfaces as a connection error, not a 404.
+    # GraphStore read of a missing rule id returns None → route 404 (ONTA-529).
     client, _ = route_client
     h = {"X-API-Key": "test-key"}
     res = client.post("/graphs/test-tenant/normalize/rules/does-not-exist/apply", headers=h)
@@ -1615,7 +1608,6 @@ def _create_body(**overrides) -> dict:
     return body
 
 
-@pytest.mark.xfail(reason=_RULE_STORE_WRITE_BUG, strict=True)
 def test_route_create_strip_emoji_rule_persists_and_retrievable(route_client):
     client, _ = route_client
     h = {"X-API-Key": "test-key"}
@@ -1642,7 +1634,6 @@ def test_route_create_strip_emoji_rule_persists_and_retrievable(route_client):
     assert [r["id"] for r in listed.json()] == [rule_id]
 
 
-@pytest.mark.xfail(reason=_RULE_STORE_WRITE_BUG, strict=True)
 def test_route_create_confirmed_status_is_stored_confirmed(route_client):
     client, _ = route_client
     h = {"X-API-Key": "test-key"}
@@ -1675,7 +1666,6 @@ def test_route_create_unknown_rule_type_422(route_client):
     assert res.status_code == 422
 
 
-@pytest.mark.xfail(reason=_RULE_STORE_WRITE_BUG, strict=True)
 def test_route_create_promote_to_node_rule_persists(route_client):
     """ADR 0009's literal→node escape hatch is user-authorable via POST /rules even
     though inference has no promotion heuristic — a promote_to_node rule persists,
@@ -1699,7 +1689,6 @@ def test_route_create_promote_to_node_rule_persists(route_client):
     assert created["params"] == {"target_type": "Rating", "key_by": "owner"}
 
 
-@pytest.mark.xfail(reason=_RULE_STORE_WRITE_BUG, strict=True)
 def test_route_create_promote_to_node_key_by_optional(route_client):
     """key_by defaults to "value" in the executor, so it may be omitted — as long as
     the REQUIRED target_type is present, a minimal promote_to_node rule is accepted."""
@@ -1768,7 +1757,6 @@ def test_route_create_list_explode_without_delimiters_422(route_client):
     assert res.status_code == 422
 
 
-@pytest.mark.xfail(reason=_RULE_STORE_WRITE_BUG, strict=True)
 def test_route_create_list_explode_valid(route_client):
     client, _ = route_client
     h = {"X-API-Key": "test-key"}
@@ -1789,11 +1777,10 @@ def test_route_create_list_explode_valid(route_client):
     assert body["id"] == make_rule_id("june-16", "Mentor", "skills", "list_explode")
 
 
-@pytest.mark.xfail(reason=_RULE_STORE_WRITE_BUG, strict=True)
 def test_route_create_is_upsert_no_duplicate(route_client):
     """Creating the SAME (kg, type, predicate, rule_type) twice yields ONE rule
-    (the store clears prior triples before re-writing), not two."""
-    client, neptune = route_client
+    (the store clears prior facts before re-writing), not two."""
+    client, _neptune = route_client
     h = {"X-API-Key": "test-key"}
 
     first = client.post("/graphs/test-tenant/normalize/rules", json=_create_body(), headers=h)
@@ -1816,8 +1803,21 @@ def test_route_create_is_upsert_no_duplicate(route_client):
     assert len(matching) == 1
     assert matching[0]["confidence"] == pytest.approx(0.5)  # latest write wins
 
-    # And no stale rdf:type triple duplication in the underlying store.
-    graph = neptune.graphs["https://graph.infona.ai/graphs/test-tenant"]
+    # And a single Entity of this id remains in the catalog scope (upsert, not dup).
+    import asyncio
+
+    from infona_client.graph.store import get_optional_graph_store
+
+    gstore = get_optional_graph_store()
+    sess = gstore.session(
+        GraphScope.for_catalog(layer="tenant", tenant_id="test-tenant")
+    )
     uri = "https://graph.infona.ai/entities/NormalizationRule/" + rule_id
-    type_triples = [t for t in graph if t[0] == uri and t[1] == RDF_TYPE]
-    assert len(type_triples) == 1
+
+    async def _check():
+        ent = await pg_ops.get_entity(sess, uri)
+        assert ent is not None
+        assert ent["primary_type"] == "NormalizationRule"
+        assert ent["props"].get("norm_confidence") == pytest.approx(0.5)
+
+    asyncio.run(_check())
