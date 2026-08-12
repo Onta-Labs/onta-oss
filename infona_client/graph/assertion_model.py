@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any, Literal, Mapping
 
@@ -29,6 +30,15 @@ ObjectKeyKind = Literal["literal", "entity", "class"]
 
 # Well-known type-membership Property leaf (model §5.3).
 TYPE_MEMBERSHIP_LEAF = "rdf_type"
+
+# SPARQL-era typed lexical form: ``"15.49^^http://www.w3.org/2001/XMLSchema#float"``
+# or bare-prefix ``"true^^xsd:boolean"``. The store path must not persist the
+# ``^^datatype`` suffix as a Neo4j string — it breaks ``toFloat()`` / numeric
+# Cypher filters and equality against clean user params.
+_RDF_TYPED_LITERAL_RE = re.compile(
+    r"^(?P<lexical>.*)\^\^(?P<dtype>https?://\S+|xsd:[A-Za-z0-9_-]+)\s*$",
+    re.DOTALL,
+)
 
 
 def property_uri(leaf: str) -> str:
@@ -43,8 +53,61 @@ def type_membership_property_id() -> str:
     return property_uri(TYPE_MEMBERSHIP_LEAF)
 
 
+def strip_rdf_datatype_suffix(value: str) -> tuple[str, str | None]:
+    """Split a SPARQL-era ``lexical^^datatype`` string.
+
+    Returns ``(lexical, datatype_or_None)``. A bare string that happens to
+    contain ``^^`` without a URI/xsd datatype tail is left intact.
+    """
+    if not isinstance(value, str) or "^^" not in value:
+        return value, None
+    m = _RDF_TYPED_LITERAL_RE.match(value.strip())
+    if not m:
+        return value, None
+    return m.group("lexical"), m.group("dtype")
+
+
+def normalize_store_literal(value: Any) -> Any:
+    """Normalize a Fact/Assertion literal for Neo4j storage.
+
+    Ingest validates triples with :func:`resolver.validator._typed_value`, which
+    stamps ``lexical^^xsd-uri`` for non-string datatypes (SPARQL wire form).
+    On the property-graph path those must become **native** values so Cypher
+    ``toFloat(e.price)`` and numeric filters work. Idempotent on already-clean
+    numbers / plain strings.
+    """
+    if value is None or isinstance(value, bool):
+        return value
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, float):
+        return value
+    if not isinstance(value, str):
+        return value
+    lexical, dtype = strip_rdf_datatype_suffix(value)
+    if dtype is None:
+        return lexical
+    d = dtype.lower()
+    if "boolean" in d:
+        return lexical.strip().lower() in ("true", "1")
+    if any(tok in d for tok in ("integer", "long", "int", "short", "byte", "nonnegativeinteger", "positiveinteger")):
+        try:
+            return int(lexical.strip())
+        except ValueError:
+            return lexical
+    if any(tok in d for tok in ("float", "double", "decimal")):
+        try:
+            return float(lexical.strip())
+        except ValueError:
+            return lexical
+    # dateTime / date / string-like XSD: keep lexical, drop the suffix.
+    return lexical
+
+
 def canonical_literal(value: Any) -> str:
     """Serialize a literal for Assertion identity / multiset compare keys."""
+    # Identity must match what we store: strip SPARQL typing first.
+    value = normalize_store_literal(value)
     if value is None:
         return "null"
     if isinstance(value, bool):

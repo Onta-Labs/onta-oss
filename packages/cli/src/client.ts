@@ -212,9 +212,18 @@ export class Client {
     const url =
       opts.baseUrl ?? envVar("API_URL") ?? cfg.apiUrl ?? "https://api.infona.ai";
     this.baseUrl = url.replace(/\/+$/, "");
+    // Local/self-hosted open-access uses tenant "default". Hosted SDK default
+    // remains demo-tenant. --local passes baseUrl=http://localhost:8000.
+    const isLocalHost = /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:|\/|$)/i.test(
+      this.baseUrl,
+    );
     // May still be a Clerk user id from a legacy login; healTenantIfNeeded()
     // rewrites it to a real workspace on the first graph request.
-    this.tenant = opts.tenant ?? envVar("TENANT") ?? cfg.tenant ?? "demo-tenant";
+    this.tenant =
+      opts.tenant ??
+      envVar("TENANT") ??
+      cfg.tenant ??
+      (isLocalHost ? "default" : "demo-tenant");
     this.raw = new RawApi(this);
   }
 
@@ -425,6 +434,10 @@ export class Client {
   }
   /** @internal */ pTypeCounts(kg: string): string {
     return `${this.pKg(kg)}/type-counts`;
+  }
+  /** @internal KG export (F10) — JSON or CSV of instance rows. */
+  pExport(kg: string, query?: string): string {
+    return `${this.pKg(kg)}/export${query ?? ""}`;
   }
   /** @internal */ pExploreSummary(kg: string, typeName: string): string {
     return `${this.base()}/explore/kgs/${encodeURIComponent(kg)}/types/${encodeURIComponent(typeName)}/summary`;
@@ -744,12 +757,16 @@ export class Client {
       // attribute names (enrichment sources, joins) are never broken by a
       // model renaming a column.
       const T = opts.typeName;
+      // First column is type_id / entity key. Use the CSV header as the
+      // attribute leaf — never force attribute_name "name": on Neo4j that
+      // collides with reserved Entity.name (model B2) and 500s at ontology
+      // commit. Entity display name still comes from the type_id value.
       mappingToPost = {
         entity_type: T,
         columns: headers.map((h, i) => ({
           column_name: h,
           role: i === 0 ? "type_id" : "attribute",
-          attribute_name: i === 0 ? "name" : h,
+          attribute_name: h,
           entity: T,
         })),
         entities: [
@@ -992,6 +1009,26 @@ export class Client {
       `${this.base()}/kgs/${encodeURIComponent(name)}`,
       undefined,
       30_000,
+    );
+  }
+
+  /**
+   * Export KG instance data (`GET /kgs/{kg}/export`).
+   * JSON → parsed object; CSV → raw string body.
+   */
+  async exportKg(
+    kg: string,
+    opts: { format?: "json" | "csv"; type?: string; limit?: number } = {},
+  ): Promise<Record<string, unknown> | string> {
+    const qs = new URLSearchParams();
+    qs.set("format", opts.format ?? "json");
+    if (opts.type) qs.set("type", opts.type);
+    if (opts.limit != null) qs.set("limit", String(opts.limit));
+    return this.request<Record<string, unknown> | string>(
+      "GET",
+      this.pExport(kg, `?${qs.toString()}`),
+      undefined,
+      120_000,
     );
   }
 
@@ -2585,6 +2622,23 @@ export class RawApi {
   /** `GET /graphs/{tenant}/kgs/{kg}/type-counts`. */
   typeCounts(kg: string, init?: RawInit): Promise<Response> {
     return this.client.requestRaw("GET", this.client.pTypeCounts(kg), init);
+  }
+
+  /** `GET /graphs/{tenant}/kgs/{kg}/export?format&type&limit` (F10). */
+  exportKg(
+    kg: string,
+    opts: { format?: "json" | "csv"; type?: string; limit?: number } = {},
+    init?: RawInit,
+  ): Promise<Response> {
+    const qs = new URLSearchParams();
+    qs.set("format", opts.format ?? "json");
+    if (opts.type) qs.set("type", opts.type);
+    if (opts.limit != null) qs.set("limit", String(opts.limit));
+    return this.client.requestRaw(
+      "GET",
+      this.client.pExport(kg, `?${qs.toString()}`),
+      init,
+    );
   }
 
   /** `POST /graphs/{tenant}/search` — canonical semantic instance search

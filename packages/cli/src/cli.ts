@@ -25,9 +25,17 @@ function client(): Client {
   // Honor the global flags: --tenant overrides the saved default for this
   // command; --local points at a self-hosted backend. Both fall through to
   // env / ~/.infona/config.json when not passed.
+  //
+  // When --local and no explicit --tenant, force tenant "default" so a
+  // leftover ~/.infona config (demo-tenant from cloud login) cannot steal
+  // open-access local traffic (matches shell mode).
   const g = program.opts() as { tenant?: string; local?: boolean };
   return new Client({
-    ...(g.tenant ? { tenant: g.tenant } : {}),
+    ...(g.tenant
+      ? { tenant: g.tenant }
+      : g.local
+        ? { tenant: "default" }
+        : {}),
     ...(g.local ? { baseUrl: "http://localhost:8000" } : {}),
   });
 }
@@ -1297,6 +1305,53 @@ program
       process.stdout.write("  (Sign in for interactive viz, search, and click-to-enrich.)\n\n");
     });
   });
+
+// ---------------------------------------------------------------------------
+// export (F10 — get data back out)
+// ---------------------------------------------------------------------------
+
+program
+  .command("export")
+  .description("Export a knowledge graph as JSON or CSV")
+  .requiredOption("--kg <name>", "Context graph to export")
+  .option(
+    "-f, --format <fmt>",
+    "Output format: json (default) or csv",
+    "json",
+  )
+  .option("-t, --type <type>", "Export a single type only")
+  .option("--limit <n>", "Max rows (default server cap)", (v) => parseInt(v, 10))
+  .option("-o, --out <file>", "Write to file instead of stdout")
+  .action(
+    async (opts: {
+      kg: string;
+      format?: string;
+      type?: string;
+      limit?: number;
+      out?: string;
+    }) => {
+      await withErrors(async () => {
+        const fmt = (opts.format ?? "json").toLowerCase();
+        if (fmt !== "json" && fmt !== "csv") {
+          fail(`Unknown format '${fmt}' (use json or csv)`);
+        }
+        const data = await client().exportKg(opts.kg, {
+          format: fmt as "json" | "csv",
+          type: opts.type,
+          limit: opts.limit,
+        });
+        const text =
+          typeof data === "string" ? data : JSON.stringify(data, null, 2) + "\n";
+        if (opts.out) {
+          const { writeFileSync } = await import("node:fs");
+          writeFileSync(opts.out, text, "utf-8");
+          process.stderr.write(`Wrote ${opts.out}\n`);
+        } else {
+          process.stdout.write(text.endsWith("\n") ? text : text + "\n");
+        }
+      });
+    },
+  );
 
 // ---------------------------------------------------------------------------
 // clear

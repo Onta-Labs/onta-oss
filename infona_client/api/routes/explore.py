@@ -1997,6 +1997,33 @@ async def _records_from_explore_store(
                 row[display] = ", ".join(str(x) for x in v)
             else:
                 row[display] = "" if v is None else str(v)
+        # Surface outbound relationship targets as columns (export/CSV honesty).
+        # Prefer entity display names from has_* edges over slugified dual-written
+        # literals (e.g. author="George_Orwell_Secker___Warburg" from ingest).
+        if detail is not None:
+            for rel in getattr(detail, "outgoing", ()) or ():
+                leaf = str(getattr(rel, "attr", None) or getattr(rel, "rel_type", "") or "")
+                if not leaf:
+                    continue
+                friendly = leaf[4:] if leaf.startswith("has_") else leaf
+                label = (
+                    getattr(rel, "other_name", None)
+                    or (getattr(rel, "other_id", "") or "").rstrip("/").split("/")[-1]
+                    or ""
+                )
+                if not label:
+                    continue
+                for col in dict.fromkeys((leaf, friendly)):
+                    if not col:
+                        continue
+                    if col not in col_set:
+                        col_set.add(col)
+                        col_display.append(col)
+                    prev = str(row.get(col) or "")
+                    if not prev or "___" in prev:
+                        row[col] = label
+                    elif label not in prev.split(", "):
+                        row[col] = f"{prev}, {label}"
         # Fill blanks for columns already discovered on earlier rows.
         for c in col_display:
             row.setdefault(c, "")

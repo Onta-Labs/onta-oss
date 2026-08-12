@@ -38,7 +38,9 @@ if TYPE_CHECKING:
 TEMPLATE_ENTITIES_OF_TYPE = "entities_of_type"
 TEMPLATE_ENTITIES_OF_TYPE_COUNT = "entities_of_type_count"
 TEMPLATE_LITERAL_VALUES = "literal_values"
+TEMPLATE_LITERAL_COMPARE = "literal_compare"
 TEMPLATE_RELATED_ENTITIES = "related_entities"
+TEMPLATE_RELATED_ENTITY_NAME_FILTER = "related_entity_name_filter"
 TEMPLATE_ASSERTIONS_FOR_SUBJECT = "assertions_for_subject"
 TEMPLATE_SUBCLASS_OF_CLOSURE = "subclass_of_closure"
 
@@ -75,6 +77,10 @@ RETURN count(DISTINCT e) AS n
 
 # Prefer Assertion literal SoT; Entity property cache is secondary (dual-written
 # after Assertion by apply_facts / assert_fact).
+# Equality matches raw values OR normalized forms: strip SPARQL-era
+# ``lexical^^xsd-uri`` suffixes (legacy graphs), then string-compare the
+# lexical half and allow toFloat equality when both sides are numeric so
+# native store numbers still match string $prop_value from NL fixtures.
 LITERAL_VALUES_CYPHER = """
 MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
   tenant_id: $tenant_id, kg: $kg
@@ -82,11 +88,154 @@ MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
 WHERE c.name IN $type_names OR c.id IN $type_names
 OPTIONAL MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg, subject_id: e.id})
   -[:PREDICATE]->(p:Property {tenant_id: $tenant_id, kg: $kg})
-WHERE p.name = $prop_key AND a.literal_value = $prop_value
+WHERE p.name = $prop_key AND (
+  a.literal_value = $prop_value
+  OR (
+    CASE
+      WHEN toString(a.literal_value) CONTAINS '^^'
+        THEN split(toString(a.literal_value), '^^')[0]
+      ELSE toString(a.literal_value)
+    END
+    =
+    CASE
+      WHEN toString($prop_value) CONTAINS '^^'
+        THEN split(toString($prop_value), '^^')[0]
+      ELSE toString($prop_value)
+    END
+  )
+  OR (
+    toFloat(
+      CASE
+        WHEN toString(a.literal_value) CONTAINS '^^'
+          THEN split(toString(a.literal_value), '^^')[0]
+        ELSE toString(a.literal_value)
+      END
+    ) =
+    toFloat(
+      CASE
+        WHEN toString($prop_value) CONTAINS '^^'
+          THEN split(toString($prop_value), '^^')[0]
+        ELSE toString($prop_value)
+      END
+    )
+  )
+)
 WITH DISTINCT e, a
-WHERE a IS NOT NULL OR e[$prop_key] = $prop_value
+WHERE a IS NOT NULL OR (
+  e[$prop_key] = $prop_value
+  OR (
+    CASE
+      WHEN toString(e[$prop_key]) CONTAINS '^^'
+        THEN split(toString(e[$prop_key]), '^^')[0]
+      ELSE toString(e[$prop_key])
+    END
+    =
+    CASE
+      WHEN toString($prop_value) CONTAINS '^^'
+        THEN split(toString($prop_value), '^^')[0]
+      ELSE toString($prop_value)
+    END
+  )
+  OR (
+    toFloat(
+      CASE
+        WHEN toString(e[$prop_key]) CONTAINS '^^'
+          THEN split(toString(e[$prop_key]), '^^')[0]
+        ELSE toString(e[$prop_key])
+      END
+    ) =
+    toFloat(
+      CASE
+        WHEN toString($prop_value) CONTAINS '^^'
+          THEN split(toString($prop_value), '^^')[0]
+        ELSE toString($prop_value)
+      END
+    )
+  )
+)
 RETURN e.id AS id, e.name AS name, e.primary_type AS primary_type,
        coalesce(a.literal_value, e[$prop_key]) AS literal_value
+ORDER BY e.id
+LIMIT $limit
+""".strip()
+
+# Numeric / inequality compare on a datatype property. Handles both native
+# store numbers and legacy SPARQL-era ``lexical^^xsd-uri`` strings still in
+# older graphs (split off the suffix before toFloat).
+LITERAL_COMPARE_CYPHER = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
+  tenant_id: $tenant_id, kg: $kg
+})
+WHERE c.name IN $type_names OR c.id IN $type_names
+OPTIONAL MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg, subject_id: e.id})
+  -[:PREDICATE]->(p:Property {tenant_id: $tenant_id, kg: $kg})
+WHERE p.name = $prop_key
+WITH e, coalesce(a.literal_value, e[$prop_key]) AS raw
+WHERE raw IS NOT NULL
+WITH e, raw,
+  toFloat(
+    CASE
+      WHEN toString(raw) CONTAINS '^^' THEN split(toString(raw), '^^')[0]
+      ELSE toString(raw)
+    END
+  ) AS num
+WHERE num IS NOT NULL AND (
+  ($op = 'lt' AND num < $threshold) OR
+  ($op = 'le' AND num <= $threshold) OR
+  ($op = 'gt' AND num > $threshold) OR
+  ($op = 'ge' AND num >= $threshold) OR
+  ($op = 'eq' AND num = $threshold)
+)
+RETURN e.id AS id, e.name AS name, e.primary_type AS primary_type,
+       coalesce(e.title, e.name) AS title, num AS value
+ORDER BY num, e.id
+LIMIT $limit
+""".strip()
+
+# Filter subjects of a type by a related entity's display name / name
+# (e.g. Book --HAS_GENRE--> Genre{display_name: "Classic Fiction"}).
+
+# Reverse of related_entity_name_filter: "products made by Acme" when the
+# edge is Organization-[:makes]->Product (object is the thing we return).
+RELATED_ENTITY_NAME_FILTER_INVERSE_CYPHER = """
+MATCH (maker:Entity {tenant_id: $tenant_id, kg: $kg})
+WHERE (
+    toLower(coalesce(maker.display_name, '')) = toLower($target_name)
+    OR toLower(coalesce(maker.name, '')) = toLower($target_name)
+    OR toLower(replace(coalesce(maker.name, ''), '_', ' ')) = toLower($target_name)
+    OR toLower(coalesce(maker.display_name, maker.name, '')) CONTAINS toLower($target_name)
+  )
+MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg})-[:SUBJECT]->(maker)
+MATCH (a)-[:OBJECT]->(e:Entity {tenant_id: $tenant_id, kg: $kg})
+MATCH (a)-[:PREDICATE]->(p:Property {tenant_id: $tenant_id, kg: $kg})
+WHERE p.name = $rel_attr
+MATCH (e)-[:INSTANCE_OF]->(c:Class {tenant_id: $tenant_id, kg: $kg})
+WHERE c.name IN $type_names OR c.id IN $type_names
+RETURN DISTINCT e.id AS id, coalesce(e.title, e.display_name, e.name) AS title,
+       e.primary_type AS primary_type,
+       coalesce(maker.display_name, maker.name) AS related_name
+ORDER BY e.id
+LIMIT $limit
+""".strip()
+
+RELATED_ENTITY_NAME_FILTER_CYPHER = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
+  tenant_id: $tenant_id, kg: $kg
+})
+WHERE c.name IN $type_names OR c.id IN $type_names
+MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg})-[:SUBJECT]->(e)
+MATCH (a)-[:OBJECT]->(t:Entity {tenant_id: $tenant_id, kg: $kg})
+MATCH (a)-[:PREDICATE]->(p:Property {tenant_id: $tenant_id, kg: $kg})
+WHERE p.name = $rel_attr
+  AND (
+    toLower(coalesce(t.display_name, '')) = toLower($target_name)
+    OR toLower(coalesce(t.name, '')) = toLower($target_name)
+    OR toLower(replace(coalesce(t.name, ''), '_', ' ')) = toLower($target_name)
+    OR toLower(coalesce(t.display_name, t.name, '')) CONTAINS toLower($target_name)
+  )
+RETURN DISTINCT e.id AS id, coalesce(e.title, e.name) AS title,
+       e.primary_type AS primary_type,
+       coalesce(t.display_name, t.name) AS related_name
 ORDER BY e.id
 LIMIT $limit
 """.strip()
@@ -870,14 +1019,19 @@ __all__ = [
     "ENTITIES_OF_TYPE_CYPHER",
     "LITERAL_VALUES_CYPHER",
     "RELATED_ENTITIES_CYPHER",
+    "RELATED_ENTITY_NAME_FILTER_CYPHER",
+    "RELATED_ENTITY_NAME_FILTER_INVERSE_CYPHER",
     "SUBCLASS_OF_CLOSURE_CYPHER",
     "SUBPROPERTY_DESCENDANTS_CYPHER",
     "TEMPLATE_ASSERTIONS_FOR_SUBJECT",
     "TEMPLATE_ENTITIES_OF_TYPE",
     "TEMPLATE_ENTITIES_OF_TYPE_COUNT",
+    "TEMPLATE_LITERAL_COMPARE",
     "TEMPLATE_LITERAL_VALUES",
     "TEMPLATE_RELATED_ENTITIES",
+    "TEMPLATE_RELATED_ENTITY_NAME_FILTER",
     "TEMPLATE_SUBCLASS_OF_CLOSURE",
+    "LITERAL_COMPARE_CYPHER",
     "assertion_to_history_row",
     "assertions_for_subject",
     "asserted_types",

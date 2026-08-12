@@ -133,7 +133,13 @@ def _normalize_attr_name(name: str) -> str:
     ``manufactured_by``, ``drugClass`` → ``drug_class``), and collapses
     repeated underscores. Underscore-free equality is handled separately in
     :func:`_find_existing_attr` via compact form.
+
+    Reserved Entity property keys (model B2: ``name``, ``label``, …) are
+    rewritten via :func:`coerce_ontology_attr_leaf` so schema inference cannot
+    mint ontology attrs that fail closed at Neo4j commit.
     """
+    from infona_client.graph.facts import coerce_ontology_attr_leaf
+
     s = (name or "").strip()
     # camelCase / PascalCase → snake_case before lowercasing, otherwise
     # ``ManufacturedBy`` collapses to the opaque ``manufacturedby``.
@@ -141,7 +147,7 @@ def _normalize_attr_name(name: str) -> str:
     s = re.sub(r"(?<=[A-Z])(?=[A-Z][a-z])", "_", s)
     s = re.sub(r"[^a-zA-Z0-9]+", "_", s)
     s = re.sub(r"_+", "_", s).strip("_").lower()
-    return s
+    return coerce_ontology_attr_leaf(s)
 
 
 def _strip_attr_prefixes(name: str) -> str:

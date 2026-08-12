@@ -2,7 +2,9 @@ name: Publish to npm
 
 on:
   push:
-    branches: [main]
+    # Product tip is neo4j (Infona rename + GraphStore). Keep main as well for
+    # any historical forks still publishing from default-branch naming.
+    branches: [main, neo4j]
     paths:
       - "packages/cli/**"
       - "packages/mcp/**"

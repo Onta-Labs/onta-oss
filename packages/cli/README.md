@@ -192,7 +192,7 @@ Prefer `INFONA_*` for new configs:
 
 Older env-var prefixes (`ONTA_*`, `INFONA_*`, `INFONA_*`) are still accepted for back-compat, so existing configs keep working unchanged.
 
-> PDF ingestion is not yet supported in the Node CLI. Use the Python CLI or POST raw bytes to the API.
+> PDF ingest is not supported on any surface (CLI, API, MCP). Extract text or tables first; CSV is the best-supported path.
 
 ## License
 
