@@ -1920,6 +1920,31 @@ class MemoryGraphStore:
             for r in rows
         ]
 
+    @staticmethod
+    def _literal_eq(store_val: Any, query_val: Any) -> bool:
+        """Equality with SPARQL-era ``lexical^^xsd`` stripping + numeric coerce.
+
+        Mirrors LITERAL_VALUES_CYPHER: normalize both sides (strip legacy
+        datatype suffixes), then accept raw ==, string form of normalized
+        values, or float equality when both coerce to numbers.
+        """
+        from infona_client.graph.assertion_model import normalize_store_literal
+
+        left = normalize_store_literal(store_val)
+        right = normalize_store_literal(query_val)
+        if left == right:
+            return True
+        if left is None or right is None:
+            return False
+        if str(left).strip() == str(right).strip():
+            return True
+        if isinstance(left, bool) or isinstance(right, bool):
+            return False
+        try:
+            return float(left) == float(right)
+        except (TypeError, ValueError):
+            return False
+
     def _literal_values_eq(
         self,
         tenant_id: str,
@@ -1950,7 +1975,7 @@ class MemoryGraphStore:
                 prop_row = self._properties.get((tenant_id, kg, a.property_id))
                 if prop_row is None or prop_row.name != prop_key:
                     continue
-            if a.literal_value != prop_value:
+            if not self._literal_eq(a.literal_value, prop_value):
                 continue
             if a.subject_id in seen:
                 continue
@@ -1978,7 +2003,7 @@ class MemoryGraphStore:
             if r is None:
                 continue
             actual = self._entity_prop_value(r, prop_key)
-            if actual != prop_value:
+            if actual is None or not self._literal_eq(actual, prop_value):
                 continue
             out.append(
                 GraphRecord(

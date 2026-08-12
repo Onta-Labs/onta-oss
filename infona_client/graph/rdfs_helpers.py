@@ -77,6 +77,10 @@ RETURN count(DISTINCT e) AS n
 
 # Prefer Assertion literal SoT; Entity property cache is secondary (dual-written
 # after Assertion by apply_facts / assert_fact).
+# Equality matches raw values OR normalized forms: strip SPARQL-era
+# ``lexical^^xsd-uri`` suffixes (legacy graphs), then string-compare the
+# lexical half and allow toFloat equality when both sides are numeric so
+# native store numbers still match string $prop_value from NL fixtures.
 LITERAL_VALUES_CYPHER = """
 MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
   tenant_id: $tenant_id, kg: $kg
@@ -84,9 +88,71 @@ MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
 WHERE c.name IN $type_names OR c.id IN $type_names
 OPTIONAL MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg, subject_id: e.id})
   -[:PREDICATE]->(p:Property {tenant_id: $tenant_id, kg: $kg})
-WHERE p.name = $prop_key AND a.literal_value = $prop_value
+WHERE p.name = $prop_key AND (
+  a.literal_value = $prop_value
+  OR (
+    CASE
+      WHEN toString(a.literal_value) CONTAINS '^^'
+        THEN split(toString(a.literal_value), '^^')[0]
+      ELSE toString(a.literal_value)
+    END
+    =
+    CASE
+      WHEN toString($prop_value) CONTAINS '^^'
+        THEN split(toString($prop_value), '^^')[0]
+      ELSE toString($prop_value)
+    END
+  )
+  OR (
+    toFloat(
+      CASE
+        WHEN toString(a.literal_value) CONTAINS '^^'
+          THEN split(toString(a.literal_value), '^^')[0]
+        ELSE toString(a.literal_value)
+      END
+    ) =
+    toFloat(
+      CASE
+        WHEN toString($prop_value) CONTAINS '^^'
+          THEN split(toString($prop_value), '^^')[0]
+        ELSE toString($prop_value)
+      END
+    )
+  )
+)
 WITH DISTINCT e, a
-WHERE a IS NOT NULL OR e[$prop_key] = $prop_value
+WHERE a IS NOT NULL OR (
+  e[$prop_key] = $prop_value
+  OR (
+    CASE
+      WHEN toString(e[$prop_key]) CONTAINS '^^'
+        THEN split(toString(e[$prop_key]), '^^')[0]
+      ELSE toString(e[$prop_key])
+    END
+    =
+    CASE
+      WHEN toString($prop_value) CONTAINS '^^'
+        THEN split(toString($prop_value), '^^')[0]
+      ELSE toString($prop_value)
+    END
+  )
+  OR (
+    toFloat(
+      CASE
+        WHEN toString(e[$prop_key]) CONTAINS '^^'
+          THEN split(toString(e[$prop_key]), '^^')[0]
+        ELSE toString(e[$prop_key])
+      END
+    ) =
+    toFloat(
+      CASE
+        WHEN toString($prop_value) CONTAINS '^^'
+          THEN split(toString($prop_value), '^^')[0]
+        ELSE toString($prop_value)
+      END
+    )
+  )
+)
 RETURN e.id AS id, e.name AS name, e.primary_type AS primary_type,
        coalesce(a.literal_value, e[$prop_key]) AS literal_value
 ORDER BY e.id
