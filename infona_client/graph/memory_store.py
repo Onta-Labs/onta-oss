@@ -2161,7 +2161,12 @@ class MemoryGraphStore:
                 display = str(self._entity_prop_value(ent, "display_name") or "").strip().lower()
             name = str(getattr(ent, "name", None) or "").strip().lower()
             spaced = name.replace("_", " ")
-            return needle in (display, name, spaced)
+            if needle in (display, name, spaced):
+                return True
+            # Substring: "Acme" matches "Acme Corp"
+            return bool(needle) and (
+                needle in display or needle in name or needle in spaced
+            )
 
         for (t, k, _), a in sorted(
             self._assertions.items(), key=lambda x: x[1].subject_id

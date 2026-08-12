@@ -33,6 +33,7 @@ from infona_client.graph.rdfs_helpers import (
     LITERAL_VALUES_CYPHER,
     RELATED_ENTITIES_CYPHER,
     RELATED_ENTITY_NAME_FILTER_CYPHER,
+    RELATED_ENTITY_NAME_FILTER_INVERSE_CYPHER,
     TEMPLATE_ENTITIES_OF_TYPE,
     TEMPLATE_ENTITIES_OF_TYPE_COUNT,
     TEMPLATE_LITERAL_COMPARE,
@@ -829,11 +830,73 @@ def try_made_by_filter_query(
             rel_attr = cand
             break
     if rel_attr is None:
-        # No type-local maker/author edge — do not claim a fixture (let LLM try).
-        return None
+        # Inverse: Organization.makes -> Product ("products made by Acme").
+        inv_candidates = ("makes", "sells", "manufactures", "produces")
+        inv_rel = None
+        for cand in inv_candidates:
+            if re.search(rf"(?i)\b{re.escape(cand)}\b.*relationship", text):
+                inv_rel = cand
+                break
+        if inv_rel is None:
+            return None
+        expanded = type_names_with_subclasses(
+            matched, ontology_summary=ontology_summary, include_subclasses=True
+        )
+        return _fixture(
+            cypher=RELATED_ENTITY_NAME_FILTER_INVERSE_CYPHER,
+            params={
+                "type_names": expanded,
+                "rel_attr": inv_rel,
+                "target_name": value,
+                "limit": limit if limit is not None else DEFAULT_LIST_LIMIT,
+            },
+            explanation=(
+                f"Find {matched} entities that {inv_rel} from maker named "
+                f"{value!r} (inverse related_entity_name_filter)."
+            ),
+            template="related_entity_name_filter_inverse",
+        )
     expanded = type_names_with_subclasses(
         matched, ontology_summary=ontology_summary, include_subclasses=True
     )
+    # Literal attribute (common for free-text ingest): use equality filter.
+    # Relationship edge: related_entity_name_filter.
+    is_literal = bool(
+        re.search(
+            rf"(?i)-\s*{re.escape(rel_attr)}\s*:\s*\w+\s*\(literal",
+            section,
+        )
+    )
+    if is_literal:
+        # CONTAINS so "Acme" matches "Acme Corp" free-text literals.
+        lit_cypher = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
+  tenant_id: $tenant_id, kg: $kg
+})
+WHERE c.name IN $type_names OR c.id IN $type_names
+OPTIONAL MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg, subject_id: e.id})
+  -[:PREDICATE]->(p:Property {tenant_id: $tenant_id, kg: $kg})
+WHERE p.name = $prop_key
+WITH e, coalesce(a.literal_value, e[$prop_key]) AS raw
+WHERE raw IS NOT NULL AND toLower(toString(raw)) CONTAINS toLower($needle)
+RETURN e.id AS id, e.name AS name, e.primary_type AS primary_type,
+       coalesce(e.title, e.name) AS title, raw AS value
+ORDER BY e.id
+LIMIT $limit
+""".strip()
+        return _fixture(
+            cypher=lit_cypher,
+            params={
+                "type_names": expanded,
+                "prop_key": rel_attr,
+                "needle": value,
+                "limit": limit if limit is not None else DEFAULT_LIST_LIMIT,
+            },
+            explanation=(
+                f"Find {matched} entities where {rel_attr} contains {value!r}."
+            ),
+            template=None,
+        )
     return _fixture(
         cypher=RELATED_ENTITY_NAME_FILTER_CYPHER,
         params={

@@ -29,6 +29,7 @@ from infona_client.graph.rdfs_helpers import (
     LITERAL_VALUES_CYPHER,
     RELATED_ENTITIES_CYPHER,
     RELATED_ENTITY_NAME_FILTER_CYPHER,
+    RELATED_ENTITY_NAME_FILTER_INVERSE_CYPHER,
     SUBCLASS_OF_CLOSURE_CYPHER,
 )
 
@@ -544,6 +545,11 @@ TEMPLATES: Mapping[str, CypherTemplate] = {
     "related_entity_name_filter": CypherTemplate(
         name="related_entity_name_filter",
         cypher=RELATED_ENTITY_NAME_FILTER_CYPHER,
+        writing=False,
+    ),
+    "related_entity_name_filter_inverse": CypherTemplate(
+        name="related_entity_name_filter_inverse",
+        cypher=RELATED_ENTITY_NAME_FILTER_INVERSE_CYPHER,
         writing=False,
     ),
     "assertions_for_subject": CypherTemplate(
