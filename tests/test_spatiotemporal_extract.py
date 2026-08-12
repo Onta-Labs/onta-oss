@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from infona_client.graph.kg_writer import insert_facts
 from infona_client.graph.memory_store import MemoryGraphStore
 from infona_client.graph.queries import kg_graph_uri, parse_kg_graph_uri
-from infona_client.graph.scope import GraphScopeError
+from infona_client.graph.scope import ONTOLOGY_KG, GraphScopeError
 from infona_client.graph.store import configure_graph_store
 from infona_client.spatiotemporal.extract import extract_spatiotemporal_facts
 from infona_client.spatiotemporal.registry import (
@@ -204,23 +204,39 @@ async def test_insert_facts_populates_index_scoped_to_kg(store):
     assert await idx.query_radius(TENANT, -122.4194, 37.7749, 1_000, kg_name="Other") == []
 
 
-async def test_insert_facts_rejects_non_kg_graph_and_indexes_nothing(store):
-    """A write aimed at the tenant ontology graph (no ``/kg/`` segment) indexes
-    nothing — and no longer writes anything either.
+async def test_insert_facts_catalog_graph_writes_without_spatiotemporal_index(store):
+    """Bare tenant ontology URI is a legal catalog write (ONTA-529); still no
+    spatio-temporal index row.
 
-    ``_index_spatiotemporal`` still carries its own ``parse_kg_graph_uri``
-    guard, but on the property-graph path the write never reaches it:
-    ``_resolve_graph_session`` cannot derive a (tenant, kg) scope from a tenant
-    URI and fails closed first. The property under test is unchanged — a non-KG
-    graph produces no index row — the enforcement just moved earlier and got
-    louder.
+    ``_resolve_graph_session`` maps ``…/graphs/<tenant>`` to
+    ``GraphScope.for_catalog(layer='tenant')`` (``kg=__ontology__``) so rule /
+    policy stores can clear-then-write through ``insert_facts``. The index hook
+    still keys only on per-KG URIs via ``parse_kg_graph_uri``, so catalog writes
+    produce no index row. Garbage and companion URIs remain fail-closed.
     """
     onto_graph = "https://graph.infona.ai/graphs/demo-tenant"  # no /kg/ segment
-    with pytest.raises(GraphScopeError):
-        await insert_facts(None, onto_graph, [_geom("e:x", 1.0, 1.0)], store=store)
+    await insert_facts(None, onto_graph, [_geom("e:x", 1.0, 1.0)], store=store)
+    ents = store.snapshot_entities()
+    assert len(ents) == 1
+    assert ents[0]["id"] == "e:x"
+    assert ents[0]["tenant_id"] == TENANT
+    assert ents[0]["kg"] == ONTOLOGY_KG
+
     idx = get_spatiotemporal_index()
+    # No per-KG scope → nothing indexed, including under the catalog sentinel.
     assert await idx.query_radius(TENANT, 1.0, 1.0, 1_000) == []
-    assert store.snapshot_entities() == []
+    assert await idx.query_radius(TENANT, 1.0, 1.0, 1_000, kg_name=ONTOLOGY_KG) == []
+    assert await idx.query_radius(TENANT, 1.0, 1.0, 1_000, kg_name=KG) == []
+
+    # Companion / garbage URIs still cannot derive a scope.
+    for bad in (
+        "garbage",
+        f"{kg_graph_uri(TENANT, KG)}/provenance",
+        "https://example.com/not-a-graph",
+    ):
+        with pytest.raises(GraphScopeError):
+            await insert_facts(None, bad, [_geom("e:y", 2.0, 2.0)], store=store)
+    assert {e["id"] for e in store.snapshot_entities()} == {"e:x"}
 
 
 async def test_index_failure_does_not_fail_write(store):

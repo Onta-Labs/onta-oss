@@ -5,12 +5,9 @@ Four layers, mirroring ``tests/test_clean_policy.py``:
      ``PolicyBase`` and reuses the mode axis verbatim (a bad ``mode`` raises via the
      INHERITED ``__post_init__``; the enum lives only in the base).
   2. Verify-knob axis validation — bad types on the verify knobs raise.
-  3. Store round-trip — pure serialize/deserialize AND a save -> get -> list over a
-     tiny in-memory fake Neptune (the same idiom ``test_clean_policy.py`` uses for
-     ``CleanPolicyStore``), routed through the converged write path. **ONTA-527:
-     the save/get/list half (3b) is xfail(strict) — the store cannot persist at
-     all on the Neo4j path; see ``_STORE_WRITE_BUG`` below. The pure
-     serialize/deserialize half and layers 1, 2 and 4 are unaffected.**
+  3. Store round-trip — pure serialize/deserialize AND a save -> get -> list over
+     :class:`~infona_client.graph.memory_store.MemoryGraphStore` (ONTA-529 —
+     catalog scope + GraphStore reads).
   4. Policy gates verification — ``mode == "off"`` passes every fact through
      UNVERIFIABLE without consulting the verifier; ``mode == "auto"`` + a registered
      stub verifier flips the output to SUPPORTED (the LOAD-BEARING control proving
@@ -23,6 +20,10 @@ import re
 
 import pytest
 
+from infona_client.graph import pg_ops
+from infona_client.graph.memory_store import MemoryGraphStore
+from infona_client.graph.scope import GraphScope
+from infona_client.graph.store import configure_graph_store, reset_graph_store_for_tests
 from infona_client.normalization.policy import (
     POLICY_MODES,
     CleanPolicy,
@@ -237,35 +238,21 @@ def test_from_fields_rejects_wrong_rdf_type():
 # --------------------------------------------------------------------------- #
 # 3b. Store save -> get -> list over an in-memory fake Neptune
 #
-# All three cases below are xfail(strict) on ONE product bug, spelled out here.
 # --------------------------------------------------------------------------- #
-_STORE_WRITE_BUG = (
-    "BUG (surfaced by ONTA-527): VerifyPolicyStore cannot persist anything on "
-    "the Neo4j path. verification/policy.py::VerifyPolicyStore.save does its "
-    "clear-then-write through the converged write path — kg_writer.delete_facts "
-    "then insert_facts — passing the TENANT ONTOLOGY graph "
-    "(queries.tenant_graph_uri -> '.../graphs/<tenant>'), because a policy row "
-    "is tenant config, not instance data. kg_writer._resolve_graph_session only "
-    "ever derives GraphScope.for_instance from a PER-KG uri "
-    "('.../graphs/<t>/kg/<kg>') via parse_kg_graph_uri, so a tenant/ontology "
-    "graph raises GraphScopeError 'Cannot derive tenant/kg scope' and save() "
-    "dies before writing a triple. The scope it needs already exists — "
-    "GraphScope.for_catalog(layer='tenant', tenant_id=...) (kg='__ontology__'), "
-    "and insert_facts writes fine when handed that session explicitly — so the "
-    "fix is one branch in _resolve_graph_session (or the store passing a catalog "
-    "session), NOT a change to these tests. The read half is independently dead: "
-    "get()/list() still issue raw SPARQL through NeptuneClient, which has no "
-    "store behind it now. Identical defect in "
-    "normalization/policy.py::CleanPolicyStore and "
-    "normalization/rules.py::NormalizationRuleStore."
-)
+# 3b. Store save -> get -> list over MemoryGraphStore (ONTA-529)
+# --------------------------------------------------------------------------- #
+@pytest.fixture
+def memory_store():
+    reset_graph_store_for_tests()
+    store = MemoryGraphStore()
+    configure_graph_store(store)
+    yield store
+    reset_graph_store_for_tests()
 
 
-@pytest.mark.xfail(reason=_STORE_WRITE_BUG, strict=True)
 @pytest.mark.asyncio
-async def test_store_roundtrip():
-    neptune = _FakeNeptune()
-    store = VerifyPolicyStore(neptune)
+async def test_store_roundtrip(memory_store):
+    store = VerifyPolicyStore(_FakeNeptune())  # neptune arg is vestigial
     policy = VerifyPolicy(
         kg_name=KG,
         type_name="Person",
@@ -299,42 +286,53 @@ async def test_store_roundtrip():
     assert await store.get(TENANT, "nope") is None
 
 
-@pytest.mark.xfail(reason=_STORE_WRITE_BUG, strict=True)
 @pytest.mark.asyncio
-async def test_store_save_is_idempotent_no_stale_fields():
-    neptune = _FakeNeptune()
-    store = VerifyPolicyStore(neptune)
+async def test_store_save_is_idempotent_no_stale_fields(memory_store):
+    store = VerifyPolicyStore(_FakeNeptune())
     policy = VerifyPolicy(kg_name=KG, type_name="Person", mode=MODE_AUTO)
     await store.save(TENANT, policy)
 
     # Re-save with a flipped mode: the clear-then-write upsert must leave exactly
-    # one mode triple (no stale "auto" left behind).
+    # one mode value (no stale "auto" left behind).
     from dataclasses import replace
 
     await store.save(TENANT, replace(policy, mode=MODE_OFF))
 
-    graph = neptune.quads["https://graph.infona.ai/graphs/t1"]
-    mode_triples = [t for t in graph if t[0] == policy.uri and t[1].endswith("/mode")]
-    assert len(mode_triples) == 1 and mode_triples[0][2] == MODE_OFF
+    sess = memory_store.session(
+        GraphScope.for_catalog(layer="tenant", tenant_id=TENANT)
+    )
+    ent = await pg_ops.get_entity(sess, policy.uri)
+    assert ent is not None
+    assert ent["props"].get("policy_mode") == MODE_OFF
 
     got = await store.get(TENANT, policy.scope_id)
     assert got is not None and got.mode == MODE_OFF
 
 
-@pytest.mark.xfail(reason=_STORE_WRITE_BUG, strict=True)
 @pytest.mark.asyncio
-async def test_store_lists_only_verify_policy_typed_subjects():
-    """The list query is typed on <VerifyPolicy>, so neither an unrelated subject nor
-    a CleanPolicy sharing the ontology graph is ever mistaken for a VerifyPolicy."""
-    neptune = _FakeNeptune()
-    g = neptune.quads.setdefault("https://graph.infona.ai/graphs/t1", set())
-    g.add(
-        ("https://graph.infona.ai/entities/Person/1", RDF_TYPE, "https://graph.infona.ai/types/Person")
-    )
-    # A CleanPolicy in the same graph must NOT be listed as a VerifyPolicy.
-    await CleanPolicyStore(neptune).save(TENANT, CleanPolicy(kg_name=KG, type_name="Person"))
+async def test_store_lists_only_verify_policy_typed_subjects(memory_store):
+    """List is typed on VerifyPolicy, so neither an unrelated Person nor a
+    CleanPolicy sharing the catalog scope is mistaken for a VerifyPolicy."""
+    from infona_client.graph.kg_writer import insert_facts
+    from infona_client.graph.queries import tenant_graph_uri
 
-    store = VerifyPolicyStore(neptune)
+    await insert_facts(
+        None,
+        tenant_graph_uri(TENANT),
+        [
+            (
+                "https://graph.infona.ai/entities/Person/1",
+                RDF_TYPE,
+                "https://graph.infona.ai/types/Person",
+            )
+        ],
+    )
+    # A CleanPolicy in the same catalog must NOT be listed as a VerifyPolicy.
+    await CleanPolicyStore(_FakeNeptune()).save(
+        TENANT, CleanPolicy(kg_name=KG, type_name="Person")
+    )
+
+    store = VerifyPolicyStore(_FakeNeptune())
     await store.save(TENANT, VerifyPolicy(kg_name=KG, type_name="Person"))
     listed = await store.list(TENANT)
     assert len(listed) == 1 and listed[0].type_name == "Person"
