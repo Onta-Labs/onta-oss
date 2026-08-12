@@ -34,6 +34,6 @@ def test_reserved_set_all_have_renames():
 
 def test_normalize_attr_name_coerces_reserved():
     assert _normalize_attr_name("name") == "display_name"
-    assert _normalize_attr_name("displayName") == "display_name" or True
-    # manufacturedBy stays non-reserved
+    # manufacturedBy stays non-reserved snake_case
     assert _normalize_attr_name("manufacturedBy") == "manufactured_by"
+
