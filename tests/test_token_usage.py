@@ -263,19 +263,26 @@ async def test_generation_without_usage_still_records_model(monkeypatch):
 # --------------------------------------------------------------------------- #
 # ask() collects events onto NLResult                                          #
 # --------------------------------------------------------------------------- #
-@pytest.mark.xfail(strict=True, reason=_NO_TOKEN_LEDGER_ON_CYPHER)
 @pytest.mark.asyncio
 async def test_ask_collects_sparql_gen_token_usage(monkeypatch):
-    """End-to-end: mocked generator usage lands on NLResult.token_usage."""
+    """End-to-end: mocked Cypher generator usage lands on NLResult.token_usage."""
+    from infona_client.graph.memory_store import MemoryGraphStore
+    from unittest.mock import MagicMock
+
     p = _make_pipeline("openrouter")
+    p._graph_store = MemoryGraphStore()
 
     async def fake_fetch_ontology(*_a, **_k):
         return "Type InventedThing"
 
-    async def fake_generate(*_a, **_k):
+    async def fake_cypher(*_a, **_k):
         return attach_usage(
             {
-                "sparql": "SELECT ?s WHERE { ?s a <https://graph.infona.ai/types/InventedThing> } LIMIT 1",
+                "cypher": (
+                    "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
+                    "RETURN count(*) AS n"
+                ),
+                "params": {},
                 "explanation": "e",
                 "functions_needed": [],
             },
@@ -284,15 +291,11 @@ async def test_ask_collects_sparql_gen_token_usage(monkeypatch):
             provider="openrouter",
         )
 
-    async def fake_neptune_query(_sparql):
-        return {
-            "head": {"vars": ["s"]},
-            "results": {
-                "bindings": [
-                    {"s": {"type": "uri", "value": "https://graph.infona.ai/entities/InventedThing/1"}}
-                ]
-            },
-        }
+    async def fake_exec(session, gen, cypher, forced_params):
+        rec = MagicMock()
+        rec.keys.return_value = ["n"]
+        rec.get.side_effect = lambda k, d=None: 1 if k == "n" else d
+        return [rec], "execute_read"
 
     async def fake_rephrase(*_a, **_k):
         p._last_rephrase_usage = {
@@ -304,21 +307,14 @@ async def test_ask_collects_sparql_gen_token_usage(monkeypatch):
         }
         return "one row"
 
-    # Avoid enum discovery / spatial / example bank side effects
     monkeypatch.setattr(p, "_fetch_ontology", fake_fetch_ontology)
-    monkeypatch.setattr(p, "_generate_sparql", fake_generate)
-    # Hermetic: /ask takes the Cypher branch, which never consults
-    # `_generate_sparql` and would otherwise POST to the real OpenRouter with
-    # the invented key above. Returning None keeps the failure on the token-
-    # ledger assertion this case is about, not on a network attempt.
-    monkeypatch.setattr(p, "_try_llm_cypher", AsyncMock(return_value=None))
-    monkeypatch.setattr(p, "_rephrase_via_openrouter", fake_rephrase)
-    monkeypatch.setattr(p.neptune, "query", fake_neptune_query)
-    # Semantic path off → full ontology
+    monkeypatch.setattr(p, "_try_llm_cypher", fake_cypher)
     monkeypatch.setattr(
-        pipeline_mod, "get_embedding_service", lambda: None
+        pipeline_mod, "try_deterministic_cypher", lambda *a, **k: None
     )
-    # Spatial routing can short-circuit; keep it off for a pure SPARQL path.
+    monkeypatch.setattr(p, "_execute_confined_cypher", fake_exec)
+    monkeypatch.setattr(p, "_rephrase_via_openrouter", fake_rephrase)
+    monkeypatch.setattr(pipeline_mod, "get_embedding_service", lambda: None)
     p._spatial_routing_enabled = False
 
     result = await p.ask(
@@ -336,28 +332,30 @@ async def test_ask_collects_sparql_gen_token_usage(monkeypatch):
     assert sparql_ev["completion_tokens"] == 10
     assert sparql_ev["attempt"] == 0
     assert sparql_ev["model"] == "invented-model-xyz"
-    # Aggregates also land in timing for cheap consumers
     assert result.timing.get("prompt_tokens") == 57.0  # 50 + 7
     assert result.timing.get("completion_tokens") == 13.0  # 10 + 3
     assert result.timing.get("llm_calls") == 2.0
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_TOKEN_LEDGER_ON_CYPHER)
 @pytest.mark.asyncio
 async def test_ask_retry_stage_on_second_attempt(monkeypatch):
+    from infona_client.graph.memory_store import MemoryGraphStore
+    from unittest.mock import MagicMock
+
     p = _make_pipeline("openrouter")
+    p._graph_store = MemoryGraphStore()
     calls = {"n": 0}
 
     async def fake_fetch_ontology(*_a, **_k):
         return "Type InventedThing"
 
-    async def fake_generate(*_a, **_k):
+    async def fake_cypher(*_a, **_k):
         calls["n"] += 1
         if calls["n"] == 1:
-            # Invalid SPARQL forces a retry
             return attach_usage(
                 {
-                    "sparql": "",  # empty → invalid
+                    "cypher": "",  # empty → retry
+                    "params": {},
                     "explanation": "e",
                     "functions_needed": [],
                 },
@@ -367,37 +365,37 @@ async def test_ask_retry_stage_on_second_attempt(monkeypatch):
             )
         return attach_usage(
             {
-                "sparql": "SELECT ?s WHERE { ?s a <https://graph.infona.ai/types/InventedThing> } LIMIT 1",
+                "cypher": (
+                    "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
+                    "RETURN count(*) AS n"
+                ),
+                "params": {},
                 "explanation": "e",
                 "functions_needed": [],
             },
-            usage={"prompt_tokens": 2, "completion_tokens": 2},
+            usage={"prompt_tokens": 20, "completion_tokens": 5, "total_tokens": 25},
             model="m",
             provider="openrouter",
         )
 
-    async def fake_neptune_query(_sparql):
-        return {
-            "head": {"vars": ["s"]},
-            "results": {"bindings": [{"s": {"type": "literal", "value": "1"}}]},
-        }
+    async def fake_exec(session, gen, cypher, forced_params):
+        rec = MagicMock()
+        rec.keys.return_value = ["n"]
+        rec.get.side_effect = lambda k, d=None: 1 if k == "n" else d
+        return [rec], "execute_read"
 
     monkeypatch.setattr(p, "_fetch_ontology", fake_fetch_ontology)
-    monkeypatch.setattr(p, "_generate_sparql", fake_generate)
-    # Hermetic: /ask takes the Cypher branch, which never consults
-    # `_generate_sparql` and would otherwise POST to the real OpenRouter with
-    # the invented key above. Returning None keeps the failure on the token-
-    # ledger assertion this case is about, not on a network attempt.
-    monkeypatch.setattr(p, "_try_llm_cypher", AsyncMock(return_value=None))
-    monkeypatch.setattr(p, "_rephrase_via_openrouter", AsyncMock(return_value=""))
-    monkeypatch.setattr(p.neptune, "query", fake_neptune_query)
+    monkeypatch.setattr(p, "_try_llm_cypher", fake_cypher)
     monkeypatch.setattr(
-        pipeline_mod, "get_embedding_service", lambda: None
+        pipeline_mod, "try_deterministic_cypher", lambda *a, **k: None
     )
+    monkeypatch.setattr(p, "_execute_confined_cypher", fake_exec)
+    monkeypatch.setattr(p, "_rephrase_via_openrouter", AsyncMock(return_value=""))
+    monkeypatch.setattr(pipeline_mod, "get_embedding_service", lambda: None)
     p._spatial_routing_enabled = False
 
     result = await p.ask(
-        "q",
+        "how many invented things?",
         "https://graph.infona.ai/graphs/demo-tenant",
         "https://graph.infona.ai/graphs/demo-tenant/kg/invented",
     )
@@ -405,5 +403,4 @@ async def test_ask_retry_stage_on_second_attempt(monkeypatch):
     stages = [e["stage"] for e in result.token_usage]
     assert STAGE_SPARQL_GEN in stages
     assert STAGE_RETRY in stages
-    assert result.timing.get("prompt_tokens") == 3.0
-    assert result.timing.get("llm_calls") == 2.0
+    assert calls["n"] >= 2

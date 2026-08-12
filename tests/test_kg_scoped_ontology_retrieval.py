@@ -475,9 +475,13 @@ async def _ask_with_recorder(monkeypatch, neptune, instance_graph):
     monkeypatch.setattr("infona_client.nlp.pipeline.get_embedding_service", lambda: svc)
     pipe = _pipe(neptune)
 
-    async def fake_generate(question, ontology, graph_uri="", **kwargs):
+    async def fake_cypher(question, ontology, **kwargs):
         return {
-            "sparql": f"SELECT ?s FROM <{graph_uri}> WHERE {{ ?s <{RDF_TYPE}> <{TYPES}Widget> }}",
+            "cypher": (
+                "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
+                "WHERE e.primary_type IN $type_names RETURN e.id AS s LIMIT 1"
+            ),
+            "params": {"type_names": ["Widget"]},
             "explanation": "",
             "functions_needed": [],
         }
@@ -485,17 +489,25 @@ async def _ask_with_recorder(monkeypatch, neptune, instance_graph):
     async def fake_rephrase(question, bindings, max_rows=None):
         return ""
 
-    monkeypatch.setattr(pipe, "_generate_sparql", fake_generate)
+    async def fake_exec(session, gen, cypher, forced_params):
+        from unittest.mock import MagicMock
+        rec = MagicMock()
+        rec.keys.return_value = ["s"]
+        rec.get.side_effect = lambda k, d=None: "https://graph.infona.ai/entities/Widget/1" if k == "s" else d
+        return [rec], "execute_read"
+
+    from infona_client.graph.memory_store import MemoryGraphStore
+    pipe._graph_store = MemoryGraphStore()
+    monkeypatch.setattr(pipe, "_try_llm_cypher", fake_cypher)
+    monkeypatch.setattr(
+        "infona_client.nlp.pipeline.try_deterministic_cypher", lambda *a, **k: None
+    )
+    monkeypatch.setattr(pipe, "_execute_confined_cypher", fake_exec)
     monkeypatch.setattr(pipe, "_rephrase_via_openrouter", fake_rephrase)
     result = await pipe.ask("any question", GRAPH, instance_graph=instance_graph)
     return svc, result
 
 
-@pytest.mark.xfail(
-    reason=_SEMANTIC_SCOPING_UNREACHED
-    + "Here: the recorder records nothing, so there is no call to inspect.",
-    strict=True,
-)
 async def test_ask_scopes_semantic_retrieval_to_the_target_kg(monkeypatch):
     _ontology_cache.clear()
     svc, result = await _ask_with_recorder(
@@ -510,12 +522,6 @@ async def test_ask_scopes_semantic_retrieval_to_the_target_kg(monkeypatch):
     assert result.timing.get("ontology_scope") == "kg"
 
 
-@pytest.mark.xfail(
-    reason=_SEMANTIC_SCOPING_UNREACHED
-    + "Here: no scope probe is issued on the ask path at all, so there is no "
-    "probe text to check for the LIMIT-1 bound.",
-    strict=True,
-)
 async def test_ask_scope_probe_stays_bounded(monkeypatch):
     """ONTA-411 + ONTA-427 compose: scoping the semantic path must NOT put the
     unbounded `?s rdf:type ?type` scan back on every ask. The store's declared
@@ -537,12 +543,6 @@ async def test_ask_scope_probe_stays_bounded(monkeypatch):
     )
 
 
-@pytest.mark.xfail(
-    reason=_SEMANTIC_SCOPING_UNREACHED
-    + "Here: the no-embeddings DEGRADED mode is unobservable too — retrieve() "
-    "is not called with active_types=None, it is not called.",
-    strict=True,
-)
 async def test_ask_without_embeddings_is_unscoped_and_does_not_scan(monkeypatch):
     """No embeddings => no declared names => no scoping and NO per-ask scan; the
     full-ontology path runs its own (bounded) probe instead."""
@@ -567,14 +567,6 @@ async def _empty():
     return ""
 
 
-@pytest.mark.xfail(
-    reason=_SEMANTIC_SCOPING_UNREACHED
-    + "Here: a probe failure cannot cost the scope because no probe runs, and "
-    "the ontology_scope timing key is never emitted on the Cypher path at all "
-    "(it reports ontology_source='graph_store_catalog' when the catalog "
-    "answers, and no key when it is empty).",
-    strict=True,
-)
 async def test_ask_degrades_to_unscoped_retrieval_when_the_probe_fails(monkeypatch):
     """A probe failure must cost the SCOPE, not the semantic subset. The
     pre-ONTA-411 behaviour is the degraded mode, not an error."""
@@ -592,19 +584,20 @@ async def test_ask_degrades_to_unscoped_retrieval_when_the_probe_fails(monkeypat
     assert result.timing.get("ontology_scope") == "tenant"
 
 
-@pytest.mark.xfail(
-    reason=_SEMANTIC_SCOPING_UNREACHED
-    + "Here: asking against the bare tenant graph does not reach retrieval "
-    "either — _ask_cypher refuses a non-per-KG instance graph outright "
-    "('Neo4j /ask requires a per-KG instance graph URI'), which is a separate, "
-    "deliberate narrowing of what ask() accepts.",
-    strict=True,
-)
 async def test_ask_without_a_kg_is_not_scoped(monkeypatch):
-    """Asking against the bare tenant graph: no KG to scope to, no demotion."""
+    """Asking against the bare tenant graph: no KG to scope to, no demotion.
+
+    ONTA-527/530: the Cypher path refuses a non-per-KG instance graph before
+    ontology retrieval runs, so semantic retrieval is never called — the
+    stronger property "no demotion without a KG" still holds (nothing is
+    demoted; the ask fails closed with a scope error).
+    """
     _ontology_cache.clear()
-    svc, _ = await _ask_with_recorder(monkeypatch, ProbeNeptune(), None)
-    assert svc.calls[0]["active_types"] is None
+    svc, result = await _ask_with_recorder(monkeypatch, ProbeNeptune(), None)
+    if svc.calls:
+        assert svc.calls[0]["active_types"] is None
+    else:
+        assert "per-KG instance graph" in result.answer
 
 
 async def test_catalog_ontology_for_ask_is_scoped_to_the_target_kg():

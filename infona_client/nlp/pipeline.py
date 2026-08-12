@@ -784,6 +784,7 @@ class NLQueryPipeline:
                 data_graph=data_graph,
                 exclude_questions=exclude_questions,
                 layer_graph_uris=layer_graph_uris,
+                run_manifest=run_manifest,
             )
 
         raise SparqlAskPathRetired(
@@ -805,6 +806,7 @@ class NLQueryPipeline:
         active_types: set[str] | None,
         ontology_source: str,
         timing: dict,
+        query_params: dict | None = None,
     ) -> str:
         """One sentence when the NAMED KG holds none of the types the query read.
 
@@ -874,6 +876,18 @@ class NLQueryPipeline:
             # really does hold data outside the named graph, which is one
             # positive-cached O(1) ASK (and which fails toward silence).
             referenced = referenced_types(sparql)
+            # Cypher templates rarely embed type IRIs; fall back to gen params.
+            if not referenced and query_params:
+                from infona_client.graph.iri import IRI_BASE as _IRI
+
+                synthetic: dict[str, list[str]] = {}
+                for tn in query_params.get("type_names") or []:
+                    if isinstance(tn, str) and tn.strip():
+                        synthetic[tn.strip()] = [f"{_IRI}/types/{tn.strip()}"]
+                pt = query_params.get("primary_type")
+                if isinstance(pt, str) and pt.strip():
+                    synthetic[pt.strip()] = [f"{_IRI}/types/{pt.strip()}"]
+                referenced = synthetic
             if not referenced:
                 if not await other_graphs_hold_instances(
                     self.neptune, tenant_id, other_graphs
@@ -1025,29 +1039,36 @@ class NLQueryPipeline:
         data_graph: str,
         exclude_questions: list[str] | None = None,
         layer_graph_uris: list[str] | None = None,
+        run_manifest: "RunManifest | RunCoverage | None" = None,
     ) -> NLResult:
-        """Neo4j /ask path: deterministic fixtures + optional LLM Cypher.
+        """Neo4j /ask path with SPARQL-parity recovery mechanisms (ONTA-530).
 
         Hermetic fixtures cover count / list / property-eq / 1-hop without keys.
-        When an LLM key is present, free-form Cypher is generated and confined;
-        on :class:`GraphQueryError` the scrubbed error is fed back once (SPARQL
-        retry spirit). Execution is always via GraphStore with session-forced
-        ``tenant_id`` / ``kg`` — never trust model-supplied scope values.
+        When an LLM key is present, free-form Cypher is generated and confined.
+        Execution is always via GraphStore with session-forced ``tenant_id`` /
+        ``kg`` — never trust model-supplied scope values.
+
+        Ports from the SPARQL branch (same *decision* layers, Cypher execution):
+        semantic ontology retrieval, alias map, 3-attempt retry budget, length-
+        truncation recovery, zero-row ontology escalation + honest-empty guard,
+        unbound-projection honesty, KG coverage caveat, A9 run_manifest, and
+        token-usage ledger. Layer URIs feed ontology fetch + coverage probes
+        (subclass closure on Neo4j is the catalog Class hierarchy, not SPARQL
+        FROM widening).
 
         Cypher text is returned in :attr:`NLResult.sparql` for wire
         compatibility with existing clients (field name historical).
         """
-        del layer_graph_uris  # reserved for catalog-layer joins in later E6
         t0 = time.time()
         timing: dict[str, float | str] = {
             "model": f"{self._query_provider}:{self._query_model}",
             "query_language": "cypher",
             "graph_backend": "neo4j",
         }
+        token_ledger = TokenUsageLedger()
 
         parsed = parse_kg_graph_uri(data_graph)
         if not parsed:
-            # Fall back to tenant-of-graph + last path segment for non-kg URIs.
             tid = tenant_of_graph(data_graph) or ""
             kg = data_graph.rstrip("/").rsplit("/", 1)[-1] if data_graph else ""
             if not tid or not kg or kg == tid:
@@ -1059,6 +1080,7 @@ class NLQueryPipeline:
                     sparql="",
                     explanation="",
                     timing={**timing, "total_ms": round((time.time() - t0) * 1000, 1)},
+                    token_usage=token_ledger.to_list(),
                 )
             tenant_id, kg_name = tid, kg
         else:
@@ -1073,30 +1095,94 @@ class NLQueryPipeline:
             except Exception:
                 store = None
 
-        # Ontology: prefer GraphStore catalog (schema_types_for_kg); fall back
-        # to SPARQL summary or empty (fixtures still type-guess).
+        # ---- Ontology context (semantic → catalog → sparql fetch) ----
         ontology = ""
         type_names: list[str] = []
-        if store is not None:
-            ontology, type_names = await ontology_from_graph_store(
-                store, tenant_id=tenant_id, kg=kg_name
-            )
-            if ontology:
-                timing["ontology_source"] = "graph_store_catalog"
+        ontology_source = "full"
+        kg_active_types: set[str] | None = None
+        kg_declared_names: list[str] | None = None
+        full_ontology_loaded = False
+
+        embedding_svc = get_embedding_service()
+        if embedding_svc:
+            try:
+                from infona_client.config import settings
+
+                try:
+                    declared = await embedding_svc.type_names(graph_uri)
+                    active_types = (
+                        await self._active_types(
+                            data_graph, graph_uri, declared_names=declared
+                        )
+                        if declared
+                        else None
+                    )
+                    kg_declared_names = list(declared) if declared else None
+                    kg_active_types = active_types
+                except Exception:
+                    logger.warning(
+                        "active_types_probe_failed",
+                        instance_graph=data_graph,
+                        exc_info=True,
+                    )
+                    active_types = None
+                    kg_active_types = None
+                    kg_declared_names = None
+                semantic = await embedding_svc.retrieve(
+                    graph_uri,
+                    question,
+                    top_k=settings.embeddings_top_k,
+                    active_types=active_types,
+                )
+                if semantic:
+                    ontology = semantic
+                    ontology_source = "semantic"
+                    timing["ontology_source"] = "semantic"
+                    timing["ontology_scope"] = (
+                        "kg" if active_types is not None else "tenant"
+                    )
+            except Exception:
+                pass
+
+        if not ontology and store is not None:
+            try:
+                ontology, type_names = await ontology_from_graph_store(
+                    store, tenant_id=tenant_id, kg=kg_name
+                )
+                if ontology:
+                    ontology_source = "graph_store_catalog"
+                    timing["ontology_source"] = "graph_store_catalog"
+                    full_ontology_loaded = True
+            except Exception:
+                logger.debug("cypher_ask_catalog_ontology_failed", exc_info=True)
+                ontology = ""
+
         if not ontology:
             try:
-                ontology = await self._fetch_ontology(graph_uri, data_graph)
-                if ontology in (ONTOLOGY_FETCH_ERROR, ONTOLOGY_EMPTY):
+                fetched = await self._fetch_ontology(
+                    graph_uri, data_graph, layer_graph_uris=layer_graph_uris
+                )
+                if fetched in (ONTOLOGY_FETCH_ERROR, ONTOLOGY_EMPTY):
                     ontology = ""
-                elif ontology:
-                    timing["ontology_source"] = "sparql_fetch"
+                elif fetched:
+                    ontology = fetched
+                    ontology_source = "full"
+                    timing["ontology_source"] = "full"
+                    full_ontology_loaded = True
             except Exception:
                 logger.debug("cypher_ask_ontology_fetch_failed", exc_info=True)
                 ontology = ""
+
+        if ontology_source == "full" or ontology_source == "graph_store_catalog":
+            full_ontology_loaded = True
         timing["ontology_fetch_ms"] = round((time.time() - t0) * 1000, 1)
 
-        # Cypher mode: only inject examples that carry a cypher field.
-        # SPARQL-only bank rows format to "" — never teach SPARQL on this path.
+        # Attribute-alias map (ADR 0002 §7) — leaf renames for Cypher property keys.
+        alias_map: dict[str, str] = {}
+        if self._aliases_enabled:
+            alias_map = await self._fetch_alias_map(graph_uri)
+
+        # Cypher-mode examples only.
         examples_text = ""
         try:
             from infona_client.nlp.example_bank import (
@@ -1106,9 +1192,6 @@ class NLQueryPipeline:
 
             bank = get_example_bank()
             if bank and bank._examples:
-                # language="cypher" filters the retrieval pool to rows with a
-                # non-empty cypher field (ONTA-539) so top-k is never filled
-                # with SPARQL-only examples that format away to empty.
                 examples = await bank.retrieve(
                     question=question,
                     ontology_context=ontology,
@@ -1121,24 +1204,18 @@ class NLQueryPipeline:
                     examples_text = format_examples_for_prompt(
                         examples, language="cypher"
                     )
-                    # Count only rows that actually contributed Cypher text.
                     cypher_n = sum(
-                        1 for ex in examples if (getattr(ex, "cypher", None) or "").strip()
+                        1
+                        for ex in examples
+                        if (getattr(ex, "cypher", None) or "").strip()
                     )
                     timing["examples_retrieved"] = float(cypher_n)
                     if not examples_text:
-                        # Prefer empty over a header-only / SPARQL leak.
                         examples_text = ""
         except Exception:
             pass
 
-        # 1) Deterministic fixtures (count / list / filter / 1-hop).
-        # ONTA-537: when a healthy ontology mention index exists, bind a
-        # semantic resolve context so fixtures rank type mentions by embed
-        # similarity + hierarchy + instance prior (not string-only).
-        # Fail-closed is **opt-in** via INFONA_REQUIRE_SEMANTIC_RESOLVE=1
-        # until cold-start full-catalog reindex is solid; default is
-        # best-effort semantic when ready, else string heuristics.
+        # Semantic type resolve context (fixtures) — best-effort.
         from infona_client.nlp.ontology_mention_index import (
             EmbedConfigError,
             get_process_mention_index,
@@ -1162,14 +1239,9 @@ class NLQueryPipeline:
         query_embeddings: dict[str, list[float]] = {}
         if mention_index is not None and mention_index.is_healthy():
             try:
-                # One embed of the full question is a cheap proxy for the
-                # type phrase; fixtures also match exact leaves via string
-                # fast path under a healthy index.
                 fn = openrouter_embed_fn(self._openrouter_key or None)
                 vecs = await fn([question])
                 if vecs:
-                    # Seed common type tokens from the ontology so
-                    # resolve_type_name can look up the label substring.
                     from infona_client.nlp.cypher_generate import (
                         extract_type_names_from_ontology,
                     )
@@ -1177,12 +1249,10 @@ class NLQueryPipeline:
                     labels = list(type_names or []) or extract_type_names_from_ontology(
                         ontology
                     )
-                    # Also embed candidate plural-ish labels for synonym path.
                     seed_phrases = {question.strip().lower()}
                     for tn in labels:
                         seed_phrases.add(tn.lower())
                         seed_phrases.add(tn.lower() + "s")
-                    # Extract "how many X" / "list X" label loosely
                     import re as _re
 
                     m = _re.match(
@@ -1203,267 +1273,576 @@ class NLQueryPipeline:
                 if require_sem:
                     raise
             except Exception:
-                # Best-effort: fall through to string fixtures when embed fails
-                # unless fail-closed is forced.
                 if require_sem:
                     raise
                 query_embeddings = {}
 
-        if mention_index is not None and mention_index.is_healthy() and query_embeddings:
-            with semantic_resolve_context(
-                mention_index,
-                query_embeddings=query_embeddings,
-                require_semantic=require_sem,
-            ):
-                gen = try_deterministic_cypher(
-                    question, ontology, type_names=type_names or None
-                )
-        else:
-            gen = try_deterministic_cypher(
+        def _deterministic() -> dict | None:
+            if mention_index is not None and mention_index.is_healthy() and query_embeddings:
+                with semantic_resolve_context(
+                    mention_index,
+                    query_embeddings=query_embeddings,
+                    require_semantic=require_sem,
+                ):
+                    return try_deterministic_cypher(
+                        question, ontology, type_names=type_names or None
+                    )
+            return try_deterministic_cypher(
                 question, ontology, type_names=type_names or None
             )
-        if gen is None:
-            # 2) Optional LLM Cypher generation when keys exist.
-            gen = await self._try_llm_cypher(
-                question,
-                ontology,
-                tenant_id=tenant_id,
-                kg_name=kg_name,
-                examples_text=examples_text,
-            )
-        if gen is None:
-            return NLResult(
-                answer=(
-                    "Could not answer: Neo4j /ask handles count, list, property "
-                    "filter, and simple 1-hop questions without an LLM key; no "
-                    "generator produced Cypher for this question."
-                ),
-                sparql="",
-                explanation="",
-                ontology=ontology,
-                timing={
-                    **timing,
-                    "total_ms": round((time.time() - t0) * 1000, 1),
-                    "cypher_stub": 0.0,
-                },
-            )
 
-        if gen.get("stub") or gen.get("fixture"):
-            timing["cypher_stub"] = 1.0
-
-        if store is None:
-            cypher_preview = gen.get("cypher") or gen.get("sparql") or ""
-            return NLResult(
-                answer=(
-                    "Could not answer: Neo4j GraphStore is not configured "
-                    "(set INFONA_GRAPH_BACKEND=neo4j and inject a store)."
-                ),
-                sparql=cypher_preview,
-                explanation=gen.get("explanation") or "",
-                ontology=ontology,
-                timing={
-                    **timing,
-                    "total_ms": round((time.time() - t0) * 1000, 1),
-                },
-            )
+        max_attempts = 3
+        last_error = ""
+        cypher = ""
+        explanation = ""
+        functions_needed: list[str] = []
+        last_was_empty_query = False
+        last_was_enum_filter_mismatch = False
+        last_was_length_truncated = False
+        length_recovery_stage = 0
+        honest_empty_note = ""
+        last_gen: dict = {}
+        last_params: dict = {}
 
         from infona_client.graph.scope import GraphScope
         from infona_client.graph.store import GraphQueryError
 
-        attempts = 0
-        last_error = ""
-        cypher = ""
-        explanation = gen.get("explanation") or ""
-        records: list = []
+        for attempt in range(max_attempts):
+            honest_empty_note = ""
+            try:
+                gen_recovery: dict = {}
+                if last_was_length_truncated:
+                    length_recovery_stage += 1
+                    if length_recovery_stage >= 2:
+                        gen_recovery["prefer_fallback"] = True
+                    else:
+                        gen_recovery["max_completion_tokens"] = (
+                            CEREBRAS_LENGTH_RECOVERY_TOKENS
+                        )
 
-        for attempt in range(2):  # initial + one GraphQueryError retry
-            attempts = attempt + 1
-            cypher_raw = gen.get("cypher") or gen.get("sparql") or ""
-            params = dict(gen.get("params") or {})
-            explanation = gen.get("explanation") or explanation
-            if gen.get("stub") or gen.get("fixture"):
-                timing["cypher_stub"] = 1.0
-            else:
-                timing["cypher_stub"] = 0.0
+                gen: dict | None = None
+                # Fixtures only on first attempt without error-driven regeneration.
+                if (
+                    attempt == 0
+                    and not last_was_empty_query
+                    and not last_was_enum_filter_mismatch
+                    and not last_was_length_truncated
+                ):
+                    gen = _deterministic()
 
-            # Reject invented Assertion shapes before execute (silent SUM/AVG zeros).
-            forbidden = _cypher_uses_forbidden_shapes(cypher_raw)
-            if forbidden and not (gen.get("stub") or gen.get("fixture")):
-                last_error = forbidden
-                if attempt == 0:
-                    gen2 = await self._try_llm_cypher(
+                error_feedback = ""
+                if gen is None:
+                    if last_was_empty_query:
+                        if not full_ontology_loaded:
+                            try:
+                                full_ontology = await self._fetch_ontology(
+                                    graph_uri,
+                                    data_graph,
+                                    layer_graph_uris=layer_graph_uris,
+                                )
+                                if (
+                                    full_ontology
+                                    and full_ontology.strip()
+                                    and full_ontology
+                                    not in (ONTOLOGY_FETCH_ERROR, ONTOLOGY_EMPTY)
+                                ):
+                                    ontology = full_ontology
+                                    ontology_source = "full"
+                                    timing["ontology_escalated_to_full_attempt"] = (
+                                        attempt
+                                    )
+                            except Exception:
+                                logger.debug(
+                                    "ontology_escalation_fetch_failed", exc_info=True
+                                )
+                            full_ontology_loaded = True
+                        error_feedback = (
+                            "The previous attempt returned an EMPTY or unparseable "
+                            "Cypher query. You MUST output a VALID, non-empty Cypher "
+                            "query in the `cypher` field, using the exact type/"
+                            "attribute names from the ontology schema above. Never "
+                            "return an empty string."
+                        )
+                    elif last_was_enum_filter_mismatch:
+                        error_feedback = last_error
+                    elif attempt > 0 and last_error:
+                        error_feedback = (
+                            f"The previous query failed with: {last_error}\n"
+                            f"Query was: {cypher}\n"
+                            "Please fix the Cypher and try again. Keep "
+                            "$tenant_id / $kg parameters; do not hardcode scope."
+                        )
+
+                    gen = await self._try_llm_cypher(
                         question,
                         ontology,
                         tenant_id=tenant_id,
                         kg_name=kg_name,
                         examples_text=examples_text,
-                        error_feedback=(
+                        error_feedback=error_feedback,
+                        **gen_recovery,
+                    )
+
+                last_was_length_truncated = False
+                last_was_enum_filter_mismatch = False
+                last_was_empty_query = False
+
+                if gen is None:
+                    last_error = last_error or "no generator produced Cypher"
+                    last_was_empty_query = True
+                    continue
+
+                # Token instrumentation
+                usage_blob = pop_attached_usage(gen)
+                if usage_blob is not None:
+                    token_ledger.record(
+                        stage=stage_for_attempt(attempt),
+                        attempt=attempt,
+                        model=str(usage_blob.get("model") or self._query_model or ""),
+                        provider=str(
+                            usage_blob.get("provider")
+                            or self._query_provider
+                            or ""
+                        ),
+                        prompt_tokens=usage_blob.get("prompt_tokens"),
+                        completion_tokens=usage_blob.get("completion_tokens"),
+                        total_tokens=usage_blob.get("total_tokens"),
+                    )
+
+                last_gen = gen
+                cypher_raw = gen.get("cypher") or gen.get("sparql") or ""
+                params = dict(gen.get("params") or {})
+                last_params = params
+                explanation = gen.get("explanation") or explanation
+                functions_needed = gen.get("functions_needed") or functions_needed
+
+                if gen.get("stub") or gen.get("fixture"):
+                    timing["cypher_stub"] = 1.0
+                else:
+                    timing["cypher_stub"] = 0.0
+
+                if not str(cypher_raw).strip():
+                    last_error = "Empty query"
+                    last_was_empty_query = True
+                    continue
+
+                # Alias leaf rewrite for property keys (old name → new name).
+                # Rewrite-only when a non-empty map was fetched; empty map is a
+                # no-op and costs nothing beyond the (flag-gated) fetch.
+                if alias_map:
+                    cypher_raw = self._rewrite_cypher_alias_leaves(cypher_raw, alias_map)
+
+                if store is None:
+                    return NLResult(
+                        answer=(
+                            "Could not answer: Neo4j GraphStore is not configured "
+                            "(set INFONA_GRAPH_BACKEND=neo4j and inject a store)."
+                        ),
+                        sparql=cypher_raw,
+                        explanation=explanation,
+                        ontology=ontology,
+                        timing={
+                            **timing,
+                            "total_ms": round((time.time() - t0) * 1000, 1),
+                        },
+                        token_usage=token_ledger.to_list(),
+                    )
+
+                # Forbidden Assertion shapes
+                forbidden = _cypher_uses_forbidden_shapes(cypher_raw)
+                if forbidden and not (gen.get("stub") or gen.get("fixture")):
+                    last_error = forbidden
+                    if attempt < max_attempts - 1:
+                        last_was_enum_filter_mismatch = True  # reuse custom feedback arm
+                        last_error = (
                             f"FORBIDDEN shape: {forbidden}\n"
                             f"Query was: {cypher_raw}\n"
-                            "Rewrite using: "
-                            "MATCH (e:Entity {tenant_id:$tenant_id, kg:$kg})-[:INSTANCE_OF]->(c:Class)\n"
-                            "OPTIONAL MATCH (a:Assertion {subject_id:e.id})-[:PREDICATE]->(p:Property)\n"
-                            "WHERE p.name = $prop_key\n"
-                            "WITH coalesce(a.literal_value, e[p.name]) AS raw ...\n"
+                            "Rewrite using MATCH (e:Entity {tenant_id:$tenant_id, kg:$kg})"
+                            "-[:INSTANCE_OF]->(c:Class) and OPTIONAL MATCH "
+                            "(a:Assertion {subject_id:e.id})-[:PREDICATE]->(p:Property). "
                             "NEVER use HAS_ASSERTION, predicate_key, or Assertion.prop_key."
-                        ),
-                    )
-                    if gen2 is not None:
-                        gen = gen2
-                        timing["cypher_retry"] = 1.0
+                        )
                         timing["cypher_forbidden_shape"] = 1.0
                         continue
-                return NLResult(
-                    answer=f"Could not answer: generated Cypher {forbidden}",
-                    sparql=cypher_raw,
-                    explanation=explanation,
-                    ontology=ontology,
-                    timing={
-                        **timing,
-                        "total_ms": round((time.time() - t0) * 1000, 1),
-                        "attempts": attempts,
-                        "cypher_forbidden_shape": 1.0,
-                    },
-                )
+                    timing.update(token_ledger.totals_for_timing())
+                    return NLResult(
+                        answer=f"Could not answer: generated Cypher {forbidden}",
+                        sparql=cypher_raw,
+                        explanation=explanation,
+                        ontology=ontology,
+                        timing={
+                            **timing,
+                            "total_ms": round((time.time() - t0) * 1000, 1),
+                            "attempts": attempt + 1,
+                            "cypher_forbidden_shape": 1.0,
+                        },
+                        token_usage=token_ledger.to_list(),
+                    )
 
-            try:
-                cypher, forced_params = confine_generated_cypher(
-                    cypher_raw,
-                    tenant_id=tenant_id,
-                    kg=kg_name,
-                    params=params,
-                )
-            except CrossTenantCypherError:
-                raise
-            except CypherScopeError as exc:
-                if attempt == 0 and not (gen.get("stub") or gen.get("fixture")):
-                    last_error = exc.detail
-                    gen2 = await self._try_llm_cypher(
-                        question,
-                        ontology,
+                try:
+                    cypher, forced_params = confine_generated_cypher(
+                        cypher_raw,
                         tenant_id=tenant_id,
-                        kg_name=kg_name,
-                        examples_text=examples_text,
-                        error_feedback=(
-                            f"The previous query failed confinement: {last_error}\n"
-                            f"Query was: {cypher_raw}"
-                        ),
+                        kg=kg_name,
+                        params=params,
                     )
-                    if gen2 is not None:
-                        gen = gen2
-                        timing["cypher_retry"] = 1.0
+                except CrossTenantCypherError:
+                    raise
+                except CypherScopeError as exc:
+                    last_error = exc.detail
+                    if attempt < max_attempts - 1 and not (
+                        gen.get("stub") or gen.get("fixture")
+                    ):
+                        timing["cypher_scope_error"] = 1.0
                         continue
-                return NLResult(
-                    answer=f"Could not answer: {exc.detail}",
-                    sparql=cypher_raw,
-                    explanation=explanation,
-                    ontology=ontology,
-                    timing={
-                        **timing,
-                        "total_ms": round((time.time() - t0) * 1000, 1),
-                        "cypher_scope_error": 1.0,
-                        "attempts": attempts,
-                    },
-                )
+                    timing.update(token_ledger.totals_for_timing())
+                    return NLResult(
+                        answer=f"Could not answer: {exc.detail}",
+                        sparql=cypher_raw,
+                        explanation=explanation,
+                        ontology=ontology,
+                        timing={
+                            **timing,
+                            "total_ms": round((time.time() - t0) * 1000, 1),
+                            "cypher_scope_error": 1.0,
+                            "attempts": attempt + 1,
+                        },
+                        token_usage=token_ledger.to_list(),
+                    )
 
-            t_exec = time.time()
-            try:
-                session = store.session(
-                    GraphScope.for_instance(tenant_id, kg_name)
-                )
-                records, exec_path = await self._execute_confined_cypher(
-                    session, gen, cypher, forced_params
-                )
-                timing["cypher_exec_path"] = exec_path
-                timing["neptune_exec_ms"] = round(
-                    (time.time() - t_exec) * 1000, 1
-                )
-                break
-            except GraphQueryError as exc:
-                scrubbed = scrub_cypher_error(str(exc))
-                last_error = scrubbed
-                timing["neptune_exec_ms"] = round(
-                    (time.time() - t_exec) * 1000, 1
-                )
-                if attempt >= 1:
-                    return NLResult(
-                        answer=f"Could not answer: {scrubbed}",
-                        sparql=cypher,
-                        explanation=explanation,
-                        ontology=ontology,
-                        timing={
-                            **timing,
-                            "total_ms": round((time.time() - t0) * 1000, 1),
-                            "attempts": attempts,
-                        },
+                t_exec = time.time()
+                try:
+                    session = store.session(
+                        GraphScope.for_instance(tenant_id, kg_name)
                     )
-                gen2 = await self._try_llm_cypher(
-                    question,
-                    ontology,
-                    tenant_id=tenant_id,
-                    kg_name=kg_name,
-                    examples_text=examples_text,
-                    error_feedback=(
-                        f"The previous query failed with: {scrubbed}\n"
-                        f"Query was: {cypher}\n"
-                        "Please fix the Cypher and try again. Keep "
-                        "$tenant_id / $kg parameters; do not hardcode scope."
-                    ),
-                )
-                if gen2 is None:
-                    return NLResult(
-                        answer=f"Could not answer: {scrubbed}",
-                        sparql=cypher,
-                        explanation=explanation,
-                        ontology=ontology,
-                        timing={
-                            **timing,
-                            "total_ms": round((time.time() - t0) * 1000, 1),
-                            "attempts": attempts,
-                        },
+                    records, exec_path = await self._execute_confined_cypher(
+                        session, gen, cypher, forced_params
                     )
-                gen = gen2
-                timing["cypher_retry"] = 1.0
-                continue
-            except Exception as exc:
+                    timing["cypher_exec_path"] = exec_path
+                    timing[
+                        f"neptune_exec_ms{f'_retry{attempt}' if attempt > 0 else ''}"
+                    ] = round((time.time() - t_exec) * 1000, 1)
+                except GraphQueryError as exc:
+                    scrubbed = scrub_cypher_error(str(exc))
+                    last_error = scrubbed
+                    timing[
+                        f"neptune_exec_ms{f'_retry{attempt}' if attempt > 0 else ''}"
+                    ] = round((time.time() - t_exec) * 1000, 1)
+                    if attempt >= max_attempts - 1:
+                        timing.update(token_ledger.totals_for_timing())
+                        return NLResult(
+                            answer=f"Could not answer: {scrubbed}",
+                            sparql=cypher,
+                            explanation=explanation,
+                            ontology=ontology,
+                            timing={
+                                **timing,
+                                "total_ms": round((time.time() - t0) * 1000, 1),
+                                "attempts": attempt + 1,
+                            },
+                            token_usage=token_ledger.to_list(),
+                        )
+                    timing["cypher_retry"] = 1.0
+                    continue
+
+                variables, bindings = records_to_bindings(records)
+
+                # Zero-row recovery: enum mismatch / ontology escalation / honest empty
+                if not bindings and attempt < max_attempts - 1:
+                    try:
+                        from infona_client.nlp.enum_filter import (
+                            enum_mismatch_feedback,
+                            impossible_enum_contains,
+                        )
+
+                        # Works when the query still carries SPARQL-shaped FILTERs
+                        # or type URIs; no-op on pure template Cypher.
+                        mismatches = impossible_enum_contains(cypher, ontology)
+                        if mismatches:
+                            last_error = enum_mismatch_feedback(
+                                mismatches, previous_sparql=cypher
+                            )
+                            last_was_enum_filter_mismatch = True
+                            timing["enum_filter_mismatch_retry"] = 1.0
+                            timing["enum_filter_mismatches"] = float(len(mismatches))
+                            logger.info(
+                                "enum_filter_mismatch_retry",
+                                count=len(mismatches),
+                                question=question,
+                            )
+                            continue
+                    except Exception:
+                        logger.debug(
+                            "enum_filter_mismatch_check_failed", exc_info=True
+                        )
+
+                    if not full_ontology_loaded and ontology_source == "semantic":
+                        from infona_client.nlp.empty_type_guard import (
+                            empty_declared_types,
+                            honest_empty_targets,
+                            zero_row_escalation_feedback,
+                        )
+
+                        honest = honest_empty_targets(
+                            question, cypher, ontology, params=forced_params
+                        )
+                        full_ontology = ""
+                        if not honest:
+                            try:
+                                full_ontology = await self._fetch_ontology(
+                                    graph_uri,
+                                    data_graph,
+                                    layer_graph_uris=layer_graph_uris,
+                                )
+                            except Exception:
+                                logger.debug(
+                                    "ontology_zero_row_escalation_failed",
+                                    exc_info=True,
+                                )
+                                full_ontology_loaded = True
+                        full_ontology_usable = bool(
+                            full_ontology
+                            and full_ontology.strip()
+                            and full_ontology
+                            not in (ONTOLOGY_FETCH_ERROR, ONTOLOGY_EMPTY)
+                        )
+                        if full_ontology_usable and not honest:
+                            honest = honest_empty_targets(
+                                question,
+                                cypher,
+                                full_ontology,
+                                params=forced_params,
+                            )
+                        if honest:
+                            names = ", ".join(sorted(honest))
+                            timing["zero_row_honest_empty"] = 1.0
+                            timing["zero_row_honest_empty_types"] = names
+                            honest_empty_note = (
+                                f"\n\nNote: {names} "
+                                f"{'is' if len(honest) == 1 else 'are'} declared in the "
+                                "ontology but currently ha"
+                                f"{'s' if len(honest) == 1 else 've'} no instances in "
+                                "this knowledge graph."
+                            )
+                            logger.info(
+                                "zero_row_honest_empty",
+                                types=sorted(honest),
+                                question=question,
+                            )
+                            full_ontology_loaded = (
+                                full_ontology_loaded or full_ontology_usable
+                            )
+                        elif full_ontology_usable:
+                            ontology = full_ontology
+                            ontology_source = "full"
+                            timing["ontology_escalated_to_full_attempt"] = attempt + 1
+                            timing["ontology_zero_row_escalation"] = 1.0
+                            last_was_enum_filter_mismatch = True
+                            last_error = zero_row_escalation_feedback(
+                                bool(empty_declared_types(full_ontology))
+                            )
+                            full_ontology_loaded = True
+                            logger.info(
+                                "ontology_zero_row_escalation",
+                                question=question,
+                                attempt=attempt,
+                            )
+                            continue
+
+                # Unbound projection honesty
+                missing_vars = unbound_projection_vars(variables, bindings)
+                if missing_vars:
+                    timing["unbound_projection_vars"] = ", ".join(missing_vars)
+                    logger.info(
+                        "unbound_projection_vars",
+                        vars=missing_vars,
+                        question=question,
+                    )
+
+                # ONTA-454 KG coverage caveat
+                kg_coverage_note = ""
+                if bindings:
+                    # Prefer type names from the executed gen when Cypher has no
+                    # SPARQL type IRIs for referenced_types().
+                    kg_coverage_note = await self._kg_coverage_caveat(
+                        cypher,
+                        ontology,
+                        data_graph,
+                        graph_uri,
+                        layer_graph_uris,
+                        kg_declared_names,
+                        kg_active_types,
+                        ontology_source
+                        if ontology_source in ("semantic", "full")
+                        else "full",
+                        timing,
+                        query_params=forced_params,
+                    )
+
+                answer = await self._format_answer(
+                    bindings,
+                    explanation,
+                    missing_vars=missing_vars,
+                    data_graph=data_graph,
+                )
+                answer += honest_empty_note
+                if kg_coverage_note:
+                    answer += f"\n\nCoverage note: {kg_coverage_note}"
+
+                t_reph = time.time()
+                narrative_answer = await self._rephrase_via_openrouter(
+                    question, bindings
+                )
+                rephrase_usage = getattr(self, "_last_rephrase_usage", None)
+                self._last_rephrase_usage = None
+                if rephrase_usage:
+                    token_ledger.record(
+                        stage=STAGE_REPHRASE,
+                        attempt=attempt,
+                        model=str(rephrase_usage.get("model") or ""),
+                        provider=str(
+                            rephrase_usage.get("provider") or "openrouter"
+                        ),
+                        prompt_tokens=rephrase_usage.get("prompt_tokens"),
+                        completion_tokens=rephrase_usage.get("completion_tokens"),
+                        total_tokens=rephrase_usage.get("total_tokens"),
+                    )
+                if honest_empty_note and narrative_answer:
+                    narrative_answer += honest_empty_note
+                if kg_coverage_note and narrative_answer:
+                    narrative_answer += f"\n\nCoverage note: {kg_coverage_note}"
+                timing["rephrase_ms"] = round((time.time() - t_reph) * 1000, 1)
+
+                citations = []
+                coverage_caveat = ""
+                run_coverage = (
+                    run_manifest.coverage()
+                    if hasattr(run_manifest, "coverage")
+                    else run_manifest
+                )
+                if self._answer_citations_enabled:
+                    from infona_client.nlp.answer_meta import (
+                        build_citations,
+                        build_coverage_caveat,
+                    )
+
+                    citations = await build_citations(
+                        self.neptune, data_graph, variables, bindings
+                    )
+                    stale_count = sum(1 for c in citations if not c.is_current)
+                    coverage_caveat = build_coverage_caveat(
+                        run_coverage,
+                        stale_count=stale_count,
+                        total_cited=len(citations),
+                    )
+                    if citations:
+                        timing["citations"] = len(citations)
+                elif run_coverage is not None:
+                    from infona_client.nlp.answer_meta import build_coverage_caveat
+
+                    coverage_caveat = build_coverage_caveat(run_coverage)
+                if kg_coverage_note:
+                    coverage_caveat = "; ".join(
+                        p for p in (kg_coverage_note, coverage_caveat) if p
+                    )
+
+                timing["total_ms"] = round((time.time() - t0) * 1000, 1)
+                timing["attempts"] = attempt + 1
+                timing["rows"] = len(bindings)
+                timing.update(token_ledger.totals_for_timing())
                 return NLResult(
-                    answer=f"Could not answer: {scrub_cypher_error(str(exc))}",
+                    answer=answer,
                     sparql=cypher,
                     explanation=explanation,
                     ontology=ontology,
-                    timing={
-                        **timing,
-                        "total_ms": round((time.time() - t0) * 1000, 1),
-                        "attempts": attempts,
-                    },
+                    narrative_answer=narrative_answer,
+                    functions_invoked=functions_needed,
+                    timing=timing,
+                    citations=citations,
+                    coverage_caveat=coverage_caveat,
+                    token_usage=token_ledger.to_list(),
                 )
-        else:
-            return NLResult(
-                answer=f"Could not answer: {last_error or 'Cypher execution failed'}",
-                sparql=cypher,
-                explanation=explanation,
-                ontology=ontology,
-                timing={
-                    **timing,
-                    "total_ms": round((time.time() - t0) * 1000, 1),
-                    "attempts": attempts,
-                },
-            )
 
-        _variables, bindings = records_to_bindings(records)
-        answer = await self._format_answer(
-            bindings, explanation, data_graph=data_graph
-        )
+            except (CrossTenantQueryError, CrossTenantCypherError):
+                # ONTA-424 / ONTA-530: foreign-graph / cross-tenant is a security
+                # event, not a syntax slip. Never fold into last_error (which
+                # surfaces in the degraded answer and is fed back to the model),
+                # never retry. Propagate to api/routes/ask.py which returns the
+                # generic "internal error" NLResult with no query / no foreign
+                # graph URI in the body.
+                raise
+            except EmptyLLMResponse as e:
+                last_error = str(e)
+                last_was_empty_query = True
+                last_was_length_truncated = e.finish_reason == "length"
+                logger.warning(
+                    "ask_cypher_attempt_failed",
+                    attempt=attempt,
+                    error=last_error,
+                    question=question,
+                )
+                continue
+            except Exception as e:
+                last_error = str(e)
+                last_was_empty_query = not (cypher or "").strip()
+                last_was_length_truncated = (
+                    isinstance(e, EmptyLLMResponse) and e.finish_reason == "length"
+                )
+                logger.warning(
+                    "ask_cypher_attempt_failed",
+                    attempt=attempt,
+                    error=last_error,
+                    question=question,
+                )
+                continue
+
         timing["total_ms"] = round((time.time() - t0) * 1000, 1)
-        timing["rows"] = len(bindings)
-        timing["attempts"] = attempts
+        timing["attempts"] = max_attempts
+        timing.update(token_ledger.totals_for_timing())
         return NLResult(
-            answer=answer,
+            answer=(
+                f"Could not answer after {max_attempts} attempts. "
+                f"Last error: {last_error}"
+            ),
             sparql=cypher,
             explanation=explanation,
             ontology=ontology,
             timing=timing,
+            token_usage=token_ledger.to_list(),
         )
+
+    @staticmethod
+    def _rewrite_cypher_alias_leaves(cypher: str, alias_map: dict[str, str]) -> str:
+        """Rewrite aliased attribute leaf names inside Cypher property access.
+
+        **Rewrite-only when a map is present.** An empty / missing map is a
+        no-op (callers already gate on ``if alias_map:``); there is no ontology
+        lookup, no registration, and no param mutation here — only textual leaf
+        renames on the Cypher string the model (or fixture) produced.
+
+        ``alias_map`` is old_uri → new_uri (from ``fetch_alias_map``). We rewrite
+        only the leaf segment of ``attrs/<leaf>`` so ``e.phone_num`` and
+        ``p.name = 'phone_num'`` pick up renames. Empty map ⇒ unchanged.
+        """
+        if not alias_map or not cypher:
+            return cypher
+        leaf_map: dict[str, str] = {}
+        for old, new in alias_map.items():
+            old_leaf = old.rsplit("/", 1)[-1]
+            new_leaf = new.rsplit("/", 1)[-1]
+            if old_leaf and new_leaf and old_leaf != new_leaf:
+                leaf_map[old_leaf] = new_leaf
+        if not leaf_map:
+            return cypher
+        # Longer leaves first so phone_num wins over phone.
+        for old_leaf in sorted(leaf_map, key=len, reverse=True):
+            new_leaf = leaf_map[old_leaf]
+            cypher = re.sub(
+                rf"(?<![A-Za-z0-9_]){re.escape(old_leaf)}(?![A-Za-z0-9_])",
+                new_leaf,
+                cypher,
+            )
+        return cypher
 
     async def _execute_confined_cypher(
         self,
@@ -1488,20 +1867,14 @@ class NLQueryPipeline:
             and template in TEMPLATES
             and not TEMPLATES[template].writing
         ):
-            # Fixture/LLM params land in forced_params via confine_generated_cypher.
-            # LLM may name a template without supplying $type_names / $limit —
-            # that used to raise Neo4j ParameterMissing. Only take the template
-            # path when required params are present (or fill safe defaults).
             tmpl_params = {
                 k: v
                 for k, v in forced_params.items()
                 if k not in ("tenant_id", "kg")
             }
-            # Also merge any params left only on gen (defense in depth).
             for k, v in (gen.get("params") or {}).items():
                 if k not in ("tenant_id", "kg") and k not in tmpl_params:
                     tmpl_params[k] = v
-            # Safe defaults for common allowlisted templates.
             cypher_text = TEMPLATES[template].cypher or ""
             if "$limit" in cypher_text and tmpl_params.get("limit") is None:
                 tmpl_params["limit"] = 25
@@ -1511,14 +1884,11 @@ class NLQueryPipeline:
             if not missing:
                 records = await session.execute_template(template, tmpl_params)
                 return records, f"template:{template}"
-            # Incomplete free-form "template" claim → execute the confined Cypher.
             if is_fixture:
-                # Fixtures must be complete; surface clearly rather than empty.
                 raise GraphQueryError(
                     f"Fixture template {template!r} missing params: {sorted(missing)}"
                 )
 
-        # Legacy count stub shapes (pre-template field) still map to templates.
         if is_fixture and "count(*)" in cypher:
             if "primary_type" in forced_params:
                 records = await session.execute_template(
@@ -1541,13 +1911,22 @@ class NLQueryPipeline:
         kg_name: str,
         examples_text: str = "",
         error_feedback: str = "",
+        max_completion_tokens: int | None = None,
+        prefer_fallback: bool = False,
     ) -> dict | None:
-        """Best-effort LLM Cypher generation. Returns None without API keys."""
-        if not (self._openrouter_key or self._cerebras_key or getattr(self, "anthropic", None)):
+        """Best-effort LLM Cypher generation.
+
+        Returns ``None`` without API keys. Re-raises :class:`EmptyLLMResponse`
+        so the retry loop can apply length-truncation recovery (ONTA-530);
+        other generator failures log and return ``None``.
+        """
+        if not (
+            self._openrouter_key
+            or self._cerebras_key
+            or getattr(self, "anthropic", None)
+        ):
             return None
-        # Without any configured key, anthropic client still exists but will fail.
         if not self._openrouter_key and not self._cerebras_key:
-            # anthropic_key may be empty in hermetic tests
             try:
                 key = getattr(self.anthropic, "api_key", None) or ""
             except Exception:
@@ -1564,13 +1943,28 @@ class NLQueryPipeline:
             error_feedback=error_feedback,
         )
         try:
-            # Reuse OpenRouter JSON path with Cypher system prompt by temporarily
-            # swapping the system message via a dedicated call.
+            if prefer_fallback:
+                # Tier-2 length recovery: leave the reasoning provider.
+                if self._openrouter_key and self._query_provider != "openrouter":
+                    return await self._generate_cypher_via_openrouter(prompt)
+                if getattr(self, "anthropic", None) is not None:
+                    return await self._generate_cypher_via_anthropic(prompt)
+                if self._openrouter_key:
+                    return await self._generate_cypher_via_openrouter(prompt)
+            # Happy path: do NOT pass max_completion_tokens so the call is
+            # byte-identical when no length recovery is in play (tests pin this).
+            cerebras_kw = {}
+            if max_completion_tokens is not None:
+                cerebras_kw["max_completion_tokens"] = max_completion_tokens
+            if self._query_provider == "cerebras" and self._cerebras_key:
+                return await self._generate_cypher_via_cerebras(prompt, **cerebras_kw)
             if self._openrouter_key:
                 return await self._generate_cypher_via_openrouter(prompt)
-            if self._query_provider == "cerebras" and self._cerebras_key:
-                return await self._generate_cypher_via_cerebras(prompt)
+            if self._cerebras_key:
+                return await self._generate_cypher_via_cerebras(prompt, **cerebras_kw)
             return await self._generate_cypher_via_anthropic(prompt)
+        except EmptyLLMResponse:
+            raise
         except Exception:
             logger.warning("cypher_llm_generation_failed", exc_info=True)
             return None
@@ -1599,13 +1993,22 @@ class NLQueryPipeline:
             )
             res.raise_for_status()
             data = res.json()
-            content = data["choices"][0]["message"]["content"]
+            content = _require_message_content(data, "openrouter")
             parsed = json.loads(content) if isinstance(content, str) else content
             if "cypher" not in parsed and "sparql" in parsed:
                 parsed["cypher"] = parsed["sparql"]
-            return parsed
+            return attach_usage(
+                parsed,
+                usage=data.get("usage") if isinstance(data, dict) else None,
+                model=self._query_model,
+                provider="openrouter",
+                response_model=(data.get("model") if isinstance(data, dict) else None)
+                or "",
+            )
 
-    async def _generate_cypher_via_cerebras(self, prompt: str) -> dict:
+    async def _generate_cypher_via_cerebras(
+        self, prompt: str, max_completion_tokens: int = 2048
+    ) -> dict:
         cerebras_url = "https://api.cerebras.ai/v1/chat/completions"
         assert_online_url(cerebras_url, purpose="query Cypher LLM (cerebras)")
         async with httpx.AsyncClient(timeout=30) as client:
@@ -1621,7 +2024,7 @@ class NLQueryPipeline:
                         {"role": "system", "content": CYPHER_GENERATION_SYSTEM},
                         {"role": "user", "content": prompt},
                     ],
-                    "max_completion_tokens": 2048,
+                    "max_completion_tokens": max_completion_tokens,
                     "temperature": 0,
                     "response_format": {
                         "type": "json_schema",
@@ -1655,8 +2058,18 @@ class NLQueryPipeline:
             )
             res.raise_for_status()
             data = res.json()
-            content = data["choices"][0]["message"]["content"]
-            return json.loads(content) if isinstance(content, str) else content
+            content = _require_message_content(data, "cerebras")
+            parsed = json.loads(content) if isinstance(content, str) else content
+            if "cypher" not in parsed and "sparql" in parsed:
+                parsed["cypher"] = parsed["sparql"]
+            return attach_usage(
+                parsed,
+                usage=data.get("usage") if isinstance(data, dict) else None,
+                model=self._query_model,
+                provider="cerebras",
+                response_model=(data.get("model") if isinstance(data, dict) else None)
+                or "",
+            )
 
     async def _generate_cypher_via_anthropic(self, prompt: str) -> dict:
         msg = await self.anthropic.messages.create(
@@ -1666,15 +2079,27 @@ class NLQueryPipeline:
             messages=[{"role": "user", "content": prompt}],
         )
         text = msg.content[0].text if msg.content else "{}"
-        # Tolerate fenced JSON
         text = text.strip()
         if text.startswith("```"):
             text = re.sub(r"^```(?:json)?\s*", "", text)
             text = re.sub(r"\s*```$", "", text)
+        if not text:
+            raise EmptyLLMResponse("anthropic", finish_reason="stop")
         parsed = json.loads(text)
         if "cypher" not in parsed and "sparql" in parsed:
             parsed["cypher"] = parsed["sparql"]
-        return parsed
+        usage = None
+        if getattr(msg, "usage", None) is not None:
+            usage = {
+                "prompt_tokens": getattr(msg.usage, "input_tokens", None),
+                "completion_tokens": getattr(msg.usage, "output_tokens", None),
+            }
+        return attach_usage(
+            parsed,
+            usage=usage,
+            model="claude-sonnet-4-20250514",
+            provider="anthropic",
+        )
 
     # ------------------------------------------------ name-lookup broadening
     # Match a `types/<Leaf>` URI in rdf:type OBJECT position, whether the

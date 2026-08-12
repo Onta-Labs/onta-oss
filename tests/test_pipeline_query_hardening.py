@@ -115,80 +115,107 @@ EMPTY_RESULT = {"head": {"vars": ["name"]}, "results": {"bindings": []}}
 # =========================================================================== #
 # Fix 1: empty/blank first SPARQL ESCALATES (subset -> full + explicit feedback)
 # =========================================================================== #
-@pytest.mark.xfail(strict=True, reason=_NO_ONTOLOGY_ESCALATION)
 @pytest.mark.asyncio
 async def test_empty_first_sparql_escalates_to_full_ontology_and_recovers():
     """Attempt-1 returns a blank query; attempt-2 must run against the FULL
     ontology (not the identical semantic subset) with explicit non-empty
     feedback, and the pipeline returns attempt-2's answer — not "Could not
     answer"."""
-    neptune = AsyncMock()
-    # Attempt-2's valid query returns a normal row (no broadening, no URIs).
-    neptune.query.return_value = _rows(["name"], {"name": "widget-a"})
-    p = NLQueryPipeline(neptune, "invented-anthropic-key")
-    p._openrouter_key = ""  # force the narrative rephraser fail-open (no network)
+    from infona_client.graph.memory_store import MemoryGraphStore
+    from unittest.mock import MagicMock
 
-    # Semantic retrieval hands back a REDUCED subset first.
+    neptune = AsyncMock()
+    p = NLQueryPipeline(neptune, "invented-anthropic-key", graph_store=MemoryGraphStore())
+    p._openrouter_key = ""
+
     embed = MagicMock()
     embed.retrieve = AsyncMock(return_value=SUBSET_ONTOLOGY)
+    embed.type_names = AsyncMock(return_value={"Widget"})
 
     gen = AsyncMock(side_effect=[
-        {"sparql": "", "explanation": "", "functions_needed": []},               # blank
-        {"sparql": "SELECT ?name WHERE { ?s <p> ?name }",
-         "explanation": "ok", "functions_needed": []},                            # valid
+        {"cypher": "", "params": {}, "explanation": "", "functions_needed": []},
+        {
+            "cypher": (
+                "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
+                "RETURN e.name AS name LIMIT 5"
+            ),
+            "params": {},
+            "explanation": "ok",
+            "functions_needed": [],
+        },
     ])
+
+    async def fake_exec(session, g, cypher, forced_params):
+        rec = MagicMock()
+        rec.keys.return_value = ["name"]
+        rec.get.side_effect = lambda k, d=None: "widget-a" if k == "name" else d
+        return [rec], "execute_read"
 
     with patch.object(pipeline_mod, "get_embedding_service", return_value=embed), \
          patch.object(p, "_fetch_ontology", new=AsyncMock(return_value=FULL_ONTOLOGY)) as fetch_full, \
-         patch.object(p, "_generate_sparql", new=gen):
+         patch.object(p, "_try_llm_cypher", new=gen), \
+         patch.object(pipeline_mod, "try_deterministic_cypher", return_value=None), \
+         patch.object(p, "_execute_confined_cypher", new=fake_exec), \
+         patch.object(p, "_rephrase_via_openrouter", new=AsyncMock(return_value="")), \
+         patch.object(p, "_active_types", new=AsyncMock(return_value={"Widget"})):
         result = await p.ask("show details for zzqx", "https://graph.infona.ai/graphs/t1", KG_GRAPH)
 
-    # Recovered, not the degraded message.
     assert "Could not answer" not in result.answer
     assert result.timing.get("attempts") == 2
     assert result.timing.get("ontology_escalated_to_full_attempt") == 1
-
-    # The ESCALATION happened: attempt 2 saw the FULL ontology, not the subset,
-    # and got explicit "produce a non-empty SELECT" feedback.
     assert gen.await_count == 2
     first_ontology = gen.call_args_list[0].args[1]
     second_ontology = gen.call_args_list[1].args[1]
-    assert first_ontology == SUBSET_ONTOLOGY          # attempt 1: the subset
-    assert second_ontology == FULL_ONTOLOGY           # attempt 2: escalated
+    assert first_ontology == SUBSET_ONTOLOGY
+    assert second_ontology == FULL_ONTOLOGY
     feedback = gen.call_args_list[1].kwargs.get("error_feedback", "")
     assert "EMPTY" in feedback.upper()
     assert "non-empty" in feedback.lower()
-    fetch_full.assert_awaited()  # the full ontology was fetched for the retry
+    fetch_full.assert_awaited()
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_ONTOLOGY_ESCALATION)
 @pytest.mark.asyncio
 async def test_empty_sparql_does_not_escalate_when_already_full():
     """When the context is ALREADY the full ontology (no semantic subset), the
     escalation must not re-fetch it — it only adds the non-empty feedback."""
+    from infona_client.graph.memory_store import MemoryGraphStore
+    from unittest.mock import MagicMock
+
     neptune = AsyncMock()
-    neptune.query.return_value = _rows(["name"], {"name": "widget-a"})
-    p = NLQueryPipeline(neptune, "invented-anthropic-key")
+    p = NLQueryPipeline(neptune, "invented-anthropic-key", graph_store=MemoryGraphStore())
     p._openrouter_key = ""
 
     gen = AsyncMock(side_effect=[
-        {"sparql": "   ", "explanation": "", "functions_needed": []},             # blank
-        {"sparql": "SELECT ?name WHERE { ?s <p> ?name }",
-         "explanation": "ok", "functions_needed": []},
+        {"cypher": "   ", "params": {}, "explanation": "", "functions_needed": []},
+        {
+            "cypher": (
+                "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
+                "RETURN e.name AS name LIMIT 5"
+            ),
+            "params": {},
+            "explanation": "ok",
+            "functions_needed": [],
+        },
     ])
     fetch_full = AsyncMock(return_value=FULL_ONTOLOGY)
 
-    # No embedding service -> ontology starts as the full one.
+    async def fake_exec(session, g, cypher, forced_params):
+        rec = MagicMock()
+        rec.keys.return_value = ["name"]
+        rec.get.side_effect = lambda k, d=None: "widget-a" if k == "name" else d
+        return [rec], "execute_read"
+
     with patch.object(pipeline_mod, "get_embedding_service", return_value=None), \
          patch.object(p, "_fetch_ontology", new=fetch_full), \
-         patch.object(p, "_generate_sparql", new=gen):
+         patch.object(p, "_try_llm_cypher", new=gen), \
+         patch.object(pipeline_mod, "try_deterministic_cypher", return_value=None), \
+         patch.object(p, "_execute_confined_cypher", new=fake_exec), \
+         patch.object(p, "_rephrase_via_openrouter", new=AsyncMock(return_value="")):
         result = await p.ask("show details for zzqx", "https://graph.infona.ai/graphs/t1", KG_GRAPH)
 
     assert "Could not answer" not in result.answer
-    # Fetched exactly once (the initial load); the retry did NOT re-fetch.
     assert fetch_full.await_count == 1
     assert "ontology_escalated_to_full_attempt" not in result.timing
-    # Retry still got the explicit non-empty feedback.
     assert "non-empty" in gen.call_args_list[1].kwargs.get("error_feedback", "").lower()
 
 
@@ -269,8 +296,8 @@ async def test_broaden_name_lookup_noop_when_type_has_no_supertype():
     assert await p._broaden_name_lookup(q, "https://graph.infona.ai/graphs/t1") is None
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_NAME_LOOKUP_BROADENING)
 @pytest.mark.asyncio
+@pytest.mark.xfail(strict=True, reason=_NO_NAME_LOOKUP_BROADENING)
 async def test_ask_broadens_zero_row_name_lookup_end_to_end():
     """End-to-end through ask(): the generator emits a name lookup bound to the
     wrong subtype (Cat) -> 0 rows -> the broadening step re-queries the supertype
