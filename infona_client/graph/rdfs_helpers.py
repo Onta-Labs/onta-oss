@@ -207,6 +207,7 @@ WHERE p.name = $rel_attr
     toLower(coalesce(t.display_name, '')) = toLower($target_name)
     OR toLower(coalesce(t.name, '')) = toLower($target_name)
     OR toLower(replace(coalesce(t.name, ''), '_', ' ')) = toLower($target_name)
+    OR toLower(coalesce(t.display_name, t.name, '')) CONTAINS toLower($target_name)
   )
 RETURN DISTINCT e.id AS id, coalesce(e.title, e.name) AS title,
        e.primary_type AS primary_type,

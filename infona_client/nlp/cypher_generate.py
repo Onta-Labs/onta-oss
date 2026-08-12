@@ -834,6 +834,44 @@ def try_made_by_filter_query(
     expanded = type_names_with_subclasses(
         matched, ontology_summary=ontology_summary, include_subclasses=True
     )
+    # Literal attribute (common for free-text ingest): use equality filter.
+    # Relationship edge: related_entity_name_filter.
+    is_literal = bool(
+        re.search(
+            rf"(?i)-\s*{re.escape(rel_attr)}\s*:\s*\w+\s*\(literal",
+            section,
+        )
+    )
+    if is_literal:
+        # CONTAINS so "Acme" matches "Acme Corp" free-text literals.
+        lit_cypher = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
+  tenant_id: $tenant_id, kg: $kg
+})
+WHERE c.name IN $type_names OR c.id IN $type_names
+OPTIONAL MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg, subject_id: e.id})
+  -[:PREDICATE]->(p:Property {tenant_id: $tenant_id, kg: $kg})
+WHERE p.name = $prop_key
+WITH e, coalesce(a.literal_value, e[$prop_key]) AS raw
+WHERE raw IS NOT NULL AND toLower(toString(raw)) CONTAINS toLower($needle)
+RETURN e.id AS id, e.name AS name, e.primary_type AS primary_type,
+       coalesce(e.title, e.name) AS title, raw AS value
+ORDER BY e.id
+LIMIT $limit
+""".strip()
+        return _fixture(
+            cypher=lit_cypher,
+            params={
+                "type_names": expanded,
+                "prop_key": rel_attr,
+                "needle": value,
+                "limit": limit if limit is not None else DEFAULT_LIST_LIMIT,
+            },
+            explanation=(
+                f"Find {matched} entities where {rel_attr} contains {value!r}."
+            ),
+            template=None,
+        )
     return _fixture(
         cypher=RELATED_ENTITY_NAME_FILTER_CYPHER,
         params={
