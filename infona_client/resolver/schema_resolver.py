@@ -2570,10 +2570,17 @@ class SchemaResolver:
                             name=canonical_pred, datatype=target_type,
                         )
 
-        # Batch insert relationship triples
+        # Batch insert relationship triples — same shared write path as entity
+        # facts (insert_facts). On Neo4j, SPARQL batched_insert is unavailable;
+        # previously this forked to Neptune-only and 500'd the bookstore multi-
+        # entity inferred path when GraphStore is the live backend.
         if rel_triples:
-            for sparql in batched_insert_triples(instance_graph, rel_triples):
-                await self._neptune.update(sparql)
+            await insert_facts(
+                self._neptune,
+                instance_graph,
+                rel_triples,
+                store=resolve_optional_graph_store(),
+            )
             result.triples_inserted += len(rel_triples)
 
         result.entities_resolved = len(entity_uri_map)
@@ -2583,8 +2590,8 @@ class SchemaResolver:
         # + relationship triples), via the shared `build_graph_delta` — the same
         # projection `insert_facts` returns for its own portion. We assemble it
         # HERE rather than take `insert_facts`'s return because relationship
-        # triples are written after it (through `batched_insert_triples`, not a
-        # second `insert_facts` call), so only the run owner sees every fact.
+        # triples are written after it (second insert_facts call on Neo4j), so
+        # only the run owner sees every fact.
         # Nonces (ingested_at/batch_id) are projected out and each fact is keyed
         # by its stable fact_id, so a preserved-run_id replay reproduces byte-
         # identical bytes and P6 dedupes it. `fan_in` records source facts that
