@@ -156,7 +156,22 @@ class _ProvRow:
     source: str | None = None
     fact_hash: str | None = None
     ts: str | None = None
+    # ONTA-536: ADR 0002 governance fields on assert events.
+    confidence: float | None = None
     # ABOUT is implied: event is always about subject_id when entity exists.
+
+
+@dataclass
+class _ValueHistoryRow:
+    """One old→new value transition (ONTA-236 / ONTA-536 property-graph port)."""
+
+    tenant_id: str
+    kg: str
+    subject_id: str
+    predicate: str
+    old_value: str
+    new_value: str
+    changed_at: str
 
 
 @dataclass
@@ -449,6 +464,7 @@ class MemoryGraphSession:
         source: str | None = None,
         fact_hash: str | None = None,
         ts: str | None = None,
+        confidence: float | None = None,
     ) -> None:
         t, k = self._scope_tk()
         # Ensure ABOUT target for assert/rewrite only — never re-mint a deleted
@@ -469,7 +485,48 @@ class MemoryGraphSession:
                 source=source,
                 fact_hash=fact_hash,
                 ts=ts,
+                confidence=confidence,
             )
+        )
+
+    async def write_value_history(
+        self,
+        *,
+        subject_id: str,
+        predicate: str,
+        old_value: str,
+        new_value: str,
+        changed_at: str,
+    ) -> None:
+        t, k = self._scope_tk()
+        self._store._add_value_history(
+            _ValueHistoryRow(
+                tenant_id=t,
+                kg=k,
+                subject_id=subject_id,
+                predicate=predicate,
+                old_value=old_value,
+                new_value=new_value,
+                changed_at=changed_at,
+            )
+        )
+
+    async def read_value_history(
+        self,
+        *,
+        subject_id: str | None = None,
+        predicate: str | None = None,
+        since: str | None = None,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        t, k = self._scope_tk()
+        return self._store._list_value_history(
+            t,
+            k,
+            subject_id=subject_id,
+            predicate=predicate,
+            since=since,
+            limit=limit,
         )
 
     async def write_attr_citation(
@@ -663,6 +720,8 @@ class MemoryGraphStore:
         # B4 key: (tenant_id, kg, start_id, end_id, rel_type)
         self._rels: dict[tuple[str, str, str, str, str], _RelRow] = {}
         self._prov: list[_ProvRow] = []
+        # ValueHistory (ONTA-236/536): ordered old→new transitions
+        self._value_history: list[_ValueHistoryRow] = []
         # AttrCitation MERGE key: (tenant_id, kg, entity_id, attr, value_hash)
         self._citations: dict[tuple[str, str, str, str, str], _CitationRow] = {}
         # ADR 0013: Class / Property / Assertion
@@ -700,6 +759,7 @@ class MemoryGraphStore:
         self._entities.clear()
         self._rels.clear()
         self._prov.clear()
+        self._value_history.clear()
         self._citations.clear()
         self._classes.clear()
         self._properties.clear()
@@ -810,6 +870,9 @@ class MemoryGraphStore:
 
     def snapshot_prov(self) -> list[dict[str, Any]]:
         return [copy.deepcopy(r.__dict__) for r in self._prov]
+
+    def snapshot_value_history(self) -> list[dict[str, Any]]:
+        return [copy.deepcopy(r.__dict__) for r in self._value_history]
 
     def snapshot_citations(self) -> list[dict[str, Any]]:
         return [copy.deepcopy(r.__dict__) for r in self._citations.values()]
@@ -1128,6 +1191,51 @@ class MemoryGraphStore:
 
     def _add_prov(self, row: _ProvRow) -> None:
         self._prov.append(row)
+
+    def _add_value_history(self, row: _ValueHistoryRow) -> None:
+        self._value_history.append(row)
+
+    def _list_value_history(
+        self,
+        tenant_id: str,
+        kg: str,
+        *,
+        subject_id: str | None = None,
+        predicate: str | None = None,
+        since: str | None = None,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for r in self._value_history:
+            if r.tenant_id != tenant_id or r.kg != kg:
+                continue
+            if subject_id is not None and r.subject_id != subject_id:
+                continue
+            if predicate is not None and r.predicate != predicate:
+                # Also allow leaf match (attrs URI vs bare leaf).
+                if not (
+                    r.predicate.endswith("/" + predicate.rstrip("/").rsplit("/", 1)[-1])
+                    or predicate.endswith("/" + r.predicate)
+                    or r.predicate == predicate
+                ):
+                    pred_leaf = predicate.rstrip("/").rsplit("/", 1)[-1]
+                    row_leaf = r.predicate.rstrip("/").rsplit("/", 1)[-1]
+                    if pred_leaf != row_leaf:
+                        continue
+            if since and not ((r.changed_at or "") > since):
+                continue
+            out.append(
+                {
+                    "subject_id": r.subject_id,
+                    "subject": r.subject_id,
+                    "predicate": r.predicate,
+                    "old_value": r.old_value,
+                    "new_value": r.new_value,
+                    "changed_at": r.changed_at,
+                }
+            )
+        out.sort(key=lambda d: d.get("changed_at") or "")
+        return out[: max(1, min(int(limit), 10000))]
 
     def _upsert_citation(self, row: _CitationRow) -> None:
         key = (row.tenant_id, row.kg, row.entity_id, row.attr, row.value_hash or "")
