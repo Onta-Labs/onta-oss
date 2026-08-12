@@ -106,11 +106,13 @@ def reset_page_fetchers() -> None:
 
 
 def register_default_fetchers() -> None:
-    """Register the OSS default ladder (the static fetcher at tier 0).
+    """Opt-in registration of the free static HTTP fetcher (tier 0).
 
-    Called at app boot alongside the other default registrations so a plain OSS
-    deployment can fetch pages out of the box. Idempotent. A premium plugin adds
-    higher rungs (JS render) on top without disturbing this one.
+    **Not called at OSS app boot** (ONTA-293). Open-web retrieval is
+    bring-your-own: call this (or register your own :class:`PageFetcher`) if
+    you want a fetch ladder. Premium deployments may register paid rungs
+    *and* still call this so ordinary fetches do not force a paid render.
+    Idempotent.
     """
     register_page_fetcher(StaticHttpFetcher())
 
