@@ -700,6 +700,10 @@ def try_related_name_filter_query(
         limit = lim_from_value
     if not value or not _SAFE_PROP_RE.match(rel):
         return None
+    # Defer "with author is Herbert" / "with genre equals Romance" to equality
+    # filter — those are prop=value shapes, not related-entity names.
+    if re.match(r"(?i)^(is|equals?|=|==)\b", value):
+        return None
     matched = resolve_type_name(label, type_names, ontology_summary)
     if matched is None:
         return None

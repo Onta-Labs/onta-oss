@@ -22,6 +22,7 @@ from infona_client.graph.assertion_model import (
     PropertyNode,
     canonical_literal,
     make_assertion_id,
+    normalize_store_literal,
     property_uri,
     type_membership_property_id,
 )
@@ -209,8 +210,10 @@ class AssertionMemoryStore:
         object_key: str
 
         if fact.kind == "literal":
-            literal_value = fact.value
-            object_key = canonical_literal(fact.value)
+            # Match GraphSession assert_fact: store native numbers, not SPARQL
+            # ``lexical^^xsd`` strings (identity keys use the same form).
+            literal_value = normalize_store_literal(fact.value)
+            object_key = canonical_literal(literal_value)
         elif fact.kind == "object":
             if not isinstance(fact.value, str) or not fact.value:
                 raise GraphScopeError("object Assertion needs entity id value")
