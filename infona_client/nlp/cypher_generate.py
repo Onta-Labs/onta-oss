@@ -641,11 +641,12 @@ _NUMERIC_FILTER_RE = re.compile(
 
 # "list books with genre Classic Fiction" / "books that have genre Romance"
 # / "which books are in the genre Classic Fiction" / "books of genre Fantasy"
+# / "widgets at site East" / "items in warehouse East" (promoted dim cols, ONTA-538)
 _REL_NAME_FILTER_RE = re.compile(
     r"(?ix)^"
     r"(?:(?:list|show(?:\s+me)?|find|get|which|what)\s+)?"
     r"(?P<label>.+?)\s+"
-    r"(?:with|having|that\s+have|have|in|of|from)\s+"
+    r"(?:with|having|that\s+have|have|in|at|of|from)\s+"
     r"(?:the\s+)?"
     r"(?P<rel>[A-Za-z_][A-Za-z0-9_]*)\s+"
     r"[\"']?(?P<value>.+?)[\"']?"
@@ -1004,35 +1005,118 @@ def _ontology_section_for_type(type_name: str, ontology_summary: str) -> str:
     return m.group(0) if m else text
 
 
-def _relationship_leaves_in_section(section: str) -> list[str]:
-    """Parse relationship attribute leaves from a type ontology section.
+def _relationship_specs_in_section(section: str) -> list[tuple[str, str | None]]:
+    """Parse relationship leaves + optional range types from a type section.
 
     Accepts both hand-written colon form and production
     ``format_schema_types_for_cypher`` form::
 
         - has_phase: relationship → Phase
         - has_phase -> Phase (relationship, key=has_phase)
+
+    Returns ``(leaf, range_type_or_None)`` in section order, de-duped by leaf.
     """
-    leaves: list[str] = []
+    specs: list[tuple[str, str | None]] = []
     seen: set[str] = set()
     patterns = (
         # Production: "- name -> Range (relationship, key=name)"
-        r"(?im)^\s*-\s*([A-Za-z_][A-Za-z0-9_]*)\s*->.*\brelationship\b"
+        r"(?im)^\s*-\s*([A-Za-z_][A-Za-z0-9_]*)\s*->\s*"
+        r"([A-Za-z_][A-Za-z0-9_]*)?\s*\([^)]*\brelationship\b"
         r"(?:,\s*key=([A-Za-z_][A-Za-z0-9_]*))?",
-        # Colon form used in tests / older summaries
-        r"(?im)^\s*-\s*([A-Za-z_][A-Za-z0-9_]*)\s*:.*\brelationship\b",
+        # Colon form: "- name: relationship → Range" / "- name: relationship -> Range"
+        r"(?im)^\s*-\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*"
+        r".*?\brelationship\b\s*(?:→|->)?\s*([A-Za-z_][A-Za-z0-9_]*)?",
     )
     for pat in patterns:
         for m in re.finditer(pat, section or ""):
-            name = (m.group(2) if m.lastindex and m.lastindex >= 2 and m.group(2) else m.group(1))
-            if not name:
+            # Production: g1=name, g2=range, g3=key; colon: g1=name, g2=range
+            key_or_name = (
+                m.group(3)
+                if m.lastindex and m.lastindex >= 3 and m.group(3)
+                else m.group(1)
+            )
+            range_type = m.group(2) if m.lastindex and m.lastindex >= 2 else None
+            if range_type and range_type.lower() in {
+                "relationship",
+                "literal",
+                "string",
+                "integer",
+                "float",
+                "boolean",
+            }:
+                range_type = None
+            if not key_or_name:
                 continue
-            key = name.lower()
+            key = key_or_name.lower()
             if key in seen:
                 continue
             seen.add(key)
-            leaves.append(name)
+            specs.append((key_or_name, range_type or None))
+    return specs
+
+
+def _relationship_leaves_in_section(section: str) -> list[str]:
+    """Parse relationship attribute leaves from a type ontology section."""
+    return [leaf for leaf, _rng in _relationship_specs_in_section(section)]
+
+
+def _literal_leaves_in_section(section: str) -> set[str]:
+    """Literal attribute leaves declared on a type section (lowercased)."""
+    leaves: set[str] = set()
+    # "- name: datatype (literal...)" / "- name: float (literal, key=…)"
+    for m in re.finditer(
+        r"(?im)^\s*-\s*([A-Za-z_][A-Za-z0-9_]*)\s*:"
+        r".*?\b(?:literal|string|integer|float|boolean|number)\b",
+        section or "",
+    ):
+        leaves.add(m.group(1).lower())
+    for m in re.finditer(
+        r"(?im)^\s*-\s*[A-Za-z_][A-Za-z0-9_]*\s*:.*\bliteral\b.*\bkey="
+        r"([A-Za-z_][A-Za-z0-9_]*)",
+        section or "",
+    ):
+        leaves.add(m.group(1).lower())
     return leaves
+
+
+def _resolve_via_range_type(
+    rel_word: str,
+    specs: list[tuple[str, str | None]],
+    *,
+    literal_leaves: set[str],
+) -> str | None:
+    """Map a dim word to a relationship leaf via the **range type** name.
+
+    Hermetic ONTA-538 path: after CSV promotion, users still say the column /
+    entity-type name ("site", "warehouse") even when the edge leaf is a verb
+    (``stored_in``). Prefer a unique range-type hit; fall through (``None``)
+    when ambiguous or when the word is also a declared **literal** on the type
+    (literal equality owns that shape — do not steal).
+    """
+    rel_l = (rel_word or "").strip().lower()
+    if not rel_l:
+        return None
+    # If the NL word is a literal attribute on this type, do not rebind via
+    # range (prefer equality / LLM rather than a confident wrong related filter).
+    if rel_l in literal_leaves:
+        return None
+
+    scored: list[tuple[int, str]] = []
+    for leaf, range_type in specs:
+        if not range_type:
+            continue
+        score = _score_type_match(rel_word, range_type)
+        if score > 0:
+            scored.append((score, leaf))
+    if not scored:
+        return None
+    scored.sort(key=lambda x: (-x[0], x[1]))
+    best_score, best_leaf = scored[0]
+    # Unique winner only — ties fall through (clarify, not confident empty).
+    runners = [leaf for s, leaf in scored if s == best_score]
+    if len(runners) != 1:
+        return None
+    return best_leaf
 
 
 def _resolve_relationship_attr(
@@ -1046,17 +1130,23 @@ def _resolve_relationship_attr(
     Only returns leaves that the ontology marks as **relationships** on the
     subject type. No bare-text fallback onto literals.
 
-    **Semantic path (ONTA-537):** when a resolve context carries a mention
-    index with **every allowed rel leaf embedded** and a query embedding for
-    ``rel_word``, rank leaves via :meth:`OntologyMentionIndex.resolve_rel`
-    after the exact/token string fast path misses. Partial indexes skip
-    semantic (same guard as type resolve).
+    Resolution order (ONTA-538 / ONTA-537):
+
+    1. Exact / ``has_`` / ``_by`` leaf name (string)
+    2. Underscore-token equality on the leaf (``phase`` ⊂ ``has_phase``)
+    3. **Range-type** name match (``site`` → ``stored_in → Site``) — hermetic
+    4. **Semantic** :meth:`OntologyMentionIndex.resolve_rel` when fully embedded
+       (e.g. ``warehouse`` → ``stored_in``) — ONTA-537
+
+    Ambiguous multi-leaf hits return ``None`` so fixtures fall through rather
+    than emit a confident empty related-entity filter.
     """
     rel = (rel_word or "").strip()
     if not rel or not _SAFE_PROP_RE.match(rel):
         return None
     section = _ontology_section_for_type(type_name, ontology_summary)
-    leaves = _relationship_leaves_in_section(section)
+    specs = _relationship_specs_in_section(section)
+    leaves = [leaf for leaf, _rng in specs]
     if not leaves:
         return None
 
@@ -1070,10 +1160,25 @@ def _resolve_relationship_attr(
             return by_lower[cand]
 
     # Underscore-token equality only (avoid author ⊂ has_authority).
-    for leaf in leaves:
-        parts = set(leaf.lower().split("_")) - {"has", "by", "the", "a", "an"}
-        if rel_l in parts or sing in parts:
-            return leaf
+    token_hits = [
+        leaf
+        for leaf in leaves
+        if rel_l in (set(leaf.lower().split("_")) - {"has", "by", "the", "a", "an"})
+        or sing in (set(leaf.lower().split("_")) - {"has", "by", "the", "a", "an"})
+    ]
+    if len(token_hits) == 1:
+        return token_hits[0]
+    if len(token_hits) > 1:
+        return None  # ambiguous leaf tokens — fall through
+
+    # Range-type hermetic path (promoted dim columns still spoken as type names).
+    range_hit = _resolve_via_range_type(
+        rel,
+        specs,
+        literal_leaves=_literal_leaves_in_section(section),
+    )
+    if range_hit is not None:
+        return range_hit
 
     # Semantic synonym path (e.g. "warehouse" → stored_in) under same guards
     # as type resolve: full candidate embedding set + query vector.
