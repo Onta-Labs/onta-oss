@@ -582,11 +582,15 @@ def try_stub_count_query(
             template=TEMPLATE_COUNT_TOTAL,
         )
 
-    # Refuse silent wrong counts: "how many X have/with/where …" is NOT a bare
-    # type count. Fall through so LLM / filter fixtures handle it.
+    # Refuse silent wrong counts: any filtered / scoped "how many X …" is NOT a
+    # bare type count (e.g. "how many sensors are at Plant-A"). Fall through so
+    # LLM / filter fixtures handle it — never answer unfiltered total.
     if re.search(
         r"(?i)\b(?:have|has|with|where|having|that\s+have|under|over|above|below|"
-        r"less\s+than|more\s+than|at\s+least|at\s+most|equals?|is\s+not)\b",
+        r"less\s+than|more\s+than|at\s+least|at\s+most|equals?|is\s+not|"
+        r"are\s+at|is\s+at|located|belong|belonging|matching|filtered|"
+        r"\bat\b|\bfrom\b|\bfor\b|\bin\b|\bon\b|\bby\b|"
+        r"whose|which\s+are|that\s+are)\b",
         label,
     ):
         return None
