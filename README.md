@@ -70,7 +70,10 @@ Details: [docs/neo4j-local.md](docs/neo4j-local.md).
 ### 3. Start the API
 
 ```bash
-source .env && uvicorn infona_client.api.app:create_app --factory --port 8000
+# set -a exports every assignment so NEO4J_* / OPENROUTER_* reach uvicorn
+set -a && source .env && set +a
+# Wait until Neo4j is healthy: docker compose ps  (STATUS healthy)
+uvicorn infona_client.api.app:create_app --factory --port 8000
 ```
 
 No API key required for local open-access (`INFONA_API_KEYS` empty → tenant `default`). Pass `--tenant default` (or `INFONA_TENANT=default`) on the CLI if your config still defaults to another tenant.
