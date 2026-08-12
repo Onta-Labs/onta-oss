@@ -36,7 +36,7 @@ cp .env.example .env
 ```
 
 > Import path: `infona_client`. Graph IRIs: `https://graph.infona.ai/`.  
-> CLI: build from this repo (`npm ci && npm run build -w packages/cli`) until a release ships the `export` command; published `@infona-ai/cli` may still use the legacy `onta` bin name.
+> CLI: workspace packages use the `infona` bin (`npm ci && npm run build -w packages/cli`). Older published tarballs may still expose a legacy `onta` alias; prefer `infona`.
 
 ### 2. Start Neo4j
 
@@ -144,7 +144,7 @@ See [packages/cli/README.md](packages/cli/README.md).
 }
 ```
 
-Tools include `ask`, `search`, `agent`, `ingest_csv`, KG CRUD, ontology evolve, jobs. See [packages/mcp/README.md](packages/mcp/README.md).
+Tools include `ask`, `search`, `agent`, `ingest_csv`, `export_kg`, KG CRUD, ontology evolve, jobs. See [packages/mcp/README.md](packages/mcp/README.md).
 
 ## API (local)
 
