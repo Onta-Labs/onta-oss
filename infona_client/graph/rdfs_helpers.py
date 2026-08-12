@@ -39,6 +39,7 @@ TEMPLATE_ENTITIES_OF_TYPE = "entities_of_type"
 TEMPLATE_ENTITIES_OF_TYPE_COUNT = "entities_of_type_count"
 TEMPLATE_LITERAL_VALUES = "literal_values"
 TEMPLATE_LITERAL_COMPARE = "literal_compare"
+TEMPLATE_LITERAL_AGGREGATE = "literal_aggregate"
 TEMPLATE_RELATED_ENTITIES = "related_entities"
 TEMPLATE_RELATED_ENTITY_NAME_FILTER = "related_entity_name_filter"
 TEMPLATE_ASSERTIONS_FOR_SUBJECT = "assertions_for_subject"
@@ -190,6 +191,36 @@ RETURN e.id AS id, e.name AS name, e.primary_type AS primary_type,
        coalesce(e.title, e.name) AS title, num AS value
 ORDER BY num, e.id
 LIMIT $limit
+""".strip()
+
+
+# Aggregate (sum/avg/min/max) over a datatype property — Assertion SoT + denorm.
+# $agg_op is one of sum|avg|min|max (allowlisted by the fixture, never free text).
+LITERAL_AGGREGATE_CYPHER = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
+  tenant_id: $tenant_id, kg: $kg
+})
+WHERE c.name IN $type_names OR c.id IN $type_names
+OPTIONAL MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg, subject_id: e.id})
+  -[:PREDICATE]->(p:Property {tenant_id: $tenant_id, kg: $kg})
+WHERE p.name = $prop_key
+WITH e, coalesce(a.literal_value, e[$prop_key]) AS raw
+WHERE raw IS NOT NULL
+WITH e, toFloat(
+  CASE
+    WHEN toString(raw) CONTAINS '^^' THEN split(toString(raw), '^^')[0]
+    ELSE toString(raw)
+  END
+) AS num
+WHERE num IS NOT NULL
+WITH e, max(num) AS num
+RETURN CASE
+  WHEN $agg_op = 'sum' THEN sum(num)
+  WHEN $agg_op = 'avg' THEN avg(num)
+  WHEN $agg_op = 'min' THEN min(num)
+  WHEN $agg_op = 'max' THEN max(num)
+  ELSE null
+END AS value
 """.strip()
 
 # Filter subjects of a type by a related entity's display name / name
@@ -397,6 +428,8 @@ def semantic_templates() -> dict[str, tuple[str, bool]]:
         TEMPLATE_ENTITIES_OF_TYPE: (ENTITIES_OF_TYPE_CYPHER, False),
         TEMPLATE_ENTITIES_OF_TYPE_COUNT: (ENTITIES_OF_TYPE_COUNT_CYPHER, False),
         TEMPLATE_LITERAL_VALUES: (LITERAL_VALUES_CYPHER, False),
+        TEMPLATE_LITERAL_COMPARE: (LITERAL_COMPARE_CYPHER, False),
+        TEMPLATE_LITERAL_AGGREGATE: (LITERAL_AGGREGATE_CYPHER, False),
         TEMPLATE_RELATED_ENTITIES: (RELATED_ENTITIES_CYPHER, False),
         TEMPLATE_ASSERTIONS_FOR_SUBJECT: (ASSERTIONS_FOR_SUBJECT_CYPHER, False),
         TEMPLATE_SUBCLASS_OF_CLOSURE: (SUBCLASS_OF_CLOSURE_CYPHER, False),
@@ -1027,6 +1060,8 @@ __all__ = [
     "TEMPLATE_ENTITIES_OF_TYPE",
     "TEMPLATE_ENTITIES_OF_TYPE_COUNT",
     "TEMPLATE_LITERAL_COMPARE",
+    "TEMPLATE_LITERAL_AGGREGATE",
+    "LITERAL_AGGREGATE_CYPHER",
     "TEMPLATE_LITERAL_VALUES",
     "TEMPLATE_RELATED_ENTITIES",
     "TEMPLATE_RELATED_ENTITY_NAME_FILTER",
