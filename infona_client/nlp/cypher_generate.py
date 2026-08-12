@@ -794,18 +794,26 @@ def try_made_by_filter_query(
     matched = resolve_type_name(label, type_names, ontology_summary)
     if matched is None:
         return None
-    # Prefer a relationship leaf present on THIS type's ontology section.
-    candidates = (
-        "made_by",
-        "has_author",
-        "written_by",
-        "sold_by",
-        "published_by",
-        "has_publisher",
-        "works_with",
-        "has_genre",
-    )
-    rel_attr = "made_by"
+    # Phrase → preferred leaves (makers / creators only — never has_genre).
+    phrase = (m.group(0) or "").lower()
+    if "written" in phrase or "authored" in phrase:
+        candidates = ("has_author", "written_by", "authored_by")
+    elif "published" in phrase:
+        candidates = ("has_publisher", "published_by", "publisher")
+    elif "sold" in phrase:
+        candidates = ("sold_by", "has_seller", "seller")
+    elif "made" in phrase:
+        candidates = ("made_by", "manufacturer", "has_manufacturer")
+    else:
+        # bare "by X" — prefer maker/author leaves present on this type
+        candidates = (
+            "made_by",
+            "has_author",
+            "written_by",
+            "sold_by",
+            "published_by",
+            "has_publisher",
+        )
     text = ontology_summary or ""
     section = text
     if matched:
@@ -815,10 +823,14 @@ def try_made_by_filter_query(
         )
         if m_sec:
             section = m_sec.group(0)
+    rel_attr: str | None = None
     for cand in candidates:
         if re.search(rf"(?i)\b{re.escape(cand)}\b", section):
             rel_attr = cand
             break
+    if rel_attr is None:
+        # No type-local maker/author edge — do not claim a fixture (let LLM try).
+        return None
     expanded = type_names_with_subclasses(
         matched, ontology_summary=ontology_summary, include_subclasses=True
     )
