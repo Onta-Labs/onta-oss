@@ -810,7 +810,7 @@ def try_made_by_filter_query(
     section = text
     if matched:
         m_sec = re.search(
-            rf"(?is)Type:\s*{re.escape(matched)}\b.*?(?=^Type:|\Z)",
+            rf"(?ims)Type:\s*{re.escape(matched)}\b.*?(?=^Type:|\Z)",
             text,
         )
         if m_sec:
