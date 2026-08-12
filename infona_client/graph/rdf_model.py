@@ -246,8 +246,12 @@ async def assert_fact(
     object_key: str
 
     if fact.kind == "literal":
-        literal_value = fact.value
-        object_key = canonical_literal(fact.value)
+        # Strip SPARQL-era ``lexical^^xsd`` and coerce numerics so Neo4j stores
+        # native floats/ints (NL filters: toFloat(e.price) < 15). Idempotent.
+        from infona_client.graph.assertion_model import normalize_store_literal
+
+        literal_value = normalize_store_literal(fact.value)
+        object_key = canonical_literal(literal_value)
     elif fact.kind == "object":
         if not isinstance(fact.value, str) or not fact.value:
             raise GraphScopeError("object Assertion needs entity id value")
