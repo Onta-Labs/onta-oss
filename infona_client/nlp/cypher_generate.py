@@ -1431,19 +1431,18 @@ def try_aggregate_query(
         return None
     prop = (m.group("prop") or "").strip() or None
     label = (m.group("label") or "").strip()
-    # "total number of grants" is a COUNT; "total number of seats" is SUM(seats).
+    peeled_from_number = False
+    # "total number of grants" is a COUNT; "total number of seats" is SUM(seats)
+    # only when ``seats`` is a declared attribute on the type (not any English noun).
     if prop and prop.lower() in {
         "number", "count", "counts", "entities", "records", "items", "rows", "things",
     }:
-        # Peek at first token of label — if it is a numeric prop leaf, SUM that.
         first = (label.split() or [""])[0].strip(".,")
-        if first.lower() in {c.lower() for c in _NUMERIC_AGG_PROP_CANDIDATES} or (
-            first and _SAFE_PROP_RE.match(first)
-        ):
-            # Will resolve against ontology below; if not a real prop, fall through.
+        if first and _SAFE_PROP_RE.match(first):
             prop = first
             label = " ".join(label.split()[1:]).strip()
             label = re.sub(r"(?i)^(of|for|across|over|on|all|the)\s+", "", label).strip()
+            peeled_from_number = True
         else:
             return None
     label = _TRAILING_PUNCT_RE.sub("", label)
@@ -1462,8 +1461,31 @@ def try_aggregate_query(
     matched = resolve_type_name(label, type_names, ontology_summary)
     if matched is None:
         return None
+    # Gate: prop must appear as a declared leaf on the type (or known candidate
+    # present in the section). Never invent SUM(students) when only seats exists.
+    section = _ontology_section_for_type(matched, ontology_summary)
+    if prop:
+        declared = bool(
+            re.search(rf"(?im)^\s*-\s*{re.escape(prop)}\b", section or "")
+            or re.search(
+                rf"(?i)\bkey={re.escape(prop)}\b", section or ontology_summary or ""
+            )
+        )
+        if not declared and prop.lower() not in {
+            c.lower() for c in _NUMERIC_AGG_PROP_CANDIDATES
+        }:
+            return None
+        if not declared and peeled_from_number:
+            # Peeling "number of <noun>" only when <noun> is a real attr.
+            if not re.search(rf"(?im)^\s*-\s*{re.escape(prop)}\b", section or ""):
+                return None
     prop_key = _resolve_numeric_prop(prop, ontology_summary, matched)
     if not prop_key or not _SAFE_PROP_RE.match(prop_key):
+        return None
+    # Final guard: resolved prop_key must be on the type section when we peeled.
+    if peeled_from_number and not re.search(
+        rf"(?im)^\s*-\s*{re.escape(prop_key)}\b", section or ""
+    ):
         return None
     expanded = type_names_with_subclasses(
         matched, ontology_summary=ontology_summary, include_subclasses=True

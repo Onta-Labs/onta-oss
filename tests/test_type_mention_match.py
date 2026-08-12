@@ -478,3 +478,14 @@ def test_total_number_of_numeric_prop_is_sum():
     )
     assert c is not None
     assert c["template"] == "entities_of_type_count"
+
+
+def test_total_number_of_undeclared_noun_not_sum():
+    """Do not invent SUM(students) when Course only has seats."""
+    onto = "Type: Course\n  - seats: integer (literal)\n  - credits: integer (literal)\n"
+    p = try_deterministic_cypher(
+        "total number of students across all courses",
+        onto,
+        type_names=["Course"],
+    )
+    assert p is None or p.get("template") != "literal_aggregate"
