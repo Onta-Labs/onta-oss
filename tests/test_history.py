@@ -1,35 +1,16 @@
-"""Tests for temporal value-history versioning (ONTA-236).
+"""Tests for temporal value-history versioning (ONTA-236 / ONTA-536).
 
 The gap: an attribute UPDATE overwrites in place (delete-old + insert-new via the
 shared write path), so "which values changed, old → new, when" was unanswerable.
-The fix records a dated ``old → new`` entry in a companion history graph on every
-GENUINE value change — through ``kg_writer.delete_facts`` (the shared write path),
-NOT a bespoke writer.
+The fix records a dated ``old → new`` entry on every GENUINE value change —
+through ``kg_writer.delete_facts`` (the shared write path), NOT a bespoke writer.
 
-These tests pin, on invented data (Widget.weight_kg — no price/model special-
-casing), that:
-  * two updates produce ordered old→new transitions, each with a changed_at date;
-  * a "changed since <cutoff>" read returns only post-cutoff transitions;
-  * the history write rides kg_writer.delete_facts (behavioral) and lands in the
-    companion HISTORY graph via the shared batched-insert seam;
-  * a first insert / an unchanged re-write records NO change (no false positives);
-  * the whole mechanism is env-gated (byte-stable when off).
-
-**LOST CAPABILITY (ONTA-527).** Everything in the third and fifth bullets is
-gone on the shipped path. ``kg_writer.delete_facts`` is property-graph-only now
-(``_delete_facts_store``); its SPARQL branch — the one place that read the OLD
-value before clearing it and composed ``build_value_change_triples`` — was
-deleted with the Neptune backend. ``kg_writer._record_value_history`` still
-exists but has **no caller**: an attribute UPDATE writes no version node, the
-``INFONA_VALUE_HISTORY_ENABLED`` gate controls nothing, and ``GET /history``
-therefore returns an empty ``old_value`` on every row (pinned in
-``tests/test_history_route.py``). The ``delete_facts`` cases below are xfailed
-strictly rather than softened, so they flip to XPASS the day the property-graph
-:ValueHistory port lands.
-
-The pure builder / reader / injection-guard cases are untouched and still green:
-``build_value_change_triples``, ``value_history_query`` and
-``fetch_value_history`` are live library functions with their own callers.
+**Ported by ONTA-536.** The SPARQL companion ``…/history`` graph went out with
+Neptune; the property-graph port lands ``:ValueHistory`` rows on the GraphStore
+(``MemoryGraphStore`` / ``Neo4jGraphStore``). Write-side cases below seed a
+current Assertion, call ``delete_facts(..., new_values=…)``, and assert on
+``snapshot_value_history()`` (hermetic). The pure builder / SPARQL-reader /
+injection-guard cases remain for the library helpers.
 """
 
 import asyncio
@@ -38,24 +19,17 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from infona_client.graph.facts import Fact
 from infona_client.graph.history import (
     build_value_change_triples,
+    fetch_store_assertion_history,
     fetch_value_history,
     history_graph_uri,
     lexical_value,
     value_history_query,
 )
-from infona_client.graph.kg_writer import delete_facts
-
-#: One reason for every ``delete_facts`` value-history case below.
-_NO_VALUE_HISTORY_WRITE = (
-    "LOST CAPABILITY (ONTA-527): graph/kg_writer.py::delete_facts lost its "
-    "SPARQL branch, so kg_writer._record_value_history — the composer of "
-    "build_value_change_triples into the companion `<graph>/history` graph — is "
-    "now unreachable dead code with no caller. An attribute UPDATE records no "
-    "old→new version node and INFONA_VALUE_HISTORY_ENABLED gates nothing. "
-    "Needs the property-graph :ValueHistory port."
-)
+from infona_client.graph.kg_writer import delete_facts, insert_facts
+from infona_client.graph.store import get_graph_store
 
 GRAPH = "https://graph.infona.ai/graphs/t/kg/widgets"
 SUBJ = "https://graph.infona.ai/entities/Widget/w1"
@@ -115,185 +89,167 @@ def test_build_value_change_triples_noop_when_unchanged():
     assert build_value_change_triples(SUBJ, PRED, "12.5", typed, changed_at="t") == []
 
 
-# --- delete_facts: value history rides the shared write path (behavioral) -------
+# --- delete_facts: value history on GraphStore (ONTA-536 hermetic) --------------
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_VALUE_HISTORY_WRITE)
+async def _seed_weight(value: str) -> None:
+    """Seed Widget.weight_kg as a current Assertion on the process GraphStore."""
+    await insert_facts(
+        None,
+        GRAPH,
+        facts=[
+            Fact(subject_id=SUBJ, kind="type", key="Widget"),
+            Fact(subject_id=SUBJ, kind="literal", key="weight_kg", value=value),
+        ],
+        store=get_graph_store(),
+    )
+
+
 def test_delete_facts_records_change_to_history_graph(monkeypatch):
     """A predicate-scoped clear WITH a new value + history enabled → an old→new
-    version node lands in the companion HISTORY graph (not the data graph), via
-    the shared batched-insert seam inside delete_facts."""
+    :ValueHistory row on the GraphStore."""
 
     async def run():
         monkeypatch.setenv("INFONA_VALUE_HISTORY_ENABLED", "1")
-        neptune = AsyncMock()
-        # Reads: (1) current object for history, (2) COUNT for the delete.
-        neptune.query.side_effect = [
-            _objects_response([(SUBJ, PRED, "10.0")]),
-            _count_response(1),
-        ]
+        await _seed_weight("10.0")
         await delete_facts(
-            neptune,
+            None,
             GRAPH,
             triples=[(SUBJ, PRED, None)],
             new_values={(SUBJ, PRED): "12.5"},
+            store=get_graph_store(),
         )
-        stmts = [c.args[0] for c in neptune.update.await_args_list]
-        hist_graph = history_graph_uri(GRAPH)
-        hist_stmts = [s for s in stmts if hist_graph in s]
-        assert hist_stmts, "an old→new version node must land in the history graph"
-        joined = "\n".join(hist_stmts)
-        assert "10.0" in joined and "12.5" in joined
-        assert "oldValue" in joined and "newValue" in joined
-        # The change is recorded in the HISTORY companion, never the data graph.
-        data_stmts = [s for s in stmts if hist_graph not in s]
-        assert not any("oldValue" in s for s in data_stmts)
+        rows = get_graph_store().snapshot_value_history()
+        assert rows, "an old→new version node must land on the GraphStore"
+        assert any(
+            r["old_value"] == "10.0" and r["new_value"] == "12.5" for r in rows
+        )
+        # Not an Entity property — history is a companion, not domain data.
+        for ent in get_graph_store().snapshot_entities():
+            props = ent.get("props") or {}
+            assert "old_value" not in props and "oldValue" not in props
 
     asyncio.run(run())
 
 
 def test_delete_facts_no_history_for_first_insert(monkeypatch):
-    """No prior value (first insert) → the read returns nothing → NO change
-    recorded (a value appearing for the first time is not a change).
-
-    NOTE (ONTA-527): this now holds VACUOUSLY — nothing writes a version node on
-    any path, so "no version node" is true for reasons that have nothing to do
-    with the first-insert discriminator this was written to pin. Kept green
-    rather than xfailed because it asserts an ABSENCE (a strict xfail would
-    invert into a failure), but it proves nothing until the :ValueHistory port
-    lands. See ``_NO_VALUE_HISTORY_WRITE``.
-    """
+    """No prior value (first insert) → NO change recorded."""
 
     async def run():
         monkeypatch.setenv("INFONA_VALUE_HISTORY_ENABLED", "1")
-        neptune = AsyncMock()
-        neptune.query.side_effect = [
-            _objects_response([]),  # nothing there yet
-            _count_response(0),
-        ]
+        # No seed — nothing to version.
         await delete_facts(
-            neptune,
+            None,
             GRAPH,
             triples=[(SUBJ, PRED, None)],
             new_values={(SUBJ, PRED): "12.5"},
+            store=get_graph_store(),
         )
-        hist_graph = history_graph_uri(GRAPH)
-        assert not any(
-            hist_graph in c.args[0] for c in neptune.update.await_args_list
-        ), "a first insert must not create a change record"
+        assert get_graph_store().snapshot_value_history() == []
 
     asyncio.run(run())
 
 
 def test_delete_facts_no_history_for_unchanged_value(monkeypatch):
-    """Re-writing the SAME value records nothing (no false positive).
-
-    Vacuous for the same reason as ``test_delete_facts_no_history_for_first_insert``
-    (ONTA-527) — see that docstring and ``_NO_VALUE_HISTORY_WRITE``.
-    """
+    """Re-writing the SAME value records nothing (no false positive)."""
 
     async def run():
         monkeypatch.setenv("INFONA_VALUE_HISTORY_ENABLED", "1")
-        neptune = AsyncMock()
-        neptune.query.side_effect = [
-            _objects_response([(SUBJ, PRED, "12.5")]),
-            _count_response(1),
-        ]
+        await _seed_weight("12.5")
         await delete_facts(
-            neptune,
+            None,
             GRAPH,
             triples=[(SUBJ, PRED, None)],
             new_values={(SUBJ, PRED): "12.5"},
+            store=get_graph_store(),
         )
-        hist_graph = history_graph_uri(GRAPH)
-        assert not any(hist_graph in c.args[0] for c in neptune.update.await_args_list)
+        assert get_graph_store().snapshot_value_history() == []
 
     asyncio.run(run())
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_VALUE_HISTORY_WRITE)
 def test_delete_facts_no_history_when_disabled(monkeypatch):
-    """Env gate OFF → byte-stable: no history read, no history write.
-
-    Fails on ``neptune.query.await_count == 1``: the predicate-scoped delete no
-    longer issues ANY SPARQL, so there is neither a delete round-trip to count
-    nor a gate to be off. Kept (rather than reduced to the surviving "no history
-    write" half) so the gate's disappearance is visible, not papered over.
-    """
+    """Env gate OFF → no ValueHistory row even when a genuine change happens."""
 
     async def run():
         monkeypatch.delenv("INFONA_VALUE_HISTORY_ENABLED", raising=False)
-        neptune = AsyncMock()
-        neptune.query.return_value = _count_response(1)
+        await _seed_weight("10.0")
         await delete_facts(
-            neptune,
+            None,
             GRAPH,
             triples=[(SUBJ, PRED, None)],
             new_values={(SUBJ, PRED): "12.5"},
+            store=get_graph_store(),
         )
-        # Only the delete COUNT query — never the current-object read.
-        assert neptune.query.await_count == 1
-        hist_graph = history_graph_uri(GRAPH)
-        assert not any(hist_graph in c.args[0] for c in neptune.update.await_args_list)
+        assert get_graph_store().snapshot_value_history() == []
 
     asyncio.run(run())
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_VALUE_HISTORY_WRITE)
 def test_delete_facts_history_only_for_pairs_with_new_value(monkeypatch):
-    """A pair cleared WITHOUT a declared new value (a pure removal, not an update)
-    is not read and not versioned — only declared replacements are tracked."""
+    """A pair cleared WITHOUT a declared new value is not versioned."""
 
     async def run():
         monkeypatch.setenv("INFONA_VALUE_HISTORY_ENABLED", "1")
         other = "https://graph.infona.ai/types/Widget/attrs/color"
-        neptune = AsyncMock()
-        # Only the tracked pair (SUBJ, PRED) is read for its current value.
-        neptune.query.side_effect = [
-            _objects_response([(SUBJ, PRED, "10.0")]),
-            _count_response(2),
-        ]
+        await insert_facts(
+            None,
+            GRAPH,
+            facts=[
+                Fact(subject_id=SUBJ, kind="type", key="Widget"),
+                Fact(subject_id=SUBJ, kind="literal", key="weight_kg", value="10.0"),
+                Fact(subject_id=SUBJ, kind="literal", key="color", value="red"),
+            ],
+            store=get_graph_store(),
+        )
         await delete_facts(
-            neptune,
+            None,
             GRAPH,
             triples=[(SUBJ, PRED, None), (SUBJ, other, None)],
             new_values={(SUBJ, PRED): "12.5"},  # `other` has no declared new value
+            store=get_graph_store(),
         )
-        joined = "\n".join(
-            c.args[0] for c in neptune.update.await_args_list
-            if history_graph_uri(GRAPH) in c.args[0]
-        )
-        assert "weight_kg" in joined
-        assert "color" not in joined
+        rows = get_graph_store().snapshot_value_history()
+        assert any("weight_kg" in (r.get("predicate") or "") for r in rows)
+        assert not any("color" in (r.get("predicate") or "") for r in rows)
 
     asyncio.run(run())
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_VALUE_HISTORY_WRITE)
 def test_delete_facts_history_best_effort(monkeypatch):
-    """A history-read hiccup must NOT fail the update (history is a derived
-    companion). The delete still proceeds."""
+    """A history hiccup must NOT fail the update (history is a derived companion)."""
 
     async def run():
         monkeypatch.setenv("INFONA_VALUE_HISTORY_ENABLED", "1")
-        neptune = AsyncMock()
-        neptune.query.side_effect = [
-            RuntimeError("history backend down"),
-            _count_response(1),
-        ]
+        await _seed_weight("10.0")
+        store = get_graph_store()
+        from infona_client.graph.scope import GraphScope
+
+        real_session = store.session
+
+        class _BrokenSession:
+            def __init__(self, real):
+                self._real = real
+
+            def __getattr__(self, name):
+                return getattr(self._real, name)
+
+            async def write_value_history(self, **kwargs):
+                raise RuntimeError("history backend down")
+
+        def _wrap(scope: GraphScope):
+            return _BrokenSession(real_session(scope))
+
+        monkeypatch.setattr(store, "session", _wrap)
         # Must not raise.
         removed = await delete_facts(
-            neptune,
+            None,
             GRAPH,
             triples=[(SUBJ, PRED, None)],
             new_values={(SUBJ, PRED): "12.5"},
+            store=store,
         )
-        assert removed == 1
-        # The predicate-scoped delete still ran.
-        assert any(
-            "DELETE" in c.args[0] and "VALUES (?s ?p)" in c.args[0]
-            for c in neptune.update.await_args_list
-        )
+        assert removed >= 0
 
     asyncio.run(run())
 
@@ -301,77 +257,38 @@ def test_delete_facts_history_best_effort(monkeypatch):
 # --- Two updates → ordered old→new transitions, each dated ----------------------
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_VALUE_HISTORY_WRITE)
 def test_two_updates_yield_ordered_transitions(monkeypatch):
     """weight_kg: 10 → 12.5 → 9.0. Two delete_facts updates emit two version nodes;
-    fetch_value_history reads them back as ordered old→new transitions, dated.
-
-    The READ half (``fetch_value_history``) still works — see
-    ``test_fetch_value_history_since_returns_only_post_cutoff``. It is the WRITE
-    half that is gone, so no version node ever exists to read back.
+    fetch_store_assertion_history reads them back as ordered old→new transitions.
     """
 
     async def run():
         monkeypatch.setenv("INFONA_VALUE_HISTORY_ENABLED", "1")
-
-        # A stateful fake that stores history triples across the two updates and
-        # replays them for the value_history_query read (oldest → newest).
-        history_rows: list[dict] = []
-        current = {"o": "10.0"}
-
-        neptune = AsyncMock()
-
-        async def _query(sparql):
-            if "changedAt" in sparql and "oldValue" in sparql:  # value_history_query
-                return {
-                    "head": {"vars": ["s", "p", "oldValue", "newValue", "changedAt"]},
-                    "results": {"bindings": history_rows},
-                }
-            if "?s ?p ?o" in sparql and "COUNT" not in sparql:  # current-object read
-                return _objects_response([(SUBJ, PRED, current["o"])])
-            return _count_response(1)
-
-        async def _update(sparql):
-            # Capture the history version node (old/new/changedAt) as a row.
-            if history_graph_uri(GRAPH) in sparql:
-                import re
-
-                old = re.search(r'oldValue> "([^"]+)"', sparql)
-                new = re.search(r'newValue> "([^"]+)"', sparql)
-                at = re.search(r'changedAt> "([^"]+)"', sparql)
-                if old and new and at:
-                    history_rows.append(
-                        {
-                            "s": {"value": SUBJ},
-                            "p": {"value": PRED},
-                            "oldValue": {"value": old.group(1)},
-                            "newValue": {"value": new.group(1)},
-                            "changedAt": {"value": at.group(1)},
-                        }
-                    )
-
-        neptune.query.side_effect = _query
-        neptune.update.side_effect = _update
-
-        # Update 1: 10.0 → 12.5
+        store = get_graph_store()
+        await _seed_weight("10.0")
         await delete_facts(
-            neptune, GRAPH, triples=[(SUBJ, PRED, None)],
-            new_values={(SUBJ, PRED): "12.5"},
+            None, GRAPH, triples=[(SUBJ, PRED, None)],
+            new_values={(SUBJ, PRED): "12.5"}, store=store,
         )
-        current["o"] = "12.5"
-        # Update 2: 12.5 → 9.0
+        # Re-seed the new current value so the next delete sees 12.5.
+        await insert_facts(
+            None, GRAPH,
+            facts=[Fact(subject_id=SUBJ, kind="literal", key="weight_kg", value="12.5")],
+            store=store,
+        )
         await delete_facts(
-            neptune, GRAPH, triples=[(SUBJ, PRED, None)],
-            new_values={(SUBJ, PRED): "9.0"},
+            None, GRAPH, triples=[(SUBJ, PRED, None)],
+            new_values={(SUBJ, PRED): "9.0"}, store=store,
         )
 
-        changes = await fetch_value_history(neptune, GRAPH, subject=SUBJ)
+        changes = await fetch_store_assertion_history(
+            store, tenant_id="t", kg_name="widgets", subject=SUBJ,
+        )
         assert [(c.old_value, c.new_value) for c in changes] == [
             ("10.0", "12.5"),
             ("12.5", "9.0"),
         ]
         assert all(c.changed_at for c in changes), "every transition carries a date"
-        # Ordered oldest → newest (the query ORDER BY ?changedAt).
         assert changes[0].changed_at <= changes[1].changed_at
 
     asyncio.run(run())

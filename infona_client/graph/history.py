@@ -283,29 +283,80 @@ async def fetch_store_assertion_history(
     since: str | None = None,
     limit: int = 1000,
 ) -> list[ValueChange]:
-    """Neo4j / GraphStore history read via Assertion provenance (ADR 0013).
+    """Neo4j / GraphStore history read (ONTA-536).
 
-    The SPARQL companion history graph (``…/history`` version nodes) is
-    Neptune-only. On the property-graph path we list **current Assertion
-    provenance** for the scope (prefer subject-scoped) through
-    :func:`infona_client.graph.rdfs_helpers.session_assertion_history` and map
-    each row onto :class:`ValueChange` so ``GET /history`` keeps one response
-    shape. Temporal ``old → new`` :ValueHistory remains deferred.
+    Prefer ``:ValueHistory`` old→new transitions when present (populated by
+    ``delete_facts`` under ``INFONA_VALUE_HISTORY_ENABLED``). Fall back to
+    current Assertion provenance (``verified_at`` as ``changed_at``, empty
+    ``old_value``) so ``GET /history`` still answers "what is current and when
+    was it stamped" when no version nodes exist.
 
     Best-effort: any store/session failure returns ``[]`` (same contract as
     :func:`fetch_value_history`).
     """
     try:
-        from infona_client.graph.rdfs_helpers import session_assertion_history
         from infona_client.graph.scope import GraphScope
 
         session = store.session(GraphScope.for_instance(tenant_id, kg_name))
+    except Exception:  # noqa: BLE001
+        return []
+
+    lim = max(1, min(int(limit), 10000))
+
+    # 1) ValueHistory transitions (full old→new).
+    try:
+        native = getattr(session, "read_value_history", None)
+        vh_rows: list = []
+        if callable(native):
+            vh_rows = list(
+                await native(
+                    subject_id=subject,
+                    predicate=predicate,
+                    since=since,
+                    limit=lim,
+                )
+            )
+        elif callable(getattr(store, "snapshot_value_history", None)):
+            for r in store.snapshot_value_history():
+                if r.get("tenant_id") != tenant_id or r.get("kg") != kg_name:
+                    continue
+                if subject is not None and r.get("subject_id") != subject:
+                    continue
+                if predicate is not None:
+                    rp = r.get("predicate") or ""
+                    if rp != predicate and not rp.endswith(
+                        "/" + predicate.rstrip("/").rsplit("/", 1)[-1]
+                    ):
+                        continue
+                if since and not ((r.get("changed_at") or "") > since):
+                    continue
+                vh_rows.append(r)
+            vh_rows.sort(key=lambda d: d.get("changed_at") or "")
+            vh_rows = vh_rows[:lim]
+        if vh_rows:
+            return [
+                ValueChange(
+                    subject=str(r.get("subject") or r.get("subject_id") or ""),
+                    predicate=str(r.get("predicate") or ""),
+                    old_value=str(r.get("old_value") or ""),
+                    new_value=str(r.get("new_value") or ""),
+                    changed_at=str(r.get("changed_at") or ""),
+                )
+                for r in vh_rows
+            ]
+    except Exception:  # noqa: BLE001 — fall through to Assertion provenance
+        pass
+
+    # 2) Assertion provenance fallback.
+    try:
+        from infona_client.graph.rdfs_helpers import session_assertion_history
+
         rows = await session_assertion_history(
             session,
             entity_id=subject,
             prop_id=predicate,
             since=since,
-            limit=limit,
+            limit=lim,
         )
     except Exception:  # noqa: BLE001 — history is informational
         return []

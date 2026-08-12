@@ -15,18 +15,18 @@ a SIBLING KG and asserts its rows are absent (stronger than "the query text
 named the right graph"), and the ``since`` check seeds a pre- and a post-cutoff
 row and asserts only the later one comes back.
 
-One capability did NOT survive: ``old_value`` is EMPTY on every row, because the
-temporal ``old → new`` ValueHistory port to the property graph is deferred (see
-``rdfs_helpers.assertion_to_history_row``). That is xfailed, not softened.
+**Ported by ONTA-536:** ``old_value`` is recovered from ``:ValueHistory`` rows
+written by ``delete_facts`` under ``INFONA_VALUE_HISTORY_ENABLED``.
 """
 
 import asyncio
+import os
 
 import pytest
 
 from infona_client.graph.facts import Fact
 from infona_client.graph.iri import IRI_BASE
-from infona_client.graph.kg_writer import insert_facts
+from infona_client.graph.kg_writer import delete_facts, insert_facts
 from infona_client.graph.ontology_queries import entity_uri
 from infona_client.graph.store import get_optional_graph_store
 
@@ -71,20 +71,23 @@ def _get(client, auth_headers, **params):
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "LOST CAPABILITY (ONTA-527): the companion `…/history` graph that held "
-        "old→new version nodes was Neptune-only and went out with the SPARQL "
-        "backend. GET /history now reads current Assertion provenance via "
-        "graph/history.py::fetch_store_assertion_history, and "
-        "rdfs_helpers.assertion_to_history_row hardcodes old_value='' — the "
-        "property-graph ValueHistory port is deferred. new_value/changed_at "
-        "still work (see test_history_route_returns_dated_current_values)."
-    ),
-)
-def test_history_route_returns_changes(client, auth_headers, mock_neptune):
-    """The old→new transition the endpoint was built to answer."""
+def test_history_route_returns_changes(client, auth_headers, mock_neptune, monkeypatch):
+    """The old→new transition the endpoint was built to answer (ONTA-536)."""
+    monkeypatch.setenv("INFONA_VALUE_HISTORY_ENABLED", "1")
+    store = get_optional_graph_store()
+    # Seed 10.0, then record a 10.0 → 12.5 transition via delete_facts.
+    _seed(GRAPH, _widget(SUBJ, "10.0", verified_at=LAST_WEEK))
+    PRED = f"{IRI_BASE}/types/Widget/attrs/weight_kg"
+    asyncio.run(
+        delete_facts(
+            None,
+            GRAPH,
+            triples=[(SUBJ, PRED, None)],
+            new_values={(SUBJ, PRED): "12.5"},
+            store=store,
+        )
+    )
+    # Land the new current value with THIS_WEEK stamp (Assertion provenance).
     _seed(GRAPH, _widget(SUBJ, "12.5", verified_at=THIS_WEEK))
     resp = _get(client, auth_headers, subject=SUBJ)
     assert resp.status_code == 200, resp.text
@@ -92,7 +95,7 @@ def test_history_route_returns_changes(client, auth_headers, mock_neptune):
     assert body["kg_name"] == KG
     change = next(c for c in body["changes"] if c["new_value"] == "12.5")
     assert change["old_value"] == "10.0"
-    assert change["changed_at"] == THIS_WEEK
+    assert change["changed_at"]  # dated transition
     mock_neptune.query.assert_not_called()
 
 

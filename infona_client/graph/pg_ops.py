@@ -292,21 +292,29 @@ async def create_prov_event(
     reason: str = "",
     source: str | None = None,
     fact_hash: str | None = None,
+    confidence: float | None = None,
+    ts: str | None = None,
+    statement_id: str | None = None,
 ) -> None:
-    """Write ``:ProvEvent`` + ``[:ABOUT]->(:Entity)`` (model §4.1).
+    """Write ``:ProvEvent`` + ``[:ABOUT]->(:Entity)`` (model §4.1 / ONTA-536).
 
     Event types used on the store path (Wave 1 / E8): ``assert``, ``tombstone``,
     ``rewrite``. Best-effort when the session lacks a native writer.
+
+    ONTA-536: ``assert`` events carry the ADR 0002 governance fields the RDF
+    companion graph used to hold — ``source``, ``confidence``, ``statement_id``
+    (via ``fact_hash``), and the *asserted-at* ``ts`` (not merely write time) —
+    so "who asserted this value, with what confidence, as of when" is recoverable.
     """
     native = getattr(session, "write_prov_event", None)
     if not callable(native):
         return  # optional on stores that do not implement companions yet
-    fh = fact_hash
+    fh = fact_hash or statement_id
     if fh is None and event_type in ("assert", "tombstone"):
         fh = prov_fact_hash(subject_id, attr, object_repr, source)
     elif fh is None and event_type == "rewrite":
         fh = prov_fact_hash(old_id or subject_id, None, new_id or subject_id, source)
-    await native(
+    kwargs: dict[str, Any] = dict(
         event_type=event_type,
         subject_id=subject_id,
         attr=attr,
@@ -316,8 +324,17 @@ async def create_prov_event(
         reason=reason,
         source=source,
         fact_hash=fh,
-        ts=_ts(),
+        ts=ts or _ts(),
     )
+    # confidence is optional on older store implementations — pass only when set
+    # so signature mismatches degrade rather than crash the write path.
+    if confidence is not None:
+        kwargs["confidence"] = confidence
+    try:
+        await native(**kwargs)
+    except TypeError:
+        kwargs.pop("confidence", None)
+        await native(**kwargs)
 
 
 @dataclass(frozen=True, slots=True)
@@ -511,6 +528,141 @@ def fold_attr_citations_onto_facts(
     return out
 
 
+def _prov_predicate_leaf(predicate: str) -> str:
+    """Attr leaf from a full predicate URI (attrs/ or onto/)."""
+    if not predicate:
+        return ""
+    if "/attrs/" in predicate:
+        leaf = predicate.rsplit("/attrs/", 1)[-1]
+        return leaf if leaf and "/" not in leaf else leaf
+    if "/onto/" in predicate:
+        leaf = predicate.rsplit("/onto/", 1)[-1]
+        return leaf if leaf and "/" not in leaf else leaf
+    return predicate.rstrip("/").rsplit("/", 1)[-1]
+
+
+def fold_provenance_records_onto_facts(
+    facts: Sequence[Fact],
+    records: Sequence[Any],
+) -> list[Fact]:
+    """Fold ADR 0002 companion-provenance records onto matching domain Facts.
+
+    Matching key is ``(subject_id, attr leaf, lexical object)``. Existing
+    non-empty Fact provenance fields win. Used by :func:`insert_facts` so the
+    RDF ``provenance_triples`` payload (still built by ingest/enrichment) lands
+    on Assertion ``source_url`` / ``confidence`` / ``verified_at`` (ONTA-536).
+    """
+    if not facts or not records:
+        return list(facts)
+
+    def _lex(v: Any) -> str:
+        if v is None:
+            return ""
+        s = str(v)
+        if "^^" in s:
+            s = s.split("^^", 1)[0]
+        return s
+
+    by_key: dict[tuple[str, str, str], Any] = {}
+    by_subj_attr: dict[tuple[str, str], Any] = {}
+    for r in records:
+        subj = getattr(r, "subject", None) or ""
+        pred = getattr(r, "predicate", None) or ""
+        obj = _lex(getattr(r, "obj", None))
+        leaf = _prov_predicate_leaf(pred)
+        if not subj or not leaf:
+            continue
+        by_key[(subj, leaf, obj)] = r
+        by_subj_attr[(subj, leaf)] = r
+
+    out: list[Fact] = []
+    for f in facts:
+        if f.kind not in ("literal", "rel"):
+            out.append(f)
+            continue
+        obj_s = _lex(f.value)
+        r = by_key.get((f.subject_id, f.key, obj_s)) or by_subj_attr.get(
+            (f.subject_id, f.key)
+        )
+        if r is None:
+            out.append(f)
+            continue
+        source = f.source_url or f.source or getattr(r, "source", None) or None
+        conf = f.confidence
+        if conf is None:
+            conf = getattr(r, "confidence", None)
+        verified = f.verified_at or getattr(r, "timestamp", None) or None
+        if verified == "":
+            verified = None
+        if (
+            source == (f.source_url or f.source)
+            and conf == f.confidence
+            and verified == f.verified_at
+        ):
+            out.append(f)
+            continue
+        out.append(
+            Fact(
+                subject_id=f.subject_id,
+                kind=f.kind,
+                key=f.key,
+                value=f.value,
+                source=source,
+                source_url=source,
+                verified_at=verified,
+                run_id=f.run_id,
+                confidence=float(conf) if conf is not None else None,
+                provenance=f.provenance,
+            )
+        )
+    return out
+
+
+async def apply_provenance_records(
+    session: "GraphSession",
+    records: Sequence[Any],
+    *,
+    provenance_enabled: bool = True,
+) -> int:
+    """Write ProvEvents for companion-provenance records that lack a domain Fact.
+
+    Covers the legacy per-entity path that calls
+    ``insert_facts([], provenance_triples=…)`` with an empty instance batch, and
+    any provenance-only residual after folding (ONTA-536).
+    """
+    if not provenance_enabled or not records:
+        return 0
+    n = 0
+    for r in records:
+        subj = getattr(r, "subject", None) or ""
+        pred = getattr(r, "predicate", None) or ""
+        if not subj:
+            continue
+        leaf = _prov_predicate_leaf(pred)
+        obj = getattr(r, "obj", None)
+        obj_repr = None if obj is None else str(obj)
+        if obj_repr is not None and "^^" in obj_repr:
+            obj_repr = obj_repr.split("^^", 1)[0]
+        source = getattr(r, "source", None) or None
+        conf = getattr(r, "confidence", None)
+        ts = getattr(r, "timestamp", None) or None
+        sid = getattr(r, "statement_id", None) or None
+        await create_prov_event(
+            session,
+            event_type="assert",
+            subject_id=subj,
+            attr=leaf or None,
+            object_repr=obj_repr,
+            source=source,
+            fact_hash=sid,
+            statement_id=sid,
+            confidence=float(conf) if conf is not None else None,
+            ts=ts or None,
+        )
+        n += 1
+    return n
+
+
 async def apply_facts(
     session: "GraphSession",
     facts: Sequence[Fact],
@@ -592,20 +744,24 @@ async def apply_facts(
                 if f.kind == "literal" and f.value is not None
                 else (f.value if f.kind == "rel" else None)
             )
+            if obj_repr is not None and not isinstance(obj_repr, str):
+                obj_repr = str(obj_repr)
             src = f.source_url or f.source
             await create_prov_event(
                 session,
                 event_type="assert",
                 subject_id=f.subject_id,
                 attr=f.key,
-                object_repr=obj_repr if isinstance(obj_repr, str) or obj_repr is None else str(obj_repr),
+                object_repr=obj_repr,
                 source=src,
                 fact_hash=prov_fact_hash(
                     f.subject_id,
                     f.key,
-                    obj_repr if isinstance(obj_repr, str) or obj_repr is None else str(obj_repr),
+                    obj_repr,
                     src,
                 ),
+                confidence=f.confidence,
+                ts=f.verified_at or None,
             )
 
     return applied
@@ -629,12 +785,14 @@ __all__ = [
     "AttrCitationSpec",
     "apply_attr_citations",
     "apply_facts",
+    "apply_provenance_records",
     "citation_value_hash",
     "create_prov_event",
     "delete_entity",
     "delete_literals",
     "delete_rels",
     "fold_attr_citations_onto_facts",
+    "fold_provenance_records_onto_facts",
     "get_entity",
     "merge_entity",
     "merge_rel",
@@ -644,3 +802,4 @@ __all__ = [
     "set_literal",
     "upsert_attr_citation",
 ]
+

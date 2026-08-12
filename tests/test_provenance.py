@@ -252,16 +252,19 @@ async def test_flag_off_is_byte_identical_regression(mock_neptune):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(
-    reason=(
-        "PRODUCT BUG (Neo4j port, same defect ONTA-527 pinned for enrichment): the CANONICAL companion-provenance graph is never written. kg_writer.insert_facts ignores its provenance_triples argument — the named-graph write went out with the SPARQL path — while the resolver still builds the payload. The :ProvEvent substitute is not equivalent: it carries no confidence, no statement id, and ts = write time rather than the asserted-at instant, so 'who asserted this value, with what confidence, as of when' is unrecoverable. Flip this green when the companion port lands."
-    ),
-    strict=True,
-)
-async def test_flag_on_emits_provenance_to_companion_graph(mock_neptune):
-    """Flag on: one INSERT into <graph>/provenance carrying the statement node
-    with the correct deterministic statement id; the instance-triple collector
-    is unchanged."""
+async def test_flag_on_emits_provenance_to_companion_graph(mock_neptune, monkeypatch):
+    """Flag on (ONTA-536): per-entity path lands a recoverable ProvEvent on the
+    GraphStore with statement id + source + confidence; instance collector is
+    unchanged (no provenance leak into instance triples).
+
+    Ported from the SPARQL ``GRAPH <…/provenance>`` assertion: the companion
+    named-graph write is gone; Assertion/ProvEvent is the property-graph home.
+    """
+    from infona_client.graph.store import get_graph_store
+
+    # kg_writer gates ProvEvent writes on the live env (not the resolver's
+    # construction-time flag), so pin the env for the duration of the write.
+    monkeypatch.setenv("INFONA_PROVENANCE_ENABLED", "1")
     resolver = _make_resolver(mock_neptune, provenance=True)
     collected: list[tuple[str, str, str]] = []
     result = IngestResult(entities_extracted=1)
@@ -272,13 +275,17 @@ async def test_flag_on_emits_provenance_to_companion_graph(mock_neptune):
         source="crm.csv", result=result, _collect_triples=collected,
     )
 
-    sparql_calls = _update_sparql(mock_neptune)
-    assert len(sparql_calls) == 1, "exactly one provenance INSERT"
-    sparql = sparql_calls[0]
-    assert f"GRAPH <{provenance_graph_uri(KG_GRAPH_URI)}>" in sparql
-    assert statement_id(SUBJ, PRED, OBJ) in sparql
-    assert "crm.csv" in sparql
-    assert f"<{PROV_NS}confidence>" in sparql and "1.0" in sparql
+    events = [
+        e
+        for e in get_graph_store().snapshot_prov()
+        if e.get("event_type") == "assert"
+        and e.get("subject_id") == SUBJ
+        and e.get("object_repr") == OBJ
+    ]
+    assert events, "provenance assert event must land on GraphStore"
+    assert events[0].get("source") == "crm.csv"
+    assert events[0].get("confidence") == 1.0 or events[0].get("confidence") == 1
+    assert events[0].get("fact_hash")  # statement id / fact hash present
     # Instance triples are untouched: no provenance leaked into the collector.
     assert all(PROV_NS not in s and PROV_NS not in o for (s, _, o) in collected)
     assert (SUBJ, PRED, OBJ) in collected
@@ -300,17 +307,17 @@ async def test_flag_on_no_attributes_no_provenance_insert(mock_neptune):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(
-    reason=(
-        "PRODUCT BUG (Neo4j port, same defect ONTA-527 pinned for enrichment): the CANONICAL companion-provenance graph is never written. kg_writer.insert_facts ignores its provenance_triples argument — the named-graph write went out with the SPARQL path — while the resolver still builds the payload. The :ProvEvent substitute is not equivalent: it carries no confidence, no statement id, and ts = write time rather than the asserted-at instant, so 'who asserted this value, with what confidence, as of when' is unrecoverable. Flip this green when the companion port lands."
-    ),
-    strict=True,
-)
-async def test_flag_on_entity_reference_attribute_gets_provenance(mock_neptune):
+async def test_flag_on_entity_reference_attribute_gets_provenance(mock_neptune, monkeypatch):
     """Entity-valued attributes (datatype = ontology type) are assertions too — and
     their provenance is keyed on the ``onto/<leaf>`` INSTANCE edge (where the
     relationship is actually written), NOT the ``attrs/<leaf>`` declaration
-    predicate."""
+    predicate.
+
+    Ported by ONTA-536: recoverable via GraphStore ProvEvent (attr leaf + object).
+    """
+    from infona_client.graph.store import get_graph_store
+
+    monkeypatch.setenv("INFONA_PROVENANCE_ENABLED", "1")
     resolver = _make_resolver(mock_neptune, provenance=True)
     entity = ExtractedEntity(
         type_name="Guest", id="g3",
@@ -328,17 +335,20 @@ async def test_flag_on_entity_reference_attribute_gets_provenance(mock_neptune):
         source="pms", result=result, _collect_triples=[],
     )
 
-    sparql = " || ".join(_update_sparql(mock_neptune))
-    assert f"GRAPH <{provenance_graph_uri(KG_GRAPH_URI)}>" in sparql
     target = "https://graph.infona.ai/entities/Hotel/Hotel_Zed"
-    # The promotion branch writes the relationship instance edge on onto/<leaf> (the
-    # NL-queryable predicate); provenance describes that real edge, so the statement
-    # id hashes the onto/<leaf> predicate — not attr_uri (the ontology declaration).
-    sid = statement_id(
-        "https://graph.infona.ai/entities/Guest/g3",
-        "https://graph.infona.ai/onto/stays_at", target,
-    )
-    assert sid in sparql
+    # The promotion branch writes the relationship instance edge on onto/<leaf>;
+    # provenance describes that real edge (attr leaf stays_at, object = target).
+    events = [
+        e
+        for e in get_graph_store().snapshot_prov()
+        if e.get("event_type") == "assert"
+        and e.get("subject_id") == "https://graph.infona.ai/entities/Guest/g3"
+        and e.get("attr") == "stays_at"
+        and e.get("object_repr") == target
+    ]
+    assert events, "relationship assertion must carry provenance on GraphStore"
+    assert events[0].get("source") == "pms"
+    assert events[0].get("fact_hash")
 
 
 # ---------------------------------------------------------------------------
@@ -448,29 +458,12 @@ async def test_multi_entity_ingest_flushes_one_batched_provenance_write(
     assert mock_neptune.update.call_count == 0
 
 
-@pytest.mark.xfail(
-    reason=(
-        "LOST CAPABILITY (ONTA-527): the per-fact provenance record is no longer "
-        "recoverable after a write. graph/kg_writer.py::insert_facts DROPS its "
-        "provenance_triples payload — the ADR 0002 §4 statement metadata that "
-        "graph/provenance.py::build_provenance_triples produced (prov:source, "
-        "prov:confidence, prov:timestamp, prov:statement) went to a companion "
-        "named graph, and the SPARQL write of that graph is gone. The "
-        "property-graph substitute, graph/pg_ops.py::create_prov_event, records "
-        "only that an assert happened: it carries no confidence, no statement id, "
-        "and its `source` comes from the Fact, which is None for an ordinary "
-        "attribute value (ingest carries the source as a SEPARATE onto/source "
-        "triple), so 'who asserted this value' is unrecoverable for exactly the "
-        "domain facts provenance exists to attribute."
-    ),
-    strict=True,
-)
 @pytest.mark.asyncio
 async def test_ingested_fact_provenance_is_recoverable_after_the_write(
     mock_neptune, monkeypatch
 ):
     """After an ingest with provenance ON, the source that asserted a value fact
-    must be recoverable from the store."""
+    must be recoverable from the store (ONTA-536)."""
     from infona_client.graph.store import get_graph_store
 
     monkeypatch.setenv("INFONA_PROVENANCE_ENABLED", "1")

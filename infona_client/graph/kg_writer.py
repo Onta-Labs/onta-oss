@@ -485,15 +485,16 @@ async def insert_facts(
     :func:`refresh_after_write` still takes one; dropping it is a separate
     mechanical sweep.
 
-    **Ignored RDF companion payloads** (``provenance_triples`` /
-    ``validity_triples`` / ``suppression_triples`` / ``reopen_facts``): these
-    were named-graph writes on the deleted SPARQL path. The property-graph
-    equivalents are companion NODES, and only the provenance half is ported —
-    ``:ProvEvent`` assert hooks fire inside the store path when
-    ``INFONA_PROVENANCE_ENABLED=1``. Callers still passing validity /
-    suppression payloads get a warning rather than silence, because "wrote
-    nothing" was already the Neo4j behavior and it should be visible (validity /
-    suppression node ports are E7).
+    **RDF companion payloads (ONTA-536):**
+
+    * ``provenance_triples`` — ported. Parsed into statement-metadata records
+      and folded onto Assertion ``source_url`` / ``confidence`` / ``verified_at``
+      plus ``:ProvEvent`` assert companions (confidence, statement id, asserted-at
+      timestamp). Callers (ingest / enrichment) still build the same ADR 0002
+      payload via ``build_provenance_triples``; the named-graph SPARQL write is
+      gone, the governance fields are not.
+    * ``validity_triples`` / ``suppression_triples`` / ``reopen_facts`` — still
+      unported (E7). Callers get a warning rather than silence.
 
     ``run_id`` (ONTA-271): when given, returns a deterministic A6
     :class:`GraphDelta` over the *triple* form of the write (Fact-only writes
@@ -514,6 +515,7 @@ async def insert_facts(
         instance_graph,
         instance_triples=instance_triples,
         facts=facts,
+        provenance_triples=list(provenance_triples or []),
         run_id=run_id,
     )
 
@@ -524,10 +526,12 @@ async def _insert_facts_store(
     *,
     instance_triples: list[Triple],
     facts: Optional[Sequence[Fact]],
+    provenance_triples: Optional[list[Triple]] = None,
     run_id: Optional[str],
 ) -> Optional[GraphDelta]:
     """Property-graph insert path (Memory / Neo4j). Template/native ops only."""
     from infona_client.graph import pg_ops
+    from infona_client.graph.provenance import parse_provenance_records
 
     fact_list: list[Fact] = list(facts) if facts else []
     if instance_triples:
@@ -549,12 +553,43 @@ async def _insert_facts_store(
                 exc_info=True,
             )
             citations = []
+    # ONTA-536: fold ADR 0002 companion-provenance records onto domain Facts
+    # (source / confidence / asserted-at) before Assertion SoT write.
+    prov_records = []
+    if provenance_triples:
+        try:
+            prov_records = parse_provenance_records(list(provenance_triples))
+            if prov_records and fact_list:
+                fact_list = pg_ops.fold_provenance_records_onto_facts(
+                    fact_list, prov_records
+                )
+        except Exception:  # noqa: BLE001 — fold is best-effort
+            logger.warning(
+                "insert_facts_store_provenance_fold_failed",
+                instance_graph=instance_graph,
+                exc_info=True,
+            )
+            prov_records = []
+    prov_on = _provenance_enabled(store_path=True)
     if fact_list:
         await pg_ops.apply_facts(
             session,
             fact_list,
-            provenance_enabled=_provenance_enabled(store_path=True),
+            provenance_enabled=prov_on,
         )
+    elif prov_on and prov_records:
+        # Legacy path: insert_facts([], provenance_triples=…) — no domain Facts
+        # in this batch; still land recoverable ProvEvents (ingest per-entity).
+        try:
+            await pg_ops.apply_provenance_records(
+                session, prov_records, provenance_enabled=True
+            )
+        except Exception:  # noqa: BLE001 — companions never fail the write
+            logger.warning(
+                "insert_facts_store_provenance_only_failed",
+                instance_graph=instance_graph,
+                exc_info=True,
+            )
     # Residual :AttrCitation nodes for citation-only attrs (no domain Fact in
     # this batch) or multi-value slots — secondary to Assertion provenance.
     if citations:
@@ -881,6 +916,7 @@ async def delete_facts(
         sp_pairs=sp_pairs,
         all_triples=all_triples,
         reason=reason,
+        new_values=dict(new_values or {}),
     )
 
 
@@ -893,6 +929,7 @@ async def _delete_facts_store(
     sp_pairs: list[tuple[str, str]],
     all_triples: list,
     reason: str,
+    new_values: Optional[dict[tuple[str, str], str]] = None,
 ) -> int:
     """Property-graph delete path."""
     from infona_client.graph import pg_ops
@@ -901,6 +938,19 @@ async def _delete_facts_store(
 
     removed = 0
     prov_on = _provenance_enabled(store_path=True)
+    new_values = new_values or {}
+
+    # ONTA-236 / ONTA-536: record old→new ValueHistory BEFORE clearing, for
+    # every predicate-scoped pair the caller declared a replacement value for.
+    if _value_history_enabled() and sp_pairs and new_values:
+        try:
+            await _record_value_history_store(session, sp_pairs, new_values)
+        except Exception:  # noqa: BLE001 — history never fails the delete
+            logger.warning(
+                "delete_facts_store_value_history_failed",
+                instance_graph=instance_graph,
+                exc_info=True,
+            )
 
     # Concrete (s,p,o) — map to prop/rel deletes.
     for s, p, o in concrete:
@@ -989,38 +1039,96 @@ async def _delete_facts_store(
     return removed
 
 
+async def _record_value_history_store(
+    session: "GraphSession",
+    sp_pairs: list[tuple[str, str]],
+    new_values: dict[tuple[str, str], str],
+) -> None:
+    """Property-graph ValueHistory writer (ONTA-236 / ONTA-536).
+
+    For each predicate-scoped clear with a declared ``new_value``, read the
+    current Assertion/Entity literal and, when it genuinely differs, append a
+    ``:ValueHistory`` row via ``session.write_value_history``.
+    """
+    tracked = [(s, p) for (s, p) in sp_pairs if (s, p) in new_values]
+    if not tracked:
+        return
+    write_vh = getattr(session, "write_value_history", None)
+    if not callable(write_vh):
+        return
+    now = datetime.now(timezone.utc).isoformat()
+
+    for s, p in tracked:
+        new = new_values.get((s, p))
+        if new is None:
+            continue
+        new_lex = lexical_value(new)
+        # Resolve current value from Assertion SoT / entity props.
+        old_lex: str | None = None
+        leaf: str | None = None
+        if "/attrs/" in p:
+            cand = p.rsplit("/attrs/", 1)[-1]
+            leaf = cand if cand and "/" not in cand else None
+        elif "/onto/" in p:
+            cand = p.rsplit("/onto/", 1)[-1]
+            leaf = cand if cand and "/" not in cand else None
+        elif p:
+            leaf = p.rstrip("/").rsplit("/", 1)[-1] or None
+        if leaf:
+            # Prefer Assertion scan for the subject.
+            read_a = getattr(session, "read_assertions_for_subject", None)
+            rows: list = []
+            if callable(read_a):
+                try:
+                    rows = list(await read_a(s))
+                except Exception:  # noqa: BLE001
+                    rows = []
+            for row in rows:
+                d = row.to_dict() if hasattr(row, "to_dict") else dict(row)
+                prop = str(d.get("property_id") or "")
+                prop_leaf = prop.rstrip("/").rsplit("/", 1)[-1]
+                if prop_leaf != leaf and prop != p:
+                    continue
+                val = d.get("literal_value")
+                if val is None:
+                    val = d.get("object_id")
+                if val is not None:
+                    old_lex = lexical_value(str(val))
+                    break
+            if old_lex is None:
+                # Fallback: entity property cache.
+                get_e = getattr(session, "write_get_entity", None)
+                if callable(get_e):
+                    try:
+                        ent = await get_e(s)
+                    except Exception:  # noqa: BLE001
+                        ent = None
+                    if ent:
+                        props = ent.get("properties") or ent.get("props") or ent
+                        if isinstance(props, dict) and leaf in props:
+                            old_lex = lexical_value(str(props[leaf]))
+        if old_lex is None or old_lex == new_lex:
+            continue
+        await write_vh(
+            subject_id=s,
+            predicate=p,
+            old_value=old_lex,
+            new_value=new_lex,
+            changed_at=now,
+        )
+
+
 async def _record_value_history(
     neptune,
     instance_graph: str,
     sp_pairs: list[tuple[str, str]],
     new_values: dict[tuple[str, str], str],
 ) -> None:
-    """Version any genuine value CHANGE among ``sp_pairs`` before they're cleared.
+    """Legacy SPARQL ValueHistory writer (kept for tests that mock Neptune).
 
-    Called by :func:`delete_facts` (gated by ``INFONA_VALUE_HISTORY_ENABLED``)
-    for the predicate-scoped-delete step of an attribute UPDATE — the one place
-    that sees both the OLD value (still in the graph) and the NEW value the caller
-    is about to write. For every ``(s, p)`` in this chunk that the caller declared
-    a ``new_value`` for, it reads the current object(s), and for each old value
-    that actually differs from the new one it builds an ``old → new`` version node
-    (:func:`build_value_change_triples`) and writes it to the companion HISTORY
-    graph through the SAME shared batched-insert seam every other write uses —
-    never a bespoke writer.
-
-    General by construction (no attribute is special) and correct on the two
-    no-record cases the ticket calls out:
-
-    * **First insert** — a brand-new ``(s, p)`` has no current object, so the read
-      returns nothing and no entry is recorded (a value appearing for the first
-      time is not a *change*).
-    * **Unchanged value** — old == new (compared on the lexical axis via
-      ``build_value_change_triples``) yields an empty triple list, so re-writing
-      the same value records nothing.
-
-    Best-effort and fully isolated (its own try/except, only reachable inside
-    ``delete_facts``'s own flow): a history hiccup must NEVER fail the update —
-    the primary KG write is the source of truth; history is a derived companion
-    exactly like provenance and the secondary indexes.
+    Production uses :func:`_record_value_history_store` on the GraphStore path
+    (ONTA-536). This body remains for hermetic unit tests that still drive the
+    SPARQL seam with AsyncMock.
     """
     # Only pairs the caller gave a replacement value for can be a tracked change.
     tracked = [(s, p) for (s, p) in sp_pairs if (s, p) in new_values]
