@@ -1997,6 +1997,31 @@ async def _records_from_explore_store(
                 row[display] = ", ".join(str(x) for x in v)
             else:
                 row[display] = "" if v is None else str(v)
+        # Surface outbound relationship targets as columns (export/CSV honesty).
+        # Prefer leaf attr (has_author → author) when empty, else has_*.
+        if detail is not None:
+            for rel in getattr(detail, "outgoing", ()) or ():
+                leaf = str(getattr(rel, "attr", None) or getattr(rel, "rel_type", "") or "")
+                if not leaf:
+                    continue
+                # Prefer friendly leaves: has_author → author when free.
+                friendly = leaf[4:] if leaf.startswith("has_") else leaf
+                label = (
+                    getattr(rel, "other_name", None)
+                    or (getattr(rel, "other_id", "") or "").rstrip("/").split("/")[-1]
+                    or ""
+                )
+                if not label:
+                    continue
+                col = friendly if not row.get(friendly) else leaf
+                if col not in col_set:
+                    col_set.add(col)
+                    col_display.append(col)
+                prev = row.get(col) or ""
+                if prev and label not in str(prev).split(", "):
+                    row[col] = f"{prev}, {label}"
+                else:
+                    row[col] = label if not prev else prev
         # Fill blanks for columns already discovered on earlier rows.
         for c in col_display:
             row.setdefault(c, "")

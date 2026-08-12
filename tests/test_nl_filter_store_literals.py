@@ -343,3 +343,45 @@ async def test_memory_literal_values_eq_entity_cache_only_legacy():
     )
     assert len(rows) == 1
     assert rows[0].get("id") == eid
+
+
+def test_in_the_genre_and_cheaper_than_fixtures():
+    onto = (
+        "Type: Book (20 entities)\n"
+        "  - price: float (literal, key=price)\n"
+        "  - has_genre -> Genre (relationship, key=has_genre)\n"
+        "Type: Genre\n"
+        "  - display_name: string (literal, key=display_name)\n"
+    )
+    from infona_client.nlp.cypher_generate import try_deterministic_cypher
+
+    g = try_deterministic_cypher(
+        "Which books are in the genre Classic Fiction?",
+        onto,
+        type_names=["Book", "Genre"],
+    )
+    assert g is not None
+    assert g["template"] == "related_entity_name_filter"
+    assert g["params"]["target_name"] == "Classic Fiction"
+
+    g2 = try_deterministic_cypher(
+        "Which books cost under 15 dollars?",
+        onto,
+        type_names=["Book"],
+    )
+    assert g2 is not None
+    assert g2["template"] == "literal_compare"
+    assert g2["params"]["op"] == "lt"
+    assert g2["params"]["threshold"] == 15.0
+
+
+def test_missing_template_params_helper():
+    from infona_client.nlp.pipeline import _missing_template_params
+
+    assert _missing_template_params(
+        "WHERE x IN $type_names LIMIT $limit", {"limit": 10}
+    ) == {"type_names"}
+    assert not _missing_template_params(
+        "WHERE x IN $type_names LIMIT $limit",
+        {"type_names": ["Book"], "limit": 10},
+    )
