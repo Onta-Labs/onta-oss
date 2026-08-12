@@ -27,7 +27,9 @@ _OK_BODY = {"head": {"vars": ["x"]}, "results": {"bindings": []}}
 
 
 def _client_with(handler) -> NeptuneClient:
-    c = NeptuneClient("http://neptune.local")  # http -> no TLS verify
+    # allow_http: exercise residual SPARQL HTTP under hermetic GraphStore
+    # (ONTA-534 fail-closed gate would otherwise raise SparqlClientRetired).
+    c = NeptuneClient("http://neptune.local", allow_http=True)  # http -> no TLS
     c._client = httpx.AsyncClient(
         base_url="http://neptune.local", transport=httpx.MockTransport(handler)
     )

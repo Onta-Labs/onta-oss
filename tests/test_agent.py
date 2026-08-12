@@ -1460,6 +1460,15 @@ async def test_route_confirm_executes_plan(monkeypatch):
     client = TestClient(app)
     headers = {"X-API-Key": "test-key"}
 
+    # ONTA-534: kg_data_status is GraphStore-first for a real NeptuneClient set
+    # by TestClient lifespan. Register kg1 so the agent scope gate does not
+    # clarify "missing KG".
+    from infona_client.graph.store import get_graph_store
+
+    await get_graph_store().kg_registry_upsert(
+        "test-tenant", "kg1", description="", triple_count=0
+    )
+
     r1 = client.post(
         "/graphs/test-tenant/agent",
         json={

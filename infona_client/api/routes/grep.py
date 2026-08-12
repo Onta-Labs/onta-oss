@@ -487,15 +487,27 @@ async def grep_graph(
         else:
             pred_leaf = pred_raw
 
-    pg_result = await pg_grep(
-        tenant_id=tenant.tenant_id,
-        kg_name=kg_name,
-        needle=needle,
-        case_sensitive=body.case_sensitive,
-        type_name=type_name,
-        predicate_leaf=pred_leaf,
-        limit=limit,
-    )
+    from infona_client.graph.store import GraphConfigError
+
+    try:
+        pg_result = await pg_grep(
+            tenant_id=tenant.tenant_id,
+            kg_name=kg_name,
+            needle=needle,
+            case_sensitive=body.case_sensitive,
+            type_name=type_name,
+            predicate_leaf=pred_leaf,
+            limit=limit,
+        )
+    except GraphConfigError as exc:
+        # ONTA-534: no SPARQL fallthrough against decommissioned Neptune.
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Graph store is not configured. Neo4j GraphStore is required "
+                f"(ONTA-534). {exc}"
+            ),
+        ) from exc
     if pg_result is not None:
         # No internal-predicate filter here on purpose: on the store path the
         # authority is `facts.is_internal_property_key`, applied inside
@@ -534,6 +546,18 @@ async def grep_graph(
             count=len(matches),
             limit=limit,
             truncated=truncated,
+        )
+
+    # ONTA-534: residual SPARQL scan only when GraphStore path returned None
+    # without raising (should not happen under Neo4j-only resolve). Prefer a
+    # clear 503 over a 120s hang on decommissioned Neptune.
+    if pg_result is None:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Graph store grep is unavailable and SPARQL fallback was "
+                "retired (ONTA-534)."
+            ),
         )
 
     sparql = _scan_query(

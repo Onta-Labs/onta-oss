@@ -99,8 +99,16 @@ def gate_client(monkeypatch):
     neptune = AsyncMock(spec=NeptuneClient)
     neptune.query.return_value = {"head": {"vars": []}, "results": {"bindings": []}}
     neptune.update.return_value = None
+    # Fail-open kg probe so SCOPE_REQUIRE does not clarify missing before the
+    # write gate under test (ONTA-534 GraphStore-first would MISSING an empty store).
+    async def _ask_ok(sparql: str) -> bool:
+        return True
+
+    neptune.ask.side_effect = _ask_ok
     app.state.neptune_client = neptune
-    return TestClient(app)
+    tc = TestClient(app)
+    app.state.neptune_client = neptune  # re-inject after lifespan
+    return tc
 
 
 def _assert_read_only_403(response) -> None:

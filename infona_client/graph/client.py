@@ -9,9 +9,17 @@ never grow — see ``docs/onta-534-neptune-purge-residual.md`` and the ratchet i
 
 Product NL ``/ask`` no longer executes SPARQL (ONTA-534). Prefer GraphStore /
 scoped GraphSession for new code.
+
+**Fail-closed under GraphStore (ONTA-534 slice 2):** when a process GraphStore
+is configured (production Neo4j / hermetic ``MemoryGraphStore``),
+``query`` / ``update`` / ``ask`` / ``batch_exists`` raise
+:class:`SparqlClientRetired` immediately instead of POSTing at a dead endpoint
+with a 120s timeout. Escape hatch for residual QC / client-unit tests:
+``INFONA_SPARQL_HTTP_ENABLED=1`` or ``NeptuneClient(..., allow_http=True)``.
 """
 
 import asyncio
+import os
 import re
 import ssl
 import time
@@ -52,6 +60,16 @@ class SparqlQueryError(RuntimeError):
         self.status_code = status_code
         self.detail = detail
         super().__init__(f"SPARQL endpoint returned {status_code}: {detail}")
+
+
+class SparqlClientRetired(RuntimeError):
+    """Raised when residual SPARQL HTTP would hit a decommissioned endpoint.
+
+    Production is Neo4j-only (ONTA-527 / ONTA-534). A process GraphStore means
+    product traffic must not fall through to ``NeptuneClient`` HTTP with long
+    timeouts. Residual QC / archaeology may re-enable HTTP via
+    ``INFONA_SPARQL_HTTP_ENABLED=1`` or ``allow_http=True``.
+    """
 
 
 def _extract_error_detail(response: httpx.Response) -> str:
@@ -138,22 +156,35 @@ _RETRY_BACKOFF_S = 0.5
 
 
 class NeptuneClient:
-    """SPARQL client for Neptune, Fuseki, or any SPARQL 1.1 endpoint."""
+    """SPARQL client for Neptune, Fuseki, or any SPARQL 1.1 endpoint.
+
+    Residual only (ONTA-534). Under a configured GraphStore, read/write methods
+    fail closed unless ``allow_http`` / ``INFONA_SPARQL_HTTP_ENABLED=1``.
+    """
 
     def __init__(
         self,
         endpoint: str,
         backend: str = "neptune",
         auth: tuple[str, str] | None = None,
+        *,
+        allow_http: bool | None = None,
     ):
         """``auth`` is an optional (username, password) HTTP Basic credential.
         Neptune authorizes via IAM/network and needs none, so it defaults off;
         it exists for auth-protected SPARQL endpoints such as a Fuseki store
         whose update endpoint is guarded (e.g. the QC disposable-store sidecar,
         which ships with an admin password). httpx sends the credential as an
-        ``Authorization: Basic`` header; it is never logged here."""
+        ``Authorization: Basic`` header; it is never logged here.
+
+        ``allow_http``: when True, skip the GraphStore fail-closed gate (client
+        unit tests, Fuseki QC). When None, honors ``INFONA_SPARQL_HTTP_ENABLED``.
+        """
         self.endpoint = endpoint.rstrip("/")
         self.backend = backend
+        if allow_http is None:
+            allow_http = os.environ.get("INFONA_SPARQL_HTTP_ENABLED", "0") == "1"
+        self._allow_http = bool(allow_http)
         paths = BACKENDS.get(backend, BACKENDS["neptune"])
         self._query_path = paths["query"]
         self._update_path = paths["update"]
@@ -165,6 +196,29 @@ class NeptuneClient:
             timeout=120.0,
             verify=ssl_context if ssl_context else False,
             auth=auth,
+        )
+
+    def _ensure_sparql_http_allowed(self) -> None:
+        """Fail closed when a product GraphStore is configured (ONTA-534).
+
+        Avoids 120s connect timeouts against decommissioned Neptune when residual
+        dual-route arms still call this client. No store configured → allow
+        (local Fuseki archaeology). Explicit ``allow_http`` / env override wins.
+        """
+        if self._allow_http:
+            return
+        try:
+            from infona_client.graph.store import GraphConfigError, get_optional_graph_store
+
+            get_optional_graph_store()
+        except GraphConfigError:
+            return
+        except Exception:  # noqa: BLE001 — never block on store probe bugs
+            return
+        raise SparqlClientRetired(
+            "SPARQL HTTP client is retired under Neo4j GraphStore (ONTA-534). "
+            "Use GraphStore / scoped GraphSession. Residual QC may set "
+            "INFONA_SPARQL_HTTP_ENABLED=1 or NeptuneClient(allow_http=True)."
         )
 
     async def _post_with_retry(
@@ -220,6 +274,7 @@ class NeptuneClient:
         """Run a SPARQL SELECT/CONSTRUCT. ``timeout`` (seconds) overrides the
         client-wide 120s budget for this one request (see ``_post_with_retry``);
         ``None`` keeps the default."""
+        self._ensure_sparql_http_allowed()
         start = time.monotonic()
         response = await self._post_with_retry(
             self._query_path,
@@ -239,6 +294,7 @@ class NeptuneClient:
         return response.json()
 
     async def update(self, sparql: str) -> None:
+        self._ensure_sparql_http_allowed()
         start = time.monotonic()
         response = await self._client.post(
             self._update_path,
@@ -250,6 +306,7 @@ class NeptuneClient:
 
     async def ask(self, sparql: str) -> bool:
         """Execute a SPARQL ASK query and return the boolean result."""
+        self._ensure_sparql_http_allowed()
         start = time.monotonic()
         response = await self._post_with_retry(
             self._query_path,
@@ -263,6 +320,7 @@ class NeptuneClient:
 
     async def batch_exists(self, sparql: str) -> set[str]:
         """Execute a SPARQL SELECT for batch existence check. Returns set of URIs that exist."""
+        self._ensure_sparql_http_allowed()
         start = time.monotonic()
         response = await self._post_with_retry(
             self._query_path,

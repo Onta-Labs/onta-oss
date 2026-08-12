@@ -181,6 +181,8 @@ _RESIDUAL_NEPTUNE_IMPORTERS = {
     "functions/registry.py",
     "graph/attr_meta_migration.py",
     "graph/client.py",
+    # ONTA-534 slice 2: isinstance gate so GraphStore-first only for real client.
+    "graph/kg_status.py",
     "graph/neo4j_store.py",
     "graph/store.py",
     "nlp/ontology_embeddings.py",
@@ -269,3 +271,111 @@ def test_ask_method_body_has_no_sparql_retry_loop():
         "Cypher path uses _ask_cypher / _generate_cypher_* only"
     )
     assert "max_attempts" not in code_only
+
+
+def test_neptune_client_fail_closed_when_graph_store_configured():
+    """ONTA-534 slice 2: residual SPARQL HTTP must not hang under GraphStore."""
+    import asyncio
+
+    from infona_client.graph.client import NeptuneClient, SparqlClientRetired
+    from infona_client.graph.memory_store import MemoryGraphStore
+    from infona_client.graph.store import configure_graph_store, reset_graph_store_for_tests
+
+    configure_graph_store(MemoryGraphStore())
+    client = NeptuneClient("http://127.0.0.1:9", allow_http=False)
+    try:
+
+        async def _run():
+            with pytest.raises(SparqlClientRetired, match="ONTA-534"):
+                await client.query("SELECT ?s WHERE { ?s ?p ?o }")
+            with pytest.raises(SparqlClientRetired, match="ONTA-534"):
+                await client.ask("ASK WHERE { ?s ?p ?o }")
+            with pytest.raises(SparqlClientRetired, match="ONTA-534"):
+                await client.update("INSERT DATA { <a> <b> <c> }")
+
+        asyncio.run(_run())
+    finally:
+        asyncio.run(client.close())
+        reset_graph_store_for_tests()
+
+
+def test_neptune_client_allow_http_bypasses_store_gate():
+    """Client unit tests / QC may opt into residual SPARQL HTTP."""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from infona_client.graph.client import NeptuneClient
+    from infona_client.graph.memory_store import MemoryGraphStore
+    from infona_client.graph.store import configure_graph_store, reset_graph_store_for_tests
+
+    configure_graph_store(MemoryGraphStore())
+    client = NeptuneClient("http://127.0.0.1:9", allow_http=True)
+    try:
+
+        async def _run():
+            resp = MagicMock()
+            resp.is_error = False
+            resp.status_code = 200
+            resp.json.return_value = {
+                "head": {"vars": []},
+                "results": {"bindings": []},
+            }
+            with patch.object(client, "_post_with_retry", new=AsyncMock(return_value=resp)):
+                body = await client.query("SELECT ?s WHERE { ?s ?p ?o }")
+            assert body["results"]["bindings"] == []
+
+        asyncio.run(_run())
+    finally:
+        asyncio.run(client.close())
+        reset_graph_store_for_tests()
+
+
+def test_select_entity_uris_body_never_calls_neptune_query():
+    """ONTA-534: select_entity_uris source must not invoke self.neptune.query."""
+    import re
+
+    src = (PKG / "nlp" / "pipeline.py").read_text()
+    start = src.index("    async def select_entity_uris(")
+    rest = src[start + 1 :]
+    m = re.search(r"\n    (?:async )?def ", rest)
+    assert m, "could not bound select_entity_uris()"
+    body = rest[: m.start()]
+    code_only = "\n".join(
+        line.split("#", 1)[0]
+        for line in body.splitlines()
+        if '"""' not in line and "'''" not in line
+    )
+    assert "self.neptune.query" not in code_only, (
+        "select_entity_uris must not call self.neptune.query after ONTA-534"
+    )
+    assert "SparqlAskPathRetired" in body
+    assert "_ask_cypher" in code_only or "try_deterministic_cypher" in code_only
+
+
+def test_select_entity_uris_requires_graph_store():
+    """Without a GraphStore, subset resolution fails closed with a clear error."""
+    import asyncio
+    from unittest.mock import MagicMock
+
+    from infona_client.nlp.pipeline import NLQueryPipeline, SparqlAskPathRetired
+    from infona_client.graph.store import configure_graph_store, reset_graph_store_for_tests
+
+    reset_graph_store_for_tests()
+    configure_graph_store(None)
+    pipe = NLQueryPipeline(MagicMock(), anthropic_key="x", graph_store=None)
+    try:
+
+        async def _run():
+            with pytest.raises(SparqlAskPathRetired, match="ONTA-534"):
+                await pipe.select_entity_uris(
+                    "all widgets",
+                    "Widget",
+                    "https://graph.infona.ai/graphs/t",
+                    "https://graph.infona.ai/graphs/t/kg/demo",
+                )
+
+        asyncio.run(_run())
+    finally:
+        from infona_client.graph.memory_store import MemoryGraphStore
+
+        configure_graph_store(MemoryGraphStore())
