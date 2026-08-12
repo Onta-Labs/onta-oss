@@ -457,6 +457,53 @@ _MADE_BY_FILTER_RE = re.compile(
     r"$"
 )
 
+# "total amount of grants" / "sum of amount for widgets" / "average mileage of vehicles"
+_AGG_RE = re.compile(
+    r"(?ix)^"
+    r"(?:what(?:'s|\s+is)\s+)?"
+    r"(?:the\s+)?"
+    r"(?P<agg>total|sum|average|avg|mean|minimum|min|maximum|max)"
+    r"(?:\s+(?:of|for))?"
+    r"(?:\s+(?:the\s+)?)?"
+    r"(?P<prop>[A-Za-z_][A-Za-z0-9_]*)?"
+    r"(?:\s+(?:of|for|across|over|on))?"
+    r"(?:\s+(?:all\s+)?)?"
+    r"(?P<label>.+?)"
+    r"$"
+)
+
+_AGG_OP_MAP = {
+    "total": "sum",
+    "sum": "sum",
+    "average": "avg",
+    "avg": "avg",
+    "mean": "avg",
+    "minimum": "min",
+    "min": "min",
+    "maximum": "max",
+    "max": "max",
+}
+
+# Prefer these leaves when the NL omits an explicit prop ("total of grants").
+_NUMERIC_AGG_PROP_CANDIDATES = (
+    "amount",
+    "price",
+    "cost",
+    "unit_cost",
+    "value",
+    "value_usd",
+    "mileage",
+    "qty",
+    "quantity",
+    "enrollment",
+    "reading",
+    "score",
+    "rating",
+    "total",
+)
+
+
+
 # "authors of books" / "list organizations related to people"
 _HOP_OF_RE = re.compile(
     r"(?ix)^"
@@ -581,6 +628,17 @@ def try_stub_count_query(
             explanation="Count all entities in the knowledge graph.",
             template=TEMPLATE_COUNT_TOTAL,
         )
+
+    # "total amount of grants" is an aggregation, not a type count — fall through.
+    if re.search(
+        r"(?i)\b(?:amount|sum|total|average|avg|mean|price|cost|mileage|qty|quantity)\b"
+        r".*\bof\b",
+        label,
+    ) or re.match(
+        r"(?i)^(?:amount|price|cost|mileage|qty|quantity|value)\b",
+        label,
+    ):
+        return None
 
     # Refuse silent wrong counts: any filtered / scoped "how many X …" is NOT a
     # bare type count (e.g. "how many sensors are at Plant-A"). Fall through so
@@ -1269,6 +1327,113 @@ def try_hop_query(
     )
 
 
+
+def _resolve_numeric_prop(prop: str | None, ontology_summary: str, type_name: str) -> str | None:
+    """Pick a numeric/datatype prop key from the question or ontology section."""
+    section = _ontology_section_for_type(type_name, ontology_summary)
+    text = section or ontology_summary or ""
+    if prop and _SAFE_PROP_RE.match(prop):
+        # Prefer exact leaf in section; else accept the word if it appears.
+        if re.search(rf"(?im)^\\s*-\\s*{re.escape(prop)}\\b", text) or re.search(
+            rf"(?i)\\b{re.escape(prop)}\\b", text
+        ):
+            return prop
+        # Common "amount" when ontology uses value_usd etc. — fall through candidates.
+    for cand in _NUMERIC_AGG_PROP_CANDIDATES:
+        if re.search(rf"(?im)^\\s*-\\s*{re.escape(cand)}\\b", text):
+            return cand
+        if re.search(rf"(?i)\\b{re.escape(cand)}\\b", text):
+            return cand
+    if prop and _SAFE_PROP_RE.match(prop):
+        return prop
+    return None
+
+
+def try_aggregate_query(
+    question: str,
+    ontology_summary: str = "",
+    *,
+    type_names: list[str] | None = None,
+) -> dict[str, Any] | None:
+    """Sum / avg / min / max over a datatype property for a type (hermetic).
+
+    Uses Assertion literal_value coalesce Entity denorm props — NEVER invents
+    HAS_ASSERTION (the LLM failure mode that returned silent 0 for totals).
+    """
+    q = _TRAILING_PUNCT_RE.sub("", (question or "").strip())
+    if not q:
+        return None
+    m = _AGG_RE.match(q)
+    if not m:
+        return None
+    agg_word = (m.group("agg") or "").strip().lower()
+    op = _AGG_OP_MAP.get(agg_word)
+    if not op:
+        return None
+    prop = (m.group("prop") or "").strip() or None
+    # "total number of grants" is a COUNT, not SUM(number).
+    if prop and prop.lower() in {
+        "number", "count", "counts", "entities", "records", "items", "rows", "things",
+    }:
+        return None
+    label = (m.group("label") or "").strip()
+    label = _TRAILING_PUNCT_RE.sub("", label)
+    # Strip leading noise left in label ("all grants", "the widgets")
+    label = re.sub(r"(?i)^(all|the|of|for)\\s+", "", label).strip()
+    if not label:
+        return None
+    # "grant amount" style: prop may be empty and label ends with amount
+    if prop is None:
+        parts = label.split()
+        if len(parts) >= 2 and parts[-1].lower() in {
+            c.lower() for c in _NUMERIC_AGG_PROP_CANDIDATES
+        }:
+            prop = parts[-1]
+            label = " ".join(parts[:-1]).strip()
+    matched = resolve_type_name(label, type_names, ontology_summary)
+    if matched is None:
+        return None
+    prop_key = _resolve_numeric_prop(prop, ontology_summary, matched)
+    if not prop_key or not _SAFE_PROP_RE.match(prop_key):
+        return None
+    expanded = type_names_with_subclasses(
+        matched, ontology_summary=ontology_summary, include_subclasses=True
+    )
+    # Free-form confined Cypher (not a registered template name) — Memory/Neo4j
+    # both support coalesce(literal, e[prop]) reads used by literal_compare.
+    cypher = f"""
+MATCH (e:Entity {{tenant_id: $tenant_id, kg: $kg}})-[:INSTANCE_OF]->(c:Class {{
+  tenant_id: $tenant_id, kg: $kg
+}})
+WHERE c.name IN $type_names OR c.id IN $type_names
+OPTIONAL MATCH (a:Assertion {{tenant_id: $tenant_id, kg: $kg, subject_id: e.id}})
+  -[:PREDICATE]->(p:Property {{tenant_id: $tenant_id, kg: $kg}})
+WHERE p.name = $prop_key
+WITH e, coalesce(a.literal_value, e[$prop_key]) AS raw
+WHERE raw IS NOT NULL
+WITH toFloat(
+  CASE
+    WHEN toString(raw) CONTAINS '^^' THEN split(toString(raw), '^^')[0]
+    ELSE toString(raw)
+  END
+) AS num
+WHERE num IS NOT NULL
+RETURN {op}(num) AS value
+""".strip()
+    return _fixture(
+        cypher=cypher,
+        params={
+            "type_names": expanded,
+            "prop_key": prop_key,
+        },
+        explanation=(
+            f"{op.upper()} of {prop_key} for {matched} entities "
+            f"(Assertion literal coalesce Entity denorm; no HAS_ASSERTION)."
+        ),
+        template=None,
+    )
+
+
 def try_deterministic_cypher(
     question: str,
     ontology_summary: str = "",
@@ -1277,6 +1442,7 @@ def try_deterministic_cypher(
 ) -> dict[str, Any] | None:
     """Try hermetic fixtures in priority order; return first match or None."""
     for fn in (
+        try_aggregate_query,  # before count: "total amount of grants" ≠ bare count
         try_stub_count_query,
         try_numeric_filter_query,  # before equality so "price under 15" wins
         try_related_name_filter_query,  # before equality so "with genre X" wins
@@ -1445,4 +1611,5 @@ __all__ = [
     "try_numeric_filter_query",
     "try_related_name_filter_query",
     "try_stub_count_query",
+    "try_aggregate_query",
 ]

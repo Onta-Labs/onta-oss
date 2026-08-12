@@ -257,3 +257,58 @@ def test_count_fixture_refuses_are_at_scope():
         onto,
         type_names=["Widget"],
     ) is None
+
+
+def test_aggregate_sum_avg_on_synthetic_type():
+    """SUM/AVG use property path — never HAS_ASSERTION (silent-zero class)."""
+    from infona_client.nlp.cypher_generate import try_deterministic_cypher
+
+    onto = (
+        "Type: Widget\n"
+        "  - unit_cost: float (literal, key=unit_cost)\n"
+        "  - qty: integer (literal, key=qty)\n"
+    )
+    types = ["Widget"]
+    total = try_deterministic_cypher(
+        "total unit_cost of widgets", onto, type_names=types
+    )
+    assert total is not None
+    cy = total["cypher"]
+    assert "HAS_ASSERTION" not in cy
+    assert "sum(" in cy.lower()
+    assert total["params"]["prop_key"] == "unit_cost"
+    assert total["params"]["type_names"] == ["Widget"]
+
+    avg = try_deterministic_cypher(
+        "average amount of widgets",  # amount missing → fall to unit_cost/qty candidates
+        "Type: Widget\n  - amount: integer (literal, key=amount)\n",
+        type_names=types,
+    )
+    assert avg is not None
+    assert "avg(" in avg["cypher"].lower()
+    assert "HAS_ASSERTION" not in avg["cypher"]
+    assert avg["params"]["prop_key"] == "amount"
+
+
+def test_total_number_of_stays_count_not_aggregate():
+    from infona_client.nlp.cypher_generate import try_deterministic_cypher
+
+    onto = "Type: Widget\n  - unit_cost: float (literal)\n"
+    p = try_deterministic_cypher(
+        "total number of widgets", onto, type_names=["Widget"]
+    )
+    assert p is not None
+    assert p["template"] == "entities_of_type_count"
+
+
+def test_forbidden_has_assertion_detector():
+    from infona_client.nlp.pipeline import _cypher_uses_forbidden_shapes
+
+    bad = "MATCH (e)-[:HAS_ASSERTION]->(a) RETURN sum(a.literal_value)"
+    assert _cypher_uses_forbidden_shapes(bad)
+    good = (
+        "MATCH (e:Entity)-[:INSTANCE_OF]->(c:Class) "
+        "OPTIONAL MATCH (a:Assertion {subject_id:e.id})-[:PREDICATE]->(p:Property) "
+        "RETURN sum(toFloat(a.literal_value))"
+    )
+    assert _cypher_uses_forbidden_shapes(good) is None
