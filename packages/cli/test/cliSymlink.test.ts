@@ -26,16 +26,31 @@ const pkgRoot = join(here, "..");
 const cliPath = join(pkgRoot, "dist", "cli.js");
 
 beforeAll(() => {
-  // Build the bin once so the test exercises the real published artifact and
-  // never depends on stale dist/. tsup is fast (~tens of ms); the generous
-  // timeout covers a cold first build.
-  if (!existsSync(cliPath)) {
-    execFileSync("npm", ["run", "build"], { cwd: pkgRoot, stdio: "inherit" });
-  }
+  // Always rebuild so CI monorepo workspace dist cannot be a stale/partial
+  // artifact that would make --version silently no-op or exit 1.
+  execFileSync("npm", ["run", "build"], { cwd: pkgRoot, stdio: "inherit" });
   if (!existsSync(cliPath)) {
     throw new Error(`expected built CLI at ${cliPath} after build`);
   }
 }, 120_000);
+
+function expectVersion(res: ReturnType<typeof spawnSync>): void {
+  if (res.status !== 0 || !String(res.stdout ?? "").trim()) {
+    // Surface diagnostics in CI logs when the classic empty-stdout bug returns.
+    // eslint-disable-next-line no-console
+    console.error("cli --version spawn failed", {
+      status: res.status,
+      signal: res.signal,
+      error: res.error,
+      stdout: res.stdout,
+      stderr: res.stderr,
+    });
+  }
+  expect(res.status).toBe(0);
+  const out = String(res.stdout ?? "").trim();
+  expect(out).not.toBe("");
+  expect(out).toMatch(/^\d+\.\d+\.\d+/);
+}
 
 describe("cli — symlinked bin (npm .bin layout)", () => {
   it("runs --version when invoked through a symlink to dist/cli.js", () => {
@@ -45,12 +60,7 @@ describe("cli — symlinked bin (npm .bin layout)", () => {
       // Mimic node_modules/.bin/infona -> ../infona/dist/cli.js
       symlinkSync(cliPath, link);
       const res = spawnSync("node", [link, "--version"], { encoding: "utf-8" });
-
-      expect(res.status).toBe(0);
-      // The bug manifested as EMPTY stdout (guard false → parse never runs).
-      const out = res.stdout.trim();
-      expect(out).not.toBe("");
-      expect(out).toMatch(/^\d+\.\d+\.\d+/);
+      expectVersion(res);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -58,8 +68,7 @@ describe("cli — symlinked bin (npm .bin layout)", () => {
 
   it("still runs --version when invoked directly (no symlink)", () => {
     const res = spawnSync("node", [cliPath, "--version"], { encoding: "utf-8" });
-    expect(res.status).toBe(0);
-    expect(res.stdout.trim()).toMatch(/^\d+\.\d+\.\d+/);
+    expectVersion(res);
   });
 
   it("dispatches subcommands through the symlink (agent --help)", () => {
