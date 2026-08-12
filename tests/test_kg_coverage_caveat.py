@@ -26,6 +26,25 @@ defect one level up, so the strong "not an answer about this graph" wording is
 demoted the moment the subclass probe disagrees with the marks, and an
 unmeasurable coverage signal produces "could not be checked" rather than either
 silence or a claim.
+
+**LOST CAPABILITY (ONTA-527) — read this before trusting the green cases.** The
+whole feature is implemented inside ``nlp/pipeline.py::ask``'s SPARQL branch
+(``_kg_coverage_caveat`` / ``_kg_subtypes_present`` around the post-execution
+block). ``POST /ask`` generates Cypher now and takes ``_ask_cypher``, which
+never calls either and returns ``coverage_caveat=""`` unconditionally, so the
+ONTA-454 defect this file reproduces is BACK on the shipped path: a KG that
+contributed nothing to the answer is not named, and the answer string carries no
+"Coverage note:".
+
+Every case that asserts the caveat FIRES is xfailed strictly below, so they flip
+to XPASS the day the signal is ported. The cases that assert SILENCE
+(``coverage_caveat == ""``) still pass, but VACUOUSLY — the caveat is empty for
+every input now, so they no longer discriminate anything. They are left green
+because a strict xfail on an absence-assertion would invert into a failure, not
+because they still carry weight. The pure analysis layer at the bottom
+(``referenced_types`` / ``empty_types_for_kg`` / ``uncovered_types`` /
+``coverage_caveat`` / ``kg_subtype_presence_query``) is genuinely live and
+untouched — those are library functions with their own callers.
 """
 
 from __future__ import annotations
@@ -44,6 +63,16 @@ from infona_client.nlp.kg_coverage import (
     unscoped_caveat,
 )
 from infona_client.nlp.pipeline import NLQueryPipeline
+
+#: One reason for every case that needs the pipeline to EMIT a caveat.
+_NO_KG_COVERAGE_SIGNAL = (
+    "LOST CAPABILITY (ONTA-527): the ONTA-454 coverage signal is computed only "
+    "in nlp/pipeline.py::ask's SPARQL branch (_kg_coverage_caveat + the "
+    "unscoped/base-graph probe). /ask generates Cypher and takes _ask_cypher, "
+    "which builds its NLResult with no coverage_caveat at all — so an answer "
+    "sourced entirely from outside the KG the user named is again returned with "
+    "nothing saying so. Needs a Cypher-path port of the signal."
+)
 
 
 @pytest.fixture(autouse=True)
@@ -187,6 +216,7 @@ async def _ask(client, sparql: str, *, kg: bool = True, ontology: str = ONTOLOGY
 # --------------------------------------------------------------------------- #
 
 
+@pytest.mark.xfail(strict=True, reason=_NO_KG_COVERAGE_SIGNAL)
 @pytest.mark.asyncio
 async def test_answer_from_another_graph_carries_a_coverage_caveat():
     """The reproduction: a real number, and now a sentence saying where it is from."""
@@ -202,6 +232,7 @@ async def test_answer_from_another_graph_carries_a_coverage_caveat():
     assert "ProductRecall" in result.answer
 
 
+@pytest.mark.xfail(strict=True, reason=_NO_KG_COVERAGE_SIGNAL)
 @pytest.mark.asyncio
 async def test_caveat_names_the_named_graph_as_the_one_that_lacks_the_data():
     result = await _ask(_neptune(answer_rows=["4229"]), RECALL_SPARQL)
@@ -279,6 +310,7 @@ async def test_supertype_whose_subtype_lives_here_is_not_caveated():
     assert "Coverage note:" not in result.answer
 
 
+@pytest.mark.xfail(strict=True, reason=_NO_KG_COVERAGE_SIGNAL)
 @pytest.mark.asyncio
 async def test_a_cleared_type_demotes_the_strong_all_types_wording():
     """Review finding 1. `all_types` was computed from the MARKS, before the
@@ -308,6 +340,7 @@ async def test_a_cleared_type_demotes_the_strong_all_types_wording():
     assert "any part of this result that depends on it" in caveat
 
 
+@pytest.mark.xfail(strict=True, reason=_NO_KG_COVERAGE_SIGNAL)
 @pytest.mark.asyncio
 async def test_probe_confirming_absence_still_yields_the_caveat():
     org_sparql = RECALL_SPARQL.replace("ProductRecall", "Organization")
@@ -315,6 +348,7 @@ async def test_probe_confirming_absence_still_yields_the_caveat():
     assert "Organization" in result.coverage_caveat
 
 
+@pytest.mark.xfail(strict=True, reason=_NO_KG_COVERAGE_SIGNAL)
 @pytest.mark.asyncio
 async def test_probe_failure_degrades_to_the_verdict_the_planner_already_saw():
     """The probe can only SUPPRESS. A failure must not silence the caveat.
@@ -328,6 +362,7 @@ async def test_probe_failure_degrades_to_the_verdict_the_planner_already_saw():
     assert "ProductRecall" in result.coverage_caveat
 
 
+@pytest.mark.xfail(strict=True, reason=_NO_KG_COVERAGE_SIGNAL)
 @pytest.mark.asyncio
 async def test_the_probe_is_the_only_extra_round_trip():
     """Cost control: exactly ONE store call beyond the answer query itself."""
@@ -359,6 +394,7 @@ UNSCOPED_SPARQL = (
 )
 
 
+@pytest.mark.xfail(strict=True, reason=_NO_KG_COVERAGE_SIGNAL)
 @pytest.mark.asyncio
 async def test_type_unanchored_query_is_caveated_as_workspace_wide():
     """Signal A is structurally blind here: there is no type to compare."""
@@ -373,6 +409,7 @@ async def test_type_unanchored_query_is_caveated_as_workspace_wide():
     assert "no instances" not in result.coverage_caveat
 
 
+@pytest.mark.xfail(strict=True, reason=_NO_KG_COVERAGE_SIGNAL)
 @pytest.mark.asyncio
 async def test_unanchored_query_is_silent_when_nothing_else_holds_instances():
     """A workspace whose data lives entirely in one KG: the union IS that KG.
@@ -424,6 +461,7 @@ async def test_unanchored_query_without_a_kg_name_is_silent():
     assert result.coverage_caveat == ""
 
 
+@pytest.mark.xfail(strict=True, reason=_NO_KG_COVERAGE_SIGNAL)
 @pytest.mark.asyncio
 async def test_unanchored_signal_costs_one_ask_and_no_subtype_probe():
     client = _neptune(answer_rows=["19582"])
@@ -449,6 +487,7 @@ def test_unscoped_caveat_needs_a_kg_name():
 # --------------------------------------------------------------------------- #
 
 
+@pytest.mark.xfail(strict=True, reason=_NO_KG_COVERAGE_SIGNAL)
 @pytest.mark.asyncio
 async def test_failed_semantic_probe_says_coverage_is_unknown():
     """Review finding 3. The worst possible moment for silence.

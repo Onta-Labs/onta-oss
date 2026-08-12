@@ -11,29 +11,21 @@ with optional ``subject`` / ``predicate`` / ``since`` narrowing, so a "changed
 since <cutoff>" question returns only transitions after the cutoff, each dated.
 The WRITE side stays entirely on the shared write path — this route never writes.
 
-**Dual-backend (E9 / ADR 0013):**
-
-* **Neptune (default):** SPARQL companion ``…/history`` graph via
-  :func:`fetch_value_history` — full temporal ``old → new`` transitions.
-* **Neo4j:** Assertion provenance listing via
-  :func:`fetch_store_assertion_history` / ``rdfs_helpers.session_assertion_history``
-  (current facts + ``verified_at`` as ``changed_at``; temporal ValueHistory
-  deferred). Same response shape. Prefer ``subject=`` for scoped reads.
+**Backing store (ADR 0013 / ONTA-527):** Assertion provenance via
+:func:`fetch_store_assertion_history` / ``rdfs_helpers.session_assertion_history``
+— current facts plus ``verified_at`` as ``changed_at``. The SPARQL companion
+``…/history`` graph, which carried full temporal ``old → new`` transitions, went
+out with the Neptune backend; the property-graph ValueHistory port is deferred,
+so ``old_value`` is empty on every row today. Prefer ``subject=`` for scoped
+reads.
 """
 
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from infona_client.api.deps import get_neptune_client
 from infona_client.auth.api_keys import TenantContext, get_tenant
-from infona_client.graph.client import NeptuneClient
-from infona_client.graph.history import (
-    fetch_store_assertion_history,
-    fetch_value_history,
-)
-from infona_client.graph.kg_writer import graph_backend
-from infona_client.graph.queries import kg_graph_uri
+from infona_client.graph.history import fetch_store_assertion_history
 from infona_client.graph.store import GraphConfigError, get_optional_graph_store
 
 router = APIRouter()
@@ -58,7 +50,6 @@ def _require_abs_iri(name: str, value: str | None) -> None:
 @router.get("/graphs/{tenant}/history")
 async def get_value_history(
     tenant: TenantContext = Depends(get_tenant),
-    client: NeptuneClient = Depends(get_neptune_client),
     kg_name: str = Query(..., description="KG whose value history to read"),
     subject: str | None = Query(
         None, description="Narrow to one entity URI (all attributes if omitted)"
@@ -75,12 +66,10 @@ async def get_value_history(
     ),
     limit: int = Query(1000, ge=1, le=10000),
 ):
-    """Return dated ``old → new`` value transitions for a KG, oldest → newest.
+    """Return dated value entries for a KG, oldest → newest.
 
-    Each entry is ``{subject, predicate, old_value, new_value, changed_at}``. The
-    history graph is the companion of the KG's data graph; a first insert (no
-    prior value) and an unchanged re-write are never recorded, so every row is a
-    genuine change.
+    Each entry is ``{subject, predicate, old_value, new_value, changed_at}``,
+    sourced from Assertion provenance in the property-graph store.
     """
     # Tenant isolation: reject a malformed subject/predicate at the boundary so an
     # injection payload can never reach the query builder (defense in depth with
@@ -89,41 +78,19 @@ async def get_value_history(
     _require_abs_iri("subject", subject)
     _require_abs_iri("predicate", predicate)
 
-    # Dual-backend (E9): Neptune → SPARQL companion history; neo4j → Assertion
-    # provenance via GraphStore (rdfs_helpers). Default unset backend stays
-    # Neptune — never forces neo4j.
-    if graph_backend() == "neo4j":
-        try:
-            store = get_optional_graph_store()
-        except GraphConfigError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        if store is None:
-            raise HTTPException(
-                status_code=503,
-                detail=(
-                    "INFONA_GRAPH_BACKEND=neo4j but no GraphStore is configured "
-                    "(call configure_graph_store or set NEO4J_*)"
-                ),
-            )
-        changes = await fetch_store_assertion_history(
-            store,
-            tenant_id=tenant.tenant_id,
-            kg_name=kg_name,
-            subject=subject,
-            predicate=predicate,
-            since=since,
-            limit=limit,
-        )
-    else:
-        graph_uri = kg_graph_uri(tenant.tenant_id, kg_name)
-        changes = await fetch_value_history(
-            client,
-            graph_uri,
-            subject=subject,
-            predicate=predicate,
-            since=since,
-            limit=limit,
-        )
+    try:
+        store = get_optional_graph_store()
+    except GraphConfigError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    changes = await fetch_store_assertion_history(
+        store,
+        tenant_id=tenant.tenant_id,
+        kg_name=kg_name,
+        subject=subject,
+        predicate=predicate,
+        since=since,
+        limit=limit,
+    )
     return {
         "kg_name": kg_name,
         "count": len(changes),

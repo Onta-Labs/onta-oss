@@ -16,6 +16,22 @@ Two load-bearing halves, mirroring the acceptance bar:
 The SPARQL generator + narrative rephrase are mocked so the whole path runs
 OFFLINE (no LLM key, no network) — the same isolation the CI-safe unit tests use,
 independent of the live-LLM ask tests in test_pipeline.py.
+
+**LOST CAPABILITY (ONTA-527).** ``ask`` still ACCEPTS ``run_manifest``, but the
+threading stops one line later: the Cypher branch is entered as
+``self._ask_cypher(question, graph_uri=…, data_graph=…, exclude_questions=…,
+layer_graph_uris=…)`` — ``run_manifest`` is not among the arguments and
+``_ask_cypher`` has no parameter for it. So on the shipped ``/ask`` path a
+threaded manifest is silently DROPPED and the A9 "answered from N of M items"
+fragment is never composed. The three cases that need a THREADED manifest are
+xfailed strictly rather than softened, so they flip to XPASS the day it is
+forwarded. The no-manifest control stays green: it is still a real control,
+because the Cypher path also defaults to an empty caveat and no citations. The
+whole file was re-pointed at a seeded ``MemoryGraphStore`` and a per-KG instance
+graph so the xfails fire on the CAVEAT rather than on scope resolution.
+
+A silently-ignored keyword argument is the dangerous shape here: the caller sees
+no error, only a missing caveat.
 """
 from __future__ import annotations
 
@@ -26,40 +42,81 @@ import pytest
 from infona_client.nlp.pipeline import NLQueryPipeline
 from infona_client.pipeline.manifest import RunCoverage, RunManifest
 
-_CANNED_SPARQL = {
-    "sparql": "SELECT ?name WHERE { ?s <https://schema.org/name> ?name }",
-    "explanation": "Finds all names",
+_MANIFEST_NOT_THREADED = (
+    "LOST CAPABILITY (ONTA-527): nlp/pipeline.py::ask drops `run_manifest` when "
+    "it dispatches to _ask_cypher (the parameter is not forwarded and "
+    "_ask_cypher does not accept it), so the A9 RunCoverage → "
+    "answer_meta.build_coverage_caveat composition in the SPARQL branch never "
+    "runs on the shipped /ask path and coverage_caveat is always ''."
+)
+
+_CANNED_CYPHER = {
+    "cypher": (
+        "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
+        "WHERE e.primary_type IN $type_names RETURN count(*) AS n"
+    ),
+    "params": {"type_names": ["Place"]},
+    "template": "entities_of_type_count",
+    "explanation": "Counts places",
     "functions_needed": [],
 }
+
+RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
+TENANT_GRAPH = "https://graph.infona.ai/graphs/t1"
+# A per-KG instance graph, not a bare tenant URI: since ONTA-527 `ask` derives
+# (tenant, kg) from it and refuses a tenant graph outright, which would make
+# every case below fail on scope resolution instead of on the caveat.
+KG_GRAPH = f"{TENANT_GRAPH}/kg/places"
 
 
 @pytest.fixture
 def mock_neptune():
     client = AsyncMock()
-    client.query.return_value = {
-        "head": {"vars": ["name"]},
-        "results": {
-            "bindings": [{"name": {"type": "literal", "value": "Central Park"}}]
-        },
-    }
+    client.query.return_value = {"head": {"vars": []}, "results": {"bindings": []}}
     return client
 
 
 @pytest.fixture
-def pipeline(mock_neptune):
-    return NLQueryPipeline(mock_neptune, "fake-key")
+def store():
+    import asyncio
+
+    from infona_client.graph.iri import IRI_BASE
+    from infona_client.graph.kg_writer import insert_facts
+    from infona_client.graph.memory_store import MemoryGraphStore
+    from infona_client.graph.ontology_queries import entity_uri
+
+    st = MemoryGraphStore()
+    park = entity_uri("Place", "p1")
+    asyncio.run(
+        insert_facts(
+            None,
+            KG_GRAPH,
+            [(park, RDF_TYPE, f"{IRI_BASE}/types/Place"), (park, LABEL, "Central Park")],
+            store=st,
+        )
+    )
+    return st
+
+
+@pytest.fixture
+def pipeline(mock_neptune, store):
+    return NLQueryPipeline(mock_neptune, "fake-key", graph_store=store)
 
 
 async def _ask(pipeline, run_manifest=None):
-    """Drive ``ask`` fully offline: canned SPARQL generation + empty rephrase."""
+    """Drive ``ask`` fully offline: canned generation + empty rephrase."""
     with patch.object(
-        pipeline, "_generate_sparql", new_callable=AsyncMock, return_value=_CANNED_SPARQL
+        pipeline, "_try_llm_cypher", new_callable=AsyncMock, return_value=_CANNED_CYPHER
+    ), patch.object(
+        pipeline, "_fetch_ontology", new_callable=AsyncMock, return_value="Type: Place"
     ), patch.object(
         pipeline, "_rephrase_via_openrouter", new_callable=AsyncMock, return_value=""
     ):
         return await pipeline.ask(
-            "What places exist?",
-            "https://graph.infona.ai/graphs/t1",
+            "enumerate the zzqx places",
+            TENANT_GRAPH,
+            KG_GRAPH,
             run_manifest=run_manifest,
         )
 
@@ -78,6 +135,7 @@ def _make_manifest() -> RunManifest:
 # --------------------------------------------------------------------------- #
 # 1. Threaded manifest / coverage → REAL A9 "N of M" caveat.
 # --------------------------------------------------------------------------- #
+@pytest.mark.xfail(strict=True, reason=_MANIFEST_NOT_THREADED)
 @pytest.mark.asyncio
 async def test_ask_with_manifest_emits_real_a9_coverage_caveat(pipeline):
     result = await _ask(pipeline, run_manifest=_make_manifest())
@@ -87,9 +145,10 @@ async def test_ask_with_manifest_emits_real_a9_coverage_caveat(pipeline):
     # The REAL A9 fraction (2 of 3), not a fabricated or stale-only caveat.
     assert "2 of 3" in result.coverage_caveat
     assert "provider exhaustion" in result.coverage_caveat
-    assert result.answer == "Central Park"
+    assert result.answer == "1"
 
 
+@pytest.mark.xfail(strict=True, reason=_MANIFEST_NOT_THREADED)
 @pytest.mark.asyncio
 async def test_ask_accepts_bare_run_coverage(pipeline):
     """A pre-computed RunCoverage (not the full manifest) threads through too."""
@@ -106,15 +165,21 @@ async def test_ask_accepts_bare_run_coverage(pipeline):
 # --------------------------------------------------------------------------- #
 @pytest.mark.asyncio
 async def test_ask_without_manifest_has_empty_caveat_default(pipeline):
-    """The default flagless path: no manifest ⇒ empty caveat, no citations —
-    exactly as before ONTA-374."""
+    """The default flagless path: no manifest ⇒ empty caveat, no citations.
+
+    Still a real control after ONTA-527 (the Cypher path also defaults to an
+    empty caveat and no citations), so it stays green — it is the manifest-
+    THREADED half that is gone. The answer is now the count the seeded store
+    returns rather than the canned SPARQL row.
+    """
     result = await _ask(pipeline, run_manifest=None)
 
     assert result.coverage_caveat == ""
     assert result.citations == []
-    assert result.answer == "Central Park"
+    assert result.answer == "1"
 
 
+@pytest.mark.xfail(strict=True, reason=_MANIFEST_NOT_THREADED)
 @pytest.mark.asyncio
 async def test_threading_manifest_changes_ONLY_the_caveat(pipeline):
     """Byte-identical default-path control: threading a manifest changes ONLY the

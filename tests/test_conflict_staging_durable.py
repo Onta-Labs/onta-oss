@@ -5,6 +5,12 @@ MECHANISM tests on INVENTED Widget schema. Proves:
   * a staged conflict carries BOTH sources' provenance (incumbent + proposed);
   * the staged conflict survives a store round-trip (serialize → validate, the
     durability boundary) and `apply_decisions` still resolves it.
+
+**Ported by ONTA-527** (round-trip test only): "the accepted value was written"
+used to be read off the SPARQL text `apply_decisions` emitted. Enrichment writes
+through `GraphStore` now, so the same claim is asserted against the seeded store
+— the accepted value on the entity, its citation on the `:AttrCitation`
+companion — plus the negative that no SPARQL carried it.
 """
 
 from __future__ import annotations
@@ -29,6 +35,7 @@ from infona_client.enrichment.models import (
     RowResult,
     Verdict,
 )
+from infona_client.graph.store import get_graph_store
 
 from tests._enrichment_prov_helpers import (
     FakeWikidata,
@@ -143,11 +150,33 @@ def test_conflict_survives_store_roundtrip_and_applies():
             )],
         )
         assert n == 1
+
+        # The accepted value landed on the entity through the shared write path.
+        graph = get_graph_store()
+        entity = next(
+            (e for e in graph.snapshot_entities() if e["id"] == r.entity_uri), None
+        )
+        assert entity is not None, "the accepted value was never written"
+        assert entity["props"]["sku"] == "WX-NEW"
+
+        # Its provenance is stamped as metadata OF the attribute (ONTA-262) — a
+        # citation companion, never a sibling attribute on the entity.
+        citation = next(
+            (
+                c
+                for c in graph.snapshot_citations()
+                if c["entity_id"] == r.entity_uri and c["attr"] == "sku"
+            ),
+            None,
+        )
+        assert citation is not None
+        assert citation["source_url"] == "https://new.example/sku"
+        assert "sku_source_url" not in entity["props"]
+
+        # None of it went out as SPARQL — the store path is what ran.
         writes = all_updates(neptune)
-        assert "WX-NEW" in writes  # accepted value written via the shared path
-        # Its provenance stamped as attr_meta metadata (ONTA-262) — never on the
-        # attribute namespace.
-        assert attr_provenance_companion_uri("Widget", "sku", "source_url") in writes
+        assert "WX-NEW" not in writes
+        assert attr_provenance_companion_uri("Widget", "sku", "source_url") not in writes
         assert _attr_uri("Widget", "sku_source_url") not in writes
 
     asyncio.run(run())

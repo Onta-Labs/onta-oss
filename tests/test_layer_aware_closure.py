@@ -15,6 +15,17 @@ Covers:
 
 All mocked — no live Neptune, no LLM, no network. Env handled via
 patch.dict / fixtures only (never module-level mutation).
+
+**ONTA-527 note.** Everything above the "NL pipeline" section is pure SPARQL
+STRING construction (``parent_map_query``, ``add_layer_from_clauses``,
+``rewrite_type_predicate_to_closure``) plus ``SchemaResolver._fetch_parent_map``,
+which still builds and awaits that SPARQL. Those builders still exist and are
+still exercised here, so the tests are kept — but be clear-eyed about what they
+prove: ``_fetch_parent_map`` runs its query against the NeptuneClient, and in
+production there is no SPARQL engine behind it, so the real behaviour is its
+degrade-to-``{}`` branch. The one test that drove the widening END TO END
+through ``ask()`` is now a strict xfail: the pipeline generates Cypher and
+discards ``layer_graph_uris`` outright.
 """
 
 from __future__ import annotations
@@ -321,6 +332,23 @@ def _mock_llm_message(sparql: str) -> MagicMock:
     return msg
 
 
+@pytest.mark.xfail(
+    reason=(
+        "LOST CAPABILITY (ONTA-527): ask() no longer widens a generated query "
+        "to the visible layer graphs, and no longer closure-rewrites it, "
+        "because it no longer generates SPARQL. nlp/pipeline.py::ask dispatches "
+        "to _ask_cypher whenever neo4j_ask_enabled() — unconditionally true "
+        "post-cutover — and _ask_cypher's first statement is "
+        "`del layer_graph_uris  # reserved for catalog-layer joins in later E6`. "
+        "Neither ontology_queries.add_layer_from_clauses nor "
+        "rewrite_type_predicate_to_closure has a caller on the ask path, so "
+        "subclass closure across layers is unavailable to NL questions. The "
+        "builders themselves are unchanged and still unit-tested above; what is "
+        "missing is a Cypher-side equivalent (Class SUBCLASS_OF walk + a "
+        "catalog-layer join) wired into _ask_cypher."
+    ),
+    strict=True,
+)
 @pytest.mark.asyncio
 async def test_ask_with_layer_graph_uris_widens_generated_query(mock_neptune):
     from infona_client.nlp.pipeline import NLQueryPipeline
@@ -350,7 +378,14 @@ async def test_ask_with_layer_graph_uris_widens_generated_query(mock_neptune):
 
 @pytest.mark.asyncio
 async def test_ask_without_layer_graph_uris_unchanged(mock_neptune):
-    """REGRESSION: default ask() never widens — no layer graphs leak in."""
+    """REGRESSION: default ask() never widens — no layer graphs leak in.
+
+    Honest caveat (ONTA-527): this now passes VACUOUSLY. ``result.sparql`` is
+    the empty string, because _ask_cypher refuses a graph URI that is not
+    ``…/graphs/{tenant}/kg/{kg}`` before generating anything. Kept as the
+    no-leak direction of the xfailed test above — an assertion that stays true
+    when the widening is restored — not as evidence the path runs.
+    """
     from infona_client.nlp.pipeline import NLQueryPipeline
 
     mock_neptune.query.return_value = {

@@ -15,6 +15,20 @@ ONTA-383 anchor-as-subtype behavior is preserved behind
 All mocked — no live Neptune, no LLM. A FakeTypeMatcher returns DIFFERENT for
 any proposed type not already in existing_types so the focus-seed + parent-
 injection path can be exercised end-to-end without a model call.
+
+**Ported by ONTA-527.** Two SPARQL-era assumptions came out:
+
+* the graph URI was the placeholder ``"g"``. Type minting now runs through
+  ``ontology_commit`` → ``ontology_catalog.upsert_type``, which derives the
+  catalog scope from ``/graphs/<tenant>`` in that URI, so a placeholder raises
+  ``GraphScopeError``. Every call passes the real tenant ontology graph now.
+* "was the type minted?" was read off the SPARQL text
+  ``mock_neptune.update`` was handed. No type write emits SPARQL any more, so
+  that assertion had become vacuous — it would have passed had the mint stopped
+  happening entirely. It is replaced by a read of the tenant ontology CATALOG
+  (``ontology_catalog.list_types``), i.e. the thing the mint actually produces,
+  plus ``mock_neptune.update.assert_not_called()`` to prove the catalog path is
+  what ran.
 """
 
 from __future__ import annotations
@@ -26,7 +40,8 @@ from unittest.mock import AsyncMock
 import pytest
 
 from infona_client.graph.client import NeptuneClient
-from infona_client.graph.ontology_queries import type_uri
+from infona_client.graph.iri import IRI_BASE
+from infona_client.graph.ontology_catalog import list_types
 from infona_client.resolver.attribute_resolver import is_junk_type_name
 from infona_client.resolver.models import (
     ExtractedAttribute,
@@ -44,6 +59,12 @@ from infona_client.resolver.schema_resolver import (
 )
 from infona_client.resolver.verdict_cache import JsonVerdictCache
 
+
+TENANT = "t1"
+# The tenant ontology graph. `_commit_ontology` recovers the tenant from
+# `/graphs/<tenant>` here to scope the catalog session, so this must be a real
+# tenant graph URI — the old `"g"` placeholder now raises GraphScopeError.
+TENANT_GRAPH = f"{IRI_BASE}/graphs/{TENANT}"
 
 # The junk set from the BC-universities symptom (ticket brief).
 _JUNK_TYPES = frozenset({"Colour", "Color", "Online", "InstructionMode", "Mode", "Status"})
@@ -104,8 +125,15 @@ def resolver(mock_neptune):
     return r
 
 
-def _update_sparql(mock_neptune) -> str:
-    return " || ".join(c.args[0] for c in mock_neptune.update.call_args_list)
+async def _minted_types(mock_neptune) -> set[str]:
+    """Type names actually present in the tenant ontology catalog.
+
+    Replaces the old ``_update_sparql`` scan: a mint is a catalog row now, not a
+    SPARQL string. ``assert_not_called`` is part of the assertion — it proves the
+    rows below came from the GraphStore path rather than a surviving SPARQL one.
+    """
+    mock_neptune.update.assert_not_called()
+    return {t.name for t in await list_types(tenant_id=TENANT)}
 
 
 # --------------------------------------------------------------------------- #
@@ -147,7 +175,7 @@ async def test_junk_primary_retypes_to_focus(resolver, mock_neptune):
         attributes=[ExtractedAttribute(name="name", value="Red", datatype="string")],
     )
     resolved = await resolver._resolve_type(
-        entity, "g", existing_types, existing_attrs, result,
+        entity, TENANT_GRAPH, existing_types, existing_attrs, result,
         focus_types=["Institution"],
         is_primary=True,
     )
@@ -164,7 +192,7 @@ async def test_junk_dimension_is_skipped(resolver, mock_neptune):
     result = IngestResult(entities_extracted=1)
     entity = ExtractedEntity(type_name="Online", id="dim-1")
     resolved = await resolver._resolve_type(
-        entity, "g", existing_types, existing_attrs, result,
+        entity, TENANT_GRAPH, existing_types, existing_attrs, result,
         focus_types=["Institution"],
         is_primary=False,
     )
@@ -179,7 +207,7 @@ async def test_instruction_mode_never_minted(resolver, mock_neptune):
     result = IngestResult(entities_extracted=1)
     entity = ExtractedEntity(type_name="InstructionMode", id="im-1")
     resolved = await resolver._resolve_type(
-        entity, "g", existing_types, existing_attrs, result,
+        entity, TENANT_GRAPH, existing_types, existing_attrs, result,
         focus_types=None,
         is_primary=True,
     )
@@ -209,15 +237,18 @@ async def test_primary_new_subtype_collapses_to_focus(resolver, mock_neptune):
         ],
     )
     resolved = await resolver._resolve_type(
-        entity, "g", existing_types, existing_attrs, result,
+        entity, TENANT_GRAPH, existing_types, existing_attrs, result,
         focus_types=["Institution"],
         is_primary=True,
         parent_of=parent_of,
     )
     assert resolved == "Institution"
     assert "University" not in result.types_created
-    sparql = _update_sparql(mock_neptune)
-    assert type_uri("University") not in sparql
+    # Nothing was minted at all: collapse resolves to a type the caller already
+    # had, so the catalog stays empty. (The old form asserted the University IRI
+    # was absent from the emitted SPARQL, which no longer distinguishes "not
+    # minted" from "minted through a path that emits no SPARQL".)
+    assert "University" not in await _minted_types(mock_neptune)
     # No accidental subtype anchored.
     assert parent_of.get("University") is None
 
@@ -242,16 +273,21 @@ async def test_primary_without_parent_anchors_under_focus_when_collapse_off(
         ],
     )
     resolved = await resolver._resolve_type(
-        entity, "g", existing_types, existing_attrs, result,
+        entity, TENANT_GRAPH, existing_types, existing_attrs, result,
         focus_types=["Institution"],
         is_primary=True,
         parent_of=parent_of,
     )
     assert resolved == "University"
     assert "University" in result.types_created
-    sparql = _update_sparql(mock_neptune)
-    assert type_uri("University") in sparql
-    assert type_uri("Institution") in sparql
+    # Both the subtype and its focus parent exist in the tenant catalog, and the
+    # SUBCLASS_OF edge is on the row rather than inferred from SPARQL text.
+    minted = await _minted_types(mock_neptune)
+    assert {"University", "Institution"} <= minted
+    (university,) = [
+        t for t in await list_types(tenant_id=TENANT) if t.name == "University"
+    ]
+    assert university.parent_type == "Institution"
     # Parent linkage recorded on the call-local map.
     assert parent_of.get("University") == "Institution"
 
@@ -284,7 +320,7 @@ async def test_same_as_to_existing_type_is_preserved_over_collapse(resolver, moc
         attributes=[ExtractedAttribute(name="name", value="X", datatype="string")],
     )
     resolved = await resolver._resolve_type(
-        entity, "g", existing_types, existing_attrs, IngestResult(entities_extracted=1),
+        entity, TENANT_GRAPH, existing_types, existing_attrs, IngestResult(entities_extracted=1),
         focus_types=["Institution"],
         is_primary=True,
     )
@@ -304,7 +340,7 @@ async def test_existing_subtype_is_reused_not_collapsed(resolver, mock_neptune):
         attributes=[ExtractedAttribute(name="name", value="Langara", datatype="string")],
     )
     resolved = await resolver._resolve_type(
-        entity, "g", existing_types, existing_attrs, result,
+        entity, TENANT_GRAPH, existing_types, existing_attrs, result,
         focus_types=["Institution"],
         is_primary=True,
     )
@@ -324,7 +360,7 @@ async def test_dimension_city_not_forced_under_focus(resolver, mock_neptune):
         attributes=[ExtractedAttribute(name="name", value="Vancouver", datatype="string")],
     )
     resolved = await resolver._resolve_type(
-        entity, "g", existing_types, existing_attrs, result,
+        entity, TENANT_GRAPH, existing_types, existing_attrs, result,
         focus_types=["Institution"],
         is_primary=False,  # dimension
         parent_of=parent_of,
@@ -339,11 +375,13 @@ async def test_focus_types_seeded_before_resolve(resolver, mock_neptune):
     existing_attrs: dict[str, dict] = {}
     result = IngestResult(entities_extracted=0)
     await resolver._ensure_focus_types(
-        ["Institution"], "g", existing_types, existing_attrs, result,
+        ["Institution"], TENANT_GRAPH, existing_types, existing_attrs, result,
     )
     assert "Institution" in existing_types
     assert "Institution" in result.types_created
-    assert type_uri("Institution") in _update_sparql(mock_neptune)
+    # Seeded for real: the focus type is a row in the tenant ontology catalog,
+    # not merely an entry in the caller's in-memory dict.
+    assert "Institution" in await _minted_types(mock_neptune)
 
 
 # --------------------------------------------------------------------------- #
@@ -432,14 +470,14 @@ async def test_institution_batch_type_count_bound_and_junk_absent(resolver, mock
     focus_types = ["Institution"]
 
     await resolver._ensure_focus_types(
-        focus_types, "g", existing_types, existing_attrs, result,
+        focus_types, TENANT_GRAPH, existing_types, existing_attrs, result,
     )
     primary_ids = _primary_entity_ids(extraction)
 
     resolved: dict[str, str | None] = {}
     for entity in extraction.entities:
         rt = await resolver._resolve_type(
-            entity, "g", existing_types, existing_attrs, result,
+            entity, TENANT_GRAPH, existing_types, existing_attrs, result,
             parent_of=parent_of,
             focus_types=focus_types,
             is_primary=entity.id in primary_ids,
@@ -476,3 +514,10 @@ async def test_institution_batch_type_count_bound_and_junk_absent(resolver, mock
         f"type count {len(created)} > bound {_TYPE_COUNT_BOUND}: {sorted(created)}"
     )
     assert created == {"Institution", "City"}
+
+    # …and the same bound holds for what actually LANDED in the tenant ontology
+    # catalog, not just for the resolver's bookkeeping. This is the assertion the
+    # ticket's "type count ≤ K" acceptance criterion is really about: the
+    # in-memory dicts above would still look clean if a junk type were written to
+    # the catalog behind them.
+    assert await _minted_types(mock_neptune) == {"Institution", "City"}

@@ -1,14 +1,22 @@
-"""Cross-tenant confinement for the raw SPARQL passthrough routes (ONTA-412).
+"""Cross-tenant confinement for SPARQL text (ONTA-412, ported by ONTA-527).
 
 The regression these lock down: ``POST /graphs/{tenant}/query`` authorized the
 tenant in the path and then executed the caller's SPARQL verbatim. On Neptune
-the default graph is the union of all named graphs, so a query needed no
+the default graph was the union of all named graphs, so a query needed no
 ``FROM`` clause at all to read every other workspace's data.
 
-Every rejection case below asserts the store was NEVER CALLED, not merely that
-the response looked empty. An assertion on the response body alone would pass
-against a mock that returns nothing while the real Neptune returned the victim's
-rows.
+**That route is now a 410 tombstone** (`test_query_neo4j_hard_break.py` pins
+it), but these cases did NOT come out with it: ``graph/sparql_scope.py`` still
+confines the NL layer's GENERATED queries (ONTA-424), and every bypass below —
+SERVICE at any nesting depth, BASE-relative IRIs, prefixed dataset clauses,
+comment and string-literal smuggling, token lookalikes — is a way to escape that
+guard, wherever the text came from. So they were ported from route tests to
+direct :func:`enforce_query_scope` tests rather than deleted.
+
+``_post_query`` is the seam: it used to POST and read a status code, and now
+calls the guard and reports the status the guard asks for. The assertions are
+unchanged, which is the point — the confinement rule is what is under test, not
+the transport.
 """
 
 from unittest.mock import AsyncMock
@@ -27,10 +35,33 @@ OWN_GRAPH = f"https://graph.infona.ai/graphs/{TENANT}"
 VICTIM_GRAPH = "https://graph.infona.ai/graphs/victim-tenant"
 
 
-def _post_query(client, auth_headers, query: str):
-    return client.post(
-        f"/graphs/{TENANT}/query", headers=auth_headers, json={"query": query}
-    )
+class _ScopeVerdict:
+    """The shape the route used to return, from the guard that used to gate it."""
+
+    def __init__(self, status_code: int, detail: str = ""):
+        self.status_code = status_code
+        self.detail = detail
+
+    def json(self) -> dict:
+        return {"detail": self.detail}
+
+    @property
+    def text(self) -> str:
+        return self.detail
+
+
+def _post_query(client, auth_headers, query: str) -> _ScopeVerdict:
+    """Run the tenant-confinement guard over ``query`` (see module docstring).
+
+    200 means "the guard would have let this reach the store" — it is a verdict
+    about the TEXT, not a live response, so no store is ever touched and the
+    `assert_not_called()` checks below hold by construction.
+    """
+    try:
+        enforce_query_scope(query, TENANT)
+    except TenantScopeError as exc:
+        return _ScopeVerdict(exc.status_code, exc.detail)
+    return _ScopeVerdict(200)
 
 
 # ---------------------------------------------------------------------------
@@ -317,13 +348,12 @@ def test_comment_cannot_smuggle_a_dataset_clause(client, auth_headers, mock_nept
 # ---------------------------------------------------------------------------
 
 
-def test_same_tenant_query_still_works(client, auth_headers, mock_neptune):
-    mock_neptune.query.return_value = {
-        "head": {"vars": ["name"]},
-        "results": {
-            "bindings": [{"name": {"type": "literal", "value": "Central Park"}}]
-        },
-    }
+def test_same_tenant_query_is_accepted_by_the_guard(client, auth_headers):
+    """The guard must not be so strict it rejects a properly scoped query.
+
+    (It no longer executes — the route is 410 — but an over-strict guard would
+    silently narrow the NL layer, which still runs this check.)
+    """
     res = _post_query(
         client,
         auth_headers,
@@ -331,39 +361,39 @@ def test_same_tenant_query_still_works(client, auth_headers, mock_neptune):
         "{ ?s <https://schema.org/name> ?name }",
     )
     assert res.status_code == 200
-    assert res.json()["bindings"][0]["name"] == "Central Park"
-    mock_neptune.query.assert_called_once()
 
 
-def test_published_cli_clear_loop_still_works(client, auth_headers, mock_neptune):
-    """The exact query shape ``infona clear`` sends (packages/cli/src/cli.ts).
+def test_first_party_sparql_callers_now_get_410_not_a_scope_error(
+    client, auth_headers, mock_neptune
+):
+    """The published CLI's ``clear`` loop and eval_diagnosis's probes are BROKEN.
 
-    It is the only first-party client of this route, and it already scoped
-    itself, so the guard must not break already-published CLI versions.
+    Both scoped themselves correctly, so ONTA-412's guard deliberately kept them
+    working. ONTA-527 removed the route out from under them: they now get 410,
+    and they need the typed replacements (``/kgs`` delete, ``/ask``) rather than
+    a SPARQL string. Pinned here so "the CLI still works" cannot be assumed —
+    it does not, and the client-side fix is outstanding.
     """
-    res = _post_query(
-        client,
-        auth_headers,
+    kg_graph = f"{OWN_GRAPH}/kg/imdb"
+    for query in (
+        # packages/cli/src/cli.ts — `infona clear`
         f"SELECT ?s ?p ?o FROM <{OWN_GRAPH}> WHERE {{ ?s ?p ?o . "
         "FILTER(CONTAINS(STR(?s), '/entities/') || CONTAINS(STR(?s), '/onto/') "
         "|| CONTAINS(STR(?s), '/kgs/')) } LIMIT 1000",
-    )
-    assert res.status_code == 200
-    mock_neptune.query.assert_called_once()
-
-
-def test_eval_diagnosis_probe_shapes_still_work(client, auth_headers, mock_neptune):
-    """The two probes in infona_client/eval_diagnosis.py, unchanged."""
-    kg_graph = f"{OWN_GRAPH}/kg/imdb"
-    for query in (
+        # infona_client/eval_diagnosis.py
         f"SELECT (COUNT(?v) AS ?cnt) FROM <{kg_graph}> "
         'WHERE { ?s ?p ?v . FILTER(CONTAINS(STR(?v), "|")) } LIMIT 1',
         f"ASK FROM <{OWN_GRAPH}> WHERE "
         "{ <https://graph.infona.ai/onto/directedBy> ?p ?o }",
     ):
-        mock_neptune.query.reset_mock()
+        # The guard itself still accepts them — they were never the problem.
         assert _post_query(client, auth_headers, query).status_code == 200, query
-        mock_neptune.query.assert_called_once()
+        # The route is gone regardless.
+        res = client.post(
+            f"/graphs/{TENANT}/query", headers=auth_headers, json={"query": query}
+        )
+        assert res.status_code == 410, res.text
+    mock_neptune.query.assert_not_called()
 
 
 def test_iris_with_a_hash_are_not_read_as_comments(client, auth_headers):
@@ -597,7 +627,15 @@ def test_update_rejects_a_non_operator_even_for_its_own_graph(
     mock_neptune.update.assert_not_called()
 
 
-def test_update_allows_an_operator(app, client, auth_headers, mock_neptune):
+def test_update_gives_an_operator_410_not_execution(
+    app, client, auth_headers, mock_neptune
+):
+    """Operator passes the gate and then finds the route gone (ONTA-527).
+
+    The ordering matters and is the reason this stays: a non-operator must still
+    see 403 (above), so the tombstone did not turn an authorization boundary
+    into "everyone gets the same answer".
+    """
     app.dependency_overrides[get_tenant] = lambda: TenantContext(
         tenant_id=TENANT, api_key="k", is_operator=True
     )
@@ -605,8 +643,8 @@ def test_update_allows_an_operator(app, client, auth_headers, mock_neptune):
         res = _post_update(
             client, auth_headers, f"DROP SILENT GRAPH <{OWN_GRAPH}/kg/x>"
         )
-        assert res.status_code == 200
-        mock_neptune.update.assert_awaited_once()
+        assert res.status_code == 410
+        mock_neptune.update.assert_not_called()
     finally:
         app.dependency_overrides.pop(get_tenant, None)
 
@@ -624,10 +662,16 @@ def test_unauthenticated_is_401_not_a_scope_error(client, mock_neptune):
     mock_neptune.update.assert_not_called()
 
 
-def test_open_access_self_host_keeps_the_update_escape_hatch(
+def test_open_access_self_host_gets_410_not_the_update_escape_hatch(
     monkeypatch, app, client, mock_neptune
 ):
-    """With no auth configured there is no tenant boundary to protect."""
+    """Open-access mode used to keep the documented raw-Update hatch usable.
+
+    There is no hatch to keep now — the route is gone for everyone. Worth
+    pinning because "no auth configured" was the one path that reached
+    execution without an operator claim, so it is where a regression would
+    quietly re-open a store write.
+    """
     from infona_client.auth import api_keys
 
     monkeypatch.setattr(api_keys, "_has_static_keys", lambda: False)
@@ -635,23 +679,24 @@ def test_open_access_self_host_keeps_the_update_escape_hatch(
     res = client.post(
         f"/graphs/{TENANT}/update", json={"update": f"DROP GRAPH <{OWN_GRAPH}>"}
     )
-    assert res.status_code == 200
-    mock_neptune.update.assert_awaited_once()
+    assert res.status_code == 410
+    mock_neptune.update.assert_not_called()
 
 
-def test_open_access_self_host_still_scopes_reads(monkeypatch, client, mock_neptune):
-    """The READ guard is not conditional on auth: it is a correctness rule about
-    which graphs a query names, and staying on in open-access mode keeps a
-    self-hosted multi-workspace install honest."""
+def test_read_guard_is_not_conditional_on_auth(monkeypatch):
+    """The READ guard is a correctness rule about which graphs a query names,
+    not an authorization check, so it stays on in open-access mode — which is
+    what keeps a self-hosted multi-workspace install honest now that the NL
+    layer, not the route, is its caller."""
     from infona_client.auth import api_keys
 
     monkeypatch.setattr(api_keys, "_has_static_keys", lambda: False)
     monkeypatch.setattr(api_keys, "_external_verifier", None)
-    res = client.post(
-        f"/graphs/{TENANT}/query", json={"query": f"SELECT * FROM <{VICTIM_GRAPH}> WHERE {{ ?s ?p ?o }}"}
-    )
-    assert res.status_code == 403
-    mock_neptune.query.assert_not_called()
+    with pytest.raises(TenantScopeError) as exc:
+        enforce_query_scope(
+            f"SELECT * FROM <{VICTIM_GRAPH}> WHERE {{ ?s ?p ?o }}", TENANT
+        )
+    assert exc.value.status_code == 403
 
 
 def test_every_route_on_the_passthrough_router_is_guarded():
@@ -659,7 +704,9 @@ def test_every_route_on_the_passthrough_router_is_guarded():
 
     A new route added to this router that forgot its guard would be a raw
     passthrough with nothing but path-level tenant auth in front of it, which is
-    exactly the bug this ticket fixed. Fail in CI rather than in review.
+    exactly the bug ONTA-412 fixed. Since ONTA-527 the whole router is a 410
+    tombstone, so "guarded" now means "rejects unconditionally" — a route that
+    reintroduced execution without a scope guard fails here.
     """
     import inspect
 
@@ -668,10 +715,8 @@ def test_every_route_on_the_passthrough_router_is_guarded():
     for route in query_routes.router.routes:
         source = inspect.getsource(route.endpoint)
         guarded = (
-            "enforce_query_scope" in source
+            "reject_raw_sparql()" in source
+            or "enforce_query_scope" in source
             or "require_raw_update_access" in source
         )
         assert guarded, f"{route.path} has no tenant-confinement guard"
-        assert "reject_raw_sparql_if_neo4j" in source, (
-            f"{route.path} missing neo4j SPARQL hard-break (E9)"
-        )

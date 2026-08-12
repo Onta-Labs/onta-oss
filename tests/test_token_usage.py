@@ -7,6 +7,18 @@ Covers:
   * ``ask()`` collecting per-attempt events onto ``NLResult.token_usage``
 
 Mechanism-only: invented model/key/token counts — never a real provider call.
+
+**LOST CAPABILITY (ONTA-527) — the third bullet.** The ledger lives in
+``ask()``'s SPARQL branch (``token_ledger = TokenUsageLedger()``, one
+``record()`` per generation + rephrase, then ``totals_for_timing()`` onto the
+result). ``_ask_cypher`` constructs no ledger and its Cypher generators
+(``_generate_cypher_via_openrouter`` / ``_cerebras`` / ``_anthropic``) do not
+call ``attach_usage``, so on the shipped ``/ask`` path
+``NLResult.token_usage`` is always ``[]`` and ``timing`` carries no
+``prompt_tokens`` / ``completion_tokens`` / ``llm_calls``. The whitepaper-v3
+tokens-to-complete-task metric is therefore unmeasured in production.
+
+The helper and SPARQL-generator cases are untouched and still green.
 """
 
 from __future__ import annotations
@@ -32,6 +44,14 @@ from infona_client.nlp.token_usage import (
     pop_attached_usage,
     stage_for_attempt,
     summarize_events,
+)
+
+_NO_TOKEN_LEDGER_ON_CYPHER = (
+    "LOST CAPABILITY (ONTA-527): the TokenUsageLedger is built and drained in "
+    "nlp/pipeline.py::ask's SPARQL branch, and the Cypher generators never call "
+    "nlp/token_usage.attach_usage. /ask takes _ask_cypher, so NLResult."
+    "token_usage is always empty and no prompt/completion/llm_calls aggregate "
+    "reaches timing. Needs the ledger threaded through _ask_cypher."
 )
 
 _RealAsyncClient = httpx.AsyncClient
@@ -243,6 +263,7 @@ async def test_generation_without_usage_still_records_model(monkeypatch):
 # --------------------------------------------------------------------------- #
 # ask() collects events onto NLResult                                          #
 # --------------------------------------------------------------------------- #
+@pytest.mark.xfail(strict=True, reason=_NO_TOKEN_LEDGER_ON_CYPHER)
 @pytest.mark.asyncio
 async def test_ask_collects_sparql_gen_token_usage(monkeypatch):
     """End-to-end: mocked generator usage lands on NLResult.token_usage."""
@@ -286,6 +307,11 @@ async def test_ask_collects_sparql_gen_token_usage(monkeypatch):
     # Avoid enum discovery / spatial / example bank side effects
     monkeypatch.setattr(p, "_fetch_ontology", fake_fetch_ontology)
     monkeypatch.setattr(p, "_generate_sparql", fake_generate)
+    # Hermetic: /ask takes the Cypher branch, which never consults
+    # `_generate_sparql` and would otherwise POST to the real OpenRouter with
+    # the invented key above. Returning None keeps the failure on the token-
+    # ledger assertion this case is about, not on a network attempt.
+    monkeypatch.setattr(p, "_try_llm_cypher", AsyncMock(return_value=None))
     monkeypatch.setattr(p, "_rephrase_via_openrouter", fake_rephrase)
     monkeypatch.setattr(p.neptune, "query", fake_neptune_query)
     # Semantic path off → full ontology
@@ -316,6 +342,7 @@ async def test_ask_collects_sparql_gen_token_usage(monkeypatch):
     assert result.timing.get("llm_calls") == 2.0
 
 
+@pytest.mark.xfail(strict=True, reason=_NO_TOKEN_LEDGER_ON_CYPHER)
 @pytest.mark.asyncio
 async def test_ask_retry_stage_on_second_attempt(monkeypatch):
     p = _make_pipeline("openrouter")
@@ -357,6 +384,11 @@ async def test_ask_retry_stage_on_second_attempt(monkeypatch):
 
     monkeypatch.setattr(p, "_fetch_ontology", fake_fetch_ontology)
     monkeypatch.setattr(p, "_generate_sparql", fake_generate)
+    # Hermetic: /ask takes the Cypher branch, which never consults
+    # `_generate_sparql` and would otherwise POST to the real OpenRouter with
+    # the invented key above. Returning None keeps the failure on the token-
+    # ledger assertion this case is about, not on a network attempt.
+    monkeypatch.setattr(p, "_try_llm_cypher", AsyncMock(return_value=None))
     monkeypatch.setattr(p, "_rephrase_via_openrouter", AsyncMock(return_value=""))
     monkeypatch.setattr(p.neptune, "query", fake_neptune_query)
     monkeypatch.setattr(

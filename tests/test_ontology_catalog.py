@@ -19,7 +19,6 @@ from infona_client.graph.ontology_catalog import (
     OntoTypeRecord,
     classify_attr_range,
     get_type_pg,
-    graph_backend,
     list_attributes,
     list_types,
     resolve_catalog_session,
@@ -36,7 +35,12 @@ from infona_client.graph.scope import (
     GraphScope,
     GraphScopeError,
 )
-from infona_client.graph.store import configure_graph_store, reset_graph_store_for_tests
+from infona_client.graph.store import (
+    GraphConfigError,
+    configure_graph_store,
+    graph_backend,
+    reset_graph_store_for_tests,
+)
 
 
 @pytest.fixture
@@ -430,21 +434,25 @@ def test_resolve_catalog_session_env_backend(store, monkeypatch):
         monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
 
 
-def test_resolve_catalog_session_none_when_neptune(monkeypatch):
+def test_resolve_catalog_session_rejects_legacy_backend(monkeypatch):
+    """ONTA-527: a legacy env value is an error, not a hand-back to SPARQL."""
     monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
     reset_graph_store_for_tests()
-    assert graph_backend() == "neptune"
-    assert resolve_catalog_session(layer="tenant", tenant_id="demo") is None
+    with pytest.raises(GraphConfigError):
+        graph_backend()
+    with pytest.raises(GraphConfigError):
+        resolve_catalog_session(layer="tenant", tenant_id="demo")
 
 
-def test_sparql_path_requires_client_without_store(monkeypatch):
-    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
+def test_catalog_ops_without_a_store_fail_closed(monkeypatch):
+    """No store configured ⇒ raise. There is no SPARQL catalog path left."""
+    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
     reset_graph_store_for_tests()
 
     async def run():
-        with pytest.raises(GraphScopeError, match="SPARQL|neptune"):
+        with pytest.raises(GraphConfigError):
             await upsert_type(name="Person", layer="tenant", tenant_id="demo")
-        with pytest.raises(GraphScopeError, match="SPARQL|neptune"):
+        with pytest.raises(GraphConfigError):
             await list_types(layer="tenant", tenant_id="demo")
 
     asyncio.run(run())

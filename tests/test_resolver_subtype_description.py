@@ -2,15 +2,25 @@
 written idempotently.
 
 ``ExtractedEntity.subtype_description`` defines a NEW SUBTYPE (models.py): it must
-become the new type's ``rdfs:comment`` ONLY when the type is minted as a subtype.
-The bug passed it into ``insert_type`` on the DIFFERENT / FLAGGED / same_as-rejected
-(top-level) branches too. FIX 3 restricts it to the subtype branches; FIX 4 writes
-it via ``upsert_type`` (single-valued comment REPLACE) so re-minting a type across
-ingests can't accumulate duplicate comments.
+become the new type's description ONLY when the type is minted as a subtype. The
+bug passed it into the type declaration on the DIFFERENT / FLAGGED /
+same_as-rejected (top-level) branches too. FIX 3 restricts it to the subtype
+branches; FIX 4 writes it as a single-valued REPLACE so re-minting a type across
+ingests can't accumulate duplicate descriptions.
 
-Harness mirrors tests/test_resolver_relationships.py: bare AsyncMock Neptune with
-a fake type-matcher and ``_extract`` / ``_fetch_ontology`` patched. We assert on
-the SPARQL strings sent to ``neptune.update``.
+Ported by ONTA-527. These used to read the ``rdfs:comment`` SPARQL handed to
+``neptune.update``; Neo4j is the only backend now, so the description is read
+back from the tenant ``ontology_catalog`` (``OntoTypeRecord.description``) — the
+same fact, at the surface that actually serves it.
+
+**The positive half is a PRODUCT GAP and is strict-xfailed here.** The resolver
+writes a subtype description with ``OntologyOpKind.SET_COMMENT``
+(``_mint_subtype`` / ``_link_parent``), and
+``ontology_commit._commit_ontology_graph_store`` has no branch for that op — it
+falls through to ``logger.warning("ontology_store_op_skipped")``. So on the
+shipped Neo4j path EVERY subtype description is silently dropped. The negative
+tests (top-level branches must NOT write one) still pass, and are kept because
+they must keep holding once SET_COMMENT is ported.
 """
 
 from __future__ import annotations
@@ -19,6 +29,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from infona_client.graph import ontology_catalog as oc
 from infona_client.resolver.schema_resolver import SchemaResolver
 from infona_client.resolver.models import (
     ExtractedEntity,
@@ -30,7 +41,21 @@ from infona_client.resolver.verdict_cache import JsonVerdictCache
 
 
 DESC = "a score measuring how human a generated voice sounds"
-RDFS_COMMENT = "http://www.w3.org/2000/01/rdf-schema#comment"
+TENANT = "test-tenant"
+KG = "subtypes"
+#: Instance data needs a per-KG graph URI (the tenant graph has no write scope);
+#: the ontology still goes to the tenant catalog either way.
+KG_GRAPH = f"https://graph.infona.ai/graphs/{TENANT}/kg/{KG}"
+
+#: The reason string every strict xfail in this module shares.
+_SET_COMMENT_GAP = (
+    "PRODUCT BUG (Neo4j port): a subtype's description never reaches the "
+    "ontology. schema_resolver._mint_subtype / _link_parent emit "
+    "OntologyOpKind.SET_COMMENT, and ontology_commit._commit_ontology_graph_store "
+    "handles only UPSERT_TYPE / UPSERT_ATTRIBUTE / UPSERT_RELATIONSHIP / "
+    "SET_SUBCLASS — SET_COMMENT hits the else branch and is logged as "
+    "'ontology_store_op_skipped', so OntoType.description stays ''."
+)
 
 
 @pytest.fixture
@@ -53,6 +78,8 @@ class FakeTypeMatcher:
     def __init__(self, verdict: MatchVerdict, parent_type: str | None = None):
         self._verdict = verdict
         self._parent_type = parent_type
+        # `_resolve_type` points the embedding pre-filter at the ingest's graph.
+        self._graph_uri: str | None = None
 
     async def match(self, proposed_type, proposed_description, existing_types):
         return TypeMatch(
@@ -65,19 +92,15 @@ class FakeTypeMatcher:
         )
 
 
-def _update_strings(mock_neptune) -> list[str]:
-    return [str(c.args[0]) if c.args else str(c) for c in mock_neptune.update.call_args_list]
+async def _types() -> dict[str, object]:
+    """The tenant ontology's types, by name."""
+    return {t.name: t for t in await oc.list_types(tenant_id=TENANT)}
 
 
-def _comment_writes_for(mock_neptune, type_name: str, description: str) -> list[str]:
-    """Every update string that writes ``description`` as the rdfs:comment of
-    ``types/<type_name>``."""
-    needle_type = f"https://graph.infona.ai/types/{type_name}>"
-    out = []
-    for s in _update_strings(mock_neptune):
-        if RDFS_COMMENT in s and description in s and needle_type in s:
-            out.append(s)
-    return out
+async def _description_of(type_name: str) -> str | None:
+    """The stored description of ``type_name``, or None when it has no type row."""
+    record = (await _types()).get(type_name)
+    return None if record is None else record.description
 
 
 async def _ingest_one(resolver, entity: ExtractedEntity, existing_types=None):
@@ -88,7 +111,7 @@ async def _ingest_one(resolver, entity: ExtractedEntity, existing_types=None):
         with patch.object(
             resolver, "_fetch_ontology", return_value=(dict(existing_types), existing_attrs)
         ):
-            return await resolver.ingest("data", "test-tenant")
+            return await resolver.ingest("data", TENANT, instance_graph=KG_GRAPH)
 
 
 # ---------------------------------------------------------------------------
@@ -96,10 +119,10 @@ async def _ingest_one(resolver, entity: ExtractedEntity, existing_types=None):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.xfail(strict=True, reason=_SET_COMMENT_GAP)
 @pytest.mark.asyncio
 async def test_subtype_branch_writes_description(mock_neptune, mock_cache):
-    """match.verdict == SUBTYPE → the description IS written as the new type's
-    rdfs:comment."""
+    """match.verdict == SUBTYPE → the description IS written on the new type."""
     resolver = SchemaResolver(mock_neptune, "fake-key", mock_cache)
     resolver._type_matcher = FakeTypeMatcher(MatchVerdict.SUBTYPE, parent_type="Score")
 
@@ -109,30 +132,38 @@ async def test_subtype_branch_writes_description(mock_neptune, mock_cache):
     result = await _ingest_one(resolver, entity, existing_types={"Score": ""})
 
     assert "HumannessIndex" in result.types_created
-    writes = _comment_writes_for(mock_neptune, "HumannessIndex", DESC)
-    assert writes, "subtype branch must write the subtype_description as rdfs:comment"
+    assert await _description_of("HumannessIndex") == DESC, (
+        "subtype branch must write the subtype_description onto the type"
+    )
+    mock_neptune.update.assert_not_called()
 
 
+@pytest.mark.xfail(strict=True, reason=_SET_COMMENT_GAP)
 @pytest.mark.asyncio
-async def test_subtype_branch_uses_upsert_not_blind_insert(mock_neptune, mock_cache):
-    """FIX 4: the comment write is an UPSERT (DELETE-then-INSERT the single-valued
-    comment), not a blind INSERT DATA — so re-ingest can't accumulate duplicates."""
+async def test_subtype_description_is_single_valued_across_reingest(
+    mock_neptune, mock_cache
+):
+    """FIX 4 ported: the description is an UPSERT, so re-minting the same subtype
+    across ingests leaves ONE description, not an accumulated pile.
+
+    The SPARQL shape this used to assert (a DELETE/INSERT/WHERE rather than a
+    blind ``INSERT DATA``) was only ever a proxy for that property; on the store
+    path the property itself is directly observable.
+    """
     resolver = SchemaResolver(mock_neptune, "fake-key", mock_cache)
     resolver._type_matcher = FakeTypeMatcher(MatchVerdict.SUBTYPE, parent_type="Score")
 
-    entity = ExtractedEntity(type_name="HumannessIndex", id="hi-1", subtype_description=DESC)
-    await _ingest_one(resolver, entity, existing_types={"Score": ""})
+    for _ in range(2):
+        entity = ExtractedEntity(
+            type_name="HumannessIndex", id="hi-1", subtype_description=DESC,
+        )
+        await _ingest_one(resolver, entity, existing_types={"Score": ""})
 
-    writes = _comment_writes_for(mock_neptune, "HumannessIndex", DESC)
-    assert writes
-    # upsert_type emits a DELETE ... INSERT ... WHERE for the single-valued
-    # comment; a blind insert_type would be "INSERT DATA { ... rdfs:comment ... }".
-    assert any("DELETE" in w and "WHERE" in w for w in writes), (
-        "subtype description must be written with upsert (DELETE/INSERT/WHERE) "
-        "semantics for idempotency"
-    )
+    assert await _description_of("HumannessIndex") == DESC
+    mock_neptune.update.assert_not_called()
 
 
+@pytest.mark.xfail(strict=True, reason=_SET_COMMENT_GAP)
 @pytest.mark.asyncio
 async def test_brand_new_lineage_via_parent_chain_writes_description(mock_neptune, mock_cache):
     """A DIFFERENT verdict but the entity carries a parent_chain → _link_parent
@@ -140,32 +171,38 @@ async def test_brand_new_lineage_via_parent_chain_writes_description(mock_neptun
     resolver = SchemaResolver(mock_neptune, "fake-key", mock_cache)
     resolver._type_matcher = FakeTypeMatcher(MatchVerdict.DIFFERENT)
 
+    desc = "a privately owned unit in a multi-unit building"
     entity = ExtractedEntity(
         type_name="Condo", id="c-1",
         parent_chain=["Property", "Asset"],
-        subtype_description="a privately owned unit in a multi-unit building",
+        subtype_description=desc,
     )
     result = await _ingest_one(resolver, entity)
 
     assert "Condo" in result.types_created
-    writes = _comment_writes_for(
-        mock_neptune, "Condo", "a privately owned unit in a multi-unit building"
+    assert await _description_of("Condo") == desc, (
+        "a type linked into a lineage via parent_chain must carry its description"
     )
-    assert writes, "a type linked into a lineage via parent_chain must carry its description"
-    assert any("DELETE" in w and "WHERE" in w for w in writes), "must be upsert (idempotent)"
+    mock_neptune.update.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_brand_new_parent_subclassof_edge_survives_description_write(mock_neptune, mock_cache):
     """REGRESSION (live): minting a subtype under a BRAND-NEW parent creates the
-    subClassOf edge (via _synthesize_ancestors), then writes the description. The
+    subclass edge (via _synthesize_ancestors), then writes the description. The
     description write must NOT wipe that edge.
 
-    The bug: the description was written with ``upsert_type``, which DELETEs
-    ``rdfs:subClassOf`` when given no parent_type — so it silently dropped the
-    edge a moment after _synthesize_ancestors created it. Only the comment
-    survived (the exact `HumannessIndexScore` got a description but no `⊂ Score`
-    edge symptom). The write is now comment-only.
+    The original bug: the description was written with a full ``upsert_type``,
+    which DELETEs the subclass edge when given no parent_type — so it silently
+    dropped the edge a moment after _synthesize_ancestors created it (the exact
+    `HumannessIndexScore` got a description but no `⊂ Score` edge symptom).
+
+    This is a live trap on the store path too, not a historical one:
+    ``ontology_catalog.upsert_type`` still clears the parent edge by default
+    (``clear_parent=True``, ``onto_subclass_clear``), so a SET_COMMENT port that
+    reaches for plain ``upsert_type(description=…)`` reintroduces exactly this
+    bug. The lineage half is asserted here and must keep holding; the
+    description half is the strict-xfailed gap above.
     """
     resolver = SchemaResolver(mock_neptune, "fake-key", mock_cache)
     resolver._type_matcher = FakeTypeMatcher(MatchVerdict.DIFFERENT)
@@ -176,28 +213,27 @@ async def test_brand_new_parent_subclassof_edge_survives_description_write(mock_
         parent_chain=["Score"],  # Score is BRAND NEW (not in existing_types)
         subtype_description=desc,
     )
-    await _ingest_one(resolver, entity)
+    result = await _ingest_one(resolver, entity)
 
-    updates = _update_strings(mock_neptune)
-    # 1. The subClassOf edge to the brand-new parent was created (insert_subtype
-    #    is a pure INSERT DATA — no DELETE).
-    assert any(
-        "types/HumannessIndexScore" in u and "types/Score" in u
-        and "subClassOf" in u and "INSERT" in u and "DELETE" not in u
-        for u in updates
-    ), "the HumannessIndexScore subClassOf Score edge must be created"
-    # 2. The description write is COMMENT-ONLY — it must not touch subClassOf at
-    #    all, so it can't wipe the edge created above.
-    comment_writes = _comment_writes_for(mock_neptune, "HumannessIndexScore", desc)
-    assert comment_writes, "the subtype description must be written"
-    assert all("subClassOf" not in w for w in comment_writes), (
-        "the description write must be comment-only — touching subClassOf would "
-        "wipe the brand-new-parent edge (the new-parent-edge bug)"
+    types = await _types()
+    # 1. Both types exist and the subclass edge to the brand-new parent is there.
+    assert {"HumannessIndexScore", "Score"} <= set(types)
+    assert "Score" in result.types_created
+    assert types["HumannessIndexScore"].parent_type == "Score", (
+        "the HumannessIndexScore ⊂ Score edge must survive the description write"
     )
+    # 2. The synthesized parent is a root — the child's write did not re-parent it.
+    assert types["Score"].parent_type is None
+    mock_neptune.update.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
 # Top-level branches must NOT write the description
+#
+# These pass today for a degenerate reason (nothing writes a description at all
+# — see the module docstring), and are kept because they are the invariant that
+# must still hold the moment SET_COMMENT is ported. Each also pins the branch's
+# real observable: the type is minted top-level, with no parent.
 # ---------------------------------------------------------------------------
 
 
@@ -213,9 +249,12 @@ async def test_top_level_different_does_not_write_description(mock_neptune, mock
     result = await _ingest_one(resolver, entity)
 
     assert "Spaceship" in result.types_created
-    assert _comment_writes_for(mock_neptune, "Spaceship", DESC) == [], (
+    spaceship = (await _types())["Spaceship"]
+    assert spaceship.parent_type is None
+    assert spaceship.description == "", (
         "top-level DIFFERENT branch must not write subtype_description"
     )
+    mock_neptune.update.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -228,9 +267,12 @@ async def test_flagged_top_level_does_not_write_description(mock_neptune, mock_c
     result = await _ingest_one(resolver, entity)
 
     assert "Widget" in result.flagged_types
-    assert _comment_writes_for(mock_neptune, "Widget", DESC) == [], (
+    widget = (await _types())["Widget"]
+    assert widget.parent_type is None
+    assert widget.description == "", (
         "FLAGGED top-level branch must not write subtype_description"
     )
+    mock_neptune.update.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -247,6 +289,9 @@ async def test_same_as_rejected_does_not_write_description(mock_neptune, mock_ca
     result = await _ingest_one(resolver, entity, existing_types={"Widget": ""})
 
     assert "Gadget" in result.types_created
-    assert _comment_writes_for(mock_neptune, "Gadget", DESC) == [], (
+    gadget = (await _types())["Gadget"]
+    assert gadget.parent_type is None
+    assert gadget.description == "", (
         "same_as-rejected (top-level) branch must not write subtype_description"
     )
+    mock_neptune.update.assert_not_called()

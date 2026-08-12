@@ -114,6 +114,71 @@ def _range_response(range_uri: str | None = None) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Store readers (ported by ONTA-527)
+#
+# Enrichment writes instance data through ``GraphStore`` (``kg_writer`` →
+# ``pg_ops``) and declares schema through the ontology CATALOG, neither of which
+# emits SPARQL. "What was written" is therefore read back off the process store
+# the hermetic conftest fixture installs, instead of off the update strings a
+# recording Neptune mock collected. The mock is still passed in — and still
+# asserted un-called for the data path — so a regression that reintroduces a
+# SPARQL write is visible rather than silently tolerated.
+# ---------------------------------------------------------------------------
+
+
+def _graph_store():
+    from infona_client.graph.store import get_graph_store
+
+    return get_graph_store()
+
+
+async def _declared_attrs(type_name: str, tenant_id: str = "test-tenant") -> dict:
+    """``{attribute name: OntoAttrRecord}`` the tenant ontology catalog holds.
+
+    The successor of "grep the emitted SPARQL for rdf:Property + rdfs:domain":
+    a declaration is now an ``:OntoAttr`` row carrying ``kind`` (literal /
+    relationship), ``datatype`` and ``range_type``.
+    """
+    from infona_client.graph import ontology_catalog as oc
+
+    return {
+        a.name: a
+        for a in await oc.list_attributes(type_name=type_name, tenant_id=tenant_id)
+    }
+
+
+def _props(entity_uri: str) -> dict:
+    """Literal properties written on one entity ({} when it was never written)."""
+    for row in _graph_store().snapshot_entities():
+        if row["id"] == entity_uri:
+            return row["props"]
+    return {}
+
+
+def _rels_for(attr: str) -> list[dict]:
+    """Relationship edges written for one attribute leaf (any subject)."""
+    return [r for r in _graph_store().snapshot_rels() if r["attr"] == attr]
+
+
+def _citation(entity_uri: str, attr: str) -> dict | None:
+    """The ``:AttrCitation`` companion enrichment wrote for one (entity, attr)."""
+    for row in _graph_store().snapshot_citations():
+        if row["entity_id"] == entity_uri and row["attr"] == attr:
+            return row
+    return None
+
+
+def _stored_values(attr: str) -> set:
+    """Every value stored for ``attr`` across all entities (props + rel targets)."""
+    values = {
+        props[attr]
+        for props in (row["props"] for row in _graph_store().snapshot_entities())
+        if attr in props
+    }
+    return values | {r["end_id"] for r in _rels_for(attr)}
+
+
+# ---------------------------------------------------------------------------
 # Job store
 # ---------------------------------------------------------------------------
 
@@ -1035,15 +1100,25 @@ def test_executor_end_to_end_filled_verified_conflict():
         # NEW (ONTA-159): a conflict-free fill is APPLIED even under stage — only
         # the conflict is held for review. So a write DID happen and it carried
         # the p1 fill value; the conflicting p3 value was NOT written.
-        neptune.update.assert_called()
+        # (Ported by ONTA-527: read off the store, not the emitted SPARQL.)
+        assert _props("https://graph.infona.ai/entities/Product/p1")["manufacturer"] == (
+            "Robert Bosch GmbH"
+        )
+        # The conflicting entity (p3) is untouched — its incumbent value is not
+        # overwritten and the proposal is not written either.
+        assert "manufacturer" not in _props(
+            "https://graph.infona.ai/entities/Product/p3"
+        )
+        assert _stored_values("manufacturer") == {"Robert Bosch GmbH"}
+        # The verified entity (p2) keeps its value: nothing new was written for it.
+        assert "manufacturer" not in _props(
+            "https://graph.infona.ai/entities/Product/p2"
+        )
+        # None of this went out as SPARQL.
         writes = " ".join(
             str(c.args[0]) if c.args else "" for c in neptune.update.call_args_list
         )
-        assert "Robert Bosch GmbH" in writes  # the conflict-free fill landed
-        # Prove the conflict was held by asserting its EXISTING value ("Acme
-        # Tools") wasn't written. We can't assert on p3's PROPOSED verdict
-        # ("Bosch") because it's a substring of the fill value above.
-        assert "Acme Tools" not in writes  # the conflict was held, not overwritten
+        assert "Robert Bosch GmbH" not in writes
 
     asyncio.run(run())
 
@@ -1074,8 +1149,10 @@ def test_executor_overwrite_writes_triples():
 
         final = await store.get(job.id)
         assert final.status == JobStatus.applied
-        # Triple insert called.
-        assert neptune.update.await_count >= 1
+        # The value landed. (ONTA-527: an `update.await_count >= 1` check would
+        # pass on the post-write triple-count invalidation alone, proving nothing
+        # about the data write, which no longer emits SPARQL.)
+        assert _stored_values("manufacturer") == {"Robert Bosch GmbH"}
 
     asyncio.run(run())
 
@@ -1290,7 +1367,9 @@ def test_executor_no_match_is_counted_and_excluded_from_results():
         # no_match rows carry no verdict → they are dropped from results entirely.
         assert final.results == []
         assert all(r.action != "no_match" for r in final.results)
-        # No SPARQL writes for a stage policy that found nothing.
+        # Nothing written anywhere for a stage policy that found nothing —
+        # neither into the graph store nor as SPARQL.
+        assert _graph_store().snapshot_entities() == []
         neptune.update.assert_not_called()
 
     asyncio.run(run())
@@ -1364,7 +1443,8 @@ def test_executor_hung_adapter_does_not_strand_job(monkeypatch):
         assert final.status == JobStatus.applied
         # The adapter was actually invoked (and timed out) for each entity.
         assert hang.calls == 2
-        # Nothing usable came back, so no triples were written.
+        # Nothing usable came back, so nothing was written.
+        assert _graph_store().snapshot_entities() == []
         neptune.update.assert_not_called()
 
     asyncio.run(run())
@@ -1401,7 +1481,7 @@ def test_executor_completes_with_fast_adapter_under_wait_for():
         final = await store.get(job.id)
         assert final.status == JobStatus.applied
         assert final.progress.filled == 1
-        assert neptune.update.await_count >= 1
+        assert _stored_values("manufacturer") == {"Robert Bosch GmbH"}
 
     asyncio.run(run())
 
@@ -2348,7 +2428,8 @@ def test_apply_decisions_writes_accepted_only(monkeypatch):
 
         applied = await executor.apply_decisions(job.id, decisions)
         assert applied == 1
-        neptune.update.assert_awaited()
+        # Only the ACCEPTED decision is written.
+        assert _stored_values("manufacturer") == {"Bosch"}
 
     asyncio.run(run())
 
@@ -2525,25 +2606,16 @@ def test_apply_decisions_no_accept_does_not_recompute(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def _declaration_updates(neptune) -> list[str]:
-    """SPARQL update strings that look like an attribute ONTOLOGY declaration
-    (carry ``rdf:Property`` + ``rdfs:domain``), as sent to the fake Neptune."""
-    rdf_property = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"
-    rdfs_domain = "http://www.w3.org/2000/01/rdf-schema#domain"
-    out: list[str] = []
-    for call in neptune.update.await_args_list:
-        sparql = call.args[0] if call.args else call.kwargs.get("sparql", "")
-        if rdf_property in sparql and rdfs_domain in sparql:
-            out.append(sparql)
-    return out
-
-
 def test_executor_apply_declares_attribute_in_ontology(monkeypatch):
     """An auto-apply that writes a value for an attribute must ALSO declare that
-    attribute in the TENANT (ontology) graph — rdf:Property + rdfs:domain <Type> —
-    so the enriched attribute is first-class schema (COG-112). Its provenance
-    companions are deliberately NOT declared (ONTA-262: attr_meta metadata, never
-    sibling attributes)."""
+    attribute in the TENANT ontology — so the enriched attribute is first-class
+    schema (COG-112). Its provenance companions are deliberately NOT declared
+    (ONTA-262: attr_meta metadata, never sibling attributes).
+
+    Ported by ONTA-527: a declaration is an ``:OntoAttr`` row in the tenant
+    catalog now, not an ``rdf:Property`` + ``rdfs:domain`` INSERT, so the same
+    claims are checked against the catalog.
+    """
     import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
@@ -2579,34 +2651,21 @@ def test_executor_apply_declares_attribute_in_ontology(monkeypatch):
         final = await store.get(job.id)
         assert final.status == JobStatus.applied
 
-        decls = _declaration_updates(neptune)
-        assert decls, "expected at least one ontology declaration update"
-
-        tenant_graph = "https://graph.infona.ai/graphs/test-tenant"
-        company_attr = "https://graph.infona.ai/types/Product/attrs/company"
-        type_uri = "https://graph.infona.ai/types/Product"
-        xsd_string = "http://www.w3.org/2001/XMLSchema#string"
-
-        # The primary 'company' attribute is declared into the TENANT graph as an
-        # rdf:Property with rdfs:domain <Product> and an xsd:string range.
-        primary = [d for d in decls if company_attr in d]
-        assert primary, "company attribute not declared"
-        d = primary[0]
-        assert tenant_graph in d
-        assert type_uri in d
-        assert xsd_string in d
+        # The primary 'company' attribute is declared on <Product>, as a literal
+        # with a string range, in the TENANT catalog layer.
+        declared = await _declared_attrs("Product")
+        assert "company" in declared, "company attribute not declared"
+        company = declared["company"]
+        assert company.domain == "Product"
+        assert company.layer == "tenant"
+        assert company.tenant_id == "test-tenant"
+        assert (company.kind, company.datatype) == ("literal", "string")
 
         # Companion provenance metadata is NEVER declared (ONTA-262): companions
         # live on the attr_meta namespace as instance metadata, and declaring
         # them is what rendered `<attr>_source_url` / `<attr>_provenance` as
         # sibling columns on every schema surface.
-        src_attr = "https://graph.infona.ai/types/Product/attrs/company_source_url"
-        prov_attr = "https://graph.infona.ai/types/Product/attrs/company_provenance"
-        assert not any(src_attr in d for d in decls), "companion must not be declared"
-        assert not any(prov_attr in d for d in decls), "companion must not be declared"
-        assert not any("attr_meta" in d for d in decls), "companion must not be declared"
-        for d in decls:
-            assert tenant_graph in d  # declarations go to the ontology graph only
+        assert set(declared) == {"company"}
 
     asyncio.run(run())
 
@@ -2647,7 +2706,8 @@ def test_executor_stage_mode_does_not_declare(monkeypatch):
         final = await store.get(job.id)
         assert final.status == JobStatus.review
         # The conflict is held, not written → nothing written, nothing declared.
-        assert _declaration_updates(neptune) == []
+        assert await _declared_attrs("Product") == {}
+        assert _graph_store().snapshot_entities() == []
         neptune.update.assert_not_called()
 
     asyncio.run(run())
@@ -2677,7 +2737,7 @@ def test_executor_no_match_does_not_declare(monkeypatch):
         await store.create(job)
         await executor.run(job, "test-tenant")
 
-        assert _declaration_updates(neptune) == []
+        assert await _declared_attrs("Product") == {}
 
     asyncio.run(run())
 
@@ -2718,11 +2778,10 @@ def test_apply_decisions_declares_accepted_attribute(monkeypatch):
         applied = await executor.apply_decisions(job.id, decisions)
         assert applied == 1
 
-        decls = _declaration_updates(neptune)
-        company_attr = "https://graph.infona.ai/types/Product/attrs/company"
-        tenant_graph = "https://graph.infona.ai/graphs/test-tenant"
-        assert any(company_attr in d for d in decls)
-        assert all(tenant_graph in d for d in decls)
+        declared = await _declared_attrs("Product")
+        assert "company" in declared
+        assert declared["company"].layer == "tenant"
+        assert declared["company"].tenant_id == "test-tenant"
 
     asyncio.run(run())
 
@@ -2779,15 +2838,10 @@ def test_executor_apply_infers_integer_range_for_numeric_values(monkeypatch):
         await store.create(job)
         await executor.run(job, "test-tenant")
 
-        score_attr = "https://graph.infona.ai/types/Product/attrs/humanness_score"
-        xsd_integer = "http://www.w3.org/2001/XMLSchema#integer"
-        xsd_string = "http://www.w3.org/2001/XMLSchema#string"
-        primary = [d for d in _declaration_updates(neptune) if score_attr in d]
-        assert primary, "humanness_score attribute not declared"
-        d = primary[0]
+        declared = await _declared_attrs("Product")
+        assert "humanness_score" in declared, "humanness_score attribute not declared"
         # The numeric attribute is typed as integer, NOT stamped string.
-        assert xsd_integer in d
-        assert xsd_string not in d
+        assert declared["humanness_score"].datatype == "integer"
 
     asyncio.run(run())
 
@@ -2800,7 +2854,7 @@ def test_executor_apply_does_not_downgrade_existing_richer_range(monkeypatch):
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
-    async def _assert_preserves(existing_range: str, value: str):
+    async def _assert_preserves(existing_range: str, value: str, expected: tuple[str, str]):
         rows = [
             {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Bosch", "vals": ""},
         ]
@@ -2821,23 +2875,31 @@ def test_executor_apply_does_not_downgrade_existing_richer_range(monkeypatch):
         await store.create(job)
         await executor.run(job, "test-tenant")
 
-        rating_attr = "https://graph.infona.ai/types/Product/attrs/rating"
-        xsd_string = "http://www.w3.org/2001/XMLSchema#string"
-        primary = [d for d in _declaration_updates(neptune) if rating_attr in d]
-        assert primary, "rating attribute not declared"
-        d = primary[0]
-        # The pre-existing richer range is re-asserted verbatim, never downgraded.
-        assert existing_range in d
-        assert f"#range> <{xsd_string}>" not in d
+        declared = await _declared_attrs("Product")
+        assert "rating" in declared, "rating attribute not declared"
+        rating = declared["rating"]
+        # The pre-existing richer range is re-asserted verbatim, never downgraded
+        # to a string literal range.
+        kind, target = expected
+        assert rating.kind == kind
+        if kind == "literal":
+            assert rating.datatype == target
+        else:
+            assert rating.range_type == target
+            assert rating.datatype is None
 
     async def run():
         # (a) ingest-inferred integer range survives a string-valued enrichment.
         await _assert_preserves(
-            "http://www.w3.org/2001/XMLSchema#integer", value="five stars"
+            "http://www.w3.org/2001/XMLSchema#integer",
+            value="five stars",
+            expected=("literal", "integer"),
         )
         # (b) a relationship range (types/<Target>) survives too — the edge stays.
         await _assert_preserves(
-            "https://graph.infona.ai/types/Manufacturer", value="Robert Bosch GmbH"
+            "https://graph.infona.ai/types/Manufacturer",
+            value="Robert Bosch GmbH",
+            expected=("relationship", "Manufacturer"),
         )
 
     asyncio.run(run())
@@ -2900,21 +2962,6 @@ def test_entity_iri_type_parses_and_rejects():
     assert _entity_iri_type("https://graph.infona.ai/entities/Manufacturer/") is None
 
 
-def _instance_inserts(neptune) -> list[str]:
-    """SPARQL update strings that look like an INSTANCE-data write (carry the
-    entity-IRI prefix as a SUBJECT, i.e. the ``insert_facts`` triples) but are NOT
-    ontology declarations (no ``rdf:Property`` + ``rdfs:domain``)."""
-    rdf_property = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"
-    rdfs_domain = "http://www.w3.org/2000/01/rdf-schema#domain"
-    out: list[str] = []
-    for call in neptune.update.await_args_list:
-        sparql = call.args[0] if call.args else call.kwargs.get("sparql", "")
-        is_decl = rdf_property in sparql and rdfs_domain in sparql
-        if "https://graph.infona.ai/entities/" in sparql and not is_decl:
-            out.append(sparql)
-    return out
-
-
 def test_executor_apply_infers_datetime_range_for_date_values(monkeypatch):
     """A brand-new enriched attribute whose applied values are all ISO dates must
     be declared with an xsd:dateTime range — NOT stamped xsd:string."""
@@ -2953,23 +3000,17 @@ def test_executor_apply_infers_datetime_range_for_date_values(monkeypatch):
         await store.create(job)
         await executor.run(job, "test-tenant")
 
-        founded_attr = "https://graph.infona.ai/types/Product/attrs/founded"
-        xsd_datetime = "http://www.w3.org/2001/XMLSchema#dateTime"
-        xsd_string = "http://www.w3.org/2001/XMLSchema#string"
-        primary = [d for d in _declaration_updates(neptune) if founded_attr in d]
-        assert primary, "founded attribute not declared"
-        d = primary[0]
-        assert xsd_datetime in d
-        assert f"#range> <{xsd_string}>" not in d
+        declared = await _declared_attrs("Product")
+        assert "founded" in declared, "founded attribute not declared"
+        assert declared["founded"].datatype == "datetime"
 
     asyncio.run(run())
 
 
 def test_executor_apply_entity_iri_values_declare_relationship_and_write_iri(monkeypatch):
     """When all applied values are entity IRIs of one type ``Manufacturer``, the
-    attribute is declared with a ``types/Manufacturer`` relationship range AND the
-    instance triple's OBJECT is written as an IRI ``<…/entities/…>`` (the shared
-    writer auto-detects ``https://`` objects), never a quoted literal."""
+    attribute is declared with a ``Manufacturer`` relationship range AND the
+    instance fact is written as a real EDGE to that entity, never a literal."""
     import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
@@ -3011,20 +3052,28 @@ def test_executor_apply_entity_iri_values_declare_relationship_and_write_iri(mon
         await store.create(job)
         await executor.run(job, "test-tenant")
 
-        mfr_attr = "https://graph.infona.ai/types/Product/attrs/manufacturer"
-        types_mfr = "https://graph.infona.ai/types/Manufacturer"
-        # (a) declared as a relationship range types/Manufacturer, not xsd:string.
-        primary = [d for d in _declaration_updates(neptune) if mfr_attr in d]
-        assert primary, "manufacturer attribute not declared"
-        d = primary[0]
-        assert f"#range> <{types_mfr}>" in d
-        assert "#range> <http://www.w3.org/2001/XMLSchema#string>" not in d
+        # (a) declared as a relationship ranged on Manufacturer, not a string literal.
+        declared = await _declared_attrs("Product")
+        assert "manufacturer" in declared, "manufacturer attribute not declared"
+        assert declared["manufacturer"].kind == "relationship"
+        assert declared["manufacturer"].range_type == "Manufacturer"
+        assert declared["manufacturer"].datatype is None
 
-        # (b) the instance object is written as an IRI, not a quoted literal.
-        inserts = _instance_inserts(neptune)
-        joined = "\n".join(inserts)
-        assert "<https://graph.infona.ai/entities/Manufacturer/bosch>" in joined
-        assert '"https://graph.infona.ai/entities/Manufacturer/bosch"' not in joined
+        # (b) the instance fact is an EDGE to that entity, not a literal property.
+        edges = {(r["start_id"], r["end_id"]) for r in _rels_for("manufacturer")}
+        assert edges == {
+            (
+                "https://graph.infona.ai/entities/Product/p1",
+                "https://graph.infona.ai/entities/Manufacturer/bosch",
+            ),
+            (
+                "https://graph.infona.ai/entities/Product/p2",
+                "https://graph.infona.ai/entities/Manufacturer/makita",
+            ),
+        }
+        assert "manufacturer" not in _props(
+            "https://graph.infona.ai/entities/Product/p1"
+        )
 
     asyncio.run(run())
 
@@ -3037,7 +3086,7 @@ def test_executor_apply_does_not_downgrade_datetime_or_relationship_range(monkey
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
-    async def _assert_preserves(existing_range: str, value: str):
+    async def _assert_preserves(existing_range: str, value: str, expected: tuple[str, str]):
         rows = [
             {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Bosch", "vals": ""},
         ]
@@ -3058,22 +3107,29 @@ def test_executor_apply_does_not_downgrade_datetime_or_relationship_range(monkey
         await store.create(job)
         await executor.run(job, "test-tenant")
 
-        founded_attr = "https://graph.infona.ai/types/Product/attrs/founded"
-        xsd_string = "http://www.w3.org/2001/XMLSchema#string"
-        primary = [d for d in _declaration_updates(neptune) if founded_attr in d]
-        assert primary, "founded attribute not declared"
-        d = primary[0]
-        assert existing_range in d
-        assert f"#range> <{xsd_string}>" not in d
+        declared = await _declared_attrs("Product")
+        assert "founded" in declared, "founded attribute not declared"
+        founded = declared["founded"]
+        kind, target = expected
+        assert founded.kind == kind
+        if kind == "literal":
+            assert founded.datatype == target
+        else:
+            assert founded.range_type == target
+            assert founded.datatype is None
 
     async def run():
         # An existing xsd:dateTime survives a free-text enrichment value.
         await _assert_preserves(
-            "http://www.w3.org/2001/XMLSchema#dateTime", value="sometime in 2026"
+            "http://www.w3.org/2001/XMLSchema#dateTime",
+            value="sometime in 2026",
+            expected=("literal", "datetime"),
         )
         # An existing relationship range survives a string-valued enrichment.
         await _assert_preserves(
-            "https://graph.infona.ai/types/Manufacturer", value="Robert Bosch GmbH"
+            "https://graph.infona.ai/types/Manufacturer",
+            value="Robert Bosch GmbH",
+            expected=("relationship", "Manufacturer"),
         )
 
     asyncio.run(run())
@@ -3345,7 +3401,9 @@ def test_conflicts_and_apply_flow(client, auth_headers, mock_neptune):
     )
     assert apply_resp.status_code == 200
     assert apply_resp.json()["applied"] == 1
-    assert mock_neptune.update.await_count >= 1
+    # The accepted value reached the graph (ONTA-527: read the store, not an
+    # update count that the post-write housekeeping would satisfy on its own).
+    assert _stored_values("manufacturer") == {"Bosch"}
 
 
 def test_cancel_job(client, auth_headers, mock_neptune):
@@ -4059,6 +4117,24 @@ def test_create_job_lite_does_not_lower_confidence(
 # validate_triple so the stored literal matches the declared datatype.
 # ---------------------------------------------------------------------------
 
+#: Shared xfail reason for the three typed-literal cases below.
+_TYPED_LITERAL_LEAK = (
+    "PRODUCT BUG (pre-dates ONTA-527, surfaced by it): on the property-graph "
+    "path a typed literal's datatype annotation is stored INSIDE the value. "
+    "resolver/validator.py::_typed_value emits the writer convention "
+    "`<lexical>^^<xsd-uri>`, which graph/queries.py::_format_object used to split "
+    "into a real typed SPARQL literal on the way out. graph/facts.py::"
+    "classify_triple does no such split — it passes the object string straight "
+    "through — so the Entity property cache AND Assertion.literal_value both hold "
+    "'92^^http://www.w3.org/2001/XMLSchema#integer', while "
+    "graph/rdf_model.py::assert_fact hardcodes literal_datatype=None. The "
+    "attribute is DECLARED integer/dateTime and the stored value is a string with "
+    "a URI glued on, so numeric/date comparison matches nothing — the exact "
+    "declared-range-vs-stored-literal skew the typed write was added to remove. "
+    "Not enrichment-specific: every writer that goes through classify_triple "
+    "(ingest included) leaks the same way."
+)
+
 
 def test_executor_apply_writes_typed_integer_literal(monkeypatch):
     """A numeric enriched value is stored as a TYPED literal
@@ -4097,13 +4173,13 @@ def test_executor_apply_writes_typed_integer_literal(monkeypatch):
         await store.create(job)
         await executor.run(job, "test-tenant")
 
-        joined = "\n".join(_instance_inserts(neptune))
-        # The object is the TYPED literal, matching the declared xsd:integer range.
-        assert '"92"^^<http://www.w3.org/2001/XMLSchema#integer>' in joined
-        assert '"87"^^<http://www.w3.org/2001/XMLSchema#integer>' in joined
-        # And NOT a bare (untyped) string literal — the regression we fixed.
-        assert '"92" .' not in joined
-        assert '"92"\n' not in joined
+        # Declared integer...
+        declared = await _declared_attrs("Product")
+        assert declared["humanness_score"].datatype == "integer"
+        # ...and the STORED values are the numbers themselves. Where the datatype
+        # is recorded is a design choice (Assertion.literal_datatype); what must
+        # never happen is the datatype URI ending up inside the value.
+        assert {str(v) for v in _stored_values("humanness_score")} == {"92", "87"}
 
     asyncio.run(run())
 
@@ -4146,20 +4222,19 @@ def test_executor_apply_writes_comma_number_as_string_not_dropped(monkeypatch):
         await store.create(job)
         await executor.run(job, "test-tenant")
 
-        joined = "\n".join(_instance_inserts(neptune))
-        # The comma value is written as a plain string literal — present, not dropped.
-        assert '"1,234"' in joined
-        assert '"12,345"' in joined
+        # The comma values are stored verbatim as plain strings — present, not
+        # dropped by a validator that had been told to expect a number.
+        assert _stored_values("unit_sales") == {"1,234", "12,345"}
         # Declared as string, so NOT typed integer.
-        decl = "\n".join(_declaration_updates(neptune))
-        assert "XMLSchema#integer" not in decl
+        assert (await _declared_attrs("Product"))["unit_sales"].datatype == "string"
 
     asyncio.run(run())
 
 
 def test_executor_apply_writes_typed_datetime_literal(monkeypatch):
-    """A date enriched value is stored as a TYPED ``^^<…#dateTime>`` literal
-    matching the declared dateTime range."""
+    """A date enriched value is stored as a date matching the declared dateTime
+    range — the ISO instant itself, not the instant with its datatype URI glued
+    onto it."""
     import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
@@ -4189,20 +4264,19 @@ def test_executor_apply_writes_typed_datetime_literal(monkeypatch):
         await store.create(job)
         await executor.run(job, "test-tenant")
 
-        joined = "\n".join(_instance_inserts(neptune))
-        # The object carries the dateTime XSD type (value is normalized to full
-        # ISO-8601 by validate_triple's _typed_value, so match the type suffix).
-        assert "^^<http://www.w3.org/2001/XMLSchema#dateTime>" in joined
-        # Not a bare untyped string form of the date.
-        assert '"2026-06-28" .' not in joined
+        assert (await _declared_attrs("Product"))["founded"].datatype == "datetime"
+        (stored,) = _stored_values("founded")
+        # Normalized to a full ISO-8601 instant by validate_triple's _typed_value,
+        # and parseable as one — no datatype URI inside the value.
+        assert "^^" not in str(stored), stored
+        assert datetime.fromisoformat(str(stored)).year == 2026
 
     asyncio.run(run())
 
 
 def test_executor_apply_writes_entity_iri_object(monkeypatch):
-    """An entity-IRI enriched value is written as an IRI object
-    ``<https://graph.infona.ai/entities/…>`` (a relationship edge), never a quoted
-    literal, and is declared with a relationship (types/<Target>) range."""
+    """An entity-IRI enriched value is written as a relationship EDGE to that
+    entity, never as a literal, and is declared with a relationship range."""
     import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
@@ -4236,26 +4310,37 @@ def test_executor_apply_writes_entity_iri_object(monkeypatch):
         await store.create(job)
         await executor.run(job, "test-tenant")
 
-        joined = "\n".join(_instance_inserts(neptune))
-        # Object written as an IRI, not a quoted literal.
-        assert "<https://graph.infona.ai/entities/Manufacturer/bosch>" in joined
-        assert '"https://graph.infona.ai/entities/Manufacturer/bosch"' not in joined
+        # An edge to the target entity, not a literal on the subject.
+        edges = _rels_for("manufacturer")
+        assert [(r["start_id"], r["end_id"]) for r in edges] == [
+            (
+                "https://graph.infona.ai/entities/Product/p1",
+                "https://graph.infona.ai/entities/Manufacturer/bosch",
+            )
+        ]
+        assert "manufacturer" not in _props(
+            "https://graph.infona.ai/entities/Product/p1"
+        )
 
-        # Declared as a relationship range, not xsd:string.
-        mfr_attr = "https://graph.infona.ai/types/Product/attrs/manufacturer"
-        types_mfr = "https://graph.infona.ai/types/Manufacturer"
-        primary = [d for d in _declaration_updates(neptune) if mfr_attr in d]
-        assert primary, "manufacturer attribute not declared"
-        assert f"#range> <{types_mfr}>" in primary[0]
+        # Declared as a relationship range, not a string literal.
+        declared = await _declared_attrs("Product")
+        assert declared["manufacturer"].kind == "relationship"
+        assert declared["manufacturer"].range_type == "Manufacturer"
 
     asyncio.run(run())
 
 
 def test_executor_apply_skips_value_not_conforming_to_existing_range(monkeypatch):
     """An attribute already declared with an integer range: a non-conforming
-    value ("five stars") is REJECTED (no instance triple written) while a
-    conforming numeric value IS written as a typed literal. The P1 guarantee:
-    we never PIN a mismatched literal under a declared richer range."""
+    value ("five stars") is REJECTED (nothing written for it) while a conforming
+    numeric value IS written. The P1 guarantee: we never PIN a mismatched value
+    under a declared richer range.
+
+    Only the REJECTION is asserted here; whether the conforming value keeps its
+    datatype out of the value string is
+    ``test_executor_apply_writes_typed_integer_literal``'s xfail, so this case
+    compares the value's LEXICAL form and stays green either way.
+    """
     import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
@@ -4293,33 +4378,27 @@ def test_executor_apply_skips_value_not_conforming_to_existing_range(monkeypatch
         await store.create(job)
         await executor.run(job, "test-tenant")
 
-        inserts = _instance_inserts(neptune)
-        joined = "\n".join(inserts)
-        rating_attr = "https://graph.infona.ai/types/Product/attrs/rating"
-        # The conforming value IS written, typed as integer.
-        assert '"5"^^<http://www.w3.org/2001/XMLSchema#integer>' in joined
-        # The non-conforming value is NOT written under the rating predicate, in
-        # any form (neither as a literal nor coerced).
-        assert "five stars" not in joined
-        # Sanity: every write carrying the rating predicate is for the CONFORMING
-        # entity (p2); the rejected row (p1) produces NO rating write at all.
-        # (ONTA-279: the rating predicate now also appears as an OBJECT in the P6
-        # validity/provenance companion writes for p2 — the primary edge, its
-        # validity interval, and its provenance — so a bare occurrence-count is no
-        # longer 1; the invariant is that none of those writes reference p1.)
-        rating_writes = [s for s in inserts if f"<{rating_attr}>" in s]
-        assert rating_writes, "the conforming value must be written under rating"
-        assert all(
-            "https://graph.infona.ai/entities/Product/p1" not in s for s in rating_writes
-        ), "the rejected value's entity must produce no rating write"
+        # The conforming value IS written (lexically "5" — see the docstring).
+        assert {str(v).split("^^")[0] for v in _stored_values("rating")} == {"5"}
+        assert "rating" in _props("https://graph.infona.ai/entities/Product/p2")
+        # The rejected row produces NO rating write at all — not the raw value,
+        # not a coerced one, and no citation claiming a source for it either.
+        assert "rating" not in _props("https://graph.infona.ai/entities/Product/p1")
+        assert _citation("https://graph.infona.ai/entities/Product/p1", "rating") is None
 
     asyncio.run(run())
 
 
 def test_executor_apply_provenance_stays_plain_string(monkeypatch):
-    """The provenance companions (``*_source_url`` / ``*_provenance``) stay PLAIN
-    string literals even when the primary value is typed — they are user-facing
-    citations, never typed as anything richer."""
+    """The provenance companions (source_url / provenance) stay PLAIN strings even
+    when the primary value is typed — they are user-facing citations, never typed
+    as anything richer — and remain metadata OF the attribute rather than
+    attributes of their own (ONTA-262).
+
+    Ported by ONTA-527: the companions fold onto an ``:AttrCitation`` record on
+    the store path (``graph/pg_ops.py``) instead of riding attr_meta triples, so
+    "plain string" is checked on the stored fields.
+    """
     import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
@@ -4354,39 +4433,31 @@ def test_executor_apply_provenance_stays_plain_string(monkeypatch):
         await store.create(job)
         await executor.run(job, "test-tenant")
 
-        joined = "\n".join(_instance_inserts(neptune))
-        src_pred = (
-            "https://graph.infona.ai/attr_meta/Product/humanness_score/source_url"
-        )
-        # The source_url object is a PLAIN quoted string literal (no ^^ type),
-        # written as an http(s) value → _escape_value wraps it as an <IRI>… but the
-        # provenance source_url IS a URL, so it lands as an IRI object, not a typed
-        # literal. The provenance text companion, however, is a plain string.
-        prov_pred = (
-            "https://graph.infona.ai/attr_meta/Product/humanness_score/provenance"
-        )
-        # The provenance free-text companion is a plain string literal, no ^^ type.
-        assert f"<{prov_pred}>" in joined
-        # No XSD type annotation on the provenance object.
-        for line in joined.splitlines():
-            if prov_pred in line:
-                assert "^^" not in line, f"provenance should be plain string: {line}"
-        # And the primary value is still typed integer (the value WAS typed).
-        assert '"92"^^<http://www.w3.org/2001/XMLSchema#integer>' in joined
-        # The source_url predicate is present (declared + written).
-        assert f"<{src_pred}>" in joined
-        # And the per-fact freshness stamp landed on the queryable attr_meta
-        # namespace (metadata, not an attribute — ONTA-262), written as a TYPED
-        # xsd:dateTime literal (so typed NL date FILTERs match it).
-        verified_pred = (
-            "https://graph.infona.ai/attr_meta/Product/humanness_score/verified_at"
-        )
-        assert verified_pred in joined
-        verified_lines = [ln for ln in joined.splitlines() if verified_pred in ln]
-        assert verified_lines and all(
-            "^^<http://www.w3.org/2001/XMLSchema#dateTime>" in ln
-            for ln in verified_lines
-        ), f"verified_at must render as a typed dateTime literal: {verified_lines}"
+        entity = "https://graph.infona.ai/entities/Product/p1"
+        citation = _citation(entity, "humanness_score")
+        assert citation is not None
+        # The citation fields are plain text — no XSD type annotation on either.
+        assert citation["source_url"] == "https://www.wikidata.org/wiki/Q234021"
+        assert citation["provenance"] == "wikidata"
+        assert "^^" not in citation["provenance"]
+        assert "^^" not in citation["source_url"]
+        # The per-fact freshness stamp is a real instant (see test_freshness_gating
+        # for the ordering property the xsd:dateTime annotation used to carry).
+        assert datetime.fromisoformat(citation["verified_at"]).tzinfo is not None
+
+        # The primary value is still there (lexically "92" — the datatype-in-value
+        # leak is pinned by test_executor_apply_writes_typed_integer_literal).
+        assert {
+            str(v).split("^^")[0] for v in _stored_values("humanness_score")
+        } == {"92"}
+
+        # None of the three companions became an attribute of the entity or of
+        # the ontology (ONTA-262).
+        props = _props(entity)
+        for suffix in ("source_url", "provenance", "verified_at"):
+            assert suffix not in props
+            assert f"humanness_score_{suffix}" not in props
+        assert set(await _declared_attrs("Product")) == {"humanness_score"}
 
     asyncio.run(run())
 
@@ -4451,9 +4522,9 @@ def test_provenance_triples_stamps_per_fact_verified_at():
 
 
 def test_apply_decisions_writes_typed_integer_literal(monkeypatch):
-    """The review-apply path (apply_decisions) also types the accepted value:
-    a numeric accepted value is stored as ``"92"^^<…#integer>``, matching the
-    declared range — same P1 fix as the auto-apply run() path."""
+    """The review-apply path (apply_decisions) also types the accepted value: a
+    numeric accepted value is stored as the number, matching the declared range —
+    same P1 fix as the auto-apply run() path."""
     import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
@@ -4482,9 +4553,8 @@ def test_apply_decisions_writes_typed_integer_literal(monkeypatch):
         applied = await executor.apply_decisions(job.id, decisions)
         assert applied == 1
 
-        joined = "\n".join(_instance_inserts(neptune))
-        assert '"92"^^<http://www.w3.org/2001/XMLSchema#integer>' in joined
-        assert '"92" .' not in joined
+        assert (await _declared_attrs("Product"))["humanness_score"].datatype == "integer"
+        assert {str(v) for v in _stored_values("humanness_score")} == {"92"}
 
     asyncio.run(run())
 

@@ -41,11 +41,13 @@ API sketch (future route wiring — not registered here)::
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal, Mapping, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Literal, Mapping, Optional
 
-from infona_client.graph.facts import RESERVED_ENTITY_PROPERTY_KEYS
+from infona_client.graph.facts import (
+    RESERVED_ENTITY_PROPERTY_KEYS,
+    is_internal_property_key,
+)
 from infona_client.graph.labels import sanitize_domain_label
 from infona_client.graph.queries import (
     InvalidTypeName,
@@ -135,9 +137,10 @@ class EntityPage:
 # ---------------------------------------------------------------------------
 
 
-def graph_backend() -> str:
-    """Same switch as :func:`infona_client.graph.kg_writer.graph_backend`."""
-    return (os.environ.get("INFONA_GRAPH_BACKEND") or "neo4j").strip().lower()
+# The ONE backend switch lives in `graph/store.py`. This module used to define a
+# copy of `graph_backend()` (as did kg_writer and ontology_catalog); ONTA-527
+# removed all three duplicates and `tests/test_neo4j_only_backend.py` fails if a
+# new one appears.
 
 
 def resolve_explore_session(
@@ -147,22 +150,22 @@ def resolve_explore_session(
     tenant_id: str | None = None,
     kg: str | None = None,
     kg_name: str | None = None,
-) -> Optional["GraphSession"]:
-    """Return an instance-scoped session when the Neo4j path should run.
+) -> "GraphSession":
+    """Return an instance-scoped session for the explore read path.
 
-    Priority: explicit ``session`` → explicit ``store`` → env ``neo4j`` backend.
-    Returns ``None`` when the SPARQL path should be used instead.
+    Priority: explicit ``session`` → explicit ``store`` → the process store.
+    Never returns ``None``: Neo4j is the only backend (ONTA-527), so there is
+    no SPARQL path to hand back to. Raises :class:`GraphConfigError` when no
+    store is configured.
 
     ``kg`` and ``kg_name`` are aliases (``kg_name`` matches REST path params).
     """
     if session is not None:
         return session
-    if store is None and graph_backend() != "neo4j":
-        return None
     if store is None:
-        from infona_client.graph.store import get_graph_store
+        from infona_client.graph.store import get_optional_graph_store
 
-        store = get_graph_store()
+        store = get_optional_graph_store()
     kg_val = kg if kg is not None else kg_name
     if not tenant_id or not kg_val:
         raise GraphScopeError(
@@ -446,6 +449,15 @@ async def grep_literals_pg(
 
     Returns ``(hits, truncated)`` where ``truncated`` is True when the store
     produced more than ``limit`` rows (caller asked for ``limit + 1``).
+
+    **Internal keys never reach a caller.** The scan already excludes them (the
+    ``entity_literal_grep`` template and the Memory store both filter on
+    :func:`~infona_client.graph.facts.is_internal_property_key`); this repeats
+    the check as the authority, in the ONE place that owns the page, so a store
+    whose scan-level exclusion drifts still cannot leak. Order matters: the
+    check runs BEFORE the page is cut, so an internal row can never occupy a
+    slot the caller paid for and hand back a short page marked ``truncated:
+    false``.
     """
     if not isinstance(needle, str) or not needle:
         raise GraphScopeError("grep needle must be a non-empty string")
@@ -469,14 +481,13 @@ async def grep_literals_pg(
             "limit": fetch_limit,
         },
     )
-    truncated = len(rows) > page_limit
-    hits: list[GrepHit] = []
-    for r in rows[:page_limit]:
+    kept: list[GrepHit] = []
+    for r in rows:
         d = r.to_dict() if hasattr(r, "to_dict") else dict(r)
         attr = str(d.get("attr") or "")
-        if not attr:
+        if not attr or is_internal_property_key(attr):
             continue
-        hits.append(
+        kept.append(
             GrepHit(
                 entity_uri=str(d.get("entity_uri") or d.get("id") or ""),
                 label=d.get("label"),
@@ -485,7 +496,8 @@ async def grep_literals_pg(
                 value=str(d.get("value") if d.get("value") is not None else ""),
             )
         )
-    return hits, truncated
+    truncated = len(kept) > page_limit
+    return kept[:page_limit], truncated
 
 
 # ---------------------------------------------------------------------------
@@ -654,7 +666,6 @@ __all__ = [
     "count_entities_pg",
     "get_entity_detail",
     "get_entity_detail_pg",
-    "graph_backend",
     "grep_literals",
     "grep_literals_pg",
     "list_entities_by_type",

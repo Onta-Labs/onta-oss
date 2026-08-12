@@ -2444,7 +2444,10 @@ class MemoryGraphStore:
         limit: int,
     ) -> list[GraphRecord]:
         """Substring scan over Entity name + props (grep dual-backend)."""
-        from infona_client.graph.facts import RESERVED_ENTITY_PROPERTY_KEYS
+        from infona_client.graph.facts import (
+            RESERVED_ENTITY_PROPERTY_KEYS,
+            is_internal_property_key,
+        )
 
         skip = set(RESERVED_ENTITY_PROPERTY_KEYS) | {
             "labels",
@@ -2479,6 +2482,12 @@ class MemoryGraphStore:
                 candidates.append(("name", row.name))
             for pk, pv in sorted(row.props.items()):
                 if pk in skip:
+                    continue
+                # Internal/housekeeping keys (ER block index, ingest markers)
+                # are dropped BEFORE the limit is counted, mirroring the
+                # exclusion the Cypher template pushes into the scan — a page
+                # must never be silently shortened by rows nobody may see.
+                if is_internal_property_key(pk):
                     continue
                 candidates.append((pk, pv))
             for attr, val in candidates:

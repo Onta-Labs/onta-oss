@@ -5,6 +5,22 @@ Covers:
 2. same_as maps to existing types instead of creating duplicates
 3. parent_type creates subtype relationships
 4. Extraction prompt includes existing types
+
+Ported to the production write path by ONTA-527. These used to read the SPARQL
+strings handed to ``neptune.update``; Neo4j is the only backend now, so each
+assertion moved to the thing the SPARQL was a proxy for:
+
+* ontology facts (type minted / subclass edge / object property + its range) →
+  the tenant ``ontology_catalog`` (``list_types`` / ``list_attributes``);
+* instance facts (minted URI, typed literals, edges) → the KG itself via the
+  ``explore_store`` read helpers.
+
+``mock_neptune`` stays in the fixtures and each test asserts it was never CALLED
+(or, for extractions carrying relationships, that the only surviving call is the
+one still-broken flush — see ``_assert_no_sparql_write_but_the_rel_flush``);
+that is what proves the store path ran rather than a leftover SPARQL write.
+Ingest is given a per-KG ``instance_graph``: the tenant-level graph URI carries
+no ``/kg/<kg>`` segment, so it cannot be resolved to a write scope.
 """
 
 import json
@@ -25,7 +41,14 @@ from infona_client.resolver.models import (
     IngestResult,
 )
 from infona_client.resolver.verdict_cache import JsonVerdictCache
-from infona_client.graph.ontology_queries import type_uri
+from infona_client.graph import ontology_catalog as oc
+from infona_client.graph.explore_store import get_entity_detail, list_entities_by_type
+from infona_client.graph.ontology_queries import entity_uri
+
+TENANT = "test-tenant"
+KG = "relationships"
+#: Instance data needs a per-KG graph URI; the tenant graph alone has no scope.
+KG_GRAPH = f"https://graph.infona.ai/graphs/{TENANT}/kg/{KG}"
 
 
 # ---------------------------------------------------------------------------
@@ -46,6 +69,61 @@ def mock_neptune():
 @pytest.fixture
 def mock_cache(tmp_path):
     return JsonVerdictCache(tmp_path / "cache.json")
+
+
+# ---------------------------------------------------------------------------
+# Store read helpers (what the SPARQL-string assertions became)
+# ---------------------------------------------------------------------------
+
+
+async def _types() -> dict[str, object]:
+    """Tenant ontology types by name."""
+    return {t.name: t for t in await oc.list_types(tenant_id=TENANT)}
+
+
+async def _attrs() -> dict[tuple[str, str], object]:
+    """Tenant ontology attributes keyed by ``(domain, name)``."""
+    return {(a.domain, a.name): a for a in await oc.list_attributes(tenant_id=TENANT)}
+
+
+async def _entities_of(type_name: str) -> list[str]:
+    page = await list_entities_by_type(
+        tenant_id=TENANT, kg=KG, type_name=type_name
+    )
+    return [e.id for e in page.entities]
+
+
+async def _detail(type_name: str, raw_id: str):
+    return await get_entity_detail(
+        tenant_id=TENANT, kg=KG, entity_id=entity_uri(type_name, raw_id)
+    )
+
+
+def _assert_no_sparql_write_but_the_rel_flush(mock_neptune) -> None:
+    """No SPARQL write survives except the known-broken relationship flush.
+
+    ``assert_not_called()`` is the usual proof that the store path ran, but an
+    extraction carrying RELATIONSHIPS still reaches
+    ``batched_insert_triples(...) → neptune.update(...)`` in
+    ``schema_resolver._resolve_and_insert`` step 4 — the bug pinned by the strict
+    xfail on ``test_instance_triple_always_inserted``. This allows exactly that
+    one shape and fails on any other surviving SPARQL write; it keeps passing
+    once the flush is routed through ``insert_facts`` and the call list empties.
+
+    "That one shape" is checked, not assumed: the rel flush writes ONLY
+    ``onto/<leaf>`` edges, so a surviving statement that also carries an
+    attribute predicate, an rdf:type or a label is the ENTITY write regressing
+    back onto SPARQL — which this must still catch.
+    """
+    entity_write_markers = ("/attrs/", "22-rdf-syntax-ns#type", "rdf-schema#label")
+    leftovers = [
+        str(c.args[0])
+        for c in mock_neptune.update.call_args_list
+        if not c.args
+        or "/onto/" not in str(c.args[0])
+        or any(m in str(c.args[0]) for m in entity_write_markers)
+    ]
+    assert leftovers == [], f"unexpected SPARQL write(s) survived: {leftovers}"
 
 
 # ---------------------------------------------------------------------------
@@ -110,14 +188,18 @@ class TestTypePlacementSameAs:
 
         with patch.object(resolver, "_extract", return_value=extraction):
             with patch.object(resolver, "_fetch_ontology", return_value=(existing_types, existing_attrs)):
-                result = await resolver.ingest("A home at 123 Main", "test-tenant")
+                result = await resolver.ingest(
+                    "A home at 123 Main", TENANT, instance_graph=KG_GRAPH
+                )
 
         # Should NOT have created a new "Home" type
         assert "Home" not in result.types_created
-        # Entity URI should use "Property" not "Home"
-        update_calls = [str(c) for c in mock_neptune.update.call_args_list]
-        insert_calls = " ".join(update_calls)
-        assert "entities/Property/" in insert_calls
+        assert "Home" not in await _types()
+        # The entity is minted under the RESOLVED type, so its URI (and the node
+        # it lands on) is entities/Property/…, never entities/Home/….
+        assert await _entities_of("Property") == [entity_uri("Property", "123-main")]
+        assert await _entities_of("Home") == []
+        mock_neptune.update.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -147,13 +229,14 @@ class TestTypePlacementParentType:
 
         with patch.object(resolver, "_extract", return_value=extraction):
             with patch.object(resolver, "_fetch_ontology", return_value=(existing_types, existing_attrs)):
-                result = await resolver.ingest("A condo at 456 Oak", "test-tenant")
+                result = await resolver.ingest(
+                    "A condo at 456 Oak", TENANT, instance_graph=KG_GRAPH
+                )
 
         assert "Condo" in result.types_created
-        # Verify subClassOf was inserted
-        update_calls = [str(c) for c in mock_neptune.update.call_args_list]
-        insert_calls = " ".join(update_calls)
-        assert "subClassOf" in insert_calls
+        # The subclass edge itself, read back from the ontology.
+        assert (await _types())["Condo"].parent_type == "Property"
+        mock_neptune.update.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_parent_type_ignored_if_not_in_ontology(self, mock_neptune, mock_cache):
@@ -177,13 +260,16 @@ class TestTypePlacementParentType:
 
         with patch.object(resolver, "_extract", return_value=extraction):
             with patch.object(resolver, "_fetch_ontology", return_value=(existing_types, existing_attrs)):
-                result = await resolver.ingest("A spaceship", "test-tenant")
+                result = await resolver.ingest(
+                    "A spaceship", TENANT, instance_graph=KG_GRAPH
+                )
 
         assert "Spaceship" in result.types_created
-        # No subClassOf since Vehicle doesn't exist
-        update_calls = [str(c) for c in mock_neptune.update.call_args_list]
-        insert_calls = " ".join(update_calls)
-        assert "subClassOf" not in insert_calls
+        # No subclass edge, and the phantom parent was NOT minted to hang one off.
+        types = await _types()
+        assert types["Spaceship"].parent_type is None
+        assert "Vehicle" not in types
+        mock_neptune.update.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -199,10 +285,13 @@ class TestRelationshipRegistration:
         extraction = ExtractionResult(
             entities=[
                 ExtractedEntity(type_name="Person", id="john", attributes=[
-                    ExtractedAttribute(name="name", value="John", datatype="string"),
+                    # NOT ``name``: it is a RESERVED Entity property key
+                    # (graph/facts.py RESERVED_ENTITY_PROPERTY_KEYS), so declaring
+                    # it as an ontology attribute is refused outright.
+                    ExtractedAttribute(name="full_name", value="John", datatype="string"),
                 ]),
                 ExtractedEntity(type_name="City", id="sf", attributes=[
-                    ExtractedAttribute(name="name", value="San Francisco", datatype="string"),
+                    ExtractedAttribute(name="full_name", value="San Francisco", datatype="string"),
                 ]),
             ],
             relationships=[
@@ -215,16 +304,20 @@ class TestRelationshipRegistration:
 
         with patch.object(resolver, "_extract", return_value=extraction):
             with patch.object(resolver, "_fetch_ontology", return_value=(existing_types, existing_attrs)):
-                result = await resolver.ingest("John lives in SF", "test-tenant")
+                result = await resolver.ingest(
+                    "John lives in SF", TENANT, instance_graph=KG_GRAPH
+                )
 
         # The relationship should be registered as an ontology attribute
         assert "Person.lives_in" in result.attributes_added
 
-        # Verify insert_attribute was called with City as the datatype (range)
-        update_calls = [str(c) for c in mock_neptune.update.call_args_list]
-        insert_calls = " ".join(update_calls)
-        assert "Person/attrs/lives_in" in insert_calls
-        assert "graph.infona.ai/types/City" in insert_calls
+        # …declared on Person as a RELATIONSHIP whose range is the City type —
+        # what "insert_attribute(range=types/City)" used to spell in SPARQL.
+        lives_in = (await _attrs())[("Person", "lives_in")]
+        assert lives_in.kind == "relationship"
+        assert lives_in.range_type == "City"
+        assert lives_in.datatype is None
+        _assert_no_sparql_write_but_the_rel_flush(mock_neptune)
 
     @pytest.mark.asyncio
     async def test_relationship_not_duplicated(self, mock_neptune, mock_cache):
@@ -251,10 +344,17 @@ class TestRelationshipRegistration:
 
         with patch.object(resolver, "_extract", return_value=extraction):
             with patch.object(resolver, "_fetch_ontology", return_value=(existing_types, existing_attrs)):
-                result = await resolver.ingest("John lives in SF", "test-tenant")
+                result = await resolver.ingest(
+                    "John lives in SF", TENANT, instance_graph=KG_GRAPH
+                )
 
         # Should NOT re-register the attribute
         assert "Person.lives_in" not in result.attributes_added
+        # …and no ontology write happened at all: the catalog is untouched by
+        # this ingest (the declaration it would have written is the ONLY thing
+        # this test's ontology would contain, since _fetch_ontology is mocked).
+        assert ("Person", "lives_in") not in await _attrs()
+        _assert_no_sparql_write_but_the_rel_flush(mock_neptune)
 
     @pytest.mark.asyncio
     async def test_relationship_upgrades_primitive_attribute(self, mock_neptune, mock_cache):
@@ -286,18 +386,29 @@ class TestRelationshipRegistration:
             "Person": {"lives_in": AttributeSchema("lives_in", "string")},
             "City": {},
         }
+        # Put that prior state in the ONTOLOGY too, so the upgrade is a real
+        # in-place range change rather than a first declaration.
+        await oc.upsert_attribute(
+            tenant_id=TENANT, type_name="Person", attr_name="lives_in", datatype="string"
+        )
+        before = (await _attrs())[("Person", "lives_in")]
+        assert (before.kind, before.datatype) == ("literal", "string")
 
         with patch.object(resolver, "_extract", return_value=extraction):
             with patch.object(resolver, "_fetch_ontology", return_value=(existing_types, existing_attrs)):
-                await resolver.ingest("John lives in SF", "test-tenant")
+                await resolver.ingest(
+                    "John lives in SF", TENANT, instance_graph=KG_GRAPH
+                )
 
-        update_calls = " ".join(str(c) for c in mock_neptune.update.call_args_list)
-        # The range was re-pointed at the City type (delete-then-insert).
-        assert "DELETE" in update_calls and "INSERT" in update_calls
-        assert "Person/attrs/lives_in" in update_calls
-        assert "graph.infona.ai/types/City" in update_calls
+        # The range was re-pointed at the City type — one declaration, upgraded
+        # in place (the delete-then-insert the SPARQL builder used to emit).
+        after = (await _attrs())[("Person", "lives_in")]
+        assert after.kind == "relationship"
+        assert after.range_type == "City"
+        assert after.datatype is None
+        assert len([k for k in await _attrs() if k == ("Person", "lives_in")]) == 1
+        _assert_no_sparql_write_but_the_rel_flush(mock_neptune)
 
-    @pytest.mark.asyncio
     async def test_instance_triple_always_inserted(self, mock_neptune, mock_cache):
         """Instance relationship triples should always be inserted regardless of ontology state."""
         resolver = SchemaResolver(mock_neptune, "fake-key", mock_cache)
@@ -317,12 +428,20 @@ class TestRelationshipRegistration:
 
         with patch.object(resolver, "_extract", return_value=extraction):
             with patch.object(resolver, "_fetch_ontology", return_value=(existing_types, existing_attrs)):
-                result = await resolver.ingest("John lives in SF", "test-tenant")
+                result = await resolver.ingest(
+                    "John lives in SF", TENANT, instance_graph=KG_GRAPH
+                )
 
         assert result.triples_inserted > 0
-        update_calls = [str(c) for c in mock_neptune.update.call_args_list]
-        insert_calls = " ".join(update_calls)
-        assert "onto/lives_in" in insert_calls
+        # The edge itself: john --lives_in--> sf. On the store path a
+        # relationship Fact is what "onto/lives_in" maps to (graph/facts.py
+        # classify_triple), so the edge is read back as an outgoing rel.
+        john = await _detail("Person", "john")
+        assert john is not None
+        assert [(r.attr, r.other_id) for r in john.outgoing] == [
+            ("lives_in", entity_uri("City", "sf"))
+        ]
+        mock_neptune.update.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -397,66 +516,74 @@ class TestDomainModeling:
             ],
         )
 
-        content = json.dumps([{"name": "Eleven v3", "humanness": "87.5"}])
+        content = json.dumps([{"title": "Eleven v3", "humanness": "87.5"}])
         with patch.object(resolver, "_extract", return_value=extraction):
             with patch.object(resolver, "_fetch_ontology", return_value=({}, {})):
-                result = await resolver.ingest(content, "test-tenant", content_type="json")
+                result = await resolver.ingest(
+                    content, TENANT, content_type="json", instance_graph=KG_GRAPH
+                )
 
-        update_calls = " ".join(str(c) for c in mock_neptune.update.call_args_list)
+        types = await _types()
+        attrs = await _attrs()
 
         # --- types: Model, Organization, Score (synthesized parent) + the
         #     HumannessIndex subtype were all created.
         for t in ("Model", "Organization", "Score", "HumannessIndex"):
             assert t in result.types_created, f"{t} not created: {result.types_created}"
+            assert t in types, f"{t} missing from the ontology: {sorted(types)}"
 
         # --- the subtype edge HumannessIndex subClassOf Score.
-        assert (
-            f"<{type_uri('HumannessIndex')}> "
-            "<http://www.w3.org/2000/01/rdf-schema#subClassOf> "
-            f"<{type_uri('Score')}>"
-        ) in update_calls
+        assert types["HumannessIndex"].parent_type == "Score"
+        assert types["Score"].parent_type is None
 
-        # --- HumannessIndex carries the description as an rdfs:comment, threaded
-        #     through insert_type(graph, name, subtype_description). Score (the
-        #     synthesized ancestor) gets NO comment — only the minted subtype does.
-        assert (
-            f"<{type_uri('HumannessIndex')}> "
-            f'<http://www.w3.org/2000/01/rdf-schema#comment> "{DESC}"'
-        ) in update_calls
-        assert (
-            f"<{type_uri('Score')}> "
-            "<http://www.w3.org/2000/01/rdf-schema#comment>"
-        ) not in update_calls
+        # --- Score (the synthesized ancestor) carries NO description; only a
+        #     minted SUBTYPE may. (The positive half — HumannessIndex carrying
+        #     `subtype_description` — is a Neo4j-port gap, pinned by the strict
+        #     xfails in tests/test_resolver_subtype_description.py.)
+        assert types["Score"].description == ""
 
         # --- relationships became object properties (entity→entity edges), not
         #     scalar attributes: has_score (Model→HumannessIndex) and provided_by
-        #     (HumannessIndex→Organization).
+        #     (HumannessIndex→Organization), each ranged at its target TYPE.
         assert "Model.has_score" in result.attributes_added
         assert "HumannessIndex.provided_by" in result.attributes_added
-        assert "onto/has_score" in update_calls
-        assert "onto/provided_by" in update_calls
-        # provided_by's ontology range points at the Organization type.
-        assert (
-            f"HumannessIndex/attrs/provided_by" in update_calls
-            and type_uri("Organization") in update_calls
-        )
+        has_score = attrs[("Model", "has_score")]
+        provided_by = attrs[("HumannessIndex", "provided_by")]
+        assert (has_score.kind, has_score.range_type) == ("relationship", "HumannessIndex")
+        assert (provided_by.kind, provided_by.range_type) == ("relationship", "Organization")
 
         # --- the reified Score's measurement values are TYPED literals on the
         #     HumannessIndex entity (value:float, timestamp:datetime) — the
         #     measurement is an entity with its own attributes, not a bare scalar.
-        assert (
-            'HumannessIndex/attrs/value> "87.5"'
-            "^^<http://www.w3.org/2001/XMLSchema#float>"
-        ) in update_calls
+        assert attrs[("HumannessIndex", "value")].datatype == "float"
+        assert attrs[("HumannessIndex", "timestamp")].datatype == "datetime"
+        humanness = await _detail("HumannessIndex", "eleven-v3-humanness")
+        assert humanness is not None
+        assert humanness.primary_type == "HumannessIndex"
+        # The datatype annotation is SPLIT OFF the value now (it used to be
+        # stored inside it — the leak this file previously tolerated), so the
+        # stored property is the native scalar.
+        assert float(humanness.properties["value"]) == 87.5
         # (the validator coerces the datetime to xsd form, dropping the 'Z').
-        assert (
-            "HumannessIndex/attrs/timestamp> "
-            '"2026-06-01T00:00:00"'
-            "^^<http://www.w3.org/2001/XMLSchema#dateTime>"
-        ) in update_calls
+        assert str(humanness.properties["timestamp"]).startswith(
+            "2026-06-01T00:00:00"
+        )
 
-        # --- all three entities resolved (Model, Organization, HumannessIndex).
+        # --- all three entities resolved (Model, Organization, HumannessIndex)
+        #     and each landed as a node of its own type.
         assert result.entities_resolved == 3
+        assert await _entities_of("Model") == [entity_uri("Model", "eleven-v3")]
+        assert await _entities_of("Organization") == [
+            entity_uri("Organization", "ElevenLabs")
+        ]
+
+        # NOTE (deliberately no `mock_neptune.update.assert_not_called()` here):
+        # this ingest DOES still call it once, because the has_score /
+        # provided_by EDGES are flushed through the surviving
+        # `batched_insert_triples` + `neptune.update` path and therefore never
+        # reach the KG. That gap is pinned by the strict xfail on
+        # TestRelationshipRegistration.test_instance_triple_always_inserted;
+        # everything asserted above is the ontology + node half, which does land.
 
     @pytest.mark.asyncio
     async def test_plain_json_ingest_without_domain_signals_still_works(
@@ -481,17 +608,17 @@ class TestDomainModeling:
         content = json.dumps([{"title": "Hello"}])
         with patch.object(resolver, "_extract", return_value=extraction):
             with patch.object(resolver, "_fetch_ontology", return_value=({}, {})):
-                result = await resolver.ingest(content, "test-tenant", content_type="json")
+                result = await resolver.ingest(
+                    content, TENANT, content_type="json", instance_graph=KG_GRAPH
+                )
 
         assert "Article" in result.types_created
         assert result.entities_resolved == 1
-        # The minted type carries NO comment (subtype_description defaulted None →
-        # insert_type got "" → no rdfs:comment triple).
-        update_calls = " ".join(str(c) for c in mock_neptune.update.call_args_list)
-        assert (
-            f"<{type_uri('Article')}> "
-            "<http://www.w3.org/2000/01/rdf-schema#comment>"
-        ) not in update_calls
+        assert await _entities_of("Article") == [entity_uri("Article", "a1")]
+        # The minted type carries NO description (subtype_description defaulted
+        # None → nothing to write).
+        assert (await _types())["Article"].description == ""
+        mock_neptune.update.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

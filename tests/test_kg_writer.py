@@ -2,9 +2,33 @@
 
 This module is the single insertion + post-write housekeeping path that BOTH
 ingestion and enrichment must use, so these tests pin the behaviors that keep the
-two from drifting: always-batched inserts, provenance routed to the companion
-graph, and the three post-write refreshes (cache-invalidate, re-embed, recompute
-stats) running best-effort.
+two from drifting: every fact landing through one primitive, provenance kept in
+companion records (never mixed into instance data), and the post-write refreshes
+(cache-invalidate, re-embed, triple-count invalidate, recompute stats) running
+best-effort.
+
+**Ported by ONTA-527.** ``insert_facts`` / ``delete_facts`` / ``rewrite_subject``
+are GraphStore-only now; their SPARQL tails are deleted and the leading
+``neptune`` argument is vestigial (ignored). The write-shape assertions here used
+to read the emitted SPARQL — ``DELETE DATA`` batches of 500, ``VALUES (?s ?p)``,
+``DELETE { <old> ?p ?o } INSERT { <new> ?p ?o }``, a companion provenance NAMED
+GRAPH — and none of those strings exist any more. They are replaced by assertions
+on what the store actually holds afterwards, which is what the strings stood in
+for, plus ``neptune.update.assert_not_awaited()`` so "the SPARQL path is gone" is
+pinned rather than assumed.
+
+Two contract details are worth stating because they CHANGED, not just moved:
+
+* the removal count is now the number of STORE ROWS removed, and ADR 0013 keeps a
+  datatype/object ``Assertion`` alongside each property or relationship, so
+  clearing one literal reports 2 (the property + its Assertion). It is derived
+  from real deletions rather than a best-effort ``COUNT(*)`` query, so it is
+  exact in a way the SPARQL path's pattern-delete count was not;
+* provenance is ``:ProvEvent`` companion records written inside the store path,
+  gated by ``INFONA_PROVENANCE_ENABLED`` exactly as the named-graph writes were.
+  RDF ``provenance_triples`` handed to ``insert_facts`` are IGNORED (see the
+  module docstring of ``kg_writer``), so a caller still passing them writes
+  nothing — pinned below so that silence is deliberate rather than discovered.
 """
 
 import asyncio
@@ -12,13 +36,15 @@ from unittest.mock import AsyncMock
 
 import infona_client.api.routes.explore as explore_mod
 import infona_client.nlp.pipeline as pipeline_mod
+from infona_client.graph.iri import IRI_BASE
 from infona_client.graph.kg_writer import (
     delete_facts,
     insert_facts,
     refresh_after_write,
     rewrite_subject,
 )
-from infona_client.graph.provenance import provenance_graph_uri
+from infona_client.graph.memory_store import MemoryGraphStore
+from infona_client.graph.ontology_queries import entity_uri
 from infona_client.spatiotemporal.memory import InMemorySpatioTemporalIndex
 from infona_client.spatiotemporal.protocol import SpatioTemporalFact
 from infona_client.spatiotemporal.registry import (
@@ -26,47 +52,115 @@ from infona_client.spatiotemporal.registry import (
     reset_spatiotemporal_index,
 )
 
+#: A per-KG instance graph. A TENANT graph URI (``…/graphs/t``) no longer
+#: resolves — the store path derives (tenant, kg) from this URI and raises
+#: ``GraphScopeError`` rather than writing nowhere.
+GRAPH = f"{IRI_BASE}/graphs/t/kg/k"
+RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+LABEL_PRED = "http://www.w3.org/2000/01/rdf-schema#label"
+WIDGET_TYPE = f"{IRI_BASE}/types/Widget"
+PRICE_ATTR = f"{IRI_BASE}/types/Widget/attrs/price"
+RELATED_PRED = f"{IRI_BASE}/onto/relatedTo"
 
-def _count_response(n: int) -> dict:
-    """A SPARQL SELECT (COUNT(*) AS ?n) response for the delete_facts count query."""
-    return {"head": {"vars": ["n"]}, "results": {"bindings": [{"n": {"value": str(n)}}]}}
+
+def _props(store: MemoryGraphStore, entity_id: str) -> dict:
+    for row in store.snapshot_entities():
+        if row["id"] == entity_id:
+            return row
+    return {}
 
 
-def test_insert_facts_batches_and_routes_provenance():
-    """Instance triples are written in batches of 500; provenance triples go to
-    the companion provenance graph (never the data graph)."""
+def _prov_events(store: MemoryGraphStore, event_type: str) -> list[dict]:
+    return [p for p in store.snapshot_prov() if p["event_type"] == event_type]
+
+
+def test_insert_facts_writes_every_fact_through_the_store():
+    """A large write lands in full through the ONE insertion primitive.
+
+    The 1200-triple size is inherited from the batching test this replaces: the
+    SPARQL path had to chunk at 500 to stay under Neptune's per-statement limit,
+    and the property-graph path has no such limit, so what survives the port is
+    the property the batching existed to guarantee — nothing is dropped — plus
+    the proof that no SPARQL is emitted at all.
+    """
 
     async def run():
+        store = MemoryGraphStore()
         neptune = AsyncMock()
-        instance_graph = "https://graph.infona.ai/graphs/t/kg/k"
-        instance_triples = [
-            (f"https://graph.infona.ai/entities/E/{i}", "https://graph.infona.ai/onto/p", f"v{i}")
-            for i in range(1200)
-        ]
-        prov_triples = [("https://graph.infona.ai/prov/stmt/abc", "https://graph.infona.ai/prov/source", "csv")]
+        instance_triples = []
+        for i in range(1200):
+            uri = entity_uri("Widget", f"w{i}")
+            instance_triples.append((uri, RDF_TYPE, WIDGET_TYPE))
+            instance_triples.append((uri, PRICE_ATTR, f"v{i}"))
+
+        await insert_facts(neptune, GRAPH, instance_triples, store=store)
+
+        neptune.update.assert_not_awaited()
+        neptune.query.assert_not_awaited()
+        assert store.entity_count(tenant_id="t", kg="k") == 1200
+        assert _props(store, entity_uri("Widget", "w0"))["props"] == {"price": "v0"}
+        assert _props(store, entity_uri("Widget", "w1199"))["props"] == {"price": "v1199"}
+
+    asyncio.run(run())
+
+
+def test_insert_facts_routes_provenance_to_companion_records(monkeypatch):
+    """Provenance never mixes into instance data.
+
+    The named-graph version of this assertion was "the provenance triples name
+    the companion graph and the instance statements do not". Its property-graph
+    equivalent: assert events are ``:ProvEvent`` companion rows, the entities
+    carry only their own attributes, and the RDF ``provenance_triples`` payload
+    creates no entity of its own (it is ignored — the store path derives its
+    provenance from the facts).
+    """
+
+    async def run():
+        monkeypatch.setenv("INFONA_PROVENANCE_ENABLED", "1")
+        store = MemoryGraphStore()
+        subject = entity_uri("Widget", "w1")
+        prov_stmt = f"{IRI_BASE}/prov/stmt/abc"
 
         await insert_facts(
-            neptune, instance_graph, instance_triples, provenance_triples=prov_triples,
+            None,
+            GRAPH,
+            [(subject, RDF_TYPE, WIDGET_TYPE), (subject, PRICE_ATTR, "10")],
+            provenance_triples=[(prov_stmt, f"{IRI_BASE}/prov/source", "csv")],
+            store=store,
         )
 
-        # 1200 / 500 = 3 instance batches + 1 provenance batch.
-        assert neptune.update.await_count == 4
-        statements = [c.args[0] for c in neptune.update.await_args_list]
-        # Provenance landed in the companion graph; instance data did not.
-        prov_graph = provenance_graph_uri(instance_graph)
-        assert any(prov_graph in s for s in statements)
-        instance_only = [s for s in statements if prov_graph not in s]
-        assert len(instance_only) == 3
-        assert all(instance_graph in s for s in instance_only)
+        asserts = _prov_events(store, "assert")
+        assert [(p["subject_id"], p["attr"]) for p in asserts] == [(subject, "price")]
+        # The instance side carries the attribute and nothing provenance-shaped.
+        assert _props(store, subject)["props"] == {"price": "10"}
+        assert prov_stmt not in {row["id"] for row in store.snapshot_entities()}
+
+    asyncio.run(run())
+
+
+def test_insert_facts_writes_no_provenance_when_the_gate_is_off(monkeypatch):
+    async def run():
+        monkeypatch.delenv("INFONA_PROVENANCE_ENABLED", raising=False)
+        monkeypatch.delenv("INFONA_PROVENANCE_STORE_ALWAYS", raising=False)
+        store = MemoryGraphStore()
+        await insert_facts(
+            None,
+            GRAPH,
+            [(entity_uri("Widget", "w1"), PRICE_ATTR, "10")],
+            store=store,
+        )
+        assert store.snapshot_prov() == []
 
     asyncio.run(run())
 
 
 def test_insert_facts_noop_on_empty():
     async def run():
+        store = MemoryGraphStore()
         neptune = AsyncMock()
-        await insert_facts(neptune, "https://g", [], provenance_triples=None)
+        await insert_facts(neptune, GRAPH, [], provenance_triples=None, store=store)
         neptune.update.assert_not_awaited()
+        assert store.snapshot_entities() == []
 
     asyncio.run(run())
 
@@ -269,67 +363,111 @@ def test_refresh_after_write_triple_count_invalidate_is_best_effort(monkeypatch)
 # --- delete_facts: batching, counting, provenance tombstone (ADR 0007) ---------
 
 
-def test_delete_facts_batches_concrete_triples_and_counts_exactly():
-    """Concrete-triple deletes go out as batched DELETE DATA (500/batch), the
-    count is exact (len), and NO count query is needed."""
+def test_delete_facts_removes_every_concrete_triple_and_counts_exactly():
+    """Concrete-triple deletes remove exactly what they name, with no COUNT query.
+
+    The count is now derived from the rows the store actually removed rather
+    than a best-effort ``SELECT (COUNT(*))``: each cleared literal reports its
+    Entity property AND its ADR 0013 datatype ``Assertion``, i.e. 2 per triple.
+    Pinned as an exact number so a future change to what a removal touches has
+    to be deliberate.
+    """
 
     async def run():
+        store = MemoryGraphStore()
         neptune = AsyncMock()
-        g = "https://graph.infona.ai/graphs/t/kg/k"
-        triples = [
-            (f"https://graph.infona.ai/entities/E/{i}", "https://graph.infona.ai/onto/p", f"v{i}")
-            for i in range(1200)
-        ]
-        removed = await delete_facts(neptune, g, triples=triples)
-        assert removed == 1200
-        assert neptune.update.await_count == 3  # 1200 / 500 = 3 DELETE DATA batches
-        assert neptune.query.await_count == 0  # exact count, no COUNT query
-        stmts = [c.args[0] for c in neptune.update.await_args_list]
-        assert all("DELETE DATA" in s and g in s for s in stmts)
+        triples = []
+        for i in range(1200):
+            uri = entity_uri("Widget", f"w{i}")
+            triples.append((uri, PRICE_ATTR, f"v{i}"))
+        await insert_facts(None, GRAPH, triples, store=store)
+
+        removed = await delete_facts(neptune, GRAPH, triples=triples, store=store)
+
+        assert removed == 2400  # 1200 properties + 1200 Assertion rows
+        neptune.update.assert_not_awaited()
+        neptune.query.assert_not_awaited()  # exact count, no COUNT query
+        assert all(row["props"] == {} for row in store.snapshot_entities())
 
     asyncio.run(run())
 
 
-def test_delete_facts_predicate_scoped_uses_wildcard_and_counts():
-    """An object=None triple is a predicate-scoped delete (VALUES (?s ?p)), whose
-    removed count comes from a COUNT query."""
+def test_delete_facts_predicate_scoped_clear_removes_the_whole_predicate():
+    """An object=None triple is a predicate-scoped clear: every value goes.
+
+    The SPARQL shape (``VALUES (?s ?p)`` + a COUNT round-trip) is gone; what
+    matters is that naming (subject, predicate) with no object removes that
+    attribute entirely, for both an ``attrs/`` literal and an ``onto/``
+    relationship.
+    """
 
     async def run():
-        neptune = AsyncMock()
-        neptune.query.return_value = _count_response(2)
-        g = "https://graph.infona.ai/graphs/t/kg/k"
-        removed = await delete_facts(
-            neptune, g, triples=[("e1", "p1", None), ("e1", "p2", None)]
+        store = MemoryGraphStore()
+        subject = entity_uri("Widget", "w1")
+        target = entity_uri("Widget", "w2")
+        await insert_facts(
+            None,
+            GRAPH,
+            [
+                (subject, RDF_TYPE, WIDGET_TYPE),
+                (subject, PRICE_ATTR, "10"),
+                (target, RDF_TYPE, WIDGET_TYPE),
+                (subject, RELATED_PRED, target),
+            ],
+            store=store,
         )
-        assert removed == 2
-        assert neptune.query.await_count == 1
-        assert neptune.update.await_count == 1
-        stmt = neptune.update.await_args_list[0].args[0]
-        assert "VALUES (?s ?p)" in stmt and "DELETE { GRAPH" in stmt
+        assert store.rel_count(tenant_id="t", kg="k") == 1
+
+        removed = await delete_facts(
+            None,
+            GRAPH,
+            triples=[(subject, PRICE_ATTR, None), (subject, RELATED_PRED, None)],
+            store=store,
+        )
+
+        assert removed > 0
+        assert _props(store, subject)["props"] == {}
+        assert store.rel_count(tenant_id="t", kg="k") == 0
+        # The predicate-scoped clear is scoped to its subject: the peer survives.
+        assert _props(store, target)["id"] == target
 
     asyncio.run(run())
 
 
-def test_delete_facts_whole_subject_uses_values_and_counts():
-    """subjects= deletes every triple of each URI (VALUES ?s), counted via COUNT."""
+def test_delete_facts_whole_subject_removes_the_entity_and_its_edges():
+    """``subjects=`` removes the entity and every relationship incident to it."""
 
     async def run():
-        neptune = AsyncMock()
-        neptune.query.return_value = _count_response(5)
-        g = "https://graph.infona.ai/graphs/t/kg/k"
-        removed = await delete_facts(neptune, g, subjects=["e1", "e2"])
-        assert removed == 5
-        assert neptune.update.await_count == 1
-        stmt = neptune.update.await_args_list[0].args[0]
-        assert "VALUES ?s" in stmt and "DELETE { GRAPH" in stmt
+        store = MemoryGraphStore()
+        e1 = entity_uri("Widget", "w1")
+        e2 = entity_uri("Widget", "w2")
+        await insert_facts(
+            None,
+            GRAPH,
+            [
+                (e1, RDF_TYPE, WIDGET_TYPE),
+                (e1, PRICE_ATTR, "10"),
+                (e2, RDF_TYPE, WIDGET_TYPE),
+                (e2, RELATED_PRED, e1),  # INCOMING edge on e1
+            ],
+            store=store,
+        )
+
+        removed = await delete_facts(None, GRAPH, subjects=[e1], store=store)
+
+        assert removed > 0
+        assert {row["id"] for row in store.snapshot_entities()} == {e2}
+        # The incoming edge went with the node — no dangling endpoint.
+        assert store.rel_count(tenant_id="t", kg="k") == 0
 
     asyncio.run(run())
 
 
 def test_delete_facts_noop_on_empty():
     async def run():
+        store = MemoryGraphStore()
         neptune = AsyncMock()
-        removed = await delete_facts(neptune, "https://g")
+        removed = await delete_facts(neptune, GRAPH, store=store)
         assert removed == 0
         neptune.update.assert_not_awaited()
 
@@ -337,22 +475,29 @@ def test_delete_facts_noop_on_empty():
 
 
 def test_delete_facts_writes_tombstone_when_provenance_enabled(monkeypatch):
-    """With INFONA_PROVENANCE_ENABLED=1 a tombstone event lands in the companion
-    provenance graph (never the data graph)."""
+    """With INFONA_PROVENANCE_ENABLED=1 a tombstone lands as a companion record."""
 
     async def run():
         monkeypatch.setenv("INFONA_PROVENANCE_ENABLED", "1")
-        neptune = AsyncMock()
-        neptune.query.return_value = _count_response(1)
-        g = "https://graph.infona.ai/graphs/t/kg/k"
-        subj = "https://graph.infona.ai/entities/E/1"
-        await delete_facts(neptune, g, subjects=[subj], reason="unit-delete")
-        stmts = [c.args[0] for c in neptune.update.await_args_list]
-        prov_graph = provenance_graph_uri(g)
-        prov_stmts = [s for s in stmts if prov_graph in s]
-        assert prov_stmts, "a tombstone must be written to the provenance graph"
-        assert any("tombstone" in s for s in prov_stmts)
-        assert any(subj in s for s in prov_stmts)
+        store = MemoryGraphStore()
+        subj = entity_uri("Widget", "w1")
+        await insert_facts(
+            None, GRAPH, [(subj, RDF_TYPE, WIDGET_TYPE)], store=store
+        )
+
+        await delete_facts(
+            None, GRAPH, subjects=[subj], reason="unit-delete", store=store
+        )
+
+        tombstones = _prov_events(store, "tombstone")
+        assert tombstones, "a tombstone must be recorded for a removal"
+        assert any(
+            p["subject_id"] == subj and p["reason"] == "unit-delete"
+            for p in tombstones
+        )
+        # Companion records are not instance data: the entity is gone, and the
+        # tombstone did not resurrect it as a node.
+        assert store.snapshot_entities() == []
 
     asyncio.run(run())
 
@@ -360,12 +505,12 @@ def test_delete_facts_writes_tombstone_when_provenance_enabled(monkeypatch):
 def test_delete_facts_no_tombstone_when_provenance_disabled(monkeypatch):
     async def run():
         monkeypatch.delenv("INFONA_PROVENANCE_ENABLED", raising=False)
-        neptune = AsyncMock()
-        neptune.query.return_value = _count_response(1)
-        g = "https://graph.infona.ai/graphs/t/kg/k"
-        await delete_facts(neptune, g, subjects=["e1"], reason="x")
-        prov_graph = provenance_graph_uri(g)
-        assert not any(prov_graph in c.args[0] for c in neptune.update.await_args_list)
+        monkeypatch.delenv("INFONA_PROVENANCE_STORE_ALWAYS", raising=False)
+        store = MemoryGraphStore()
+        subj = entity_uri("Widget", "w1")
+        await insert_facts(None, GRAPH, [(subj, RDF_TYPE, WIDGET_TYPE)], store=store)
+        await delete_facts(None, GRAPH, subjects=[subj], reason="x", store=store)
+        assert store.snapshot_prov() == []
 
     asyncio.run(run())
 
@@ -374,30 +519,57 @@ def test_delete_facts_no_tombstone_when_provenance_disabled(monkeypatch):
 
 
 def test_rewrite_subject_moves_both_directions_and_records_event(monkeypatch):
+    """An ER merge re-keys the node — one event, not delete+insert.
+
+    The SPARQL version asserted the two-direction ``DELETE { <old> ?p ?o }`` /
+    ``INSERT { <new> ?p ?o }`` pair. The property-graph equivalent is stronger
+    because it is checked against the graph rather than the statement: the
+    entity carries the NEW id with its properties intact, and an edge that
+    POINTED AT the old id now points at the new one (the "incoming" half, which
+    is the direction a naive delete+insert loses).
+    """
+
     async def run():
         monkeypatch.setenv("INFONA_PROVENANCE_ENABLED", "1")
-        neptune = AsyncMock()
-        g = "https://graph.infona.ai/graphs/t/kg/k"
-        await rewrite_subject(neptune, g, "urn:old", "urn:new", reason="er-merge")
-        stmts = [c.args[0] for c in neptune.update.await_args_list]
-        # The merge SPARQL moves outgoing + incoming references.
-        assert any(
-            "DELETE { <urn:old> ?p ?o }" in s and "INSERT { <urn:new> ?p ?o }" in s
-            for s in stmts
+        store = MemoryGraphStore()
+        old = entity_uri("Widget", "old")
+        new = entity_uri("Widget", "new")
+        peer = entity_uri("Widget", "peer")
+        await insert_facts(
+            None,
+            GRAPH,
+            [
+                (old, RDF_TYPE, WIDGET_TYPE),
+                (old, PRICE_ATTR, "10"),
+                (peer, RDF_TYPE, WIDGET_TYPE),
+                (peer, RELATED_PRED, old),  # incoming edge, must follow the merge
+            ],
+            store=store,
         )
-        # The rewrite event lands in the provenance graph, old -> new.
-        prov_graph = provenance_graph_uri(g)
-        prov = [s for s in stmts if prov_graph in s]
-        assert prov and any("rewrite" in s and "urn:new" in s for s in prov)
+
+        await rewrite_subject(None, GRAPH, old, new, reason="er-merge", store=store)
+
+        ids = {row["id"] for row in store.snapshot_entities()}
+        assert new in ids and old not in ids
+        assert _props(store, new)["props"] == {"price": "10"}
+        assert [r["end_id"] for r in store.snapshot_rels()] == [new]
+
+        rewrites = _prov_events(store, "rewrite")
+        assert rewrites, "an ER merge must record a rewrite event"
+        assert rewrites[0]["old_id"] == old and rewrites[0]["new_id"] == new
+        # A rewrite is NOT a delete: no tombstone is recorded for the loser.
+        assert _prov_events(store, "tombstone") == []
 
     asyncio.run(run())
 
 
 def test_rewrite_subject_noop_on_same_uri():
     async def run():
+        store = MemoryGraphStore()
         neptune = AsyncMock()
-        await rewrite_subject(neptune, "g", "same", "same")
+        await rewrite_subject(neptune, GRAPH, "same", "same", store=store)
         neptune.update.assert_not_awaited()
+        assert store.snapshot_entities() == []
 
     asyncio.run(run())
 

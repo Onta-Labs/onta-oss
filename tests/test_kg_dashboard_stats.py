@@ -157,20 +157,23 @@ async def test_enriching_status_from_inflight_jobs():
 
 
 async def test_list_kgs_endpoint_serves_store_stats(client, mock_neptune, auth_headers):
-    """GET /kgs surfaces entity/edge counts from the store with no Neptune scan."""
+    """GET /kgs surfaces entity/edge counts from the durable store, no scan.
+
+    **Ported by ONTA-527:** the KG row itself used to come from a SPARQL
+    metadata query (mocked here as ``{name, desc, count}`` bindings); it comes
+    from the ``:KnowledgeGraph`` registry now, so the fixture registers the KG
+    instead of mocking its listing query. The subject is unchanged — the
+    dashboard's entity/edge counts are served from the relational stats store,
+    not recomputed on the hot path — and ``assert_not_called`` now proves no
+    query is issued at all, rather than "no scan-shaped query".
+    """
+    from infona_client.graph.kg_registry import upsert_registered_kg
+
+    await upsert_registered_kg(TENANT, KG, triple_count=999)
     await get_kg_stats_store().upsert(
         KgStats(tenant_id=TENANT, kg_name=KG, entity_count=482000, edge_count=1300000)
     )
 
-    def route(sparql, *a, **k):
-        if "kg_name" in sparql:  # the metadata listing query
-            return {"head": {"vars": ["name", "desc", "count"]},
-                    "results": {"bindings": [
-                        {"name": {"value": KG}, "count": {"value": "999"}},
-                    ]}}
-        return {"head": {"vars": []}, "results": {"bindings": []}}
-
-    mock_neptune.query.side_effect = route
     resp = client.get(f"/graphs/{TENANT}/kgs", headers=auth_headers)
     assert resp.status_code == 200
     body = resp.json()
@@ -181,3 +184,4 @@ async def test_list_kgs_endpoint_serves_store_stats(client, mock_neptune, auth_h
     assert kg["edge_count"] == 1300000
     assert kg["status"] == "active"          # no in-flight job in the (empty) store
     assert kg["triple_count"] == 999
+    mock_neptune.query.assert_not_called()
