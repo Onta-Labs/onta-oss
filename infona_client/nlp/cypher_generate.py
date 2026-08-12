@@ -84,6 +84,31 @@ def extract_type_names_from_ontology(ontology_summary: str) -> list[str]:
     return names
 
 
+
+_TYPE_ACTIVITY_RE = re.compile(
+    r"(?im)^\s*Type:\s*([A-Za-z][A-Za-z0-9_]*)\b(?:\s*\((\d+)\s+entities?\)|\s*\[no instances\])?"
+)
+
+
+def extract_type_activity_from_ontology(ontology_summary: str) -> dict[str, int]:
+    """Map type leaf → instance count hint from ontology summary text.
+
+    ``[no instances]`` → 0; ``(N entities)`` → N; bare ``Type: X`` → -1 (unknown).
+    Used to prefer types that actually have data in this KG over empty tenant
+    leftovers (e.g. Product with 0 vs InventoryItem with 6).
+    """
+    out: dict[str, int] = {}
+    for m in _TYPE_ACTIVITY_RE.finditer(ontology_summary or ""):
+        name = m.group(1)
+        if m.group(0).lower().endswith("[no instances]"):
+            out[name] = 0
+        elif m.group(2) is not None:
+            out[name] = int(m.group(2))
+        else:
+            out.setdefault(name, -1)
+    return out
+
+
 def _normalize_type_token(text: str) -> str:
     t = _NOISE_RE.sub(" ", text or "")
     t = _NON_ALNUM_RE.sub("", t.strip())
@@ -203,7 +228,11 @@ def _score_type_match(label: str, type_name: str) -> int:
     return score * 100 + min(len(type_name), 99)
 
 
-def match_type_name(label: str, type_names: list[str]) -> str | None:
+def match_type_name(
+    label: str,
+    type_names: list[str],
+    ontology_summary: str = "",
+) -> str | None:
     """Match a free-text label to an ontology type leaf (case-insensitive).
 
     General matching (no domain hard-codes):
@@ -212,6 +241,8 @@ def match_type_name(label: str, type_names: list[str]) -> str | None:
     * CamelCase head-noun (``trials`` → ``ClinicalTrial`` / ``TrialRun``)
     * multi-alternative labels (``A or B``)
     * singularized containment and token overlap
+    * **prefer types with instances in this KG** over empty tenant leftovers
+      (``Product [no instances]`` loses to ``InventoryItem (6 entities)``)
 
     Returns None on no match or when two distinct types score equally best
     (ambiguous) so callers can fall through to the LLM instead of inventing
@@ -220,12 +251,20 @@ def match_type_name(label: str, type_names: list[str]) -> str | None:
     if not label or not type_names:
         return None
 
+    activity = extract_type_activity_from_ontology(ontology_summary)
     best: dict[str, int] = {}
     for alt in _label_alternatives(label):
         for t in type_names:
             s = _score_type_match(alt, t)
             if s <= 0:
                 continue
+            # Demote empty types so "products" does not bind a zero-row Product
+            # leftover when InventoryItem has data in this KG.
+            act = activity.get(t, -1)
+            if act == 0:
+                s = max(1, s // 20)
+            elif act > 0:
+                s = s + 2000  # strong preference for types present in-KG
             prev = best.get(t, 0)
             if s > prev:
                 best[t] = s
@@ -277,16 +316,34 @@ def resolve_type_name(
     When the ontology is known (non-empty ``type_names`` / summary types),
     **never invent** a PascalCase guess — a miss returns ``None`` so fixtures
     fall through to the LLM instead of counting a non-existent type as 0.
+
+    Prefer types that have instances in this KG. Binding an empty leftover
+    type (tenant pollution: ``Product [no instances]`` while ``InventoryItem``
+    has rows) yields silent wrong zeros — better to fall through to the LLM
+    which sees the full schema.
     """
     names = (
         list(type_names)
         if type_names is not None
         else extract_type_names_from_ontology(ontology_summary)
     )
-    if names:
-        return match_type_name(label, names)
-    # Bootstrap / empty ontology only — invent PascalCase for hermetic tests.
-    return guess_type_name(label)
+    if not names:
+        # Bootstrap / empty ontology only — invent PascalCase for hermetic tests.
+        return guess_type_name(label)
+
+    activity = extract_type_activity_from_ontology(ontology_summary)
+    active = [t for t in names if activity.get(t, -1) > 0]
+    if active:
+        hit = match_type_name(label, active, ontology_summary=ontology_summary)
+        if hit is not None:
+            return hit
+        # No active-type match. Avoid binding a known-empty type for fixtures.
+        empty_hit = match_type_name(label, names, ontology_summary=ontology_summary)
+        if empty_hit is not None and activity.get(empty_hit) == 0:
+            return None
+        return empty_hit
+
+    return match_type_name(label, names, ontology_summary=ontology_summary)
 
 
 # ---------------------------------------------------------------------------
@@ -1373,12 +1430,22 @@ def try_aggregate_query(
     if not op:
         return None
     prop = (m.group("prop") or "").strip() or None
-    # "total number of grants" is a COUNT, not SUM(number).
+    label = (m.group("label") or "").strip()
+    # "total number of grants" is a COUNT; "total number of seats" is SUM(seats).
     if prop and prop.lower() in {
         "number", "count", "counts", "entities", "records", "items", "rows", "things",
     }:
-        return None
-    label = (m.group("label") or "").strip()
+        # Peek at first token of label — if it is a numeric prop leaf, SUM that.
+        first = (label.split() or [""])[0].strip(".,")
+        if first.lower() in {c.lower() for c in _NUMERIC_AGG_PROP_CANDIDATES} or (
+            first and _SAFE_PROP_RE.match(first)
+        ):
+            # Will resolve against ontology below; if not a real prop, fall through.
+            prop = first
+            label = " ".join(label.split()[1:]).strip()
+            label = re.sub(r"(?i)^(of|for|across|over|on|all|the)\s+", "", label).strip()
+        else:
+            return None
     label = _TRAILING_PUNCT_RE.sub("", label)
     # Strip leading noise left in label ("all grants", "the widgets")
     label = re.sub(r"(?i)^(all|the|of|for)\s+", "", label).strip()

@@ -429,3 +429,52 @@ async def test_literal_aggregate_duplicates_sum():
     )
     val = rows[0].get("value") if hasattr(rows[0], "get") else rows[0].data.get("value")
     assert val == 300.0, val
+
+
+def test_prefer_active_types_over_empty_pollution():
+    """Tenant leftovers with 0 instances must not steal fixture counts.
+
+    "products" matching empty Product while InventoryItem has rows is the
+    silent-zero pollution class from multi-KG tenants.
+    """
+    types = ["Product", "InventoryItem", "Book", "Warehouse"]
+    onto = (
+        "Type: Product [no instances]\n"
+        "Type: InventoryItem (6 entities)\n"
+        "  - unit_price: float (literal)\n"
+        "Type: Book [no instances]\n"
+        "Type: Warehouse (3 entities)\n"
+    )
+    # Fall through rather than count empty Product as 0
+    assert resolve_type_name("products", types, onto) is None
+    assert try_stub_count_query(
+        "How many products are there?", onto, type_names=types
+    ) is None
+    # Explicit active type still works
+    p = try_stub_count_query(
+        "How many inventory items?", onto, type_names=types
+    )
+    assert p is not None
+    assert p["params"]["type_names"] == ["InventoryItem"]
+    # When Product has data, "products" binds Product
+    onto2 = "Type: Product (5 entities)\nType: InventoryItem (6 entities)\n"
+    assert resolve_type_name("products", ["Product", "InventoryItem"], onto2) == "Product"
+
+
+def test_total_number_of_numeric_prop_is_sum():
+    onto = "Type: Course\n  - seats: integer (literal)\n  - credits: integer (literal)\n"
+    p = try_deterministic_cypher(
+        "total number of seats across all courses",
+        onto,
+        type_names=["Course"],
+    )
+    assert p is not None
+    assert p["template"] == "literal_aggregate"
+    assert p["params"]["prop_key"] == "seats"
+    assert p["params"]["agg_op"] == "sum"
+    # entity count still count
+    c = try_deterministic_cypher(
+        "total number of courses", onto, type_names=["Course"]
+    )
+    assert c is not None
+    assert c["template"] == "entities_of_type_count"
