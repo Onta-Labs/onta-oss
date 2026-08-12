@@ -80,13 +80,19 @@ def test_bank_uris_use_live_path_shapes():
 
 
 def test_bank_is_valid_jsonl_with_embeddings():
-    """The rewrite must not have disturbed the stored question embeddings."""
+    """The rewrite must not have disturbed the stored question embeddings.
+
+    ONTA-539: rows may be SPARQL-only, Cypher-only, or mixed — require at least
+    one non-empty query body.
+    """
     lines = [ln for ln in _bank_text().splitlines() if ln.strip()]
     assert lines, "example bank is empty"
     for line in lines:
         rec = json.loads(line)
         assert rec["question"].strip()
-        assert rec["sparql"].strip()
+        sparql = (rec.get("sparql") or "").strip()
+        cypher = (rec.get("cypher") or "").strip()
+        assert sparql or cypher, "example requires sparql and/or cypher"
         assert len(rec["embedding"]) == 1536
 
 

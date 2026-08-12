@@ -1,8 +1,15 @@
-"""SPARQL example bank with semantic retrieval for few-shot prompting.
+"""Query example bank with semantic retrieval for few-shot prompting.
 
-Stores (question, SPARQL) pairs from successful evaluations. At query time,
-retrieves the most relevant examples via embedding similarity with anti-cheat
-filtering, cross-dataset preference, and pattern diversity.
+Stores (question, SPARQL and/or Cypher) pairs from successful evaluations and
+committed Cypher seeds (ONTA-539). At query time, retrieves the most relevant
+examples via embedding similarity with anti-cheat filtering, cross-dataset
+preference, and pattern diversity.
+
+Neo4j / Cypher path (``language="cypher"``): only rows with a non-empty
+``cypher`` field are ranked and formatted — SPARQL bodies never enter the
+Cypher LLM prompt. Rebuild Cypher coverage with::
+
+    python -m infona_client.nlp.cypher_example_seeds
 
 Uses the same OpenRouter text-embedding-3-small embeddings as ontology_embeddings.py.
 """
@@ -701,6 +708,8 @@ class ExampleBank:
         exclude_questions: list[str] | None = None,
         kg_name: str = "",
         top_k: int = 3,
+        *,
+        language: str = "sparql",
     ) -> list[Example]:
         """Retrieve the best few-shot examples for a query.
 
@@ -718,6 +727,11 @@ class ExampleBank:
             exclude_questions: Questions to exclude from results (anti-cheat).
             kg_name: The current KG name (for cross-dataset preference).
             top_k: Number of examples to return.
+            language: ``"sparql"`` (default) or ``"cypher"`` (Neo4j / ONTA-539).
+                Cypher mode only ranks examples that carry a non-empty
+                ``cypher`` field so the Neo4j prompt never receives SPARQL-only
+                rows that format away to empty. SPARQL mode only ranks rows
+                with non-empty ``sparql``.
 
         Returns:
             List of up to top_k Example objects, pattern-diverse and relevant.
@@ -726,19 +740,45 @@ class ExampleBank:
             return []
 
         exclude_questions = exclude_questions or []
+        lang = (language or "sparql").strip().lower()
+
+        # ONTA-539: pre-filter the pool so cosine never promotes a row that
+        # format_examples_for_prompt would drop for this language. Also require
+        # a non-empty embedding so the matrix stays well-defined.
+        def _in_language_pool(ex: Example) -> bool:
+            if not ex.embedding:
+                return False
+            if lang == "cypher":
+                return bool((ex.cypher or "").strip())
+            if lang == "sparql":
+                return bool((ex.sparql or "").strip())
+            # Unknown language: any non-empty query body.
+            return bool((ex.sparql or "").strip() or (ex.cypher or "").strip())
+
+        pool_indices = [
+            i for i, ex in enumerate(self._examples) if _in_language_pool(ex)
+        ]
+        if not pool_indices:
+            return []
 
         # Step 1: Embed the question
         q_embedding = await self._embed_single(question)
         q_vec = np.array(q_embedding, dtype=np.float32)
 
-        # Build embedding matrix
+        # Build embedding matrix over the language-filtered pool only.
+        pool_examples = [self._examples[i] for i in pool_indices]
         bank_matrix = np.stack(
-            [np.array(ex.embedding, dtype=np.float32) for ex in self._examples]
+            [np.array(ex.embedding, dtype=np.float32) for ex in pool_examples]
         )
         similarities = _cosine_similarity(q_vec, bank_matrix)
 
-        # Step 2: Top-10 candidates by raw similarity
-        candidate_indices = np.argsort(similarities)[::-1][:10].tolist()
+        # Step 2: Top-10 candidates by raw similarity (indices into pool_indices)
+        pool_rank = np.argsort(similarities)[::-1][:10].tolist()
+        candidate_indices = [pool_indices[j] for j in pool_rank]
+        # Map global index -> similarity for scoring
+        sim_by_global = {
+            pool_indices[j]: float(similarities[j]) for j in range(len(pool_indices))
+        }
 
         # Step 3: Anti-cheat — embed excluded questions and filter
         exclude_vecs: list[np.ndarray] = []
@@ -749,7 +789,7 @@ class ExampleBank:
         filtered: list[tuple[int, float]] = []  # (index, adjusted_score)
         for idx in candidate_indices:
             ex = self._examples[idx]
-            sim = float(similarities[idx])
+            sim = sim_by_global[idx]
 
             # Anti-cheat: check against excluded questions
             if exclude_vecs:

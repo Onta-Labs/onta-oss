@@ -405,19 +405,25 @@ for this use case.
 Each type is embedded as a text chunk containing the type name, its attributes
 (with datatypes), and its relationship targets.
 
-## Example Bank (RAG for SPARQL)
+## Example Bank (RAG for SPARQL / Cypher)
 
-`infona/nlp/example_bank.py` — Few-shot examples from eval history.
+`infona_client/nlp/example_bank.py` — Few-shot examples from eval history and
+committed Cypher seeds (ONTA-539).
 
-The example bank replaces static prompt rules with concrete working SPARQL examples.
+The example bank replaces static prompt rules with concrete working query examples.
 Instead of teaching the LLM "use CONTAINS for entity names" (abstract), it shows
-a real query that uses CONTAINS (concrete). The LLM adapts the pattern to the
+a real query that uses that pattern (concrete). The LLM adapts the shape to the
 current ontology.
 
 - **Storage:** `eval_reports/example_bank.jsonl` with embedded question vectors
 - **Model:** `openai/text-embedding-3-small` (1536 dims, same as ontology embeddings)
 - **Cap:** 500 examples max (balanced across KGs)
-- **Source:** `eval_reports/finetune_pairs.jsonl` — deduped correct (question, SPARQL) pairs
+- **Source:** `eval_reports/finetune_pairs.jsonl` — deduped correct (question, SPARQL) pairs;
+  plus ADR 0013 Cypher via `nlp/cypher_example_seeds.py` on the Neo4j path
+- **Neo4j:** `retrieve(..., language="cypher")` + `format_examples_for_prompt(..., language="cypher")`
+  only surface rows with a non-empty `cypher` field — SPARQL bodies never enter the
+  Cypher LLM prompt. Rebuild: `python -m infona_client.nlp.cypher_example_seeds`
+  (see `docs/neo4j-local.md`).
 
 ### Excluded: external benchmark KGs (ONTA-449)
 

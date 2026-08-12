@@ -304,7 +304,8 @@ Or per call: `pipeline.ask(..., use_cypher=True)` with an injected
 | Deterministic fixtures → semantic templates | `nlp/cypher_generate.py` |
 | Semantic helper templates + subclass closure | `graph/rdfs_helpers.py` |
 | Template registry | `graph/schema_bootstrap.py` |
-| Example bank optional `cypher` field | `nlp/example_bank.py` |
+| Example bank optional `cypher` field + language-filtered retrieve | `nlp/example_bank.py` |
+| Committed Cypher few-shot seeds (ADR 0013 shapes) | `nlp/cypher_example_seeds.py` |
 | Pipeline branch (catalog ontology, template prefer, 1× retry) | `nlp/pipeline.py` (`_ask_cypher`) |
 | Allowlisted NL semantic templates | `entities_of_type`, `entities_of_type_count`, `literal_values`, `related_entities`, `assertions_for_subject`, `subclass_of_closure` |
 | Explore legacy templates (still registered) | `entity_count_*`, `entity_list_by_type_page`, … |
@@ -317,6 +318,35 @@ Ontology for Cypher prefers `ontology_catalog.schema_types_for_kg` when a
 GraphStore is present. Type fixtures expand subclass closure into `$type_names`
 when the ontology summary carries `parent:` lines.
 
+### Cypher few-shot example bank (ONTA-539)
+
+Neo4j `/ask` uses **Cypher few-shots**, never SPARQL bodies:
+
+1. `ExampleBank.retrieve(..., language="cypher")` ranks only rows with a
+   non-empty `cypher` field.
+2. `format_examples_for_prompt(..., language="cypher")` skips SPARQL-only rows
+   and rewrites any literal `tenant_id`/`kg` to `$tenant_id`/`$kg`.
+3. The committed bank (`eval_reports/example_bank.jsonl`) carries ADR 0013
+   Cypher on open-data questions (imdb, events-sf, coffee, video-games, cfpb)
+   plus a small synthetic shape set — **no spider-bench / eval-mh**.
+
+Required shapes: count-by-type, literal filter, numeric compare, related-entity
+name filter, sum, avg, 1-hop `related_entities`.
+
+**Rebuild Cypher coverage** (hermetic when seeds match existing questions and
+reuse embeddings — no live Neo4j/OpenRouter required):
+
+```bash
+# from infona-oss/
+python -m infona_client.nlp.cypher_example_seeds
+# dry-run:
+python -m infona_client.nlp.cypher_example_seeds --dry-run
+```
+
+Guards: `tests/test_example_bank_cypher.py`,
+`tests/test_example_bank_cypher_coverage.py`,
+`tests/test_example_bank_benchmark_exclusion.py`.
+
 **Not yet:** multi-hop joins, full Assertion SoT dual-write in writers, enum
 recovery, eval rebaseline against golden suite CI, richer NL coverage.
 ## Tests
@@ -328,7 +358,8 @@ pytest tests/test_graph_store.py tests/test_explore_store.py \
   tests/test_rdf_semantic_model.py tests/test_golden_rdf_semantics.py \
   tests/test_neo4j_isolation_suite.py \
   tests/test_cypher_scope.py tests/test_cypher_prompts.py \
-  tests/test_example_bank_cypher.py tests/test_ask_cypher_pipeline.py \
+  tests/test_example_bank_cypher.py tests/test_example_bank_cypher_coverage.py \
+  tests/test_ask_cypher_pipeline.py \
   tests/test_query_neo4j_hard_break.py -q
 
 # Live Neo4j smoke (compose up first; optional service in neo4j.yml)
