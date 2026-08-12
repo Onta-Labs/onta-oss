@@ -1498,19 +1498,50 @@ async def get_type_summary(
 ):
     """Bundle all Explorer panel data for one type in one call.
 
-    Serves from precomputed stats (fast); falls back to a live scan if stats
-    for this type are not yet materialized. All percentages are relative to
-    entity_count.
+    **GraphStore / Neo4j (P-A1a):** instance inventory via
+    :func:`infona_client.graph.explore_store.type_summary` — same
+    ``INSTANCE_OF`` count path as type-counts so ``vis`` overview and
+    ``vis <Type>`` drill-in agree. Returns 404 only when the type is neither
+    declared in the tenant ontology nor has instances in this KG.
+
+    **Legacy SPARQL (Neptune):** serves from precomputed stats (fast); falls
+    back to a live scan if stats for this type are not yet materialized. All
+    percentages are relative to entity_count.
 
     A ``type_name`` that cannot sit inside an IRI is a 422 (ONTA-425), rejected
     here rather than three store round trips later, so the caller is told what is
     wrong instead of getting a 500 out of the store's parser.
     """
+    from fastapi import HTTPException
+
+    from infona_client.graph.explore_store import type_summary as pg_type_summary
+    from infona_client.graph.store import GraphConfigError
+
     require_valid_type_name(type_name)
     cache_key = (tenant.tenant_id, kg_name, type_name)
     cached = _summary_cache.get(cache_key)
     if cached is not None and (time.monotonic() - cached[0]) < _SUMMARY_TTL_SECONDS:
         return cached[1]
+
+    # GraphStore path (Neo4j / Memory) — P-A1a vis drill-in.
+    try:
+        pg_row = await pg_type_summary(
+            tenant_id=tenant.tenant_id,
+            kg_name=kg_name,
+            type_name=type_name,
+        )
+        # Store path answered: None → unknown type (no instances + not declared).
+        if pg_row is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Type '{type_name}' not found in KG '{kg_name}'",
+            )
+        result = pg_row.as_api_dict()
+        _summary_cache[cache_key] = (time.monotonic(), result)
+        return result
+    except GraphConfigError:
+        # No process GraphStore — fall through to legacy SPARQL (rare offline).
+        pass
 
     # Layered resolve (ONTA-397): Public/Enhanced types are visible when the
     # tenant graph is empty. Instance counts still use the tenant-namespace
