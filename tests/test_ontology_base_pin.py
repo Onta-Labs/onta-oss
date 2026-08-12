@@ -8,12 +8,25 @@ Acceptance:
 - Collision preview for overlapping tenant/base names
 - Entitlement degrade: enhanced pin + entitled=False → no throw, public only
 - Deprecation preview for attrs present on tenant shape
+
+**Ported by ONTA-527.** Every acceptance case above ran against a ~340-line
+in-file SPARQL emulator (``MemNeptune``) which stored the pin triples, the
+published release records and the ontology content the previews diff. Production
+is Neo4j-only — Neptune is decommissioned and the SPARQL execution path is
+deleted — and ``graph/ontology_base_pin.py`` has no GraphStore path at all: the
+pin itself is read/written with ``neptune.query`` / ``neptune.update`` against a
+``…/base-pin`` named graph, the versions it pins to come from
+``ontology_snapshots.list_snapshots`` (SPARQL), and the preview diffs
+``load_ontology_shape`` results (which early-return EMPTY whenever a GraphStore
+is configured). The emulator was therefore the only reason any of this was
+green, including the two cases that were still passing before this port — they
+were false green, not survivors. It is deleted, the cases are re-expressed on
+the shipped path, and each is a ``strict=True`` xfail naming the mechanism.
+
+The pure LayerStack / URI tests below are backend-independent and untouched.
 """
 
 from __future__ import annotations
-
-import re
-from collections import defaultdict
 
 import pytest
 
@@ -44,391 +57,15 @@ from infona_client.models.ontology import (
     OntologyOpKind,
 )
 
-
-# ---------------------------------------------------------------------------
-# In-memory Neptune (extended from ONTA-406 snapshot tests for pin SELECT)
-# ---------------------------------------------------------------------------
-
-
-class MemNeptune:
-    """Triple store sufficient for commit + snapshot + base pin."""
-
-    def __init__(self) -> None:
-        self.triples: set[tuple[str, str, str, str]] = set()
-        self.updates: list[str] = []
-        self.queries: list[str] = []
-
-    async def update(self, sparql: str) -> None:
-        self.updates.append(sparql)
-        s_up = sparql
-
-        for m in re.finditer(r"DROP\s+SILENT\s+GRAPH\s*<([^>]+)>", s_up, re.I):
-            g = m.group(1)
-            self.triples = {(gg, s, p, o) for gg, s, p, o in self.triples if gg != g}
-
-        for m in re.finditer(r"CLEAR\s+SILENT\s+GRAPH\s*<([^>]+)>", s_up, re.I):
-            g = m.group(1)
-            self.triples = {(gg, s, p, o) for gg, s, p, o in self.triples if gg != g}
-
-        m_copy = re.search(
-            r"INSERT\s*\{\s*GRAPH\s*<([^>]+)>\s*\{\s*\?s\s+\?p\s+\?o\s*\}\s*\}\s*"
-            r"WHERE\s*\{\s*GRAPH\s*<([^>]+)>\s*\{\s*\?s\s+\?p\s+\?o\s*\}\s*\}",
-            s_up,
-            re.I | re.S,
-        )
-        if m_copy:
-            tgt, src = m_copy.group(1), m_copy.group(2)
-            for gg, s, p, o in list(self.triples):
-                if gg == src:
-                    self.triples.add((tgt, s, p, o))
-
-        for m in re.finditer(
-            r"INSERT\s+DATA\s*\{\s*GRAPH\s*<([^>]+)>\s*\{",
-            s_up,
-            re.I | re.S,
-        ):
-            g = m.group(1)
-            body = self._extract_braced_body(s_up, m.end() - 1)
-            for s, p, o in self._parse_triples(body):
-                self.triples.add((g, s, p, o))
-
-        for m in re.finditer(
-            r"INSERT\s*\{\s*GRAPH\s*<([^>]+)>\s*\{([^}]*)\}\s*\}",
-            s_up,
-            re.I | re.S,
-        ):
-            if "?s" in m.group(2) and "?p" in m.group(2):
-                continue
-            if "INSERT DATA" in s_up[max(0, m.start() - 20) : m.start() + 20].upper():
-                continue
-            g, body = m.group(1), m.group(2)
-            for s, p, o in self._parse_triples(body):
-                self.triples.add((g, s, p, o))
-
-        for m in re.finditer(
-            r"DELETE\s*\{\s*GRAPH\s*<([^>]+)>\s*\{\s*<([^>]+)>\s*<([^>]+)>\s*\?(\w+)\s*\}\s*\}",
-            s_up,
-            re.I | re.S,
-        ):
-            g, s, p = m.group(1), m.group(2), m.group(3)
-            self.triples = {
-                (gg, ss, pp, oo)
-                for gg, ss, pp, oo in self.triples
-                if not (gg == g and ss == s and pp == p)
-            }
-
-        for m in re.finditer(
-            r"WITH\s*<([^>]+)>\s*DELETE\s*\{\s*<([^>]+)>\s*\?p\s*\?o\s*\}",
-            s_up,
-            re.I | re.S,
-        ):
-            g, s = m.group(1), m.group(2)
-            self.triples = {
-                (gg, ss, pp, oo)
-                for gg, ss, pp, oo in self.triples
-                if not (gg == g and ss == s)
-            }
-
-    async def query(self, sparql: str) -> dict:
-        self.queries.append(sparql)
-        g_match = re.search(r"FROM\s*<([^>]+)>", sparql)
-        g = g_match.group(1) if g_match else ""
-        bindings: list[dict] = []
-
-        # Base pin: SELECT ?p ?o for a fixed subject
-        if "?p" in sparql and "?o" in sparql and "WorkspaceBasePin" in sparql:
-            subj_m = re.search(r"<(https://graph\.infona\.ai/meta/WorkspaceBasePin)>\s+\?p\s+\?o", sparql)
-            subj = subj_m.group(1) if subj_m else "https://graph.infona.ai/meta/WorkspaceBasePin"
-            for gg, s, p, o in self.triples:
-                if gg == g and s == subj:
-                    val = o
-                    if "^^" in o:
-                        val = o.split("^^")[0].strip('"')
-                    else:
-                        val = o.strip('"') if o.startswith('"') else o
-                    bindings.append({"p": {"value": p}, "o": {"value": val}})
-            return self._sparql_json(bindings)
-
-        # full_ontology_detail_query
-        if "?typeLabel" in sparql and "?attrLabel" in sparql:
-            class_uris = {
-                s
-                for gg, s, p, o in self.triples
-                if gg == g and p.endswith("#type") and o.endswith("#Class")
-            }
-            labels = {
-                s: o.strip('"')
-                for gg, s, p, o in self.triples
-                if gg == g and p.endswith("#label") and s in class_uris
-            }
-            comments = {
-                s: o.strip('"')
-                for gg, s, p, o in self.triples
-                if gg == g and p.endswith("#comment") and s in class_uris
-            }
-            domains = {
-                s: o
-                for gg, s, p, o in self.triples
-                if gg == g and p.endswith("#domain")
-            }
-            attr_labels = {
-                s: o.strip('"')
-                for gg, s, p, o in self.triples
-                if gg == g and p.endswith("#label") and s in domains
-            }
-            attr_comments = {
-                s: o.strip('"')
-                for gg, s, p, o in self.triples
-                if gg == g and p.endswith("#comment") and s in domains
-            }
-            ranges = {
-                s: o
-                for gg, s, p, o in self.triples
-                if gg == g and p.endswith("#range")
-            }
-            cores = {
-                s
-                for gg, s, p, o in self.triples
-                if gg == g and p.endswith("/coreSlot")
-            }
-            for t_uri, tlabel in labels.items():
-                attrs_for_t = [a for a, d in domains.items() if d == t_uri]
-                if not attrs_for_t:
-                    row = {
-                        "type": {"value": t_uri},
-                        "typeLabel": {"value": tlabel},
-                    }
-                    if t_uri in comments:
-                        row["typeComment"] = {"value": comments[t_uri]}
-                    bindings.append(row)
-                for a_uri in attrs_for_t:
-                    row = {
-                        "type": {"value": t_uri},
-                        "typeLabel": {"value": tlabel},
-                        "attr": {"value": a_uri},
-                        "attrLabel": {
-                            "value": attr_labels.get(a_uri, a_uri.rsplit("/", 1)[-1])
-                        },
-                    }
-                    if t_uri in comments:
-                        row["typeComment"] = {"value": comments[t_uri]}
-                    if a_uri in attr_comments:
-                        row["attrComment"] = {"value": attr_comments[a_uri]}
-                    if a_uri in ranges:
-                        row["range"] = {"value": ranges[a_uri]}
-                    if a_uri in cores:
-                        row["core"] = {"value": "true"}
-                    bindings.append(row)
-            return self._sparql_json(bindings)
-
-        if "?child" in sparql and "?parent" in sparql:
-            for gg, s, p, o in self.triples:
-                if gg == g and p.endswith("#subClassOf"):
-                    bindings.append(
-                        {"child": {"value": s}, "parent": {"value": o}}
-                    )
-            return self._sparql_json(bindings)
-
-        if "textKind" in sparql or "/textKind>" in sparql:
-            for gg, s, p, o in self.triples:
-                if gg == g and p.endswith("/textKind"):
-                    bindings.append(
-                        {
-                            "attr": {"value": s},
-                            "kind": {"value": o.strip('"')},
-                        }
-                    )
-            return self._sparql_json(bindings)
-
-        if "deprecatedAt" in sparql or "/deprecatedAt>" in sparql:
-            deps: dict[str, dict] = {}
-            for gg, s, p, o in self.triples:
-                if gg != g:
-                    continue
-                if p.endswith("/deprecatedAt"):
-                    deps.setdefault(s, {})["dep"] = o.split("^^")[0].strip('"')
-                if p.endswith("/supersededBy"):
-                    deps.setdefault(s, {})["sup"] = o
-            for s, info in deps.items():
-                if "dep" not in info:
-                    continue
-                row = {"s": {"value": s}, "dep": {"value": info["dep"]}}
-                if "sup" in info:
-                    row["sup"] = {"value": info["sup"]}
-                bindings.append(row)
-            return self._sparql_json(bindings)
-
-        if "workspaceRevision" in sparql:
-            for gg, s, p, o in self.triples:
-                if gg == g and p.endswith("/workspaceRevision"):
-                    bindings.append(
-                        {"r": {"value": o.split("^^")[0].strip('"')}}
-                    )
-            return self._sparql_json(bindings)
-
-        if "?old" in sparql and "?new" in sparql and "aliasOf" in sparql:
-            for gg, s, p, o in self.triples:
-                if gg == g and p.endswith("/aliasOf"):
-                    bindings.append(
-                        {"old": {"value": s}, "new": {"value": o}}
-                    )
-            return self._sparql_json(bindings)
-
-        # list_snapshots SELECT
-        if "snapshotGraph" in sparql or "/snapshotGraph>" in sparql or "?snap" in sparql:
-            by_s: dict[str, dict[str, str]] = defaultdict(dict)
-            for gg, s, p, o in self.triples:
-                if gg != g:
-                    continue
-                if "^^" in o:
-                    val = o.split("^^")[0].strip('"')
-                else:
-                    val = o.strip('"') if o.startswith('"') else o
-                by_s[s][p] = val
-            for s, props in by_s.items():
-                def _get(suffix: str, _props=props) -> str | None:
-                    for k, v in _props.items():
-                        if k.endswith("/" + suffix) or k.endswith("#" + suffix):
-                            return v
-                    return None
-
-                version = _get("version")
-                snap = _get("snapshotGraph")
-                fp = _get("fingerprint")
-                kind = _get("snapshotKind")
-                layer = _get("layer")
-                if not (version and snap and fp and kind):
-                    continue
-                row = {
-                    "s": {"value": s},
-                    "version": {"value": version},
-                    "snap": {"value": snap},
-                    "fp": {"value": fp},
-                    "kind": {"value": kind},
-                    "layer": {"value": layer or "tenant"},
-                }
-                parent = _get("parentVersion")
-                if parent is not None:
-                    row["parent"] = {"value": parent}
-                bindings.append(row)
-            return self._sparql_json(bindings)
-
-        return self._sparql_json([])
-
-    @staticmethod
-    def _sparql_json(bindings: list[dict]) -> dict:
-        vars_: list[str] = []
-        seen: set[str] = set()
-        for row in bindings:
-            for k in row:
-                if k not in seen:
-                    seen.add(k)
-                    vars_.append(k)
-        return {"head": {"vars": vars_}, "results": {"bindings": bindings}}
-
-    @staticmethod
-    def _extract_braced_body(src: str, open_brace_idx: int) -> str:
-        assert src[open_brace_idx] == "{"
-        depth = 0
-        i = open_brace_idx
-        in_str = False
-        escape = False
-        while i < len(src):
-            ch = src[i]
-            if in_str:
-                if escape:
-                    escape = False
-                elif ch == "\\":
-                    escape = True
-                elif ch == '"':
-                    in_str = False
-            else:
-                if ch == '"':
-                    in_str = True
-                elif ch == "{":
-                    depth += 1
-                elif ch == "}":
-                    depth -= 1
-                    if depth == 0:
-                        return src[open_brace_idx + 1 : i]
-            i += 1
-        return src[open_brace_idx + 1 :]
-
-    @staticmethod
-    def _parse_triples(body: str) -> list[tuple[str, str, str]]:
-        out: list[tuple[str, str, str]] = []
-        seen: set[tuple[str, str, str]] = set()
-
-        def _add(s: str, p: str, o: str) -> None:
-            t = (s, p, o)
-            if t not in seen:
-                seen.add(t)
-                out.append(t)
-
-        for m in re.finditer(r"<([^>]+)>\s+<([^>]+)>\s+<([^>]+)>\s*\.", body):
-            _add(m.group(1), m.group(2), m.group(3))
-
-        def _unesc(lit: str) -> str:
-            return lit.replace("\\n", "\n").replace('\\"', '"').replace("\\\\", "\\")
-
-        for m in re.finditer(
-            r'<([^>]+)>\s+<([^>]+)>\s+"((?:[^"\\]|\\.)*)"\^\^<([^>]+)>\s*\.',
-            body,
-        ):
-            _add(m.group(1), m.group(2), f'"{_unesc(m.group(3))}"^^{m.group(4)}')
-        for m in re.finditer(
-            r'<([^>]+)>\s+<([^>]+)>\s+"((?:[^"\\]|\\.)*)"\s*\.',
-            body,
-        ):
-            _add(m.group(1), m.group(2), f'"{_unesc(m.group(3))}"')
-        return out
-
-
 PUBLIC = "https://graph.infona.ai/graphs/global/public"
 ENHANCED = "https://graph.infona.ai/graphs/global/enhanced"
 TENANT_ID = "acme"
 TENANT = f"https://graph.infona.ai/graphs/{TENANT_ID}"
 
-
-async def _seed_public_v1(n: MemNeptune) -> str:
-    """Seed public live with Person.name and snapshot as v1. Returns fingerprint."""
-    await commit_ontology(
-        n,
-        PUBLIC,
-        [
-            OntologyMutation(op=OntologyOpKind.UPSERT_TYPE, type_name="Person"),
-            OntologyMutation(
-                op=OntologyOpKind.UPSERT_ATTRIBUTE,
-                type_name="Person",
-                slot_name="name",
-                datatype="string",
-            ),
-        ],
-        actor="seed",
-        message="public v1",
-    )
-    rec = await snapshot_ontology(n, PUBLIC, kind="release", version=1, publisher="ops")
-    return rec.fingerprint
-
-
-async def _publish_public_v2(n: MemNeptune) -> str:
-    """Mutate live public (add email) and snapshot v2."""
-    await commit_ontology(
-        n,
-        PUBLIC,
-        [
-            OntologyMutation(
-                op=OntologyOpKind.UPSERT_ATTRIBUTE,
-                type_name="Person",
-                slot_name="email",
-                datatype="string",
-            ),
-        ],
-        actor="seed",
-        message="public v2",
-    )
-    rec = await snapshot_ontology(n, PUBLIC, kind="release", version=2, publisher="ops")
-    return rec.fingerprint
+# `name` is a reserved Entity property key on the property graph
+# (graph/facts.py::RESERVED_ENTITY_PROPERTY_KEYS) and is rejected at schema
+# time, so the seeded slot is `full_name`.
+SLOT = "full_name"
 
 
 # ---------------------------------------------------------------------------
@@ -458,17 +95,111 @@ def test_layer_stack_enhanced_version_pins_when_entitled():
 
 
 # ---------------------------------------------------------------------------
-# Pin stability core
+# Helpers / URI
 # ---------------------------------------------------------------------------
 
 
+def test_base_pin_graph_uri():
+    assert base_pin_graph_uri("acme") == "https://graph.infona.ai/graphs/acme/base-pin"
+    with pytest.raises(ValueError):
+        base_pin_graph_uri("")
+
+
+def test_fingerprint_base_uri_entitled_uses_enhanced():
+    """N2: entitled live stack keys base fingerprint off Enhanced."""
+    stack = LayerStack(TENANT, entitled=True)
+    assert base_graph_uri_for_stack(stack) == ENHANCED
+    stack_pinned = LayerStack(TENANT, entitled=True, enhanced_version=3)
+    assert base_graph_uri_for_stack(stack_pinned) == release_graph_uri(ENHANCED, 3)
+    free = LayerStack(TENANT, entitled=False, public_version=2)
+    assert base_graph_uri_for_stack(free) == release_graph_uri(PUBLIC, 2)
+
+
+# ---------------------------------------------------------------------------
+# Base pinning against the shipped path (ported by ONTA-527 — see docstring)
+# ---------------------------------------------------------------------------
+
+
+class _DecommissionedSparql:
+    """The SPARQL endpoint production no longer has.
+
+    Amazon Neptune was decommissioned 2026-08-11 and the execution path is
+    deleted, so every call ``ontology_base_pin`` makes — the pin SELECT/INSERT,
+    the release listing, the shape loads behind a preview — fails in production.
+    Standing it in here keeps these tests from going green on a hand-rolled
+    triple store that ships to nobody.
+    """
+
+    async def query(self, sparql: str) -> dict:
+        raise RuntimeError("Neptune is decommissioned (ONTA-527)")
+
+    async def update(self, sparql: str) -> None:
+        raise RuntimeError("Neptune is decommissioned (ONTA-527)")
+
+
+BASE_PIN_GAP = (
+    "BUG (ONTA-527 port gap): workspace base pinning does not exist on Neo4j. "
+    "graph/ontology_base_pin.py is SPARQL-only in all three of its dependencies: "
+    "the pin record itself is read/written with neptune.query / neptune.update "
+    "against the <…/base-pin> named graph, the versions it may pin to come from "
+    "ontology_snapshots.list_snapshots (also SPARQL-only), and previews diff "
+    "ontology_commit.load_ontology_shape output, which early-returns an EMPTY "
+    "OntologyShape whenever a GraphStore is configured. None of it has a "
+    "GraphStore path, so GET/POST /ontology/base (routes/ontology.py calls "
+    "ensure_workspace_base_pin / preview_base_upgrade / upgrade_base_pin / "
+    "get_base_pin with a NeptuneClient) cannot work in production."
+)
+
+
+async def _seed_public_v1(n) -> str:
+    """Seed public live with Person.full_name and publish it as v1."""
+    await commit_ontology(
+        None,
+        PUBLIC,
+        [
+            OntologyMutation(op=OntologyOpKind.UPSERT_TYPE, type_name="Person"),
+            OntologyMutation(
+                op=OntologyOpKind.UPSERT_ATTRIBUTE,
+                type_name="Person",
+                slot_name=SLOT,
+                datatype="string",
+            ),
+        ],
+        actor="seed",
+        message="public v1",
+    )
+    rec = await snapshot_ontology(n, PUBLIC, kind="release", version=1, publisher="ops")
+    return rec.fingerprint
+
+
+async def _publish_public_v2(n) -> str:
+    """Add Person.email on public live and publish it as v2."""
+    await commit_ontology(
+        None,
+        PUBLIC,
+        [
+            OntologyMutation(
+                op=OntologyOpKind.UPSERT_ATTRIBUTE,
+                type_name="Person",
+                slot_name="email",
+                datatype="string",
+            ),
+        ],
+        actor="seed",
+        message="public v2",
+    )
+    rec = await snapshot_ontology(n, PUBLIC, kind="release", version=2, publisher="ops")
+    return rec.fingerprint
+
+
+@pytest.mark.xfail(reason=BASE_PIN_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_pin_stability_core():
-    """Pin at v1; publish v2; pinned stack still uses v1 graph URI + same fp.
+    """Pin at v1; publish v2; the pinned stack still resolves v1 + its fingerprint.
 
-    auto_upgrade=True path sees v2 on ensure.
+    auto_upgrade=True is the opt-in that follows the latest release instead.
     """
-    n = MemNeptune()
+    n = _DecommissionedSparql()
     fp_v1 = await _seed_public_v1(n)
 
     pin = await set_base_pin(
@@ -489,23 +220,18 @@ async def test_pin_stability_core():
     )
     assert stack_before.public_version == 1
     assert stack_before.graph_uri_for(Layer.PUBLIC) == release_graph_uri(PUBLIC, 1)
-    fp_pinned_before = await fingerprint_base_layer(n, stack_before)
-    assert fp_pinned_before == fp_v1
+    assert await fingerprint_base_layer(n, stack_before) == fp_v1
 
     fp_v2 = await _publish_public_v2(n)
     assert fp_v2 != fp_v1
 
-    # Pinned stack unchanged.
     stack_after = await layer_stack_for_workspace(
         n, TENANT_ID, entitled=False, auto_ensure=True
     )
     assert stack_after.public_version == 1
     assert stack_after.graph_uri_for(Layer.PUBLIC) == release_graph_uri(PUBLIC, 1)
-    fp_pinned_after = await fingerprint_base_layer(n, stack_after)
-    assert fp_pinned_after == fp_v1
-    assert fp_pinned_after == fp_pinned_before
+    assert await fingerprint_base_layer(n, stack_after) == fp_v1
 
-    # auto_upgrade path sees v2.
     await set_base_pin(
         n,
         TENANT_ID,
@@ -520,19 +246,13 @@ async def test_pin_stability_core():
         n, TENANT_ID, entitled=False, auto_ensure=True
     )
     assert stack_auto.public_version == 2
-    assert stack_auto.graph_uri_for(Layer.PUBLIC) == release_graph_uri(PUBLIC, 2)
-    fp_auto = await fingerprint_base_layer(n, stack_auto)
-    assert fp_auto == fp_v2
+    assert await fingerprint_base_layer(n, stack_auto) == fp_v2
 
 
-# ---------------------------------------------------------------------------
-# Upgrade + rollback
-# ---------------------------------------------------------------------------
-
-
+@pytest.mark.xfail(reason=BASE_PIN_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_upgrade_then_rollback_restores_fingerprint():
-    n = MemNeptune()
+    n = _DecommissionedSparql()
     fp_v1 = await _seed_public_v1(n)
     fp_v2 = await _publish_public_v2(n)
 
@@ -542,19 +262,14 @@ async def test_upgrade_then_rollback_restores_fingerprint():
         BasePin(base_layer="public", base_version=1, tenant_id=TENANT_ID),
     )
     stack_v1 = layer_stack_from_pin(
-        TENANT_ID,
-        await get_base_pin(n, TENANT_ID),
-        entitled=False,
+        TENANT_ID, await get_base_pin(n, TENANT_ID), entitled=False
     )
     assert await fingerprint_base_layer(n, stack_v1) == fp_v1
 
-    upgraded = await upgrade_base_pin(
-        n, TENANT_ID, entitled=False, to_version=2
-    )
+    upgraded = await upgrade_base_pin(n, TENANT_ID, entitled=False, to_version=2)
     assert upgraded.base_version == 2
     assert upgraded.previous_version == 1
     assert upgraded.has_previous is True
-
     stack_v2 = layer_stack_from_pin(TENANT_ID, upgraded, entitled=False)
     assert await fingerprint_base_layer(n, stack_v2) == fp_v2
 
@@ -566,17 +281,12 @@ async def test_upgrade_then_rollback_restores_fingerprint():
     assert stack_rolled.graph_uri_for(Layer.PUBLIC) == release_graph_uri(PUBLIC, 1)
 
 
-# ---------------------------------------------------------------------------
-# Backfill
-# ---------------------------------------------------------------------------
-
-
+@pytest.mark.xfail(reason=BASE_PIN_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_backfill_ensure_at_latest_then_noop():
-    n = MemNeptune()
+    n = _DecommissionedSparql()
     await _seed_public_v1(n)
     await _publish_public_v2(n)
-
     assert await get_base_pin(n, TENANT_ID) is None
 
     pin1 = await ensure_workspace_base_pin(n, TENANT_ID, entitled=False)
@@ -587,28 +297,27 @@ async def test_backfill_ensure_at_latest_then_noop():
 
     pin2 = await ensure_workspace_base_pin(n, TENANT_ID, entitled=False)
     assert pin2.base_version == 2
-    assert pin2.updated_at == pin1.updated_at  # no rewrite on second ensure
+    assert pin2.updated_at == pin1.updated_at  # second ensure must not rewrite
 
-    # No releases → live pin
-    n2 = MemNeptune()
-    pin_live = await ensure_workspace_base_pin(n2, "empty", entitled=False)
+
+@pytest.mark.xfail(reason=BASE_PIN_GAP, strict=True)
+@pytest.mark.asyncio
+async def test_ensure_with_no_releases_pins_live():
+    n = _DecommissionedSparql()
+    pin_live = await ensure_workspace_base_pin(n, "empty", entitled=False)
     assert pin_live.base_version is None
     assert pin_live.is_live
 
 
-# ---------------------------------------------------------------------------
-# Collision preview
-# ---------------------------------------------------------------------------
-
-
+@pytest.mark.xfail(reason=BASE_PIN_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_collision_preview_tenant_overlaps_base_addition():
-    n = MemNeptune()
+    """An upgrade preview must name attributes the workspace already defines."""
+    n = _DecommissionedSparql()
     await _seed_public_v1(n)
 
-    # Tenant overlay already defines Person.risk_score
     await commit_ontology(
-        n,
+        None,
         TENANT,
         [
             OntologyMutation(op=OntologyOpKind.UPSERT_TYPE, type_name="Person"),
@@ -622,16 +331,14 @@ async def test_collision_preview_tenant_overlaps_base_addition():
         actor="tenant",
         message="tenant risk_score",
     )
-
     await set_base_pin(
         n,
         TENANT_ID,
         BasePin(base_layer="public", base_version=1, tenant_id=TENANT_ID),
     )
-
-    # v2 of public also adds Person.risk_score
+    # v2 of public adds the SAME attribute the workspace already has.
     await commit_ontology(
-        n,
+        None,
         PUBLIC,
         [
             OntologyMutation(
@@ -646,9 +353,7 @@ async def test_collision_preview_tenant_overlaps_base_addition():
     )
     await snapshot_ontology(n, PUBLIC, kind="release", version=2, publisher="ops")
 
-    preview = await preview_base_upgrade(
-        n, TENANT_ID, entitled=False, to_version=2
-    )
+    preview = await preview_base_upgrade(n, TENANT_ID, entitled=False, to_version=2)
     assert preview.from_version == 1
     assert preview.to_version == 2
     assert any(
@@ -664,17 +369,66 @@ async def test_collision_preview_tenant_overlaps_base_addition():
     assert any("risk_score" in s for s in preview.summary)
 
 
-# ---------------------------------------------------------------------------
-# Entitlement degrade
-# ---------------------------------------------------------------------------
+@pytest.mark.xfail(reason=BASE_PIN_GAP, strict=True)
+@pytest.mark.asyncio
+async def test_preview_flags_deprecations_the_workspace_uses():
+    n = _DecommissionedSparql()
+    await _seed_public_v1(n)
+
+    await commit_ontology(
+        None,
+        TENANT,
+        [
+            OntologyMutation(op=OntologyOpKind.UPSERT_TYPE, type_name="Person"),
+            OntologyMutation(
+                op=OntologyOpKind.UPSERT_ATTRIBUTE,
+                type_name="Person",
+                slot_name=SLOT,
+                datatype="string",
+            ),
+        ],
+        actor="tenant",
+        message="tenant person",
+    )
+    await set_base_pin(
+        n,
+        TENANT_ID,
+        BasePin(base_layer="public", base_version=1, tenant_id=TENANT_ID),
+    )
+    await commit_ontology(
+        None,
+        PUBLIC,
+        [
+            OntologyMutation(
+                op=OntologyOpKind.DEPRECATE,
+                type_name="Person",
+                slot_name=SLOT,
+                superseded_by="display_name",
+            ),
+        ],
+        actor="ops",
+        message="deprecate full_name",
+    )
+    await snapshot_ontology(n, PUBLIC, kind="release", version=2, publisher="ops")
+
+    preview = await preview_base_upgrade(n, TENANT_ID, entitled=False, to_version=2)
+    assert any(c.kind is ChangeKind.DEPRECATE for c in preview.changes)
+    assert any(
+        d.kind is ChangeKind.DEPRECATE
+        and d.type_name == "Person"
+        and d.slot_name == SLOT
+        for d in preview.deprecated_used
+    )
 
 
+@pytest.mark.xfail(reason=BASE_PIN_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_entitlement_degrade_enhanced_pin_without_entitlement():
-    n = MemNeptune()
-    # Seed enhanced v1
+    """ENTITLEMENT: an enhanced pin held by a non-entitled workspace degrades to
+    public — never a throw, and never enhanced content."""
+    n = _DecommissionedSparql()
     await commit_ontology(
-        n,
+        None,
         ENHANCED,
         [
             OntologyMutation(op=OntologyOpKind.UPSERT_TYPE, type_name="Org"),
@@ -689,143 +443,44 @@ async def test_entitlement_degrade_enhanced_pin_without_entitlement():
         message="enhanced v1",
     )
     await snapshot_ontology(n, ENHANCED, kind="release", version=7, publisher="ops")
-
     await set_base_pin(
         n,
         TENANT_ID,
-        BasePin(
-            base_layer="enhanced",
-            base_version=7,
-            tenant_id=TENANT_ID,
-        ),
+        BasePin(base_layer="enhanced", base_version=7, tenant_id=TENANT_ID),
     )
 
-    # entitled=True → enhanced pin applied
     stack_paid = layer_stack_from_pin(
-        TENANT_ID,
-        await get_base_pin(n, TENANT_ID),
-        entitled=True,
+        TENANT_ID, await get_base_pin(n, TENANT_ID), entitled=True
     )
     assert Layer.ENHANCED in stack_paid.layers
     assert stack_paid.enhanced_version == 7
     assert stack_paid.graph_uri_for(Layer.ENHANCED) == release_graph_uri(ENHANCED, 7)
 
-    # entitled=False → enhanced excluded, no throw; public still in stack
     stack_free = layer_stack_from_pin(
-        TENANT_ID,
-        await get_base_pin(n, TENANT_ID),
-        entitled=False,
+        TENANT_ID, await get_base_pin(n, TENANT_ID), entitled=False
     )
     assert Layer.ENHANCED not in stack_free.layers
     assert Layer.PUBLIC in stack_free.layers
     assert stack_free.graph_uri_for(Layer.PUBLIC) == public_graph_uri()
 
-    # layer_stack_for_workspace also does not throw
     stack_ws = await layer_stack_for_workspace(
         n, TENANT_ID, entitled=False, auto_ensure=False
     )
     assert Layer.ENHANCED not in stack_ws.layers
 
 
-# ---------------------------------------------------------------------------
-# Deprecation preview
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_preview_deprecation_used_on_tenant_shape():
-    n = MemNeptune()
-    await _seed_public_v1(n)
-
-    # Tenant has Person (and name) — overlapping the base type.
-    await commit_ontology(
-        n,
-        TENANT,
-        [
-            OntologyMutation(op=OntologyOpKind.UPSERT_TYPE, type_name="Person"),
-            OntologyMutation(
-                op=OntologyOpKind.UPSERT_ATTRIBUTE,
-                type_name="Person",
-                slot_name="name",
-                datatype="string",
-            ),
-        ],
-        actor="tenant",
-        message="tenant person",
-    )
-
-    await set_base_pin(
-        n,
-        TENANT_ID,
-        BasePin(base_layer="public", base_version=1, tenant_id=TENANT_ID),
-    )
-
-    # v2 deprecates Person.name on public
-    await commit_ontology(
-        n,
-        PUBLIC,
-        [
-            OntologyMutation(
-                op=OntologyOpKind.DEPRECATE,
-                type_name="Person",
-                slot_name="name",
-                superseded_by="full_name",
-            ),
-        ],
-        actor="ops",
-        message="deprecate name",
-    )
-    await snapshot_ontology(n, PUBLIC, kind="release", version=2, publisher="ops")
-
-    preview = await preview_base_upgrade(
-        n, TENANT_ID, entitled=False, to_version=2
-    )
-    assert any(c.kind is ChangeKind.DEPRECATE for c in preview.changes)
-    assert any(
-        d.kind is ChangeKind.DEPRECATE
-        and d.type_name == "Person"
-        and d.slot_name == "name"
-        for d in preview.deprecated_used
-    )
-    assert any("deprecated" in s.lower() or "name" in s for s in preview.summary)
-
-
-# ---------------------------------------------------------------------------
-# Helpers / URI
-# ---------------------------------------------------------------------------
-
-
-def test_base_pin_graph_uri():
-    assert base_pin_graph_uri("acme") == "https://graph.infona.ai/graphs/acme/base-pin"
-    with pytest.raises(ValueError):
-        base_pin_graph_uri("")
-
-
-@pytest.mark.asyncio
-async def test_rollback_without_previous_raises():
-    n = MemNeptune()
-    await set_base_pin(
-        n,
-        TENANT_ID,
-        BasePin(base_layer="public", base_version=1, tenant_id=TENANT_ID),
-    )
-    with pytest.raises(ValueError, match="previous_version"):
-        await rollback_base_pin(n, TENANT_ID)
-
-
-# ---------------------------------------------------------------------------
-# B1: read failure must not re-pin to latest
-# ---------------------------------------------------------------------------
-
-
+@pytest.mark.xfail(reason=BASE_PIN_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_pin_read_failure_does_not_repin_to_latest():
-    """Pin at v1, auto_upgrade=False; pin SELECT raises → ensure must not
-    CLEAR/INSERT and must not change the stored version (review B1)."""
-    n = MemNeptune()
+    """B1 FAIL-CLOSED: a pin read that errors must not silently move the pin.
+
+    v2 exists, so an implementation that fell back to "latest" on a read error
+    would jump this workspace from v1 to v2 behind its back. The read must raise
+    and the stored pin must be untouched.
+    """
+    n = _DecommissionedSparql()
     await _seed_public_v1(n)
     await _publish_public_v2(n)
-
     await set_base_pin(
         n,
         TENANT_ID,
@@ -836,49 +491,39 @@ async def test_pin_read_failure_does_not_repin_to_latest():
             tenant_id=TENANT_ID,
         ),
     )
-    pin_before = await get_base_pin(n, TENANT_ID)
-    assert pin_before is not None and pin_before.base_version == 1
+    assert (await get_base_pin(n, TENANT_ID)).base_version == 1
 
-    updates_before = len(n.updates)
-    original_query = n.query
+    class _PinReadFails(_DecommissionedSparql):
+        async def query(self, sparql: str) -> dict:
+            if "WorkspaceBasePin" in sparql:
+                raise RuntimeError("pin read unavailable")
+            return await _DecommissionedSparql.query(self, sparql)
 
-    async def failing_pin_query(sparql: str):
-        if "WorkspaceBasePin" in sparql:
-            raise RuntimeError("neptune unavailable")
-        return await original_query(sparql)
-
-    n.query = failing_pin_query  # type: ignore[method-assign]
-
+    broken = _PinReadFails()
     with pytest.raises(BasePinReadError):
-        await get_base_pin(n, TENANT_ID)
-
+        await get_base_pin(broken, TENANT_ID)
     with pytest.raises(BasePinReadError):
-        await ensure_workspace_base_pin(n, TENANT_ID, entitled=False)
+        await ensure_workspace_base_pin(broken, TENANT_ID, entitled=False)
 
-    # No pin-graph writes after the failure.
-    new_updates = n.updates[updates_before:]
-    pin_g = base_pin_graph_uri(TENANT_ID)
-    assert not any(pin_g in u for u in new_updates), new_updates
-
-    # Soft degrade on workspace stack: live, no write.
+    # Soft degrade on the workspace stack: live layers, no rewrite of the pin.
     stack = await layer_stack_for_workspace(
-        n, TENANT_ID, entitled=False, auto_ensure=True
+        broken, TENANT_ID, entitled=False, auto_ensure=True
     )
     assert stack.public_version is None
     assert stack.graph_uri_for(Layer.PUBLIC) == PUBLIC
-    assert not any(pin_g in u for u in n.updates[updates_before:])
 
-    # Pin still v1 once reads work again.
-    n.query = original_query  # type: ignore[method-assign]
-    pin_after = await get_base_pin(n, TENANT_ID)
-    assert pin_after is not None
-    assert pin_after.base_version == 1
-    assert pin_after.auto_upgrade is False
+    # Once reads work again the pin is still exactly where it was.
+    after = await get_base_pin(n, TENANT_ID)
+    assert after is not None
+    assert after.base_version == 1
+    assert after.auto_upgrade is False
 
 
+@pytest.mark.xfail(reason=BASE_PIN_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_upgrade_refuses_missing_target_version():
-    n = MemNeptune()
+    """VALIDATION: pinning to a version nobody published must refuse."""
+    n = _DecommissionedSparql()
     await _seed_public_v1(n)
     await set_base_pin(
         n,
@@ -891,11 +536,14 @@ async def test_upgrade_refuses_missing_target_version():
     assert pin is not None and pin.base_version == 1
 
 
-def test_fingerprint_base_uri_entitled_uses_enhanced():
-    """N2: entitled live stack keys base fingerprint off Enhanced."""
-    stack = LayerStack(TENANT, entitled=True)
-    assert base_graph_uri_for_stack(stack) == ENHANCED
-    stack_pinned = LayerStack(TENANT, entitled=True, enhanced_version=3)
-    assert base_graph_uri_for_stack(stack_pinned) == release_graph_uri(ENHANCED, 3)
-    free = LayerStack(TENANT, entitled=False, public_version=2)
-    assert base_graph_uri_for_stack(free) == release_graph_uri(PUBLIC, 2)
+@pytest.mark.xfail(reason=BASE_PIN_GAP, strict=True)
+@pytest.mark.asyncio
+async def test_rollback_without_previous_raises():
+    n = _DecommissionedSparql()
+    await set_base_pin(
+        n,
+        TENANT_ID,
+        BasePin(base_layer="public", base_version=1, tenant_id=TENANT_ID),
+    )
+    with pytest.raises(ValueError, match="previous_version"):
+        await rollback_base_pin(n, TENANT_ID)

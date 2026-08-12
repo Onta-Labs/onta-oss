@@ -69,13 +69,29 @@ guardrails rather than pretending it is cheap:
 
 Internal predicates
 -------------------
-Matches are filtered through ``graph/predicates.is_internal_predicate`` so
-provenance companions (``attr_meta/…``), ER signals (``er/…``), normalization
-bookkeeping and ingest markers never flood the output. The namespace exclusions
-are ALSO pushed into the scan query (derived from the same constants, not a
-second copy of the list) so internal triples cannot consume the ``LIMIT`` and
-silently shrink a page. ``rdfs:label`` is the one deliberate exemption: finding
-an entity by its displayed name is the single most common reason to grep.
+ER signals (``er/…``), ingest markers (``onto/batch_id``, ``onto/ingested_at``,
+…) and other housekeeping never reach the caller, and are excluded BEFORE the
+``LIMIT`` is counted so they cannot consume a page slot and hand back a short
+page marked ``truncated: false``.
+
+The property-graph scan cannot do that with
+``graph/predicates.is_internal_predicate``, and this is the subtlety worth
+remembering: the store keeps FLATTENED property keys, not predicate URIs.
+``graph/facts.classify_triple`` writes ``…/onto/er/blockKey`` as the Entity
+property ``blockKey``, so by read time the namespace the classifier keys on is
+gone — ``is_internal_predicate(ONTO_PRED_PREFIX + attr)`` would wave every one
+of them through. The store path therefore uses
+``graph/facts.is_internal_property_key``, the inverse of that flattening, which
+lives beside ``classify_triple`` so the two cannot drift; it is applied in the
+scan itself (``entity_literal_grep`` / Memory) and again in
+``explore_store.grep_literals_pg``, which owns the page. ``name`` is the one
+deliberate exemption: finding an entity by its displayed name is the single
+most common reason to grep.
+
+The residual SPARQL branch below keeps its own URI-level filtering
+(``_internal_predicate_filter`` prefilter + ``is_internal_predicate`` per row);
+it is unreachable on the Neo4j-only backend and goes with the rest of the
+ONTA-527 purge.
 """
 
 
@@ -481,6 +497,10 @@ async def grep_graph(
         limit=limit,
     )
     if pg_result is not None:
+        # No internal-predicate filter here on purpose: on the store path the
+        # authority is `facts.is_internal_property_key`, applied inside
+        # `grep_literals_pg` BEFORE the page is cut. Re-filtering here would be
+        # too late to matter and could only shorten an already-cut page.
         hits, truncated = pg_result
         matches = [
             GrepMatch(

@@ -1,150 +1,125 @@
 """KG registration is part of the shared write path (ONTA-153).
 
-The bug: the ``<kg_uri> <onto/kg_name> "name"`` record that ``list_kgs`` reads to
-populate the Explorer dropdown was written in exactly ONE place — ``create_kg``,
-the Explorer's "New KG" button. Any non-UI writer (agent web-discovery, CLI, MCP)
-that ingested into a brand-new ``kg_name`` wrote the instance data + ontology but
-the KG never appeared in the dropdown (``list_kgs`` returned ``[]``).
+The bug: the record that ``list_kgs`` reads to populate the Explorer dropdown
+was written in exactly ONE place — ``create_kg``, the Explorer's "New KG" button.
+Any non-UI writer (agent web-discovery, CLI, MCP) that ingested into a brand-new
+``kg_name`` wrote the instance data + ontology but the KG never appeared in the
+dropdown (``list_kgs`` returned ``[]``).
 
 Fix: ``refresh_after_write`` — the shared post-write housekeeping every writer
-already calls — now idempotently registers the KG via ``ensure_kg_registered``.
+already calls — registers the KG idempotently.
 
-These tests pin:
-- a fresh write issues the guarded registration INSERT, a second one never
-  duplicates it (``refresh_after_write`` + ``ensure_kg_registered``);
-- SPARQL-literal injection is neutralized (``"`` / ``\\`` / newline produce a
-  single well-formed escaped statement) for BOTH ``ensure_kg_registered`` and
-  ``create_kg``, and a URI-breaking name is rejected outright;
-- ``create_kg``'s re-POST response reports the EXISTING KG, not an empty/zero lie;
-- a round-trip: register via ``ensure_kg_registered`` against an in-memory triple
-  store, then ``list_kgs``'s metadata query returns the KG — locking the
-  predicate/URI contract.
+**Ported by ONTA-527.** Registration used to be a guarded SPARQL
+``INSERT … WHERE { FILTER NOT EXISTS { … } }`` writing
+``<kg_uri> <onto/kg_name> "name"`` into the tenant metadata graph, and this file
+asserted that statement's TEXT: the NOT-EXISTS guard, escaped literals, balanced
+quotes, no ``kg_triple_count 0``. Registration is a ``:KnowledgeGraph`` node now
+(``graph/kg_registry.py``), reached from ``refresh_after_write`` via
+``ensure_kg_registered_store``, so every one of those assertions described a
+statement nobody emits.
+
+Two consequences worth stating plainly:
+
+* ``kg_writer.ensure_kg_registered`` (the SPARQL helper) has **no product
+  callers left** — the tests that drove it with an ``AsyncMock`` were the only
+  ones. Rather than keep exercising a dead helper, each behaviour it guaranteed
+  is re-pinned here against the live path: idempotent, non-clobbering, refuses a
+  name that could not be created through the UI, never fails the write, and
+  round-trips into ``GET /kgs``.
+* SPARQL-literal escaping is no longer a thing that can go wrong: names and
+  descriptions are Cypher PARAMETERS. The injection cases are ported to the
+  observable property that mattered — hostile text round-trips as DATA, and
+  changes nothing else in the workspace.
 """
 
 import asyncio
-from unittest.mock import AsyncMock
 
-import infona_client.api.routes.explore as explore_mod
-import infona_client.nlp.pipeline as pipeline_mod
-from infona_client.graph.kg_writer import (
-    _KG_NAME_PRED,
-    _kg_meta_uri,
-    ensure_kg_registered,
-    refresh_after_write,
+import pytest
+
+from infona_client.graph.kg_registry import (
+    ensure_kg_registered_store,
+    list_registered_kgs,
+    upsert_registered_kg,
 )
+from infona_client.graph.kg_writer import refresh_after_write
 
 TENANT = "test-tenant"
 
 
-def _binding(**vals):
-    return {k: {"value": v} for k, v in vals.items()}
+def _run(coro):
+    return asyncio.get_event_loop_policy().new_event_loop().run_until_complete(coro)
 
 
-def _is_registration_stmt(sparql: str, tenant_id: str, kg_name: str) -> bool:
-    """True if ``sparql`` is the guarded KG-registration INSERT for this KG."""
-    kg_uri = _kg_meta_uri(tenant_id, kg_name)
-    return (
-        "INSERT" in sparql
-        and "NOT EXISTS" in sparql
-        and _KG_NAME_PRED in sparql
-        and kg_uri in sparql
-    )
+def _names(tenant_id: str = TENANT) -> list[str]:
+    return [e["name"] for e in _run(list_registered_kgs(tenant_id))]
 
 
-def _single_well_formed(sparql: str) -> bool:
-    """Approximate 'no literal breakout': after removing escaped quotes (``\\"``),
-    the remaining real delimiter quotes must be balanced (even count) and the
-    statement must still be a single INSERT."""
-    unescaped_quotes = sparql.replace('\\"', "").count('"')
-    return unescaped_quotes % 2 == 0 and sparql.count("INSERT") == 1
+def _row(name: str, tenant_id: str = TENANT) -> dict:
+    for e in _run(list_registered_kgs(tenant_id)):
+        if e["name"] == name:
+            return e
+    return {}
 
 
-# --- ensure_kg_registered: shape, idempotency, escaping, URI guard ------------
+# --- ensure_kg_registered_store: shape, idempotency, validation ---------------
 
 
-def test_ensure_kg_registered_issues_guarded_insert():
-    """The helper sends a single NOT-EXISTS-guarded INSERT carrying the kg_name
-    record (so it can't duplicate or clobber an existing registration). It does
-    NOT write a stale kg_triple_count 0 (P2)."""
-
-    async def run():
-        neptune = AsyncMock()
-        await ensure_kg_registered(neptune, TENANT, "fresh-kg")
-
-        assert neptune.update.await_count == 1
-        sparql = neptune.update.await_args.args[0]
-        assert _is_registration_stmt(sparql, TENANT, "fresh-kg")
-        assert "INSERT DATA" not in sparql
-        assert "FILTER NOT EXISTS" in sparql
-        # P2: no stale-on-arrival count is written; list_kgs computes it lazily.
-        assert "kg_triple_count" not in sparql
-
-    asyncio.run(run())
+def test_ensure_kg_registered_creates_exactly_one_registration():
+    _run(ensure_kg_registered_store(TENANT, "fresh-kg"))
+    assert _names() == ["fresh-kg"]
+    # P2: no stale-on-arrival count is claimed for a KG that already has data.
+    assert _row("fresh-kg")["triple_count"] == 0
 
 
-def test_ensure_kg_registered_is_idempotent_in_shape():
-    """Calling twice yields a guarded (NOT EXISTS) statement BOTH times — the
-    guard, not call-count bookkeeping, is what makes it non-duplicating."""
+def test_ensure_kg_registered_is_idempotent_and_non_clobbering():
+    """Calling twice never duplicates, and never overwrites a description.
 
-    async def run():
-        neptune = AsyncMock()
-        await ensure_kg_registered(neptune, TENANT, "k")
-        await ensure_kg_registered(neptune, TENANT, "k")
+    This is what the ``FILTER NOT EXISTS`` guard bought on the SPARQL path; the
+    registry buys it with ``only_if_absent=True`` on the MERGE.
+    """
+    _run(upsert_registered_kg(TENANT, "k", description="the real description"))
+    _run(ensure_kg_registered_store(TENANT, "k"))
+    _run(ensure_kg_registered_store(TENANT, "k"))
 
-        assert neptune.update.await_count == 2
-        for call in neptune.update.await_args_list:
-            assert _is_registration_stmt(call.args[0], TENANT, "k")
-
-    asyncio.run(run())
+    assert _names() == ["k"]
+    assert _row("k")["description"] == "the real description"
 
 
-def test_ensure_kg_registered_rejects_uri_breaking_name():
-    """P0 (URI side): a name with characters that can't be created via the UI
-    (``"`` / ``\\`` / newline / ``>`` / whitespace) would corrupt the registration
-    URI when interpolated raw, so the helper validates against the UI pattern and
-    skips rather than emitting a malformed/injected statement."""
+@pytest.mark.parametrize(
+    "bad", ['evil" .', "back\\slash", "line\nbreak", "has>angle", "with space", "../x"]
+)
+def test_ensure_kg_registered_refuses_a_name_the_ui_could_not_create(bad):
+    """A name outside the KG charset is skipped, not registered.
 
-    async def run():
-        neptune = AsyncMock()
-        for bad in ['evil" .', "back\\slash", "line\nbreak", "has>angle", "with space"]:
-            neptune.update.reset_mock()
-            await ensure_kg_registered(neptune, TENANT, bad)
-            neptune.update.assert_not_awaited()
-
-    asyncio.run(run())
-
-
-def test_ensure_kg_registered_escaped_statement_is_well_formed():
-    """A valid name produces a single well-formed statement with a properly
-    escaped literal (P0, literal side) — no odd/unbalanced quotes."""
-
-    async def run():
-        neptune = AsyncMock()
-        await ensure_kg_registered(neptune, TENANT, "valid-Name_1")
-        sparql = neptune.update.await_args.args[0]
-        assert _single_well_formed(sparql)
-
-    asyncio.run(run())
+    On SPARQL this guard kept a ``>`` out of an interpolated IRI. The property
+    graph has no IRI to corrupt, but the guard is still load-bearing: such a
+    name cannot be addressed by the KG-scoped routes (``kg_graph_uri`` raises),
+    so registering one would put an unusable row in the Explorer dropdown.
+    """
+    _run(ensure_kg_registered_store(TENANT, bad))
+    assert _names() == []
 
 
-def test_ensure_kg_registered_best_effort_on_failure():
+def test_ensure_kg_registered_best_effort_on_failure(monkeypatch):
     """A registration failure must never propagate out of the write path."""
+    import infona_client.graph.kg_registry as registry_mod
 
-    async def run():
-        neptune = AsyncMock()
-        neptune.update.side_effect = RuntimeError("neptune down")
-        await ensure_kg_registered(neptune, TENANT, "k")  # must not raise
+    async def boom(*_a, **_k):
+        raise RuntimeError("store down")
 
-    asyncio.run(run())
+    monkeypatch.setattr(registry_mod, "upsert_registered_kg", boom)
+    _run(ensure_kg_registered_store(TENANT, "k"))  # must not raise
 
 
 def test_ensure_kg_registered_noop_without_name():
-    async def run():
-        neptune = AsyncMock()
-        await ensure_kg_registered(neptune, TENANT, "")
-        neptune.update.assert_not_awaited()
+    _run(ensure_kg_registered_store(TENANT, ""))
+    assert _names() == []
 
-    asyncio.run(run())
+
+def test_registration_is_tenant_scoped():
+    """A peer workspace never sees this registration."""
+    _run(ensure_kg_registered_store(TENANT, "mine"))
+    assert _names("other-tenant") == []
 
 
 # --- refresh_after_write hook: registers fresh KG, never duplicates -----------
@@ -152,110 +127,78 @@ def test_ensure_kg_registered_noop_without_name():
 
 def test_refresh_after_write_registers_fresh_kg(monkeypatch):
     """A writer producing facts into a fresh kg_name → refresh_after_write must
-    issue the registration INSERT (the part that was missing for non-UI writers).
-    A SECOND refresh must NOT duplicate it: every emission carries the NOT-EXISTS
-    guard, so the second one is a no-op against an already-registered KG."""
+    register it (the part that was missing for non-UI writers). A SECOND refresh
+    must NOT duplicate it, nor clobber a description set in between."""
+    import infona_client.nlp.pipeline as pipeline_mod
 
-    async def run():
-        monkeypatch.setattr(
-            pipeline_mod.NLQueryPipeline, "invalidate_cache", lambda graph: None
-        )
-        monkeypatch.setattr(pipeline_mod, "get_embedding_service", lambda: None)
-        monkeypatch.setattr(
-            explore_mod, "schedule_recompute",
-            lambda neptune, tenant_id, kg_name: None,
-        )
+    monkeypatch.setattr(
+        pipeline_mod.NLQueryPipeline, "invalidate_cache", lambda graph: None
+    )
+    monkeypatch.setattr(pipeline_mod, "get_embedding_service", lambda: None)
 
-        neptune = AsyncMock()
-        await refresh_after_write(neptune, tenant_id=TENANT, kg_name="brand-new")
+    # ``neptune`` is vestigial on this path (ONTA-527) — None is what a writer
+    # with no legacy client passes, and the count/stats steps skip themselves.
+    _run(refresh_after_write(None, tenant_id=TENANT, kg_name="brand-new"))
+    assert _names() == ["brand-new"]
 
-        reg = [
-            c.args[0] for c in neptune.update.await_args_list
-            if _is_registration_stmt(c.args[0], TENANT, "brand-new")
-        ]
-        assert len(reg) == 1, "fresh write must register the KG exactly once"
-        assert "FILTER NOT EXISTS" in reg[0]
+    _run(upsert_registered_kg(TENANT, "brand-new", description="set by the user"))
+    _run(refresh_after_write(None, tenant_id=TENANT, kg_name="brand-new"))
 
-        await refresh_after_write(neptune, tenant_id=TENANT, kg_name="brand-new")
-        reg2 = [
-            c.args[0] for c in neptune.update.await_args_list
-            if _is_registration_stmt(c.args[0], TENANT, "brand-new")
-        ]
-        assert len(reg2) == 2
-        assert all("FILTER NOT EXISTS" in s for s in reg2)
-
-    asyncio.run(run())
+    assert _names() == ["brand-new"]
+    assert _row("brand-new")["description"] == "set by the user"
 
 
 def test_refresh_after_write_skips_registration_without_kg(monkeypatch):
     """A tenant-graph-only write (no kg_name) registers nothing."""
+    import infona_client.nlp.pipeline as pipeline_mod
 
-    async def run():
-        monkeypatch.setattr(
-            pipeline_mod.NLQueryPipeline, "invalidate_cache", lambda graph: None
-        )
-        monkeypatch.setattr(pipeline_mod, "get_embedding_service", lambda: None)
-        monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
+    monkeypatch.setattr(
+        pipeline_mod.NLQueryPipeline, "invalidate_cache", lambda graph: None
+    )
+    monkeypatch.setattr(pipeline_mod, "get_embedding_service", lambda: None)
 
-        neptune = AsyncMock()
-        await refresh_after_write(neptune, tenant_id=TENANT, kg_name=None)
-        neptune.update.assert_not_awaited()
-
-    asyncio.run(run())
+    _run(refresh_after_write(None, tenant_id=TENANT, kg_name=None))
+    assert _names() == []
 
 
-# --- create_kg route: escaping (P0) + truthful re-create response (P1) --------
+# --- create_kg route: hostile text is data (P0) + truthful re-create (P1) -----
 
 
-def _create_route(*, existing_desc=None, existing_count=None):
-    """A mock_neptune.query side_effect for create_kg's read-back. Returns the
-    'existing' registration row (or empty to simulate read-back failure)."""
+def test_create_kg_treats_a_hostile_description_as_data(
+    client, mock_neptune, auth_headers
+):
+    """A description carrying quotes / braces / a statement separator changes
+    nothing but its own row, and comes back byte-identical.
 
-    def route(sparql, *a, **k):
-        if "kg_name" in sparql and "SELECT" in sparql:
-            if existing_desc is None and existing_count is None:
-                return {"head": {"vars": []}, "results": {"bindings": []}}
-            row = {}
-            if existing_desc is not None:
-                row["desc"] = existing_desc
-            if existing_count is not None:
-                row["count"] = existing_count
-            return {
-                "head": {"vars": list(row)},
-                "results": {"bindings": [_binding(**row)]},
-            }
-        return {"head": {"vars": []}, "results": {"bindings": []}}
-
-    return route
-
-
-def test_create_kg_escapes_description_no_breakout(client, mock_neptune, auth_headers):
-    """A description containing a quote/backslash must NOT break out of the SPARQL
-    literal: the generated UPDATE has balanced (escaped) quotes (P0)."""
-    sent = []
-    mock_neptune.update.side_effect = lambda sparql, *a, **k: sent.append(sparql)
-    mock_neptune.query.side_effect = _create_route(existing_desc="x", existing_count="0")
+    The SPARQL version of this asserted ``\\"`` appeared in the emitted UPDATE
+    and that its quotes balanced. There is no statement to inspect now, so the
+    property is asserted where it actually matters: the text survives a
+    round-trip as a VALUE, and the peer KG registered alongside it is untouched
+    (a real breakout would have run its ``DROP``-shaped payload).
+    """
+    _run(upsert_registered_kg(TENANT, "bystander", description="untouched"))
+    hostile = 'evil" } } ; DROP ALL ; #\\'
 
     resp = client.post(
         f"/graphs/{TENANT}/kgs",
-        json={"name": "k", "description": 'evil" } } ; DROP ALL ; #'},
+        json={"name": "k", "description": hostile},
         headers=auth_headers,
     )
-    assert resp.status_code == 201
-    assert sent, "create_kg must issue an UPDATE"
-    update_sparql = sent[0]
-    # The injected quote is escaped, so the statement stays single + well-formed.
-    assert '\\"' in update_sparql
-    assert _single_well_formed(update_sparql)
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["description"] == hostile
+
+    listed = client.get(f"/graphs/{TENANT}/kgs", headers=auth_headers).json()
+    by_name = {row["name"]: row for row in listed}
+    assert by_name["k"]["description"] == hostile
+    assert by_name["bystander"]["description"] == "untouched"
+    mock_neptune.update.assert_not_called()
 
 
-def test_create_kg_recreate_returns_existing_not_lie(client, mock_neptune, auth_headers):
-    """Re-POSTing an existing KG no-ops the guarded INSERT; the response must
-    report the EXISTING description + triple count, not description="" count=0 (P1)."""
-    mock_neptune.update.return_value = None
-    mock_neptune.query.side_effect = _create_route(
-        existing_desc="the real description", existing_count="50000"
-    )
+def test_create_kg_recreate_keeps_the_existing_description(
+    client, mock_neptune, auth_headers
+):
+    """Re-POSTing an existing KG with an empty description must not blank it."""
+    _run(upsert_registered_kg(TENANT, "k", description="the real description"))
 
     resp = client.post(
         f"/graphs/{TENANT}/kgs",
@@ -263,19 +206,43 @@ def test_create_kg_recreate_returns_existing_not_lie(client, mock_neptune, auth_
         headers=auth_headers,
     )
     assert resp.status_code == 201
-    body = resp.json()
-    assert body["description"] == "the real description"
-    assert body["triple_count"] == 50000
+    assert resp.json()["description"] == "the real description"
+    assert _row("k")["description"] == "the real description"
 
 
-def test_create_kg_new_path_contract_unchanged(client, mock_neptune, auth_headers):
-    """The create-new path still returns the values just written (description as
-    given, count 0) — read back from the registration."""
-    mock_neptune.update.return_value = None
-    mock_neptune.query.side_effect = _create_route(
-        existing_desc="brand new kg", existing_count="0"
+@pytest.mark.xfail(
+    reason=(
+        "BUG (introduced by the Neo4j cutover, surfaced by ONTA-527): "
+        "api/routes/knowledge_graphs.py::create_kg calls upsert_registered_kg "
+        "with triple_count=0 unconditionally, and graph/kg_registry.py's MERGE "
+        "overwrites the stored count on ON MATCH whenever $triple_count is not "
+        "NULL. So re-POSTing an existing KG — an idempotent create the Explorer "
+        "and CLI both do — resets its triple_count to 0 and the 201 body "
+        "reports 0 for a KG that may hold real data. The SPARQL version could "
+        "not do this: its INSERT was NOT-EXISTS-guarded and it read the "
+        "registration back before answering. Masked in practice by the deeper "
+        "gap in test_kg_list_counts.py (nothing ever writes a non-zero "
+        "triple_count on this path), which is why the fix belongs with that "
+        "one: pass triple_count=None on create so an existing count is kept."
+    ),
+    strict=True,
+)
+def test_create_kg_recreate_does_not_reset_the_triple_count(client, auth_headers):
+    _run(upsert_registered_kg(TENANT, "k", description="real", triple_count=50000))
+
+    resp = client.post(
+        f"/graphs/{TENANT}/kgs",
+        json={"name": "k", "description": ""},
+        headers=auth_headers,
     )
+    assert resp.status_code == 201
+    assert resp.json()["triple_count"] == 50000
+    assert _row("k")["triple_count"] == 50000
 
+
+def test_create_kg_new_path_contract_unchanged(client, auth_headers):
+    """The create-new path returns the values just written (description as
+    given, count 0)."""
     resp = client.post(
         f"/graphs/{TENANT}/kgs",
         json={"name": "k", "description": "brand new kg"},
@@ -288,59 +255,15 @@ def test_create_kg_new_path_contract_unchanged(client, mock_neptune, auth_header
     assert body["triple_count"] == 0
 
 
-# --- Round-trip: register, then list_kgs's metadata query returns the KG -------
+# --- Round-trip: register, then GET /kgs returns the KG ------------------------
 
 
-class _InMemoryTripleStore:
-    """A tiny SPARQL-ish store: applies the guarded registration INSERT and
-    answers the metadata-list SELECT list_kgs issues. Just enough to lock the
-    predicate + URI contract that ensure_kg_registered and list_kgs share — a
-    coordinated drift in _kg_meta_uri / _KG_NAME_PRED would break this round-trip
-    even though both sides change together."""
+def test_register_then_list_roundtrip(client, mock_neptune, auth_headers):
+    """ensure_kg_registered_store writes a record ``list_kgs`` reads back —
+    pinning the shared registry contract end-to-end, with no SPARQL involved."""
+    _run(ensure_kg_registered_store(TENANT, "my-kg"))
 
-    def __init__(self):
-        self.triples: dict[tuple[str, str], str] = {}  # (subject, predicate) -> object
-
-    async def update(self, sparql, *a, **k):
-        import re
-
-        m = re.search(r'<([^>]+)>\s*<([^>]+)>\s*"([^"]*)"', sparql)
-        if not m:
-            return
-        subj, pred, obj = m.group(1), m.group(2), m.group(3)
-        if "NOT EXISTS" in sparql and (subj, pred) in self.triples:
-            return  # honor the guard
-        self.triples[(subj, pred)] = obj
-
-    async def query(self, sparql, *a, **k):
-        bindings = [
-            _binding(name=obj)
-            for (subj, pred), obj in self.triples.items()
-            if pred == _KG_NAME_PRED
-        ]
-        return {"head": {"vars": ["name"]}, "results": {"bindings": bindings}}
-
-
-def test_register_then_list_roundtrip():
-    """ensure_kg_registered writes a record that list_kgs' own metadata query can
-    read back — pinning the shared predicate/URI contract end-to-end."""
-
-    async def run():
-        store = _InMemoryTripleStore()
-        await ensure_kg_registered(store, TENANT, "my-kg")
-
-        from infona_client.api.routes.knowledge_graphs import INFONA_ONTO
-        from infona_client.graph.parser import parse_sparql_results
-        from infona_client.graph.queries import tenant_graph_uri
-
-        base = tenant_graph_uri(TENANT)
-        sparql = (
-            f"SELECT ?name FROM <{base}> WHERE {{"
-            f"  ?kg <{INFONA_ONTO}/kg_name> ?name ."
-            f"}}"
-        )
-        _, rows = parse_sparql_results(await store.query(sparql))
-        names = [r.get("name") for r in rows]
-        assert "my-kg" in names, "registered KG must be visible to list_kgs"
-
-    asyncio.run(run())
+    resp = client.get(f"/graphs/{TENANT}/kgs", headers=auth_headers)
+    assert resp.status_code == 200
+    assert [row["name"] for row in resp.json()] == ["my-kg"]
+    mock_neptune.query.assert_not_called()

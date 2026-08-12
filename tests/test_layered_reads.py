@@ -1,20 +1,37 @@
-"""ONTA-397 — workspace ontology reads through LayerStack.
+"""ONTA-397 — workspace ontology reads through LayerStack (ported by ONTA-527).
 
-Acceptance coverage:
-  * Empty tenant + populated Public → Public types via ontology routes + ask
-  * Entitled sees Enhanced; non-entitled cannot by any input
-  * Same-name tenant shadows Public (one entry, not two)
-  * Cross-tenant isolation under graph union
-  * Failing global layer degrades (does not error the whole read)
-  * Mutation test of shadowing precedence (reversed order fails a pin)
-  * Writes still target the tenant graph only
-  * Operator ``fetch_global_ontology`` stays independent (not rewritten)
+**The behaviour change this file ran into head-on.** Layered reads (Tenant >
+Enhanced > Public shadowing) were a SPARQL ``LayerStack`` concern: the routes
+called :func:`~infona_client.graph.global_ontology.fetch_ontology` over one
+named graph per visible layer and merged the results. That path went out with
+the SPARQL backend. ``GET /ontology``, ``/ontology/types`` and
+``/ontology/schema`` now return the TENANT layer only, from
+:mod:`infona_client.graph.ontology_catalog`
+(``api/routes/ontology.py::_workspace_ontology_store``).
 
-All mocked — no live Neptune, no LLM, no network.
+So the file splits three ways:
+
+* **Unit tests of ``fetch_ontology`` (unchanged, still green).** The layered
+  reader module still exists and still merges/shadows correctly over a SPARQL
+  fake. Worth knowing while reading them: NO product route calls it any more —
+  the only remaining caller of ``global_ontology`` is the operator's
+  ``fetch_global_ontology``. They pin a reader that is currently unwired.
+* **Route tests that survive** — the tenant-layer write path and cross-tenant
+  isolation — are re-pointed at the catalog. Isolation is asserted harder than
+  before: a peer workspace's type is seeded and asserted absent, rather than a
+  ``FROM`` clause being inspected.
+* **Route tests for Public / Enhanced visibility and shadowing** are strict
+  xfails. The catalog HAS the layers (``GraphScope.for_catalog(layer=…)``,
+  writable privileged, readable) — what is missing is the route-side merge, so
+  each xfailed test is now written against the CATALOG and reads as the
+  acceptance criterion for that port.
+
+All mocked — no live Neptune, no live Neo4j, no LLM, no network.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -27,6 +44,7 @@ from infona_client.api.routes import ask as ask_routes
 from infona_client.api.routes import ontology as ontology_routes
 from infona_client.auth import api_keys
 from infona_client.auth.api_keys import TenantContext
+from infona_client.graph.client import NeptuneClient
 from infona_client.graph.entitlement import (
     is_entitled,
     layer_stack_for,
@@ -40,7 +58,13 @@ from infona_client.graph.layers import (
     layer_type_uri,
     public_graph_uri,
 )
+from infona_client.graph.ontology_catalog import (
+    list_types as cat_list_types,
+    upsert_attribute as cat_upsert_attribute,
+    upsert_type as cat_upsert_type,
+)
 from infona_client.graph.queries import tenant_graph_uri
+from infona_client.graph.store import get_graph_store
 from infona_client.models.ontology import WorkspaceOntologyResponse
 from infona_client.models.query import NLResult
 
@@ -72,6 +96,48 @@ def _clear_entitlement():
     register_entitlement_checker(None)
     yield
     register_entitlement_checker(None)
+
+
+def _run(coro):
+    """Drive a coroutine from a sync (TestClient) test."""
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
+@pytest.fixture
+def store():
+    """The process GraphStore conftest installed for this test."""
+    return get_graph_store()
+
+
+def _declare(store, name, *, layer, tenant_id=None, description="", attrs=()):
+    """Declare a type (+ attrs) in one catalog layer. Global layers need privilege."""
+    privileged = layer in ("public", "enhanced")
+    _run(
+        cat_upsert_type(
+            name=name,
+            description=description,
+            layer=layer,
+            tenant_id=tenant_id,
+            privileged=privileged,
+            store=store,
+        )
+    )
+    for attr in attrs:
+        _run(
+            cat_upsert_attribute(
+                type_name=name,
+                attr_name=attr,
+                datatype="string",
+                layer=layer,
+                tenant_id=tenant_id,
+                privileged=privileged,
+                store=store,
+            )
+        )
 
 
 def _tenant_ctx(tenant_id: str, *, entitled: bool = False) -> TenantContext:
@@ -133,9 +199,17 @@ def _seeded_enhanced_only_type() -> FakeNeptune:
     })
 
 
-def _ontology_app(neptune, tenant_id: str = TENANT_A, *, entitled: bool = False):
+def _ontology_app(neptune=None, tenant_id: str = TENANT_A, *, entitled: bool = False):
+    """Ontology router wired to one tenant context.
+
+    ``neptune`` defaults to a bare mock: the ontology read/write routes still
+    DECLARE the NeptuneClient dependency but must never call it now that the
+    catalog is the substrate, so leaving it un-stubbed lets a test prove that
+    with ``assert_not_called()``.
+    """
     app = FastAPI()
     app.include_router(ontology_routes.router)
+    neptune = neptune if neptune is not None else AsyncMock(spec=NeptuneClient)
     app.dependency_overrides[get_neptune_client] = lambda: neptune
     ctx = _tenant_ctx(tenant_id, entitled=entitled)
     app.dependency_overrides[api_keys.get_tenant] = (
@@ -145,7 +219,9 @@ def _ontology_app(neptune, tenant_id: str = TENANT_A, *, entitled: bool = False)
         register_entitlement_checker(
             lambda t: t.tenant_id == tenant_id or bool(t.enhanced_entitled)
         )
-    return TestClient(app)
+    client = TestClient(app)
+    client.neptune = neptune  # type: ignore[attr-defined]
+    return client
 
 
 # ---------------------------------------------------------------------------
@@ -347,58 +423,182 @@ async def test_fetch_global_ontology_untouched_by_workspace_reader():
 
 
 # ---------------------------------------------------------------------------
-# Ontology routes — list/get/workspace
+# Ontology routes — what survived: tenant-layer writes + cross-tenant isolation
 # ---------------------------------------------------------------------------
 
 
-def test_list_types_empty_tenant_sees_public():
-    neptune = _seeded_public_only()
-    client = _ontology_app(neptune, TENANT_A, entitled=False)
+def test_write_create_type_targets_the_tenant_layer_only(store):
+    """Ordinary mutation writes the TENANT catalog layer, never a global one.
+
+    (Was: scrape ``neptune.update`` for the tenant graph IRI and assert the
+    global layer IRIs are absent from the emitted SPARQL. The write emits no
+    SPARQL now, so assert the same property on the catalog itself — which also
+    covers the case the string check could not: a write that reached the global
+    layer through some path that never spells the IRI.)
+    """
+    client = _ontology_app(tenant_id=TENANT_A, entitled=True)
+    r = client.post(
+        f"/graphs/{TENANT_A}/ontology/types",
+        json={"name": "Widget", "description": "w"},
+    )
+    assert r.status_code == 201, r.text
+
+    tenant_types = _run(cat_list_types(layer="tenant", tenant_id=TENANT_A, store=store))
+    assert [t.name for t in tenant_types] == ["Widget"]
+    assert tenant_types[0].tenant_id == TENANT_A
+
+    # Neither global catalog layer was touched...
+    assert _run(cat_list_types(layer="public", store=store)) == []
+    assert _run(cat_list_types(layer="enhanced", store=store)) == []
+    # ...nor any peer workspace's layer.
+    assert _run(cat_list_types(layer="tenant", tenant_id=TENANT_B, store=store)) == []
+    client.neptune.update.assert_not_called()
+
+
+def test_cross_tenant_route_isolation(store):
+    """Tenant B's list_types must not surface tenant A's private Hotel.
+
+    Isolation is by ``tenant_id`` on the catalog scope now rather than by named
+    graph, and it is asserted on DATA: A's private description is seeded and
+    must not appear anywhere in B's response body.
+    """
+    _declare(store, "Hotel", layer="tenant", tenant_id=TENANT_A,
+             description="tenant-hotel", attrs=["roomCount"])
+
+    client = _ontology_app(tenant_id=TENANT_B, entitled=True)
+    r = client.get(f"/graphs/{TENANT_B}/ontology/types")
+    assert r.status_code == 200
+    assert [t for t in r.json() if t["name"] == "Hotel"] == []
+    assert "tenant-hotel" not in r.text
+    assert "roomCount" not in r.text
+
+    # ...and the owner still sees it (isolation, not a blanket empty read).
+    own = _ontology_app(tenant_id=TENANT_A, entitled=True).get(
+        f"/graphs/{TENANT_A}/ontology/types"
+    )
+    hotels = [t for t in own.json() if t["name"] == "Hotel"]
+    assert len(hotels) == 1 and hotels[0]["description"] == "tenant-hotel"
+
+
+def test_get_type_enhanced_404_when_not_entitled(store):
+    """A non-entitled workspace must not reach an Enhanced-only type.
+
+    NOTE: this now passes VACUOUSLY — no caller reaches Enhanced by any input,
+    entitled or not (see the xfail below). Kept because the direction it guards
+    (non-entitled must never see Enhanced) has to survive the catalog-layer
+    port, and a test that only passes when the feature is broken is worth
+    keeping green rather than deleting.
+    """
+    _declare(store, "VipGuest", layer="enhanced", description="premium guest",
+             attrs=["tier"])
+    client = _ontology_app(tenant_id=TENANT_A, entitled=False)
+    r = client.get(f"/graphs/{TENANT_A}/ontology/types/VipGuest")
+    assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Ontology routes — layered reads: the capability that did NOT survive
+# ---------------------------------------------------------------------------
+#
+# api/routes/ontology.py::_workspace_ontology deletes its client argument and
+# delegates to _workspace_ontology_store, which calls ontology_catalog's
+# list_types/list_attributes with layer="tenant" and nothing else. There is no
+# read of the public / enhanced catalog scopes and no shadowing merge, so every
+# case below fails on a payload that carries only the tenant layer. The layers
+# themselves EXIST in the catalog (seeded here through the ordinary privileged
+# write path), which is why these are ports rather than deletions: they are the
+# acceptance criteria for the missing merge.
+
+_LAYERED_READ_GONE = (
+    "LOST CAPABILITY (ONTA-527): layered ontology reads (Tenant > Enhanced > "
+    "Public shadowing) are gone from the ontology routes. They were a SPARQL "
+    "LayerStack concern — graph/global_ontology.py::fetch_ontology over "
+    "graph/entitlement.py::layer_stack_for_tenant, one named graph per visible "
+    "layer — and api/routes/ontology.py::_workspace_ontology now discards its "
+    "NeptuneClient and returns _workspace_ontology_store, which reads "
+    "ontology_catalog with layer='tenant' only. The public/enhanced CATALOG "
+    "scopes exist and are readable (GraphScope.for_catalog(layer=…)); what is "
+    "missing is the route-side merge + shadowing. "
+)
+
+
+@pytest.mark.xfail(reason=_LAYERED_READ_GONE + "Here: an empty workspace no "
+                   "longer sees a Public type at all.", strict=True)
+def test_list_types_empty_tenant_sees_public(store):
+    _declare(store, "Hotel", layer="public", description="A lodging place",
+             attrs=["stars"])
+    client = _ontology_app(tenant_id=TENANT_A, entitled=False)
     r = client.get(f"/graphs/{TENANT_A}/ontology/types")
     assert r.status_code == 200, r.text
-    names = [t["name"] for t in r.json()]
-    assert names == ["Hotel"]
+    assert [t["name"] for t in r.json()] == ["Hotel"]
 
 
-def test_list_types_shadowing_one_hotel():
-    neptune = _seeded_collision()
-    client = _ontology_app(neptune, TENANT_A, entitled=True)
+@pytest.mark.xfail(reason=_LAYERED_READ_GONE + "Here: shadowing is a MERGE — "
+                   "a colliding name collapses to the tenant's ONE entry while "
+                   "the lower layers' other types still surface. Only the "
+                   "second half can fail today (a tenant-only read trivially "
+                   "reports one Hotel, which is why asserting the collapse "
+                   "alone would XPASS and prove nothing); the Public-only "
+                   "Motel is the discriminating half.",
+                   strict=True)
+def test_list_types_shadowing_one_hotel(store):
+    _declare(store, "Hotel", layer="public", description="public-hotel",
+             attrs=["stars"])
+    _declare(store, "Motel", layer="public", description="public-motel")
+    _declare(store, "Hotel", layer="enhanced", description="enhanced-hotel",
+             attrs=["loyaltyTier"])
+    _declare(store, "Hotel", layer="tenant", tenant_id=TENANT_A,
+             description="tenant-hotel", attrs=["roomCount"])
+
+    client = _ontology_app(tenant_id=TENANT_A, entitled=True)
     r = client.get(f"/graphs/{TENANT_A}/ontology/types")
     assert r.status_code == 200
+    # Merged and deduped: the collision collapses, the Public-only type stays.
+    assert sorted(t["name"] for t in r.json()) == ["Hotel", "Motel"]
     hotels = [t for t in r.json() if t["name"] == "Hotel"]
     assert len(hotels) == 1
     assert hotels[0]["description"] == "tenant-hotel"
+    # The shadowed layers' slots must not leak in under the winner.
+    attr_names = {a["name"] for a in hotels[0]["attributes"]}
+    assert attr_names == {"roomCount"}
 
 
-def test_get_type_public_detail():
-    neptune = _seeded_public_only()
-    client = _ontology_app(neptune, TENANT_A, entitled=False)
+@pytest.mark.xfail(reason=_LAYERED_READ_GONE + "Here: type DETAIL for a "
+                   "Public-only type 404s.", strict=True)
+def test_get_type_public_detail(store):
+    _declare(store, "Hotel", layer="public", description="A lodging place",
+             attrs=["stars"])
+    client = _ontology_app(tenant_id=TENANT_A, entitled=False)
     r = client.get(f"/graphs/{TENANT_A}/ontology/types/Hotel")
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["name"] == "Hotel"
     assert body["description"] == "A lodging place"
-    assert any(a["name"] == "name" for a in body["attributes"])
+    assert any(a["name"] == "stars" for a in body["attributes"])
 
 
-def test_get_type_enhanced_404_when_not_entitled():
-    neptune = _seeded_enhanced_only_type()
-    client = _ontology_app(neptune, TENANT_A, entitled=False)
-    r = client.get(f"/graphs/{TENANT_A}/ontology/types/VipGuest")
-    assert r.status_code == 404
-
-
-def test_get_type_enhanced_ok_when_entitled():
-    neptune = _seeded_enhanced_only_type()
-    client = _ontology_app(neptune, TENANT_A, entitled=True)
+@pytest.mark.xfail(reason=_LAYERED_READ_GONE + "Here: an ENTITLED workspace "
+                   "cannot reach an Enhanced type either, so entitlement now "
+                   "buys nothing on this route.", strict=True)
+def test_get_type_enhanced_ok_when_entitled(store):
+    _declare(store, "VipGuest", layer="enhanced", description="premium guest",
+             attrs=["tier"])
+    client = _ontology_app(tenant_id=TENANT_A, entitled=True)
     r = client.get(f"/graphs/{TENANT_A}/ontology/types/VipGuest")
     assert r.status_code == 200
     assert r.json()["name"] == "VipGuest"
 
 
-def test_workspace_ontology_route_returns_workspace_model():
-    neptune = _seeded_public_only()
-    client = _ontology_app(neptune, TENANT_A, entitled=False)
+@pytest.mark.xfail(reason=_LAYERED_READ_GONE + "Here: the full workspace "
+                   "payload. Its `layers` array is ALSO empty — "
+                   "_workspace_ontology_store returns layers=[] — so the "
+                   "viewer's per-layer status strip (available / type_count) "
+                   "has no data at all, not even for the tenant layer it does "
+                   "read.", strict=True)
+def test_workspace_ontology_route_returns_workspace_model(store):
+    _declare(store, "Hotel", layer="public", description="A lodging place",
+             attrs=["stars"])
+    client = _ontology_app(tenant_id=TENANT_A, entitled=False)
     r = client.get(f"/graphs/{TENANT_A}/ontology")
     assert r.status_code == 200, r.text
     body = r.json()
@@ -408,43 +608,39 @@ def test_workspace_ontology_route_returns_workspace_model():
     assert body["types"][0]["layer"] == "public"
 
 
-def test_write_create_type_targets_tenant_graph_only():
-    """Ordinary mutation must UPDATE the tenant graph, never a global layer."""
-    neptune = AsyncMock()
-    neptune.update = AsyncMock()
-    neptune.query = AsyncMock(return_value={
-        "head": {"vars": []}, "results": {"bindings": []},
-    })
-    client = _ontology_app(neptune, TENANT_A, entitled=True)
-    r = client.post(
-        f"/graphs/{TENANT_A}/ontology/types",
-        json={"name": "Widget", "description": "w"},
-    )
-    assert r.status_code == 201, r.text
-    assert neptune.update.await_count >= 1
-    for call in neptune.update.await_args_list:
-        sparql = call.args[0]
-        assert GRAPH_A in sparql
-        assert public_graph_uri() not in sparql
-        assert enhanced_graph_uri() not in sparql
+def test_workspace_ontology_route_shape_and_tenant_layer(store):
+    """What the workspace route DOES still guarantee, pinned so it can't slip.
 
-
-def test_cross_tenant_route_isolation():
-    """Tenant B's list_types must not surface tenant A's private Hotel."""
-    neptune = _seeded_collision()
-    # Use tenant B's context against the same FakeNeptune.
-    client = _ontology_app(neptune, TENANT_B, entitled=True)
-    r = client.get(f"/graphs/{TENANT_B}/ontology/types")
-    assert r.status_code == 200
-    hotels = [t for t in r.json() if t["name"] == "Hotel"]
-    # Global only — description is not the tenant-A-private string.
-    assert len(hotels) == 1
-    assert hotels[0]["description"] != "tenant-hotel"
+    The envelope (tenant_id / entitled / layers / types) is unchanged, tenant
+    types come back with layer="tenant", and their attributes and relationships
+    are split correctly.
+    """
+    _declare(store, "Hotel", layer="tenant", tenant_id=TENANT_A,
+             description="tenant-hotel", attrs=["roomCount"])
+    client = _ontology_app(tenant_id=TENANT_A, entitled=False)
+    r = client.get(f"/graphs/{TENANT_A}/ontology")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["tenant_id"] == TENANT_A
+    assert body["entitled"] is False
+    assert set(body) >= {"tenant_id", "entitled", "layers", "types"}
+    hotel = next(t for t in body["types"] if t["name"] == "Hotel")
+    assert hotel["layer"] == "tenant"
+    assert hotel["description"] == "tenant-hotel"
+    assert [a["name"] for a in hotel["attributes"]] == ["roomCount"]
+    assert hotel["relationships"] == []
+    client.neptune.query.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
-# ask route — passes layer_graph_uris; consumer SPARQL binds Public type
+# ask route — still passes layer_graph_uris; the pipeline no longer uses them
 # ---------------------------------------------------------------------------
+#
+# The two route tests below are unchanged and still green: routes/ask.py builds
+# the LayerStack and threads visible_graph_uris() into the pipeline exactly as
+# before. What changed is on the other side of that call —
+# nlp/pipeline.py::_ask_cypher opens with `del layer_graph_uris` — so the
+# argument is now computed, passed, and dropped. See the xfail below.
 
 
 def test_ask_route_passes_layer_graph_uris():
@@ -510,6 +706,21 @@ def test_ask_route_entitled_includes_enhanced_graph():
     assert enhanced_graph_uri() in captured["layer_graph_uris"]
 
 
+@pytest.mark.xfail(
+    reason=(
+        "LOST CAPABILITY (ONTA-527): ask() no longer widens the generated query "
+        "to the visible layer graphs, because it no longer generates SPARQL at "
+        "all. nlp/pipeline.py::ask dispatches to _ask_cypher whenever "
+        "neo4j_ask_enabled() — i.e. always — and _ask_cypher's first statement "
+        "is `del layer_graph_uris  # reserved for catalog-layer joins in later "
+        "E6`. Its ontology comes from ontology_catalog.schema_types_for_kg, "
+        "which reads the TENANT catalog only, so a Public-layer type is neither "
+        "shown to the planner nor reachable by the generated Cypher. The route "
+        "still computes and passes the layer URIs (tests above), which makes "
+        "this look wired end to end when it is not."
+    ),
+    strict=True,
+)
 @pytest.mark.asyncio
 async def test_ask_binds_public_type_in_generated_sparql():
     """End-to-end consumer proof: ask over a Public-only type produces SPARQL

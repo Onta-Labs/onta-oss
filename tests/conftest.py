@@ -12,11 +12,12 @@ from tests._hermetic import (
 
 os.environ["INFONA_API_KEYS"] = '{"test-key": "test-tenant"}'
 os.environ["INFONA_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
-# Hermetic suite default: SPARQL + mock_neptune (legacy unit-test surface).
-# Production code still defaults to Neo4j (store.graph_backend / Settings).
-# Tests that need GraphStore set INFONA_GRAPH_BACKEND=neo4j and inject
-# MemoryGraphStore themselves (or use the neo4j/memory fixtures).
-os.environ["INFONA_GRAPH_BACKEND"] = "neptune"
+# The hermetic suite runs the PRODUCTION path (ONTA-527). It briefly pinned
+# INFONA_GRAPH_BACKEND=neptune to keep ~400 legacy SPARQL unit tests green, but
+# that made a green suite prove nothing about what production runs: prod is
+# Neo4j-only and the SPARQL execution path is deleted. `neptune` is now a hard
+# error, so the suite exercises what ships.
+os.environ.setdefault("INFONA_GRAPH_BACKEND", "neo4j")
 
 # Hermetic-by-default LLM credentials.
 #
@@ -59,13 +60,19 @@ if not live_llm_opted_in():
 
 from infona_client.api.app import create_app
 from infona_client.graph.client import NeptuneClient
-from infona_client.graph.store import reset_graph_store_for_tests
+from infona_client.graph.memory_store import MemoryGraphStore
+from infona_client.graph.store import configure_graph_store, reset_graph_store_for_tests
 
 
 @pytest.fixture(autouse=True)
-def _clear_graph_store_singleton():
-    """Do not leak a process GraphStore across tests (avoids accidental Neo4j path)."""
-    reset_graph_store_for_tests()
+def _hermetic_graph_store():
+    """Every test gets a fresh MemoryGraphStore as the process GraphStore.
+
+    Neo4j is the only backend, so routes and write rails resolve the process
+    store on every call. Injecting an in-memory one keeps the suite hermetic
+    (no live Bolt connection) while still exercising the shipped code path.
+    """
+    configure_graph_store(MemoryGraphStore())
     yield
     reset_graph_store_for_tests()
 

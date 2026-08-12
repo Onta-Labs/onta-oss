@@ -8,11 +8,28 @@ Acceptance:
     (no tenant_id, no tenant_custom sources, no tenant skills)
   * ``require_operator`` remains router-wide on the operator router
 
-All mocked — no live Neptune, no LLM, no network.
+**Ported by ONTA-527.** The three ROUTE cases used to seed a ``FakeNeptune``
+with per-layer triples, because ``GET /graphs/{tenant}/ontology`` read through
+a SPARQL ``LayerStack``. It reads the TENANT layer of
+:mod:`infona_client.graph.ontology_catalog` now
+(``api/routes/ontology.py::_workspace_ontology_store``), so those three are
+re-seeded through the catalog. The isolation assertions — this file's whole
+subject — are unchanged in strength: two workspaces each declare a private
+``Hotel`` and neither may see the other's description or slots.
+
+Two things the route no longer does are pinned as strict xfails rather than
+dropped: the ``layers`` status strip (empty for every workspace, including its
+OWN tenant layer) here, and Public/Enhanced visibility in
+``tests/test_layered_reads.py``. The ``fetch_ontology`` UNIT tests below still
+pass — that reader still merges layers correctly; it simply has no route caller
+any more.
+
+All mocked — no live Neptune, no live Neo4j, no LLM, no network.
 """
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
@@ -24,6 +41,7 @@ from infona_client.api.routes import ontology as ontology_routes
 from infona_client.api.routes import operator as operator_routes
 from infona_client.auth import api_keys
 from infona_client.auth.api_keys import TenantContext
+from infona_client.graph.client import NeptuneClient
 from infona_client.graph.entitlement import register_entitlement_checker
 from infona_client.graph.global_ontology import fetch_global_ontology, fetch_ontology
 from infona_client.graph.layers import (
@@ -32,7 +50,12 @@ from infona_client.graph.layers import (
     enhanced_graph_uri,
     public_graph_uri,
 )
+from infona_client.graph.ontology_catalog import (
+    upsert_attribute as cat_upsert_attribute,
+    upsert_type as cat_upsert_type,
+)
 from infona_client.graph.queries import tenant_graph_uri
+from infona_client.graph.store import get_graph_store
 from infona_client.skills.models import TypeSkill
 from infona_client.skills.store import InMemoryTypeSkillStore, reset_type_skill_store
 
@@ -121,6 +144,61 @@ def _ontology_app(neptune, tenant_id: str, *, entitled: bool = False):
     return TestClient(app)
 
 
+def _run(coro):
+    """Drive a coroutine from a sync (TestClient) test."""
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
+@pytest.fixture
+def store():
+    """The process GraphStore conftest installed for this test."""
+    return get_graph_store()
+
+
+def _dead_neptune():
+    """A NeptuneClient the catalog-backed routes must never call."""
+    return AsyncMock(spec=NeptuneClient)
+
+
+def _declare_tenant_type(store, tenant_id, name, *, description="", attrs=()):
+    _run(
+        cat_upsert_type(
+            name=name,
+            description=description,
+            layer="tenant",
+            tenant_id=tenant_id,
+            store=store,
+        )
+    )
+    for attr in attrs:
+        _run(
+            cat_upsert_attribute(
+                type_name=name,
+                attr_name=attr,
+                datatype="string",
+                layer="tenant",
+                tenant_id=tenant_id,
+                store=store,
+            )
+        )
+
+
+def _seed_private_hotels(store):
+    """Tenant A and Tenant B each declare a PRIVATE Hotel in their own catalog."""
+    _declare_tenant_type(
+        store, TENANT_A, "Hotel",
+        description="acme-secret-hotel", attrs=["acmeRoomCount"],
+    )
+    _declare_tenant_type(
+        store, TENANT_B, "Hotel",
+        description="globex-secret-hotel", attrs=["globexSuiteCode"],
+    )
+
+
 def _operator_app(neptune):
     app = FastAPI()
     app.include_router(operator_routes.router)
@@ -156,11 +234,17 @@ def _spec(slug: str, kinds: list[str]) -> ApiSourceSpec:
 # ---------------------------------------------------------------------------
 
 
-def test_workspace_route_does_not_leak_peer_tenant_types():
-    """Tenant B must never see Tenant A's private Hotel description/slots."""
-    neptune = _seeded_private_hotels()
-    a = _ontology_app(neptune, TENANT_A).get(f"/graphs/{TENANT_A}/ontology")
-    b = _ontology_app(neptune, TENANT_B).get(f"/graphs/{TENANT_B}/ontology")
+def test_workspace_route_does_not_leak_peer_tenant_types(store):
+    """Tenant B must never see Tenant A's private Hotel description/slots.
+
+    (Public ``BaseHotel`` was asserted visible to both here; the route no longer
+    reads the Public layer at all — see the layered-read xfails in
+    tests/test_layered_reads.py. The isolation half, which is what this file is
+    for, is unchanged and now runs against the catalog.)
+    """
+    _seed_private_hotels(store)
+    a = _ontology_app(_dead_neptune(), TENANT_A).get(f"/graphs/{TENANT_A}/ontology")
+    b = _ontology_app(_dead_neptune(), TENANT_B).get(f"/graphs/{TENANT_B}/ontology")
     assert a.status_code == 200 and b.status_code == 200
 
     a_body, b_body = a.json(), b.json()
@@ -180,33 +264,31 @@ def test_workspace_route_does_not_leak_peer_tenant_types():
     assert "acme-secret-hotel" not in b_dump
     assert "acmeRoomCount" not in b_dump
 
-    # Public BaseHotel is visible to both (layered C+A).
-    assert any(t["name"] == "BaseHotel" for t in a_body["types"])
-    assert any(t["name"] == "BaseHotel" for t in b_body["types"])
 
-
-def test_workspace_route_rejects_wrong_path_tenant_via_context():
+def test_workspace_route_rejects_wrong_path_tenant_via_context(store):
     """The path tenant is the auth context: tenant A context on tenant B path
     still returns A's data only because get_tenant supplies the context.
-    (Isolation is by named-graph LayerStack, not by trusting the path alone.)
+    (Isolation is by the catalog scope's tenant_id now, not by trusting the
+    path alone.)
     """
-    neptune = _seeded_private_hotels()
+    _seed_private_hotels(store)
     # Wire the app with tenant A context regardless of path.
     app = FastAPI()
     app.include_router(ontology_routes.router)
-    app.dependency_overrides[get_neptune_client] = lambda: neptune
+    app.dependency_overrides[get_neptune_client] = _dead_neptune
     app.dependency_overrides[api_keys.get_tenant] = (
         lambda tenant=None, api_key=None, request=None: _tenant_ctx(TENANT_A)
     )
     client = TestClient(app)
     # Even if a caller crafts the B path, the overridden context is A — so the
     # payload is A's. Production get_tenant enforces path==claims; this pin
-    # is that the reader uses the *context* tenant_id, never peeks at B's graph.
+    # is that the reader uses the *context* tenant_id, never the path.
     r = client.get(f"/graphs/{TENANT_B}/ontology")
     assert r.status_code == 200
     body = r.json()
     assert body["tenant_id"] == TENANT_A
     assert "globex-secret-hotel" not in str(body)
+    assert "globexSuiteCode" not in str(body)
     assert any(
         t["name"] == "Hotel" and t["description"] == "acme-secret-hotel"
         for t in body["types"]
@@ -413,16 +495,44 @@ def test_operator_http_route_unchanged_shape():
     assert "tenant" not in layer_names
 
 
-def test_workspace_route_returns_workspace_model_shape():
-    neptune = _seeded_private_hotels()
+def test_workspace_route_returns_workspace_model_shape(store):
+    _seed_private_hotels(store)
+    neptune = _dead_neptune()
     r = _ontology_app(neptune, TENANT_A).get(f"/graphs/{TENANT_A}/ontology")
     assert r.status_code == 200
     body = r.json()
     assert body["tenant_id"] == TENANT_A
     assert "entitled" in body
     assert "layers" in body and "types" in body
-    # Workspace layers include tenant.
-    assert any(L["layer"] == "tenant" for L in body["layers"])
     # Winning layer for private Hotel is tenant.
     hotel = next(t for t in body["types"] if t["name"] == "Hotel")
     assert hotel["layer"] == "tenant"
+    assert [a["name"] for a in hotel["attributes"]] == ["acmeRoomCount"]
+    # The catalog answered; the declared NeptuneClient dependency was not used.
+    neptune.query.assert_not_called()
+
+
+@pytest.mark.xfail(
+    reason=(
+        "LOST CAPABILITY (ONTA-527): the viewer's `layers` status strip is "
+        "always EMPTY — including the workspace's own tenant layer. It was "
+        "built by graph/global_ontology.py::fetch_ontology, which reported per "
+        "layer whether the read succeeded (`available`) and how many types it "
+        "held; api/routes/ontology.py::_workspace_ontology_store returns "
+        "WorkspaceOntologyResponse(..., layers=[]) unconditionally. So the "
+        "Explorer's layer strip has nothing to render and cannot distinguish "
+        "'this layer is empty' from 'this layer failed to load' — the tenant "
+        "row is missing even though the tenant layer IS the one being read. "
+        "Cheapest first step of the catalog-layer port: emit a tenant row with "
+        "available=True and the type count already in hand."
+    ),
+    strict=True,
+)
+def test_workspace_route_reports_the_tenant_layer_status(store):
+    _seed_private_hotels(store)
+    r = _ontology_app(_dead_neptune(), TENANT_A).get(f"/graphs/{TENANT_A}/ontology")
+    assert r.status_code == 200
+    layers = {L["layer"]: L for L in r.json()["layers"]}
+    assert "tenant" in layers
+    assert layers["tenant"]["available"] is True
+    assert layers["tenant"]["type_count"] == 1

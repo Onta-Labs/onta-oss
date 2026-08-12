@@ -191,19 +191,23 @@ def test_client_cannot_inject_entitled_tenants_via_static_key(monkeypatch):
     assert is_entitled(ctx) is False
 
 
-def test_raw_triples_admin_api_scopes_to_tenant_graph_only():
-    """SPARQL passthrough (triples routes) only ever targets the tenant graph.
+def test_raw_triples_admin_api_reaches_no_graph_at_all():
+    """The raw-triples escape hatch is gone, so it cannot reach any layer.
 
-    A free client cannot reach ``graphs/global/enhanced`` through the admin
-    triples API — the route hardcodes ``tenant_graph_uri(tenant.tenant_id)``.
+    It used to be a SPARQL passthrough whose confinement rested on the route
+    hardcoding ``tenant_graph_uri(tenant.tenant_id)``; ONTA-527 replaced the
+    bodies with an unconditional 410, which is strictly stronger — there is no
+    graph URI to target, tenant or global.
     """
     import infona_client.api.routes.triples as triples_mod
 
     src = inspect.getsource(triples_mod)
-    assert "tenant_graph_uri" in src
     assert "enhanced_graph_uri" not in src
     assert "global/enhanced" not in src
-    # And the helper itself only ever mints the tenant namespace.
+    # No graph is addressed from this module any more, not even the tenant one.
+    assert "tenant_graph_uri" not in src
+    assert "insert_triples" not in src
+    # And the tenant helper still only ever mints the tenant namespace.
     assert tenant_graph_uri("acme") == "https://graph.infona.ai/graphs/acme"
     assert "enhanced" not in tenant_graph_uri("acme")
 

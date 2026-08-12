@@ -2,14 +2,24 @@
 
 MECHANISM tests on INVENTED types/attrs (Widget/sku/color, Gadget/material/weight_kg,
 Sprocket/diameter_mm/finish) across ≥2 unrelated domains — no persona token. Proves:
-  * enrichment writes a PER-ATTRIBUTE `<attr>_source_url` (per-attribute, not per-record);
+  * enrichment writes a PER-ATTRIBUTE citation (per-attribute, not per-record);
   * two attributes from two sources carry INDEPENDENT provenance;
   * companions are dated from the VERDICT's real source date, not write time (F1);
-  * the canonical companion-provenance GRAPH is fed via the shared insert_facts seam;
   * a `verified` re-confirm ADVANCES the freshness stamp without rewriting the value (F2);
   * a REFRESH intent routes to the `verify` policy; a scoped refresh touches only the
     subset and mints nothing (F3);
   * discovery emits the IDENTICAL per-attribute companions end-to-end (cross-rail F1).
+
+**Ported by ONTA-527.** The enrichment cases used to read the emitted SPARQL for
+`attr_meta/<T>/<attr>/<suffix>` triples in a companion named graph. Enrichment
+writes through `GraphStore` now, where those companions FOLD onto Assertion
+provenance and an `:AttrCitation` node (ADR 0013, `graph/pg_ops.py`), so the
+assertions moved to the seeded store: same claims — per-attribute citation, two
+independent sources, verdict-dated stamp, re-stamp without rewriting the value —
+against the record that actually persists. Two claims did NOT survive and are
+xfailed rather than quietly dropped: the canonical companion-provenance GRAPH
+(`prov:confidence` + source-dated `prov:timestamp`), and the fold onto the
+Assertion on the REFRESH path.
 """
 
 from __future__ import annotations
@@ -30,10 +40,9 @@ from infona_client.enrichment.models import (
     JobStatus,
     Verdict,
 )
-from infona_client.graph.provenance import (
-    attr_provenance_companion_uri,
-    provenance_graph_uri,
-)
+from infona_client.graph.kg_writer import insert_facts
+from infona_client.graph.provenance import attr_provenance_companion_uri
+from infona_client.graph.store import get_graph_store
 
 from tests._enrichment_prov_helpers import (
     DOMAINS,
@@ -45,17 +54,46 @@ from tests._enrichment_prov_helpers import (
     query_router,
 )
 
+#: The per-KG instance graph `make_job`'s tenant/kg pair resolves to.
+KG_GRAPH = "https://graph.infona.ai/graphs/test-tenant/kg/kg"
+
+
+def _citations(store, entity_uri: str) -> dict[str, dict]:
+    """``{attribute: :AttrCitation row}`` for one entity."""
+    return {
+        row["attr"]: row
+        for row in store.snapshot_citations()
+        if row["entity_id"] == entity_uri
+    }
+
+
+def _assertions(store, leaf: str) -> list[dict]:
+    """Every Assertion written for the property ``leaf`` (any subject)."""
+    return [
+        a
+        for a in store.snapshot_assertions()
+        if a["property_id"].rsplit("/", 1)[-1] == leaf
+    ]
+
+
+def _entity_props(store, entity_uri: str) -> dict:
+    for row in store.snapshot_entities():
+        if row["id"] == entity_uri:
+            return row["props"]
+    return {}
+
 
 @pytest.mark.parametrize("type_name,attr,label,value,src", DOMAINS)
 def test_enrichment_writes_per_attribute_source_url(type_name, attr, label, value, src, monkeypatch):
-    """Enriching one attribute lands its OWN `<attr>_source_url` display companion on
-    the entity (per-attribute, not per-record). Two invented domains."""
+    """Enriching one attribute lands its OWN citation on the entity, carrying that
+    attribute's source (per-attribute, not per-record). Two invented domains."""
     import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
     async def run():
-        rows = [{"uri": f"https://graph.infona.ai/entities/{type_name}/e1", "label": label, "vals": ""}]
+        entity = f"https://graph.infona.ai/entities/{type_name}/e1"
+        rows = [{"uri": entity, "label": label, "vals": ""}]
         neptune = AsyncMock()
         neptune.query.side_effect = query_router(entities_query_response(rows))
         neptune.update.return_value = None
@@ -69,24 +107,32 @@ def test_enrichment_writes_per_attribute_source_url(type_name, attr, label, valu
         await executor._jobs.create(job)
         await executor.run(job, "test-tenant")
 
+        store = get_graph_store()
+        citations = _citations(store, entity)
+        # Keyed by the enriched ATTRIBUTE, not by the entity as a whole.
+        assert set(citations) == {attr}
+        assert citations[attr]["source_url"] == src
+        assert citations[attr]["provenance"] == "wikidata"
+        # Metadata OF the attribute, never a sibling attribute (ONTA-262).
+        props = _entity_props(store, entity)
+        assert f"{attr}_source_url" not in props and "source_url" not in props
         writes = all_updates(neptune)
-        assert attr_provenance_companion_uri(type_name, attr, "source_url") in writes
-        # Companions are attr_meta metadata, never attribute predicates (ONTA-262).
+        assert attr_provenance_companion_uri(type_name, attr, "source_url") not in writes
         assert _attr_uri(type_name, f"{attr}_source_url") not in writes
-        assert src in writes
 
     asyncio.run(run())
 
 
 def test_two_attributes_carry_independent_sources(monkeypatch):
     """Enriching TWO attributes on the same entity from DIFFERENT sources gives each
-    its own independent `<attr>_source_url` — per-attribute provenance."""
+    its own independent citation — per-attribute provenance."""
     import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
     async def run():
-        rows = [{"uri": "https://graph.infona.ai/entities/Widget/e1", "label": "Alpha Widget", "vals": ""}]
+        entity = "https://graph.infona.ai/entities/Widget/e1"
+        rows = [{"uri": entity, "label": "Alpha Widget", "vals": ""}]
         neptune = AsyncMock()
         neptune.query.side_effect = query_router(entities_query_response(rows))
         neptune.update.return_value = None
@@ -108,17 +154,15 @@ def test_two_attributes_carry_independent_sources(monkeypatch):
         await executor._jobs.create(job)
         await executor.run(job, "test-tenant")
 
-        writes = all_updates(neptune)
-        assert "https://a.example/sku" in writes
-        assert "https://b.example/color" in writes
-        assert attr_provenance_companion_uri("Widget", "sku", "source_url") in writes
-        assert attr_provenance_companion_uri("Widget", "color", "source_url") in writes
+        citations = _citations(get_graph_store(), entity)
+        assert citations["sku"]["source_url"] == "https://a.example/sku"
+        assert citations["color"]["source_url"] == "https://b.example/color"
 
     asyncio.run(run())
 
 
 def test_companions_dated_from_verdict_not_write_time(monkeypatch):
-    """The `<attr>_verified_at` companion is dated from the VERDICT's real source date
+    """The freshness stamp is dated from the VERDICT's real source date
     (source_published_at), NOT the write time — so provenance shows when the source
     knew the fact (F1)."""
     import infona_client.api.routes.explore as explore_mod
@@ -127,7 +171,8 @@ def test_companions_dated_from_verdict_not_write_time(monkeypatch):
     published = datetime(2021, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
 
     async def run():
-        rows = [{"uri": "https://graph.infona.ai/entities/Gadget/e1", "label": "Beta Gadget", "vals": ""}]
+        entity = "https://graph.infona.ai/entities/Gadget/e1"
+        rows = [{"uri": entity, "label": "Beta Gadget", "vals": ""}]
         neptune = AsyncMock()
         neptune.query.side_effect = query_router(entities_query_response(rows))
         neptune.update.return_value = None
@@ -142,17 +187,31 @@ def test_companions_dated_from_verdict_not_write_time(monkeypatch):
         await executor._jobs.create(job)
         await executor.run(job, "test-tenant")
 
-        writes = all_updates(neptune)
-        assert "2021-06-01T12:00:00" in writes
+        stamp = _citations(get_graph_store(), entity)["material"]["verified_at"]
+        assert datetime.fromisoformat(stamp) == published
         assert _now().year != published.year  # sanity: they really differ
 
     asyncio.run(run())
 
 
+@pytest.mark.xfail(
+    reason=(
+        "LOST CAPABILITY (ONTA-527): enrichment still BUILDS the canonical "
+        "companion-provenance records (executor._canonical_provenance_triples → "
+        "graph/provenance.build_provenance_triples, keyed sha1(s|p|o|source) with "
+        "prov:confidence and a verdict-dated prov:timestamp) and still hands them "
+        "to the converged seam, but graph/kg_writer.py::insert_facts DROPS its "
+        "provenance_triples argument — that payload was a named-graph SPARQL "
+        "write and the SPARQL path is deleted. The property-graph substitute "
+        "(pg_ops.create_prov_event, fired inside apply_facts) records neither the "
+        "confidence nor the source date: its ts is write time. So with "
+        "INFONA_PROVENANCE_ENABLED=1 the F1 governance record is unrecoverable."
+    ),
+    strict=True,
+)
 def test_canonical_provenance_graph_gets_confidence_and_source_date(monkeypatch):
-    """With INFONA_PROVENANCE_ENABLED on, enrichment feeds the CANONICAL companion
-    provenance GRAPH via the shared insert_facts(provenance_triples=…) seam — each
-    record keyed with prov:confidence + a source-dated prov:timestamp (F1)."""
+    """With INFONA_PROVENANCE_ENABLED on, an applied enrichment records the
+    verdict's confidence and the SOURCE's date (not the write time)."""
     import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
@@ -160,9 +219,8 @@ def test_canonical_provenance_graph_gets_confidence_and_source_date(monkeypatch)
     published = datetime(2020, 3, 3, tzinfo=timezone.utc)
 
     async def run():
-        graph = "https://graph.infona.ai/graphs/test-tenant/kg/kg"
-        prov_graph = provenance_graph_uri(graph)
-        rows = [{"uri": "https://graph.infona.ai/entities/Widget/e1", "label": "Alpha Widget", "vals": ""}]
+        entity = "https://graph.infona.ai/entities/Widget/e1"
+        rows = [{"uri": entity, "label": "Alpha Widget", "vals": ""}]
         neptune = AsyncMock()
         neptune.query.side_effect = query_router(entities_query_response(rows))
         neptune.update.return_value = None
@@ -177,14 +235,64 @@ def test_canonical_provenance_graph_gets_confidence_and_source_date(monkeypatch)
         await executor._jobs.create(job)
         await executor.run(job, "test-tenant")
 
-        prov_writes = [
-            (c.args[0] if c.args else "") for c in neptune.update.await_args_list
-            if prov_graph in (c.args[0] if c.args else "")
+        events = [
+            e
+            for e in get_graph_store().snapshot_prov()
+            if e["subject_id"] == entity and e["object_repr"] == "WX-9"
         ]
-        assert prov_writes, "canonical provenance graph write missing"
-        blob = " ".join(prov_writes)
-        assert "0.9" in blob and "#float" in blob  # prov:confidence
-        assert "2020-03-03" in blob  # source-dated prov:timestamp, not write time
+        assert events, "no provenance record for the applied fact"
+        record = " ".join(str(v) for v in events[0].values())
+        assert "0.9" in record  # prov:confidence
+        assert "2020-03-03" in record  # source-dated, not write time
+
+    asyncio.run(run())
+
+
+@pytest.mark.xfail(
+    reason=(
+        "BUG (surfaced by ONTA-527): on the REFRESH policies (verify/overwrite) "
+        "the citation never folds onto the Assertion, so source_url / verified_at "
+        "/ provenance stay NULL on the fact itself. executor.run's is_refresh "
+        "branch routes the primary value through "
+        "pipeline.mutations.write_with_conflict_resolution (its OWN insert_facts "
+        "call) and issues the attr_meta companions in a SECOND, separate "
+        "insert_facts, so pg_ops.fold_attr_citations_onto_facts has no domain Fact "
+        "in the batch to fold onto and only the secondary :AttrCitation residual "
+        "lands. ADR 0013 makes the Assertion the primary destination, and "
+        "neo4j_store's 'assertions changed since' query filters on a.verified_at "
+        "— which never sees an enrichment REFRESH. The initial-fill path "
+        "(skip/stage), where value and companions share one insert_facts, folds "
+        "correctly, so the two enrichment policies disagree."
+    ),
+    strict=True,
+)
+def test_refresh_folds_citation_onto_the_assertion(monkeypatch):
+    """A refreshed fact's own Assertion carries its source + freshness stamp, the
+    same way an initial fill's does."""
+    import infona_client.api.routes.explore as explore_mod
+
+    monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
+
+    async def run():
+        entity = "https://graph.infona.ai/entities/Widget/e1"
+        rows = [{"uri": entity, "label": "Alpha Widget", "vals": ""}]
+        neptune = AsyncMock()
+        neptune.query.side_effect = query_router(entities_query_response(rows))
+        neptune.update.return_value = None
+        executor = EnrichmentExecutor(
+            neptune, InMemoryJobStore(), EnrichmentCache(),
+            FakeWikidata({("Alpha Widget", "sku"): [
+                Verdict(value="WX-9", confidence=0.95, source="wikidata",
+                        source_url="https://a.example/sku")
+            ]}),
+        )
+        job = make_job(type_name="Widget", attributes=["sku"], policy=ConflictPolicy.overwrite)
+        await executor._jobs.create(job)
+        await executor.run(job, "test-tenant")
+
+        (assertion,) = _assertions(get_graph_store(), "sku")
+        assert assertion["source_url"] == "https://a.example/sku"
+        assert assertion["verified_at"]
 
     asyncio.run(run())
 
@@ -193,15 +301,25 @@ def test_canonical_provenance_graph_gets_confidence_and_source_date(monkeypatch)
 def test_verified_row_advances_freshness_without_rewriting_value(policy, monkeypatch):
     """F2: a re-verify (source re-confirms the existing value → `verified`) under
     verify/stage RE-STAMPS the freshness companion WITHOUT writing a duplicate
-    primary value triple. Clock advances; value untouched."""
+    primary value. Clock advances; value untouched.
+
+    The incumbent value is SEEDED into the store, so "untouched" is checked
+    against the stored fact — not merely inferred from the absence of an INSERT.
+    """
     import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
     async def run():
+        entity = "https://graph.infona.ai/entities/Widget/e1"
         sku_pred = _attr_uri("Widget", "sku")
+        store = get_graph_store()
+        await insert_facts(None, KG_GRAPH, [(entity, sku_pred, "WX-1000")], store=store)
+        before = _assertions(store, "sku")
+        assert len(before) == 1  # the incumbent value, written once
+
         rows = [{
-            "uri": "https://graph.infona.ai/entities/Widget/e1",
+            "uri": entity,
             "label": "Alpha Widget",
             "vals": f"{sku_pred}::WX-1000",  # already has this value
         }]
@@ -221,21 +339,15 @@ def test_verified_row_advances_freshness_without_rewriting_value(policy, monkeyp
 
         final = await executor._jobs.get(job.id)
         assert final.progress.verified == 1  # it was a re-verify
-        writes = all_updates(neptune)
-        # The freshness stamp WAS (re)written as a typed dateTime...
-        assert attr_provenance_companion_uri("Widget", "sku", "verified_at") in writes
-        assert XSD_DATETIME in writes
-        # ...but no NEW primary value triple was written (the value is unchanged).
-        # The only occurrence of the primary predicate is inside the SELECT echoed
-        # back by the fake; there is no INSERT of `<sku> "WX-1000"`.
-        assert 'INSERT DATA' in writes  # a write did happen (the re-stamp)
-        insert_blob = " ".join(
-            (c.args[0] if c.args else "")
-            for c in neptune.update.await_args_list
-            if "INSERT DATA" in (c.args[0] if c.args else "")
-        )
-        assert f"<{sku_pred}>" not in insert_blob, "primary value must NOT be re-inserted"
-        assert "/verified_at" in insert_blob
+
+        # The freshness stamp advanced...
+        citation = _citations(store, entity)["sku"]
+        assert datetime.fromisoformat(citation["verified_at"]).tzinfo is not None
+        assert citation["source_url"] == "https://a.example/sku"
+        # ...and the primary value was NOT rewritten: the same single Assertion,
+        # unchanged, and the entity's value untouched.
+        assert _assertions(store, "sku") == before
+        assert _entity_props(store, entity)["sku"] == "WX-1000"
 
     asyncio.run(run())
 

@@ -1395,21 +1395,16 @@ def records_to_bindings(records: list[GraphRecord]) -> tuple[list[str], list[dic
 
 
 def neo4j_ask_enabled(*, explicit: bool | None = None) -> bool:
-    """True when the NL path should generate Cypher instead of SPARQL.
+    """True when the NL path should generate Cypher — always, unless overridden.
 
-    ``explicit`` overrides the env switch when the caller passes a flag.
-    Default follows ``INFONA_GRAPH_BACKEND=neo4j``.
+    Neo4j is the only graph backend (ONTA-527), so the NL target language is
+    Cypher. ``explicit=False`` still forces the legacy SPARQL generator for the
+    eval/archive harnesses that compare against stored SPARQL gold; nothing in
+    the product passes it.
     """
     if explicit is not None:
         return bool(explicit)
-    try:
-        from infona_client.graph.kg_writer import graph_backend
-
-        return graph_backend() == "neo4j"
-    except Exception:
-        import os
-
-        return (os.environ.get("INFONA_GRAPH_BACKEND") or "neo4j").strip().lower() == "neo4j"
+    return True
 
 
 __all__ = [

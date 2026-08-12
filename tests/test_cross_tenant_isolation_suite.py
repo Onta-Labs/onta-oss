@@ -1,9 +1,41 @@
 """ONTA-402b — adversarial cross-tenant isolation suite.
 
-Isolation is by **named graph**, not by type URI: two tenants' ``Hotel`` share
-``https://graph.infona.ai/types/Hotel``. Layered reads (ONTA-397) union Public /
-Enhanced / tenant graphs via ``LayerStack`` — that union is the leak surface
-this suite attacks.
+Isolation is by **scope**, not by type URI: two tenants' ``Hotel`` share
+``https://graph.infona.ai/types/Hotel``. On the SPARQL rails that scope was a
+named graph and layered reads (ONTA-397) unioned Public / Enhanced / tenant
+graphs via ``LayerStack`` — that union is the leak surface this suite attacks.
+
+**Ported by ONTA-527 — read this before changing an assertion.** Several routes
+here (ontology workspace/list/get, explore records, per-KG type-counts, literal
+grep) are served from the property-graph store now, so the ``IsolationNeptune``
+fixture that answers SPARQL shapes no longer sees their reads at all: those
+tests were passing against an empty store, i.e. proving nothing. They are
+re-seeded into a ``MemoryGraphStore`` through the REAL write paths
+(``ontology_catalog.upsert_type`` / ``upsert_attribute`` for the catalog,
+``kg_writer.insert_facts`` for instances) with the SAME adversarial markers, so
+the same questions are asked of the shipped read path.
+
+What changed, precisely, in isolation terms:
+
+* **The unit of confinement.** On SPARQL it was the ``FROM <graph>`` the server
+  built; on the store it is the ``GraphScope`` a session is opened with, whose
+  ``$tenant_id`` / ``$kg`` params are FORCED over anything a caller supplied
+  (``graph/store.py::merge_scope_params``, ``assert_cypher_is_scoped``). Where a
+  test used to assert "every query names exactly one graph, the caller's", it now
+  records the scope of every session the request opens and asserts the same
+  thing about those. That is a like-for-like port, not a weakening: it is the
+  same server-derived-identity property, checked one layer lower.
+* **Layered reads are not served on this path.** ``_workspace_ontology`` returns
+  the TENANT layer only (its own ONTA-527 docstring says so — the Public /
+  Enhanced ``LayerStack`` read went out with SPARQL), so ``layers`` is ``[]`` and
+  the shared Public ``BaseHotel`` is invisible to both tenants. That is strictly
+  LESS data crossing into a workspace response, so no isolation assertion is
+  weakened by it; the shadowing assertions that remain (one ``Hotel`` per tenant,
+  carrying that tenant's own description) still hold and are pinned below.
+* **No isolation assertion was relaxed, and no leak was found.** Every
+  ``_assert_no_peer_markers`` / peer-entity-URI check in this file survives, and
+  the planted-violation self-tests were re-planted against the store so they
+  still prove the assertions can fail.
 
 What this suite pins (Linear ONTA-402 Testing section):
 
@@ -26,9 +58,11 @@ All mocked — no live Neptune, no LLM, no network. OSS only.
 
 from __future__ import annotations
 
+import asyncio
 import re
 import time
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -54,7 +88,12 @@ from infona_client.graph.layers import (
     enhanced_graph_uri,
     public_graph_uri,
 )
+from infona_client.graph.kg_writer import insert_facts
+from infona_client.graph.memory_store import MemoryGraphStore
+from infona_client.graph.ontology_catalog import upsert_attribute, upsert_type
 from infona_client.graph.queries import kg_graph_uri, tenant_graph_uri
+from infona_client.graph.scope import GraphScope
+from infona_client.graph.store import configure_graph_store
 from infona_client.models.query import NLResult
 from infona_client.resolver.promotion_consent import (
     PromotionConsentError,
@@ -631,6 +670,169 @@ def _seed_adversarial(*, plant_a_into_b: bool = False) -> IsolationNeptune:
 
 
 # ---------------------------------------------------------------------------
+# Property-graph twin of the same adversarial fixture (ONTA-527)
+# ---------------------------------------------------------------------------
+#
+# Same two tenants, same colliding ``Hotel``, same colliding ``status`` leaf,
+# same unique markers — written through the REAL catalog + instance write paths
+# into ONE ``MemoryGraphStore``. Both workspaces share the store, so scope is the
+# only thing keeping them apart: exactly the adversarial premise the named-graph
+# fixture set up, restated for the backend that ships.
+
+
+def _run(coro):
+    return asyncio.get_event_loop_policy().new_event_loop().run_until_complete(coro)
+
+
+async def _seed_tenant_store(
+    store: MemoryGraphStore,
+    tenant_id: str,
+    *,
+    type_desc: str,
+    shared_attr_why: str,
+    private_attr: str,
+    private_attr_why: str,
+    entity: str,
+    entity_label: str,
+    status_value: str,
+    private_value: str,
+) -> None:
+    await upsert_type(
+        name=TYPE_NAME,
+        description=type_desc,
+        tenant_id=tenant_id,
+        layer="tenant",
+        store=store,
+    )
+    await upsert_attribute(
+        type_name=TYPE_NAME,
+        attr_name=SHARED_ATTR,
+        description=shared_attr_why,
+        tenant_id=tenant_id,
+        layer="tenant",
+        store=store,
+    )
+    await upsert_attribute(
+        type_name=TYPE_NAME,
+        attr_name=private_attr,
+        description=private_attr_why,
+        tenant_id=tenant_id,
+        layer="tenant",
+        store=store,
+    )
+    await insert_facts(
+        None,
+        kg_graph_uri(tenant_id, KG_NAME),
+        [
+            (entity, f"{RDF}#type", f"{TENANT_NS}/{TYPE_NAME}"),
+            (entity, f"{RDFS}#label", entity_label),
+            (entity, f"{ONTO}/{SHARED_ATTR}", status_value),
+            (entity, f"{ONTO}/{private_attr}", private_value),
+        ],
+        store=store,
+    )
+
+
+def _seed_adversarial_store(store: MemoryGraphStore | None = None) -> MemoryGraphStore:
+    """Seed BOTH tenants into one store and install it as the process store."""
+    store = store if store is not None else MemoryGraphStore()
+
+    async def seed() -> None:
+        await _seed_tenant_store(
+            store,
+            TENANT_A,
+            type_desc=A_TYPE_DESC,
+            shared_attr_why=A_ATTR_WHY,
+            private_attr=A_ATTR_PRIVATE,
+            private_attr_why=A_ATTR_PRIVATE_WHY,
+            entity=A_ENTITY,
+            entity_label=A_ENTITY_LABEL,
+            status_value=A_STATUS_VAL,
+            private_value="FR-001",
+        )
+        await _seed_tenant_store(
+            store,
+            TENANT_B,
+            type_desc=B_TYPE_DESC,
+            shared_attr_why=B_ATTR_WHY,
+            private_attr=B_ATTR_PRIVATE,
+            private_attr_why=B_ATTR_PRIVATE_WHY,
+            entity=B_ENTITY,
+            entity_label=B_ENTITY_LABEL,
+            status_value=B_STATUS_VAL,
+            private_value="SUITE-99",
+        )
+
+    _run(seed())
+    configure_graph_store(store)
+    return store
+
+
+class _ScopeRecordingStore:
+    """Records the :class:`GraphScope` of every session a request opens.
+
+    The property-graph replacement for ``IsolationNeptune.queries``: on SPARQL
+    the confinement was visible in the ``FROM <graph>`` of each emitted query, so
+    a structural test could read it off the text. Here it is the scope a session
+    is opened with — every read through that session has ``$tenant_id`` / ``$kg``
+    forced from it (``graph/store.py::merge_scope_params``), so recording the
+    scopes IS reading the confinement.
+    """
+
+    def __init__(self, inner: MemoryGraphStore):
+        self._inner = inner
+        self.scopes: list[GraphScope] = []
+
+    def session(self, scope: GraphScope):
+        self.scopes.append(scope)
+        return self._inner.session(scope)
+
+    def __getattr__(self, name: str) -> Any:  # health / kg_registry_* / internals
+        return getattr(self._inner, name)
+
+
+class _UnionSession:
+    """A session that ignores its own scope and also answers with a peer's rows.
+
+    The property-graph shape of the SPARQL union-default failure mode the
+    ``LeakyGrepNeptune`` self-test planted: a store that reads past the scope it
+    was handed.
+    """
+
+    def __init__(self, real, peer):
+        self._real = real
+        self._peer = peer
+
+    @property
+    def scope(self):
+        return self._real.scope
+
+    async def execute_template(self, name: str, params=None):
+        rows = list(await self._real.execute_template(name, params))
+        rows.extend(await self._peer.execute_template(name, params))
+        return rows
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._real, name)
+
+
+class _LeakyStore:
+    """Hands out :class:`_UnionSession`s that also read ``peer_scope``."""
+
+    def __init__(self, inner: MemoryGraphStore, peer_scope: GraphScope):
+        self._inner = inner
+        self._peer_scope = peer_scope
+
+    def session(self, scope: GraphScope):
+        return _UnionSession(
+            self._inner.session(scope), self._inner.session(self._peer_scope)
+        )
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+
+# ---------------------------------------------------------------------------
 # App factories
 # ---------------------------------------------------------------------------
 
@@ -737,6 +939,7 @@ def _operator_client(neptune) -> TestClient:
 
 def test_ontology_workspace_get_isolated():
     neptune = _seed_adversarial()
+    _seed_adversarial_store()
     a = _ontology_client(neptune, TENANT_A).get(f"/graphs/{TENANT_A}/ontology")
     b = _ontology_client(neptune, TENANT_B).get(f"/graphs/{TENANT_B}/ontology")
     assert a.status_code == 200 and b.status_code == 200
@@ -758,14 +961,34 @@ def test_ontology_workspace_get_isolated():
     assert a_hotels[0]["layer"] == "tenant"
     assert b_hotels[0]["layer"] == "tenant"
 
-    # Public BaseHotel visible to both (layered).
-    assert any(t["name"] == PUBLIC_TYPE for t in a_body["types"])
-    assert any(t["name"] == PUBLIC_TYPE for t in b_body["types"])
-    assert PUBLIC_DESC in a_dump and PUBLIC_DESC in b_dump
+    # The colliding ``status`` leaf carries each tenant's OWN description — the
+    # sharpest per-tenant check available now that the type name is the same
+    # string on both sides.
+    def _status_why(body):
+        hotel = [t for t in body["types"] if t["name"] == TYPE_NAME][0]
+        return {
+            a["name"]: a.get("description") for a in hotel["attributes"]
+        }[SHARED_ATTR]
+
+    assert _status_why(a_body) == A_ATTR_WHY
+    assert _status_why(b_body) == B_ATTR_WHY
+
+    # GAP, not a leak (ONTA-527): the Public / Enhanced LayerStack read was
+    # SPARQL and ``_workspace_ontology`` now returns the TENANT layer only (its
+    # own docstring says so), so the shared Public BaseHotel is invisible to
+    # both tenants and ``layers`` is empty. Strictly less data reaches a
+    # workspace response, so nothing this suite guards is weakened — pinned so
+    # the day layering returns, it comes back through a test that checks BOTH
+    # tenants see the same PUBLIC row and neither sees the other's.
+    assert a_body["layers"] == [] and b_body["layers"] == []
+    assert not any(t["name"] == PUBLIC_TYPE for t in a_body["types"])
+    assert not any(t["name"] == PUBLIC_TYPE for t in b_body["types"])
+    assert PUBLIC_DESC not in a_dump and PUBLIC_DESC not in b_dump
 
 
 def test_ontology_list_types_isolated():
     neptune = _seed_adversarial()
+    _seed_adversarial_store()
     a = _ontology_client(neptune, TENANT_A).get(f"/graphs/{TENANT_A}/ontology/types")
     b = _ontology_client(neptune, TENANT_B).get(f"/graphs/{TENANT_B}/ontology/types")
     assert a.status_code == 200 and b.status_code == 200
@@ -778,6 +1001,7 @@ def test_ontology_list_types_isolated():
 
 def test_ontology_get_type_isolated():
     neptune = _seed_adversarial()
+    _seed_adversarial_store()
     a = _ontology_client(neptune, TENANT_A).get(
         f"/graphs/{TENANT_A}/ontology/types/{TYPE_NAME}"
     )
@@ -796,6 +1020,26 @@ def test_ontology_get_type_isolated():
     assert A_ATTR_PRIVATE not in b_attrs
     _assert_no_peer_markers(str(a_body), peer="B")
     _assert_no_peer_markers(str(b_body), peer="A")
+
+
+def test_planted_catalog_scope_leak_is_caught():
+    """Self-test for the ported ontology cases: a catalog session that reads
+    past its scope MUST turn the assertions above red.
+
+    Without this the three tests above could pass merely because the peer's
+    catalog rows were never written — this proves they fail when a leak is real.
+    """
+    store = _seed_adversarial_store()
+    leaky = _LeakyStore(store, GraphScope.for_catalog(layer="tenant", tenant_id=TENANT_B))
+    configure_graph_store(leaky)
+
+    res = _ontology_client(_seed_adversarial(), TENANT_A).get(
+        f"/graphs/{TENANT_A}/ontology"
+    )
+    assert res.status_code == 200, res.text
+    assert B_TYPE_DESC in str(res.json()), "premise: the planted leak must leak"
+    with pytest.raises(AssertionError, match="cross-tenant leak"):
+        _assert_no_peer_markers(str(res.json()), peer="B")
 
 
 @pytest.mark.asyncio
@@ -894,6 +1138,7 @@ def test_explore_search_isolated():
 
 def test_explore_records_isolated():
     neptune = _seed_adversarial()
+    _seed_adversarial_store()
     a = _explore_client(neptune, TENANT_A).get(
         f"/graphs/{TENANT_A}/explore/kgs/{KG_NAME}/types/{TYPE_NAME}/records"
     )
@@ -913,6 +1158,7 @@ def test_explore_records_isolated():
 
 def test_type_counts_isolated():
     neptune = _seed_adversarial()
+    _seed_adversarial_store()
     # knowledge_graphs router is mounted with prefix /graphs/{tenant}/kgs
     a = _kg_client(neptune, TENANT_A).get(
         f"/graphs/{TENANT_A}/kgs/{KG_NAME}/type-counts"
@@ -935,10 +1181,16 @@ def test_type_counts_isolated():
 # ===========================================================================
 #
 # Grep is the one route whose entire job is dumping raw instance LITERALS, so a
-# graph-scoping slip here leaks tenant data verbatim rather than as a type name.
-# It is isolated by construction (``get_tenant`` + a server-built
-# ``kg_graph_uri(tenant.tenant_id, kg)``; no caller value reaches the FROM), and
+# scoping slip here leaks tenant data verbatim rather than as a type name.
+# It is isolated by construction (``get_tenant`` + a server-built scope from
+# ``tenant.tenant_id`` + a charset-validated kg; no caller value reaches it), and
 # these tests pin that rather than assume it.
+#
+# ONTA-527: the route runs a property-graph scan, so the two structural tests
+# below read the SCOPE of the sessions the request opens instead of the ``FROM``
+# of the SPARQL it used to emit. Same property, one layer down — and the reads
+# are no longer answered by a mock, so the peer's rows really are sitting in the
+# same store waiting to leak.
 
 GREP_COLLIDING_NEEDLE = "ISO402B_ENTITY"  # substring of BOTH tenants' labels
 
@@ -953,6 +1205,7 @@ def _grep(client, tenant_id: str, needle: str = GREP_COLLIDING_NEEDLE):
 def test_grep_isolated():
     """A needle that matches BOTH tenants' entities returns only your own."""
     neptune = _seed_adversarial()
+    _seed_adversarial_store()
     a = _grep(_grep_client(neptune, TENANT_A), TENANT_A)
     b = _grep(_grep_client(neptune, TENANT_B), TENANT_B)
     assert a.status_code == 200 and b.status_code == 200, (a.text, b.text)
@@ -967,56 +1220,109 @@ def test_grep_isolated():
     assert A_ENTITY not in b_dump
 
 
-def test_grep_scans_only_the_callers_kg_graph():
-    """Structural pin: every query the route issues names exactly ONE graph, the
-    caller's, built from the RESOLVED tenant id — never the path string."""
+def test_grep_scans_only_the_callers_scope():
+    """Structural pin: every session the route opens is scoped to exactly the
+    caller's workspace + KG, derived from the RESOLVED tenant id — never the
+    path string.
+
+    Replaces the ``FROM <graph>`` scan of the SPARQL era. ``$tenant_id`` / ``$kg``
+    are forced from this scope onto every statement the session runs
+    (``graph/store.py::merge_scope_params``), so a session opened for
+    ``(TENANT_A, hotels)`` cannot read another workspace even if the Cypher tried.
+    """
     neptune = _seed_adversarial()
-    _grep(_grep_client(neptune, TENANT_A), TENANT_A)
-    assert neptune.queries
-    for q in neptune.queries:
-        assert _extract_from_graphs(q) == [KG_A]
-        assert TENANT_B not in q
+    recorder = _ScopeRecordingStore(_seed_adversarial_store())
+    configure_graph_store(recorder)
+
+    res = _grep(_grep_client(neptune, TENANT_A), TENANT_A)
+    assert res.status_code == 200, res.text
+
+    assert recorder.scopes, "the grep must open a scoped session"
+    for scope in recorder.scopes:
+        assert (scope.tenant_id, scope.kg) == (TENANT_A, KG_NAME)
+    # And no SPARQL was emitted at all.
+    assert neptune.queries == []
 
 
 def test_grep_path_tenant_cannot_override_the_key_tenant():
-    """B's key hitting A's path still scans B's graph (auth resolves the tenant;
-    the path segment never reaches the graph URI)."""
+    """B's key hitting A's path still scans B's data (auth resolves the tenant;
+    the path segment never reaches the scope)."""
     neptune = _seed_adversarial()
+    recorder = _ScopeRecordingStore(_seed_adversarial_store())
+    configure_graph_store(recorder)
+
     res = _grep_client(neptune, TENANT_B).post(
         f"/graphs/{TENANT_A}/grep",
         json={"q": GREP_COLLIDING_NEEDLE, "kg_name": KG_NAME},
     )
     assert res.status_code == 200, res.text
-    for q in neptune.queries:
-        assert _extract_from_graphs(q) == [KG_B]
+    assert recorder.scopes
+    for scope in recorder.scopes:
+        assert (scope.tenant_id, scope.kg) == (TENANT_B, KG_NAME)
+    # B's own row comes back; A's — whose id is in the URL — does not.
+    _assert_own_markers_present(str(res.json()), owner="B", required=(B_ENTITY_LABEL,))
     _assert_no_peer_markers(str(res.json()), peer="A")
+
+
+def test_caller_supplied_scope_params_cannot_widen_a_session():
+    """T2, checked directly: a session's scope OVERWRITES caller-supplied scope.
+
+    The property-graph counterpart of the SPARQL dataset-clause guard this suite
+    grew up next to (``test_query_tenant_scoping.py``): there, the danger was
+    caller text naming another workspace's graph in a ``FROM``; here it is
+    caller-supplied ``tenant_id`` / ``kg`` parameters riding along with a
+    template. ``graph/store.py::merge_scope_params`` applies the session scope
+    LAST, so the smuggled values are discarded — asserted against a store that
+    really does hold the peer's rows.
+    """
+    store = _seed_adversarial_store()
+    session = store.session(GraphScope.for_instance(TENANT_A, KG_NAME))
+
+    rows = _run(
+        session.execute_template(
+            "entity_literal_grep",
+            {
+                "needle": GREP_COLLIDING_NEEDLE,
+                "case_sensitive": False,
+                "type_name": None,
+                "predicate_leaf": None,
+                "limit": 50,
+                # Smuggled scope — must be ignored, not honoured.
+                "tenant_id": TENANT_B,
+                "kg": KG_NAME,
+            },
+        )
+    )
+    dump = str([r.to_dict() for r in rows])
+    _assert_own_markers_present(dump, owner="A", required=(A_ENTITY_LABEL,))
+    _assert_no_peer_markers(dump, peer="B")
+    assert B_ENTITY not in dump
 
 
 def test_grep_private_attribute_value_never_crosses():
     """A's private attribute value is invisible to B even when B names it."""
     neptune = _seed_adversarial()
+    _seed_adversarial_store()
     res = _grep(_grep_client(neptune, TENANT_B), TENANT_B, needle=A_STATUS_VAL)
     assert res.status_code == 200, res.text
     assert res.json()["count"] == 0
     _assert_no_peer_markers(str(res.json()), peer="A")
+    # Not vacuous: B DOES find its own value with the same query shape.
+    own = _grep(_grep_client(neptune, TENANT_B), TENANT_B, needle=B_STATUS_VAL)
+    assert own.json()["count"] >= 1
 
 
 def test_planted_grep_leak_is_caught():
-    """Self-test: a store that ignores the FROM and unions every graph (the
+    """Self-test: a store that reads past the scope it was handed (the
     union-default failure mode) MUST fail the assertions above — proving they
     are not vacuously passing."""
+    store = _seed_adversarial_store()
+    leaky = _LeakyStore(store, GraphScope.for_instance(TENANT_B, KG_NAME))
+    configure_graph_store(leaky)
 
-    class LeakyGrepNeptune(IsolationNeptune):
-        def _grep_scope(self, graphs):  # noqa: D102 — union everything
-            out = []
-            for g in self.by_graph:
-                out.extend(self.by_graph[g])
-            return out
-
-    neptune = _seed_adversarial()
-    leaky = LeakyGrepNeptune(neptune.by_graph)
-    res = _grep(_grep_client(leaky, TENANT_A), TENANT_A)
+    res = _grep(_grep_client(_seed_adversarial(), TENANT_A), TENANT_A)
     assert res.status_code == 200, res.text
+    assert B_ENTITY_LABEL in str(res.json()), "premise: the planted leak must leak"
     with pytest.raises(AssertionError):
         _assert_no_peer_markers(str(res.json()), peer="B")
 
@@ -1390,6 +1696,7 @@ def test_mcp_view_ontology_targets_canonical_types_route():
     that the MCP tool source references the SDK method (contract style).
     """
     neptune = _seed_adversarial()
+    _seed_adversarial_store()
     r = _ontology_client(neptune, TENANT_A).get(
         f"/graphs/{TENANT_A}/ontology/types"
     )
@@ -1423,6 +1730,7 @@ def test_cli_ontology_types_targets_canonical_route():
     assert "/ontology/types" in src
 
     neptune = _seed_adversarial()
+    _seed_adversarial_store()
     r = _ontology_client(neptune, TENANT_B).get(
         f"/graphs/{TENANT_B}/ontology/types"
     )

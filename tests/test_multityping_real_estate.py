@@ -52,6 +52,22 @@ TYPES_URI = "https://graph.infona.ai/types/"
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_SUB = "http://www.w3.org/2000/01/rdf-schema#subClassOf"
 
+TENANT = "test-tenant"
+
+
+async def _ontology_types() -> dict:
+    """The tenant ontology's types by name.
+
+    ONTA-527: ``_synthesize_ancestors`` used to be observed through the SPARQL it
+    handed ``neptune.update``. Neo4j is the only backend now and ontology writes
+    commit through ``ontology_catalog``, so the synthesized ancestor is read back
+    from there and ``neptune.update`` must never be called.
+    """
+    from infona_client.graph import ontology_catalog as oc
+
+    return {t.name: t for t in await oc.list_types(tenant_id=TENANT)}
+
+
 
 # ---------------------------------------------------------------------------
 # Pure-function tests for the hierarchy helpers (no I/O needed)
@@ -283,8 +299,9 @@ async def test_ancestor_synthesis_creates_parent_type(mock_neptune):
         "Condo", "Property", GRAPH_URI, existing_types, existing_attrs, result
     )
 
-    # neptune.update must have been called (to insert Property type).
-    assert mock_neptune.update.call_count >= 1
+    # The missing ancestor was written to the ontology (not just remembered).
+    assert "Property" in await _ontology_types()
+    mock_neptune.update.assert_not_called()
 
     # Property must appear in existing_types (resolver registers it).
     assert "Property" in existing_types

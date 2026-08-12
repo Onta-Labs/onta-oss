@@ -14,6 +14,23 @@ enqueued AFTER they succeed, and the route returns WITHOUT the panel running
 All mocked — no live Neptune, no LLM, no network. Module-level seam state
 (registered panel, pending holder, background tasks) is reset around every
 test by an autouse fixture.
+
+**Ported by ONTA-527 (the /ingest/csv/rows section only).** Two things changed
+under these route tests:
+
+* the posted mapping carried a column named ``name``. ``name`` is a RESERVED
+  Entity property key on the property-graph model (B2,
+  ``graph/facts.py::RESERVED_ENTITY_PROPERTY_KEYS``), so declaring it as an
+  ontology attribute now raises ``GraphScopeError`` and the whole request 500s.
+  The route fixture uses ``title`` instead — the reserved-key rule itself is
+  pinned by ``tests/test_ontology_catalog.py``.
+* "did the tenant-layer pre-registration happen?" was read off the SPARQL text
+  handed to ``mock_neptune.update``. The pre-registration runs through
+  ``ontology_catalog`` on the GraphStore now and emits no SPARQL, so those
+  assertions had gone silent; they are rewritten against the tenant ontology
+  CATALOG. One of them could NOT be ported — the ``coreSlot`` marker has no
+  property-graph equivalent and is dropped — see the strict xfail at the end of
+  this file.
 """
 
 from __future__ import annotations
@@ -357,12 +374,17 @@ def mock_schema_resolver():
 
 def _route_mapping() -> dict:
     """JSON body: a low-confidence promotion in the canonical
-    dependent-identifier shape (the acceptance-criteria case)."""
+    dependent-identifier shape (the acceptance-criteria case).
+
+    The key column is ``title``, not ``name``: ``name`` is a reserved Entity
+    property key (B2), so pre-registering it as an ontology attribute raises
+    and the request never reaches the governance seam this file is about.
+    """
     return {
         "entity_type": "Item",
         "columns": [
-            {"column_name": "name", "role": "type_id", "datatype": "string",
-             "attribute_name": "name"},
+            {"column_name": "title", "role": "type_id", "datatype": "string",
+             "attribute_name": "title"},
             {"column_name": "sku", "role": "attribute", "datatype": "string",
              "attribute_name": "sku"},
         ],
@@ -380,6 +402,30 @@ def _route_mapping() -> dict:
             ],
         },
     }
+
+
+async def _tenant_types(tenant_id: str = "test-tenant") -> dict:
+    """``{name: OntoTypeRecord}`` from the TENANT ontology catalog."""
+    from infona_client.graph.ontology_catalog import list_types
+
+    return {t.name: t for t in await list_types(tenant_id=tenant_id)}
+
+
+async def _tenant_attrs(type_name: str, tenant_id: str = "test-tenant") -> dict:
+    """``{name: OntoAttrRecord}`` declared on ``type_name`` in the tenant layer."""
+    from infona_client.graph.ontology_catalog import list_attributes
+
+    return {
+        a.name: a
+        for a in await list_attributes(tenant_id=tenant_id, type_name=type_name)
+    }
+
+
+async def _public_types() -> set[str]:
+    """Type names in the GLOBAL-PUBLIC catalog layer (must stay empty here)."""
+    from infona_client.graph.ontology_catalog import list_types
+
+    return {t.name for t in await list_types(layer="public")}
 
 
 def _wait_until(predicate, timeout: float = 5.0) -> bool:
@@ -400,24 +446,28 @@ def test_csv_rows_low_confidence_promotion_lands_tenant_layer_and_pends_proposal
     by nothing until a premium panel registers)."""
     response = live_client.post(
         "/graphs/test-tenant/ingest/csv/rows",
-        json={"mapping": _route_mapping(), "rows": [{"name": "One", "sku": "SKU-1"}]},
+        json={"mapping": _route_mapping(), "rows": [{"title": "One", "sku": "SKU-1"}]},
         headers=auth_headers,
     )
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
 
-    # (1) Tenant-layer writes happened on the request path, exactly as before.
-    updates = [c.args[0] for c in mock_neptune.update.call_args_list]
-    assert any(
-        "types/DistributorProductIdentifier" in u and "Class" in u
-        and "promoted from attribute 'sku'" in u
-        for u in updates
+    # (1) Tenant-layer writes happened on the request path, exactly as before —
+    # read back from the tenant ontology catalog rather than from emitted SPARQL.
+    types = asyncio.run(_tenant_types())
+    promoted = types["DistributorProductIdentifier"]
+    assert "promoted from attribute 'sku'" in promoted.description
+    # The relationship slot's target type exists even with zero rows for it.
+    assert "Supplier" in types
+    attrs = asyncio.run(_tenant_attrs("DistributorProductIdentifier"))
+    assert "issued_by" in attrs
+    assert attrs["issued_by"].range_type == "Supplier"
+    assert {"identifies", "id_string"} <= set(attrs)
+    # No Global/Public write from the OSS seam — promotion is PENDING, not
+    # applied. The Public layer is a separate catalog scope; it must be empty.
+    assert asyncio.run(_public_types()) == set()
+    assert not any(
+        "global/public" in c.args[0] for c in mock_neptune.update.call_args_list
     )
-    assert any(
-        "types/DistributorProductIdentifier/attrs/issued_by" in u and "coreSlot" in u
-        for u in updates
-    )
-    # No Global/Public write from the OSS seam — promotion is PENDING, not applied.
-    assert not any("global/public" in u for u in updates)
 
     # (2) The pending proposal exists (background task — poll the holder).
     assert _wait_until(lambda: len(pending_shape_proposals.pending()) >= 1)
@@ -457,7 +507,7 @@ def test_csv_rows_returns_without_the_panel_running(
     t0 = time.monotonic()
     response = live_client.post(
         "/graphs/test-tenant/ingest/csv/rows",
-        json={"mapping": _route_mapping(), "rows": [{"name": "One", "sku": "SKU-1"}]},
+        json={"mapping": _route_mapping(), "rows": [{"title": "One", "sku": "SKU-1"}]},
         headers=auth_headers,
     )
     elapsed = time.monotonic() - t0
@@ -476,10 +526,51 @@ def test_csv_rows_legacy_mapping_enqueues_nothing(
     del mapping["ontology_extensions"]
     response = live_client.post(
         "/graphs/test-tenant/ingest/csv/rows",
-        json={"mapping": mapping, "rows": [{"name": "One", "sku": "SKU-1"}]},
+        json={"mapping": mapping, "rows": [{"title": "One", "sku": "SKU-1"}]},
         headers=auth_headers,
     )
     assert response.status_code == 200
     # Give any (wrongly) scheduled task a chance to land, then assert silence.
     assert not _wait_until(lambda: pending_shape_proposals.pending(), timeout=0.3)
     assert pending_shape_proposals.pending() == []
+
+
+@pytest.mark.xfail(
+    reason=(
+        "BUG (surfaced by ONTA-527): the coreSlot MARKER is lost on the Neo4j "
+        "path. graph/ontology_commit.py::_commit_ontology_graph_store handles "
+        "UPSERT_TYPE / UPSERT_ATTRIBUTE / UPSERT_RELATIONSHIP / SET_SUBCLASS and "
+        "drops everything else into an else-branch that only logs "
+        "'ontology_store_op_skipped' — SET_CORE_SLOT lands there, so the "
+        "<attr_uri> <onto/coreSlot> \"true\" triple ontology_queries.mark_core_slot "
+        "used to write is never written in any form (the property-graph catalog "
+        "has no core-slot field on OntoAttr at all). The read half is gone too: "
+        "load_ontology_shape returns an EMPTY OntologyShape whenever a GraphStore "
+        "is configured. Product-visible, not cosmetic — a core slot is the "
+        "declared-enrichment-target marker (ADR 0003 §3): api/routes/explore.py "
+        "reads _CORE_SLOT_PRED for its is_core chips and enrichment uses "
+        "'instances with empty core slots' as its work queue, so both now see "
+        "nothing on every KG. This test asserts the marker survives the "
+        "tenant-layer pre-registration the route performs; it is the one "
+        "assertion from test_csv_rows_low_confidence_promotion_lands_tenant_"
+        "layer_and_pends_proposal that could NOT be ported to the catalog."
+    ),
+    strict=True,
+)
+def test_core_slot_marker_survives_the_tenant_layer_write(
+    live_client, auth_headers, mock_neptune, mock_schema_resolver,
+):
+    from infona_client.graph.ontology_commit import load_ontology_shape
+    from infona_client.graph.queries import tenant_graph_uri
+
+    response = live_client.post(
+        "/graphs/test-tenant/ingest/csv/rows",
+        json={"mapping": _route_mapping(), "rows": [{"title": "One", "sku": "SKU-1"}]},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+
+    shape = asyncio.run(
+        load_ontology_shape(mock_neptune, tenant_graph_uri("test-tenant"))
+    )
+    assert ("DistributorProductIdentifier", "issued_by") in shape.core_slots

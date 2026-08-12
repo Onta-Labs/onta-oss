@@ -19,7 +19,7 @@ from infona_client.graph.explore_store import (
     TypeCountRow,
     count_entities,
     get_entity_detail,
-    graph_backend,
+    grep_literals_pg,
     list_entities_by_type,
     resolve_explore_session,
     type_counts,
@@ -31,7 +31,12 @@ from infona_client.graph.ontology_queries import entity_uri
 from infona_client.graph.queries import InvalidTypeName
 from infona_client.graph.schema_bootstrap import TEMPLATES
 from infona_client.graph.scope import GraphScope, GraphScopeError
-from infona_client.graph.store import configure_graph_store, reset_graph_store_for_tests
+from infona_client.graph.store import (
+    GraphConfigError,
+    configure_graph_store,
+    graph_backend,
+    reset_graph_store_for_tests,
+)
 
 
 @pytest.fixture
@@ -90,13 +95,13 @@ def test_graph_backend_default_neo4j(monkeypatch):
     assert graph_backend() == "neo4j"
 
 
-def test_resolve_explore_session_legacy_neptune(monkeypatch, store):
-    """Explicit legacy SPARQL backend skips GraphStore unless store= is passed."""
+def test_resolve_explore_session_rejects_legacy_backend(monkeypatch, store):
+    """ONTA-527: a legacy env value is an error, not a hand-back to SPARQL."""
     monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
-    assert (
-        resolve_explore_session(tenant_id="demo-tenant", kg="bookstore") is None
-    )
-    # Explicit store still wins without env.
+    reset_graph_store_for_tests()
+    with pytest.raises(GraphConfigError):
+        resolve_explore_session(tenant_id="demo-tenant", kg="bookstore")
+    # An explicit store still wins — it never consults the env at all.
     sess = resolve_explore_session(
         store=store, tenant_id="demo-tenant", kg="bookstore"
     )
@@ -303,31 +308,33 @@ def test_reject_unsafe_type_name_onta425(store):
     asyncio.run(run())
 
 
-def test_sparql_fallback_returns_none(monkeypatch):
-    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
+def test_reads_without_a_configured_store_fail_closed(monkeypatch):
+    """ONTA-527: no SPARQL fallback, so a missing store raises rather than None.
+
+    Replaces test_sparql_fallback_returns_none. Returning None used to mean
+    "the caller should run SPARQL instead"; there is no such caller now, and a
+    silent None would read as "this KG is empty".
+    """
+    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
+    reset_graph_store_for_tests()
 
     async def run():
-        assert (
-            await type_counts(tenant_id="demo-tenant", kg="bookstore") is None
-        )
-        assert (
-            await count_entities(tenant_id="demo-tenant", kg="bookstore") is None
-        )
-        assert (
+        with pytest.raises(GraphConfigError):
+            await type_counts(tenant_id="demo-tenant", kg="bookstore")
+        with pytest.raises(GraphConfigError):
+            await count_entities(tenant_id="demo-tenant", kg="bookstore")
+        with pytest.raises(GraphConfigError):
             await get_entity_detail(
                 tenant_id="demo-tenant",
                 kg="bookstore",
                 entity_id=entity_uri("Person", "x"),
             )
-            is None
-        )
-        # list still validates type even when falling back
-        page = await list_entities_by_type(
-            tenant_id="demo-tenant",
-            kg="bookstore",
-            type_name="Person",
-        )
-        assert page is None
+        with pytest.raises(GraphConfigError):
+            await list_entities_by_type(
+                tenant_id="demo-tenant",
+                kg="bookstore",
+                type_name="Person",
+            )
 
     asyncio.run(run())
 
@@ -458,3 +465,76 @@ def test_list_entities_include_subclasses(store):
         assert ids == {person, emp}
 
     asyncio.run(run())
+
+
+# ---------------------------------------------------------------------------
+# grep_literals_pg — internal keys are excluded BEFORE the page is cut
+# ---------------------------------------------------------------------------
+
+
+class _StubGrepSession:
+    """A session whose scan hands back internal rows the real templates exclude.
+
+    Both shipped stores (the ``entity_literal_grep`` Cypher and the Memory scan)
+    drop internal keys inside the scan, so through them the page filter never
+    sees one. That is the belt; this stub removes it to test the braces — the
+    ordering inside :func:`grep_literals_pg`, which owns the page and is the
+    authority if a store's scan-level exclusion ever drifts.
+    """
+
+    def __init__(self, rows: list[dict]):
+        self._rows = rows
+        self.asked_for: int | None = None
+
+    async def execute_template(self, name: str, params: dict):
+        assert name == "entity_literal_grep"
+        self.asked_for = params["limit"]
+        return [dict(r) for r in self._rows[: params["limit"]]]
+
+
+def _row(attr: str, value: str = "matrix", eid: str = "e1") -> dict:
+    return {
+        "entity_uri": eid,
+        "label": "The Matrix",
+        "type": "Movie",
+        "attr": attr,
+        "value": value,
+    }
+
+
+def test_grep_literals_pg_filters_before_cutting_the_page():
+    """Filter THEN cut, never cut then filter.
+
+    The store honours ``LIMIT`` on its side, so of the four rows here only the
+    over-fetched three come back: ``blockKey``, ``name``, ``tagline``. Filtering
+    first fills the caller's page of 2 with both domain rows; cutting first
+    would spend a slot on ``blockKey`` and hand back a page of ONE — short, with
+    nothing in the response to say why. Internal keys sort ahead of domain ones
+    in both real scan orders, so that is the common case, not a corner.
+    """
+    session = _StubGrepSession(
+        [_row("blockKey"), _row("name"), _row("tagline"), _row("title")]
+    )
+
+    hits, truncated = asyncio.run(grep_literals_pg(session, "matrix", limit=2))
+
+    assert session.asked_for == 3, "over-fetch one row for honest truncation"
+    assert [h.attr for h in hits] == ["name", "tagline"]
+    # `title` matches too but was never fetched: the internal row consumed the
+    # over-fetch, so `truncated` under-reports. That residue is exactly why the
+    # exclusion is ALSO pushed into the scan (`entity_literal_grep` / Memory),
+    # where no internal row is fetched in the first place — the end-to-end
+    # property is pinned by tests/test_grep_route.py.
+    assert truncated is False
+
+
+def test_grep_literals_pg_keeps_the_display_name():
+    """``name`` is internal as a PREDICATE (rdfs:label) and kept as a KEY.
+
+    Finding a thing by its displayed name is grep's commonest use, so the one
+    exemption in ``facts.is_internal_property_key`` is pinned here.
+    """
+    session = _StubGrepSession([_row("blockKey"), _row("name")])
+    hits, truncated = asyncio.run(grep_literals_pg(session, "matrix", limit=50))
+    assert [h.attr for h in hits] == ["name"]
+    assert truncated is False

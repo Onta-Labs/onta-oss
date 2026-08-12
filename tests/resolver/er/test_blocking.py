@@ -9,6 +9,8 @@ if that recurs.
 
 from __future__ import annotations
 
+import pytest
+
 from infona_client.resolver.er.blocking import (
     SparqlBlocker,
     _bindings_to_signals,
@@ -106,36 +108,73 @@ def test_person_email_phone_blocking_still_works():
     assert "soundex_core" in kinds
 
 
-def test_sparql_candidates_query_interpolates_placeholders():
-    """Neptune lookup SPARQL must embed graph / type / keys (not raw braces)."""
-    import asyncio
+@pytest.mark.asyncio
+async def test_candidate_lookup_is_scoped_by_graph_type_and_block_keys():
+    """The candidate lookup must really apply all three of its arguments.
 
-    captured: list[str] = []
+    ONTA-527 port: this used to assert that the lookup's SPARQL string embedded
+    the graph / type / block keys rather than raw ``{instance_graph}`` braces —
+    the regression being a template that never got ``.format()``'d, so every
+    lookup ran unscoped. That SPARQL is gone (a GraphStore is always present, so
+    ``SparqlBlocker`` delegates to ``GraphStoreBlocker``), but the property it
+    was a proxy for is unchanged and now checked directly: seed one KG, and the
+    lookup must find the match HERE and nothing at all under a different KG or a
+    different type. Neptune is passed as None — reaching for it would raise.
+    """
+    from infona_client.graph.kg_writer import insert_facts
 
-    class _FakeNeptune:
-        async def query(self, sparql: str):
-            captured.append(sparql)
-            return {"results": {"bindings": []}}
+    rdf_type = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+    graph = "https://graph.infona.ai/graphs/t/kg/k"
+    other_graph = "https://graph.infona.ai/graphs/t/kg/other"
+    person = "https://graph.infona.ai/types/Person"
+    org = "https://graph.infona.ai/types/Organization"
 
-    blocker = SparqlBlocker(_FakeNeptune())
-    keys = generate_block_keys(
-        N.normalize(EntitySignals(name="A B", email="a@b.com", phone="+12125550000"))
+    normalized = N.normalize(
+        EntitySignals(name="A B", email="a@b.com", phone="+12125550000")
+    )
+    keys = generate_block_keys(normalized)
+    assert keys, "expected block keys for a name+email+phone entity"
+
+    match = "https://graph.infona.ai/entities/Person/ab"
+    stranger = "https://graph.infona.ai/entities/Person/zz"
+    await insert_facts(
+        None,
+        graph,
+        [(match, rdf_type, person)]
+        + SparqlBlocker.index_triples(match, normalized, keys),
+    )
+    # Same KG + type, but no block key in common → must not be a candidate.
+    other_norm = N.normalize(
+        EntitySignals(name="Z Q", email="zq@elsewhere.com", phone="+12125559999")
+    )
+    await insert_facts(
+        None,
+        graph,
+        [(stranger, rdf_type, person)]
+        + SparqlBlocker.index_triples(
+            stranger, other_norm, generate_block_keys(other_norm)
+        ),
+    )
+    # An identical entity in a DIFFERENT KG must stay invisible.
+    await insert_facts(
+        None,
+        other_graph,
+        [("https://graph.infona.ai/entities/Person/ab", rdf_type, person)]
+        + SparqlBlocker.index_triples(
+            "https://graph.infona.ai/entities/Person/ab", normalized, keys
+        ),
     )
 
-    async def run():
-        await blocker.candidates_with_signals(
-            "https://graph.infona.ai/graphs/t/kg/k",
-            "https://graph.infona.ai/types/Person",
-            keys,
-        )
-
-    asyncio.run(run())
-    assert captured, "expected a SPARQL query"
-    q = captured[0]
-    assert "{instance_graph}" not in q
-    assert "https://graph.infona.ai/graphs/t/kg/k" in q
-    assert "https://graph.infona.ai/types/Person" in q
-    assert "email_local:" in q or "blockKey" in q
+    blocker = SparqlBlocker(None)
+    assert list(
+        await blocker.candidates_with_signals(graph, person, keys)
+    ) == [match]
+    # …scoped by TYPE…
+    assert await blocker.candidates_with_signals(graph, org, keys) == {}
+    # …and by block KEYS (an entity sharing none of them is not a candidate).
+    assert stranger not in await blocker.candidates_with_signals(graph, person, keys)
+    # …and no keys at all short-circuits to no candidates.
+    assert await blocker.candidates_with_signals(graph, person, []) == {}
 
 
 def test_northern_lights_org_variants_share_block_key():

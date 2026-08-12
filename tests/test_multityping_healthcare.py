@@ -399,6 +399,22 @@ def test_insert_subtype_creates_patient_subclassof_person() -> None:
 # ---------------------------------------------------------------------------
 
 
+TENANT = "test-tenant"
+
+
+async def _ontology_types() -> dict:
+    """The tenant ontology's types by name.
+
+    ONTA-527: ``_synthesize_ancestors`` used to be observed through the SPARQL it
+    handed ``neptune.update``. Neo4j is the only backend now and ontology writes
+    commit through ``ontology_catalog``, so the synthesized ancestor is read back
+    from there and ``neptune.update`` must never be called.
+    """
+    from infona_client.graph import ontology_catalog as oc
+
+    return {t.name: t for t in await oc.list_types(tenant_id=TENANT)}
+
+
 @pytest.mark.asyncio
 async def test_synthesize_ancestors_creates_person_when_patient_ingested() -> None:
     """_synthesize_ancestors closes the chain: when Patient is created with
@@ -442,10 +458,13 @@ async def test_synthesize_ancestors_creates_person_when_patient_ingested() -> No
         "when it creates the ancestor"
     )
 
-    # Neptune.update must have been called (at least one INSERT for Person)
-    assert mock_neptune.update.called, (
-        "_synthesize_ancestors must call neptune.update to insert ancestor types"
+    # The ancestor was written to the ONTOLOGY (ONTA-527: this used to be read
+    # off the SPARQL handed to neptune.update; ontology writes commit through
+    # ontology_catalog on the Neo4j path).
+    assert "Person" in await _ontology_types(), (
+        "_synthesize_ancestors must declare the Person ancestor in the ontology"
     )
+    mock_neptune.update.assert_not_called()
 
     # Check that result.types_created records the synthesized ancestor
     assert "Person" in result.types_created, (

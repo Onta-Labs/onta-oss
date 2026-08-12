@@ -68,32 +68,23 @@ from infona_client.graph.history import (
 )
 from infona_client.pipeline.envelope import derive_fact_id
 from infona_client.graph.parser import parse_sparql_results
-from infona_client.graph.provenance import (
-    build_rewrite_triples,
-    build_tombstone_triples,
-    provenance_graph_uri,
-)
-from infona_client.graph.suppression import suppression_graph_uri
-from infona_client.graph.validity import reopen_interval_update, validity_graph_uri
 from infona_client.graph.queries import (
     KG_NAME_PRED,
     _escape_literal,
-    batched_delete_triples,
     batched_insert_triples,
-    count_subject_predicates_query,
-    count_subjects_query,
-    delete_subject_predicates_query,
-    delete_subjects_query,
     is_valid_kg_name,
     kg_meta_uri,
     parse_kg_graph_uri,
     rewrite_predicate_update,
-    rewrite_subject_update,
     select_subject_predicate_objects_query,
     tenant_graph_uri,
 )
 from infona_client.graph.facts import Fact, triples_to_facts
 from infona_client.graph.scope import GraphScope, GraphScopeError
+
+# NOTE: `graph_backend` used to be defined here as well as in `graph/store.py`.
+# Two copies of a backend switch is exactly the drift ONTA-527 removes — the one
+# switch now lives in `graph.store` and this module does not re-export it.
 
 if TYPE_CHECKING:
     from infona_client.graph.store import GraphSession, GraphStore
@@ -155,17 +146,6 @@ def _provenance_enabled(*, store_path: bool = False) -> bool:
     return False
 
 
-def graph_backend() -> str:
-    """Active instance backend: ``neo4j`` (default) or legacy ``neptune``/``fuseki``.
-
-    Prefer an explicit ``store`` / ``session`` on write primitives; when those
-    are omitted, this flag decides whether :func:`get_graph_store` is consulted
-    (``neo4j``, the production default) or the legacy SPARQL path is used
-    (``neptune`` / ``fuseki`` only).
-    """
-    return (os.environ.get("INFONA_GRAPH_BACKEND") or "neo4j").strip().lower()
-
-
 def _resolve_graph_session(
     *,
     store: Optional["GraphStore"] = None,
@@ -173,13 +153,18 @@ def _resolve_graph_session(
     instance_graph: str | None = None,
     tenant_id: str | None = None,
     kg_name: str | None = None,
-) -> Optional["GraphSession"]:
-    """Return a scoped GraphSession when the Neo4j path should run, else None.
+) -> "GraphSession":
+    """Return the scoped GraphSession for this write.
 
     Priority:
     1. Explicit ``session``
     2. Explicit ``store`` + scope derived from graph URI or tenant/kg
-    3. ``INFONA_GRAPH_BACKEND=neo4j`` → process :func:`get_graph_store`
+    3. Process :func:`get_optional_graph_store` (Neo4j / injected test store)
+
+    Never returns ``None``: Neo4j is the only backend (ONTA-527), so there is
+    no SPARQL path to fall back to. Raises :class:`GraphConfigError` when no
+    store is configured and :class:`GraphScopeError` when the scope cannot be
+    derived — fail closed rather than write nowhere.
     """
     if session is not None:
         # When both an explicit session and instance_graph are supplied, fail
@@ -202,12 +187,10 @@ def _resolve_graph_session(
                     f"instance_graph ({scope_pair[0]!r}/{scope_pair[1]!r})"
                 )
         return session
-    if store is None and graph_backend() != "neo4j":
-        return None
     if store is None:
-        from infona_client.graph.store import get_graph_store
+        from infona_client.graph.store import get_optional_graph_store
 
-        store = get_graph_store()
+        store = get_optional_graph_store()
     tid, kg = tenant_id, kg_name
     if (not tid or not kg) and instance_graph:
         scope_pair = parse_kg_graph_uri(instance_graph)
@@ -439,6 +422,41 @@ def build_graph_delta(
     )
 
 
+def _warn_unported_companions(
+    instance_graph: str,
+    *,
+    validity_triples: Optional[list[Triple]] = None,
+    suppression_triples: Optional[list[Triple]] = None,
+    reopen_facts: Optional[list[Triple]] = None,
+) -> None:
+    """Log once per write when a caller passes an unported companion payload.
+
+    Valid-time and suppression companions were named-graph SPARQL writes. Their
+    property-graph node ports are E7, so on Neo4j these payloads have been
+    dropped on the floor since the cutover. Warning here turns a silent no-op
+    into something greppable (ONTA-527).
+    """
+    unported = [
+        name
+        for name, payload in (
+            ("validity_triples", validity_triples),
+            ("suppression_triples", suppression_triples),
+            ("reopen_facts", reopen_facts),
+        )
+        if payload
+    ]
+    if unported:
+        logger.warning(
+            "insert_facts_companion_payload_not_ported",
+            instance_graph=instance_graph,
+            payloads=unported,
+            detail=(
+                "valid-time / suppression companions have no property-graph "
+                "port yet (E7); payload ignored"
+            ),
+        )
+
+
 async def insert_facts(
     neptune,
     instance_graph: str,
@@ -453,74 +471,51 @@ async def insert_facts(
     store: Optional["GraphStore"] = None,
     session: Optional["GraphSession"] = None,
 ) -> Optional[GraphDelta]:
-    """Write instance facts (and optional companion provenance / validity) to the KG.
+    """Write instance facts to the KG through the property-graph store.
 
-    The ONE insertion primitive for both ingest and enrichment.
+    The ONE insertion primitive for both ingest and enrichment. Facts are
+    written via :mod:`infona_client.graph.pg_ops` against a scoped
+    :class:`GraphSession` resolved from ``session`` / ``store`` / the process
+    store. Prefer structured :class:`Fact` objects; legacy ``instance_triples``
+    are mapped via :func:`triples_to_facts`.
 
-    **Dual-backend (E3 migration):**
+    **``neptune`` is vestigial** (ONTA-527): the SPARQL insert path is gone, so
+    the argument is ignored here. It stays in the signature because every
+    converged writer passes it positionally and
+    :func:`refresh_after_write` still takes one; dropping it is a separate
+    mechanical sweep.
 
-    * When ``store`` / ``session`` is provided, **or**
-      ``INFONA_GRAPH_BACKEND=neo4j``, facts are written through the property-
-      graph path (:mod:`infona_client.graph.pg_ops`) against a scoped
-      :class:`GraphSession`. Prefer structured :class:`Fact` objects; legacy
-      ``instance_triples`` are mapped via :func:`triples_to_facts`.
-    * Otherwise the legacy Neptune SPARQL path runs (batched
-      ``INSERT DATA``). **Neptune path is retained until cutover** — do not
-      delete it from call sites yet.
-
-    Neptune path: always batched (``batched_insert_triples``) so a large write
-    is chunked rather than exceeding Neptune's size limit.
-
-    ``provenance_triples`` / ``validity_triples`` / ``suppression_triples`` /
-    ``reopen_facts`` are RDF companion-graph payloads and apply on the Neptune
-    path. On the Neo4j path, optional ``:ProvEvent`` assert hooks fire when
-    ``INFONA_PROVENANCE_ENABLED=1`` (minimal Wave-1 companions; full validity /
+    **Ignored RDF companion payloads** (``provenance_triples`` /
+    ``validity_triples`` / ``suppression_triples`` / ``reopen_facts``): these
+    were named-graph writes on the deleted SPARQL path. The property-graph
+    equivalents are companion NODES, and only the provenance half is ported —
+    ``:ProvEvent`` assert hooks fire inside the store path when
+    ``INFONA_PROVENANCE_ENABLED=1``. Callers still passing validity /
+    suppression payloads get a warning rather than silence, because "wrote
+    nothing" was already the Neo4j behavior and it should be visible (validity /
     suppression node ports are E7).
 
     ``run_id`` (ONTA-271): when given, returns a deterministic A6
     :class:`GraphDelta` over the *triple* form of the write (Fact-only writes
     without triples yield an empty domain set unless triples are also supplied).
     """
+    _warn_unported_companions(
+        instance_graph,
+        validity_triples=validity_triples,
+        suppression_triples=suppression_triples,
+        reopen_facts=reopen_facts,
+    )
     instance_triples = list(instance_triples or [])
     gs = _resolve_graph_session(
         store=store, session=session, instance_graph=instance_graph
     )
-    if gs is not None:
-        return await _insert_facts_store(
-            gs,
-            instance_graph,
-            instance_triples=instance_triples,
-            facts=facts,
-            run_id=run_id,
-        )
-
-    # --- Neptune SPARQL path (unchanged) ------------------------------------
-    if instance_triples:
-        for sparql in batched_insert_triples(instance_graph, instance_triples):
-            await neptune.update(sparql)
-    if provenance_triples:
-        prov_graph = provenance_graph_uri(instance_graph)
-        for sparql in batched_insert_triples(prov_graph, provenance_triples):
-            await neptune.update(sparql)
-    if reopen_facts:
-        for (s, p, o) in reopen_facts:
-            update = reopen_interval_update(instance_graph, s, p, o)
-            if update:
-                await neptune.update(update)
-    if validity_triples:
-        val_graph = validity_graph_uri(instance_graph)
-        for sparql in batched_insert_triples(val_graph, validity_triples):
-            await neptune.update(sparql)
-    if suppression_triples:
-        sup_graph = suppression_graph_uri(instance_graph)
-        for sparql in batched_insert_triples(sup_graph, suppression_triples):
-            await neptune.update(sparql)
-    if instance_triples:
-        await _index_spatiotemporal(instance_graph, instance_triples)
-        await _index_semantic(neptune, instance_graph, instance_triples)
-    if run_id is not None:
-        return build_graph_delta(instance_graph, instance_triples, run_id=run_id)
-    return None
+    return await _insert_facts_store(
+        gs,
+        instance_graph,
+        instance_triples=instance_triples,
+        facts=facts,
+        run_id=run_id,
+    )
 
 
 async def _insert_facts_store(
@@ -572,7 +567,15 @@ async def _insert_facts_store(
                 exc_info=True,
             )
     # Secondary indexes still key off graph URI + triple-shaped payloads when
-    # available (best-effort; same as Neptune path).
+    # available (best-effort).
+    #
+    # GAP (pre-dates ONTA-527, made visible by it): the SEMANTIC index write
+    # hook (`_index_semantic`, ONTA-181/421) is NOT called here. It rebuilds
+    # each touched entity's docs from a re-read of the store, and that re-read
+    # is SPARQL — so the hook has been dead in production since the Neo4j
+    # cutover, not merely since this deletion. Freshness now depends on the
+    # claim-based reconciler (`semantic/reconciler.py`) alone until the hook is
+    # ported to GraphStore.
     if instance_triples:
         await _index_spatiotemporal(instance_graph, instance_triples)
     if run_id is not None:
@@ -870,56 +873,15 @@ async def delete_facts(
     gs = _resolve_graph_session(
         store=store, session=session, instance_graph=instance_graph
     )
-    if gs is not None:
-        return await _delete_facts_store(
-            gs,
-            instance_graph,
-            subjects=subjects,
-            concrete=concrete,
-            sp_pairs=sp_pairs,
-            all_triples=all_triples,
-            reason=reason,
-        )
-
-    removed = 0
-    if concrete:
-        for sparql in batched_delete_triples(instance_graph, concrete):
-            await neptune.update(sparql)
-        removed += len(concrete)
-    for chunk in _chunk(sp_pairs, 500):
-        if new_values and _value_history_enabled():
-            await _record_value_history(neptune, instance_graph, chunk, new_values)
-        removed += await _count_matching(
-            neptune, count_subject_predicates_query(instance_graph, chunk)
-        )
-        await neptune.update(delete_subject_predicates_query(instance_graph, chunk))
-    for chunk in _chunk(subjects, 500):
-        removed += await _count_matching(
-            neptune, count_subjects_query(instance_graph, chunk)
-        )
-        await neptune.update(delete_subjects_query(instance_graph, chunk))
-
-    if (subjects or all_triples) and _provenance_enabled():
-        try:
-            prov = build_tombstone_triples(
-                subjects=subjects,
-                triples=all_triples,
-                graph_uri=instance_graph,
-                reason=reason,
-                timestamp=datetime.now(timezone.utc),
-                touched_types=touched_types,
-            )
-            if prov:
-                prov_graph = provenance_graph_uri(instance_graph)
-                for sparql in batched_insert_triples(prov_graph, prov):
-                    await neptune.update(sparql)
-        except Exception:  # noqa: BLE001
-            logger.warning(
-                "delete_facts_provenance_failed",
-                instance_graph=instance_graph,
-                exc_info=True,
-            )
-    return removed
+    return await _delete_facts_store(
+        gs,
+        instance_graph,
+        subjects=subjects,
+        concrete=concrete,
+        sp_pairs=sp_pairs,
+        all_triples=all_triples,
+        reason=reason,
+    )
 
 
 async def _delete_facts_store(
@@ -1126,45 +1088,22 @@ async def rewrite_subject(
     gs = _resolve_graph_session(
         store=store, session=session, instance_graph=instance_graph
     )
-    if gs is not None:
-        from infona_client.graph import pg_ops
+    from infona_client.graph import pg_ops
 
-        await pg_ops.rewrite_entity_id(gs, old_uri, new_uri)
-        if _provenance_enabled(store_path=True):
-            try:
-                await pg_ops.create_prov_event(
-                    gs,
-                    event_type="rewrite",
-                    subject_id=new_uri,
-                    old_id=old_uri,
-                    new_id=new_uri,
-                    reason=reason,
-                )
-            except Exception:  # noqa: BLE001
-                logger.warning(
-                    "rewrite_subject_store_prov_failed",
-                    instance_graph=instance_graph,
-                    exc_info=True,
-                )
-        return
-
-    await neptune.update(rewrite_subject_update(instance_graph, old_uri, new_uri))
-    if _provenance_enabled():
+    await pg_ops.rewrite_entity_id(gs, old_uri, new_uri)
+    if _provenance_enabled(store_path=True):
         try:
-            prov = build_rewrite_triples(
-                old_uri,
-                new_uri,
-                graph_uri=instance_graph,
+            await pg_ops.create_prov_event(
+                gs,
+                event_type="rewrite",
+                subject_id=new_uri,
+                old_id=old_uri,
+                new_id=new_uri,
                 reason=reason,
-                timestamp=datetime.now(timezone.utc),
-                touched_types=touched_types,
             )
-            prov_graph = provenance_graph_uri(instance_graph)
-            for sparql in batched_insert_triples(prov_graph, prov):
-                await neptune.update(sparql)
         except Exception:  # noqa: BLE001
             logger.warning(
-                "rewrite_subject_provenance_failed",
+                "rewrite_subject_store_prov_failed",
                 instance_graph=instance_graph,
                 exc_info=True,
             )
@@ -1299,19 +1238,17 @@ async def refresh_after_write(
             logger.warning("embed_types_failed", types=types, exc_info=True)
 
     # 3. Register the KG so non-UI writers don't leave it invisible to list_kgs
-    #    (ONTA-153). Neo4j uses :KnowledgeGraph nodes; SPARQL uses tenant meta.
+    #    (ONTA-153). Property-graph :KnowledgeGraph nodes; the SPARQL tenant-meta
+    #    branch went out with the Neptune path (ONTA-527).
     if kg_name:
-        if graph_backend() == "neo4j" or store is not None or session is not None:
-            try:
-                from infona_client.graph.kg_registry import ensure_kg_registered_store
+        try:
+            from infona_client.graph.kg_registry import ensure_kg_registered_store
 
-                await ensure_kg_registered_store(tenant_id, kg_name)
-            except Exception:  # noqa: BLE001
-                logger.warning(
-                    "ensure_kg_registered_store_failed", kg_name=kg_name, exc_info=True
-                )
-        elif neptune is not None:
-            await ensure_kg_registered(neptune, tenant_id, kg_name)
+            await ensure_kg_registered_store(tenant_id, kg_name)
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "ensure_kg_registered_store_failed", kg_name=kg_name, exc_info=True
+            )
 
     # 4. Drop the stored triple count so list_kgs recomputes on next read.
     #    Must run on every successful instance write (not only Explorer recompute):

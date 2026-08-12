@@ -33,6 +33,8 @@ from infona_client.agent.registry import (
     get_capability,
     reset_capabilities,
 )
+from infona_client.graph.ontology_catalog import list_attributes, list_types
+from infona_client.graph.scope import ONTOLOGY_KG
 
 TIMEOUT = 5.0
 
@@ -262,8 +264,17 @@ async def test_declare_attribute_underspecified_clarifies(monkeypatch):
 # --------------------------------------------------------------------------- #
 @pytest.mark.asyncio
 async def test_execute_declare_attribute_calls_ontology_engine(monkeypatch):
-    """Confirming a declare_attribute plan runs the upsert_attribute builder
-    against the tenant graph (the SAME engine the /ontology endpoint uses)."""
+    """Confirming a declare_attribute plan writes the attribute through the SAME
+    engine the /ontology endpoint uses, into THIS tenant's catalog.
+
+    Ported by ONTA-527: the assertion used to scrape ``neptune.updates`` for the
+    tenant ontology graph IRI. ``commit_ontology`` dispatches to
+    ``_commit_ontology_graph_store`` now and emits no SPARQL, so the declaration
+    is read back out of :mod:`ontology_catalog` instead — which also pins the
+    two things the string check was standing in for: the write is scoped to the
+    tenant layer (never a KG or a global layer) and it is the attribute the
+    directive asked for.
+    """
     _stub_classifier(monkeypatch, "ontology")
     _stub_schema(monkeypatch)
     _stub_directive(
@@ -287,22 +298,23 @@ async def test_execute_declare_attribute_calls_ontology_engine(monkeypatch):
     )
     assert result["kind"] == "result"
     assert all(s["status"] == "ok" for s in result["steps"])
-    # ONTA-403: commit_ontology applies the attribute (+ revision/changelog).
-    # At least one update targets the TENANT ontology graph for Mentor.website.
-    schema_updates = [
-        u for u in neptune.updates
-        if "https://graph.infona.ai/graphs/t1>" in u or "https://graph.infona.ai/graphs/t1/" in u
-    ]
-    assert schema_updates, neptune.updates
-    joined = " ".join(schema_updates)
-    assert "/kg/" not in joined.split("changelog")[0]  # schema write not on KG graph
-    assert "Mentor" in joined
-    assert "website" in joined
+
+    attrs = await list_attributes(tenant_id="t1")
+    website = next(a for a in attrs if a.name == "website")
+    assert website.domain == "Mentor"
+    assert website.kind == "literal" and website.datatype == "string"
+    # Schema writes land on the tenant catalog scope, not on a KG scope...
+    assert website.layer == "tenant" and website.tenant_id == "t1"
+    assert website.kg == ONTOLOGY_KG
+    # ...and no peer workspace picked it up.
+    assert await list_attributes(tenant_id="t2") == []
+    # No SPARQL was emitted (the engine is the store path now).
+    assert neptune.updates == []
 
 
 @pytest.mark.asyncio
 async def test_execute_declare_type_calls_ontology_engine(monkeypatch):
-    """Confirming a declare_type plan runs the insert_type builder."""
+    """Confirming a declare_type plan declares the type AND its parent edge."""
     cap = OntologyCapability()
     neptune = FakeNeptune()
     ctx = _ctx(neptune=neptune)
@@ -314,11 +326,12 @@ async def test_execute_declare_type_calls_ontology_engine(monkeypatch):
     ack = await asyncio.wait_for(cap.execute(ctx, step), TIMEOUT)
     assert ack["kind"] == "ack"
     assert ack["type_name"] == "Product"
-    # ONTA-403: commit may emit several SPARQL updates (mutation + revision + changelog).
-    assert len(neptune.updates) >= 1
-    joined = " ".join(neptune.updates)
-    assert "Product" in joined
-    assert "Thing" in joined  # parent (subClassOf)
+
+    types = {t.name: t for t in await list_types(tenant_id="t1")}
+    assert "Product" in types
+    assert types["Product"].parent_type == "Thing"  # subclass edge, was subClassOf
+    assert types["Product"].layer == "tenant"
+    assert neptune.updates == []
 
 
 # --------------------------------------------------------------------------- #

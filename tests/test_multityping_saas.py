@@ -345,6 +345,22 @@ class TestERMergeViaHierarchy:
 # ---------------------------------------------------------------------------
 
 
+TENANT = "test-tenant"
+
+
+async def _ontology_types() -> dict:
+    """The tenant ontology's types by name.
+
+    ONTA-527: ``_synthesize_ancestors`` used to be observed through the SPARQL it
+    handed ``neptune.update``. Neo4j is the only backend now and ontology writes
+    commit through ``ontology_catalog``, so the synthesized ancestor is read back
+    from there and ``neptune.update`` must never be called.
+    """
+    from infona_client.graph import ontology_catalog as oc
+
+    return {t.name: t for t in await oc.list_types(tenant_id=TENANT)}
+
+
 class TestAncestorSynthesis:
     """_synthesize_ancestors must create missing ancestors (Subscriber, Person)
     when a TrialSubscriber is ingested with parent_type='Subscriber' and
@@ -405,18 +421,18 @@ class TestAncestorSynthesis:
             "_synthesize_ancestors must add the missing Subscriber ancestor to existing_types"
         )
 
-        # Neptune.update must have been called at least once to insert the type
-        assert mock_neptune.update.called, (
-            "_synthesize_ancestors must call neptune.update to insert missing ancestor types"
+        # The missing ancestor was written to the ONTOLOGY (ONTA-527: this used
+        # to be read off the SPARQL handed to neptune.update; ontology writes
+        # commit through ontology_catalog on the Neo4j path).
+        types = await _ontology_types()
+        assert "Subscriber" in types, (
+            "_synthesize_ancestors must declare the missing Subscriber ancestor "
+            f"in the ontology; got {sorted(types)}"
         )
-
-        # Check the SPARQL calls include 'Subscriber' in type insertions
-        sparql_calls = [str(call) for call in mock_neptune.update.call_args_list]
-        subscriber_calls = [c for c in sparql_calls if "Subscriber" in c]
-        assert subscriber_calls, (
-            "Expected at least one neptune.update call mentioning 'Subscriber' "
-            f"but got calls: {sparql_calls}"
-        )
+        # …under its known parent, closing the TrialSubscriber → Subscriber →
+        # Person chain rather than leaving Subscriber floating.
+        assert types["Subscriber"].parent_type == "Person"
+        mock_neptune.update.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_synthesize_idempotent_when_ancestors_exist(self, mock_neptune):
@@ -449,6 +465,11 @@ class TestAncestorSynthesis:
         # No new types should have been added to existing_types
         assert set(existing_types.keys()) == {"Person", "Subscriber"}, (
             "No new ancestor types should be added when all ancestors already exist"
+        )
+        # Nothing was written at all: the ontology is still empty (existing_types
+        # above is the resolver's in-memory view, not the result of a write).
+        assert await _ontology_types() == {}, (
+            "_synthesize_ancestors must not re-declare ancestors that already exist"
         )
         # No NEW Neptune writes should have been issued
         assert mock_neptune.update.call_count == call_count_before, (

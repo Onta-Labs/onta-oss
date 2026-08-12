@@ -20,6 +20,16 @@ Two properties are asserted throughout, and the second is the important one:
 The three historical bypasses that defeated earlier revisions of the raw-route
 guard are replayed here against the generated-query guard, because it reuses the
 same parser-based extractor and would inherit any regression in it.
+
+**ONTA-527.** ``graph/sparql_scope.py`` is still LIVE — it confines the NL
+layer's generated queries — so every RULE below is unchanged and still tested
+directly. Only the end-to-end ``ask()`` cases moved: ``/ask`` generates Cypher
+now, so on the shipped path the confinement is
+``nlp/cypher_scope.py::confine_generated_cypher`` plus a session that forces
+``tenant_id`` / ``kg``. Those three cases are re-expressed in property-graph
+terms at the bottom of this file and assert the same invariants (nothing
+unscoped reaches the store; the scope that does is the ROUTE's, not the
+model's).
 """
 
 from unittest.mock import AsyncMock
@@ -433,127 +443,176 @@ def test_pipeline_helper_confines_with_the_tenant_derived_from_the_data_graph():
         )
 
 
+# ---------------------------------------------------------------------------
+# ... and the shipped /ask path enforces the same rule in the other language
+#
+# Ported by ONTA-527. Everything above is unchanged: ``graph/sparql_scope.py``
+# is still LIVE (it confines the NL layer's generated queries) and every rule in
+# it is tested directly. What moved is the WIRING: ``/ask`` generates Cypher
+# now, so ``ask()`` dispatches to ``_ask_cypher`` and the confinement on the
+# shipped path is ``nlp/cypher_scope.py::confine_generated_cypher`` plus the
+# session's forced scope params. Property-graph isolation is STRUCTURAL rather
+# than dataset-clause based, so the three end-to-end cases are re-expressed in
+# those terms and assert the same two things: nothing unscoped reaches the
+# store, and the scope that does reach it is the one the ROUTE resolved — not
+# anything the model supplied.
+# ---------------------------------------------------------------------------
+
+CYPHER_TENANT = "test-tenant"
+CYPHER_KG = "imdb"
+
+
+def _cypher_pipeline():
+    """A pipeline whose Cypher path is reachable without a live store/LLM."""
+    from unittest.mock import MagicMock
+
+    from infona_client.nlp.pipeline import NLQueryPipeline
+
+    p = NLQueryPipeline(AsyncMock(), "invented-anthropic-key", graph_store=MagicMock())
+    p._openrouter_key = ""
+    return p
+
+
 @pytest.mark.asyncio
 async def test_ask_never_sends_an_unscoped_generated_query_to_the_store():
     """End to end through ``ask()``: the wiring, not just the rule.
 
-    The generator returns exactly the query that leaked in production — a
-    ``SELECT`` naming no graph. The store must receive a scoped one, and the
-    scope must be the KG graph the ROUTE resolved, re-derived by the parser.
+    The generator returns the property-graph twin of the query that leaked in
+    production — a ``MATCH (e:Entity)`` naming no workspace — AND supplies its
+    own ``tenant_id`` / ``kg`` param values. What reaches the store must be
+    scope-parameterized, and the values bound to those parameters must be the
+    ones the ROUTE resolved, not the model's.
     """
     from unittest.mock import patch
 
-    from infona_client.nlp import pipeline as pipeline_mod
-    from infona_client.nlp.pipeline import NLQueryPipeline
+    seen: list[tuple[str, dict]] = []
 
-    seen: list[str] = []
-
-    async def query(sparql, *a, **k):
-        seen.append(sparql)
-        return {"head": {"vars": ["name"]}, "results": {"bindings": []}}
-
-    neptune = AsyncMock()
-    neptune.query = AsyncMock(side_effect=query)
-    p = NLQueryPipeline(neptune, "invented-anthropic-key")
-    p._openrouter_key = ""
+    async def execute(session, gen_payload, cypher, params):
+        seen.append((cypher, dict(params)))
+        return [], "execute_read"
 
     gen = AsyncMock(
         return_value={
-            "sparql": "SELECT ?s ?p ?o WHERE { ?s ?p ?o }",
+            "cypher": "MATCH (e:Entity) RETURN e.id AS id",
+            # The model's own idea of scope, which must be discarded.
+            "params": {"tenant_id": "victim-tenant", "kg": "secret"},
             "explanation": "",
             "functions_needed": [],
         }
     )
-    with patch.object(pipeline_mod, "get_embedding_service", return_value=None), patch.object(
+    p = _cypher_pipeline()
+    with patch.object(
         p, "_fetch_ontology", new=AsyncMock(return_value="ONTOLOGY")
-    ), patch.object(p, "_generate_sparql", new=gen), patch.object(
-        p, "_fetch_parent_map", new=AsyncMock(return_value={})
+    ), patch.object(p, "_try_llm_cypher", new=gen), patch.object(
+        p, "_execute_confined_cypher", new=execute
     ):
-        result = await p.ask("how many things", OWN_GRAPH, DATA_GRAPH)
+        result = await p.ask("reconcile the zzqx rollups", OWN_GRAPH, DATA_GRAPH)
 
+    # A question no deterministic fixture matches, so the query under test is
+    # the GENERATED one — otherwise the model's params would never be in play
+    # and the "model scope is discarded" claim below would be vacuous.
+    gen.assert_awaited()
     assert seen, "the pipeline never reached the store"
-    for sparql in seen:
-        graphs = _dataset_of(sparql)
-        assert graphs, f"an unscoped query reached the store: {sparql}"
-        assert set(graphs) <= {DATA_GRAPH}, sparql
-    # The repaired query is what gets reported back, so the answer's `sparql`
-    # field is the query that actually ran.
-    assert DATA_GRAPH in result.sparql
+    for cypher, params in seen:
+        # Scoped by construction: the pattern carries the parameters, so the
+        # session cannot execute it against the union of every workspace.
+        assert "$tenant_id" in cypher and "$kg" in cypher, cypher
+        assert params["tenant_id"] == CYPHER_TENANT, params
+        assert params["kg"] == CYPHER_KG, params
+        assert "victim-tenant" not in cypher and "victim-tenant" not in str(params)
+    # The confined query is what gets reported back, so the answer's query field
+    # is the query that actually ran.
+    assert "$tenant_id" in result.sparql and "$kg" in result.sparql
 
 
 @pytest.mark.asyncio
-async def test_ask_hard_fails_on_a_generated_cross_workspace_query():
-    """No retry, no repair, no store call. ``/ask`` degrades at its boundary."""
+async def test_ask_never_executes_a_generated_cross_workspace_query():
+    """A literal foreign workspace is refused, and no store call is made.
+
+    The SPARQL shape of this was a ``FROM <victim>`` clause, which
+    ``confine_generated_query`` raises ``CrossTenantQueryError`` on. The Cypher
+    shape is a hardcoded ``{tenant_id: 'victim-tenant'}`` property map, which
+    ``confine_generated_cypher`` rejects as unscoped (it carries no
+    ``$tenant_id`` parameter, and the repair deliberately refuses to rewrite a
+    node that already opens a property map — rewriting could leave the literal
+    foreign scope in place beside an injected one).
+
+    The DEGRADATION differs and the difference is recorded here rather than
+    smoothed over: SPARQL propagated the error out of ``ask()`` with no retry,
+    while ``_ask_cypher`` feeds the confinement failure back to the generator
+    once. That is a retry the model could iterate against, so what this pins is
+    the invariant that survives it — the store is never reached.
+    """
     from unittest.mock import patch
 
-    from infona_client.nlp import pipeline as pipeline_mod
-    from infona_client.nlp.pipeline import NLQueryPipeline
-
-    neptune = AsyncMock()
-    p = NLQueryPipeline(neptune, "invented-anthropic-key")
-    p._openrouter_key = ""
-
+    execute = AsyncMock(side_effect=AssertionError("the store must not be reached"))
     gen = AsyncMock(
         return_value={
-            "sparql": f"SELECT ?s FROM <{VICTIM_GRAPH}> WHERE {{ ?s ?p ?o }}",
+            "cypher": (
+                "MATCH (e:Entity {tenant_id: 'victim-tenant', kg: 'secret'}) "
+                "RETURN e.id AS id"
+            ),
+            "params": {},
             "explanation": "",
             "functions_needed": [],
         }
     )
-    with patch.object(pipeline_mod, "get_embedding_service", return_value=None), patch.object(
+    p = _cypher_pipeline()
+    with patch.object(
         p, "_fetch_ontology", new=AsyncMock(return_value="ONTOLOGY")
-    ), patch.object(p, "_generate_sparql", new=gen):
-        with pytest.raises(CrossTenantQueryError):
-            await p.ask("how many things", OWN_GRAPH, DATA_GRAPH)
+    ), patch.object(p, "_try_llm_cypher", new=gen), patch.object(
+        p, "_execute_confined_cypher", new=execute
+    ):
+        result = await p.ask("reconcile the zzqx rollups", OWN_GRAPH, DATA_GRAPH)
 
-    neptune.query.assert_not_called()
-    # And it was not fed back to the model as retry advice it could iterate on.
-    assert gen.await_count == 1
+    gen.assert_awaited()  # the fixture path must not have short-circuited it
+    execute.assert_not_awaited()
+    assert "Could not answer" in result.answer
+    assert result.timing.get("cypher_scope_error") == 1.0
+    assert "victim-tenant" not in result.answer
 
 
 def test_ask_route_degrades_and_never_forwards_the_foreign_query(
     client, auth_headers, mock_neptune
 ):
-    """The route contract survives the hard fail: a 200 NLResult, no leak.
+    """The route contract survives a hard fail: a 200 NLResult, no leak.
 
-    ``/ask`` always returns an NLResult, so a confinement failure must not turn
-    into a bare 500 — and, more importantly, the foreign graph must never appear
-    in anything handed to the store. Asserting only on the response body would
-    pass against a mock that returns nothing while the real store returned the
-    other workspace's rows.
+    ``/ask`` always returns an NLResult, so a failure inside the pipeline must
+    not turn into a bare 500 — and nothing about the failed query may ride out
+    in the response. Driven here by making generation raise, which is the shape
+    that still escapes ``_ask_cypher`` (``_try_llm_cypher`` is called outside
+    its try/except), so the route's safety net is what has to catch it.
     """
     from unittest.mock import AsyncMock as _AsyncMock
     from unittest.mock import patch
 
     from infona_client.models.query import NLResult
 
-    generated = {
-        "sparql": f"SELECT ?s FROM <{VICTIM_GRAPH}> WHERE {{ ?s ?p ?o }}",
-        "explanation": "",
-        "functions_needed": [],
-    }
     with patch(
-        "infona_client.nlp.pipeline.NLQueryPipeline._generate_sparql",
+        "infona_client.nlp.pipeline.NLQueryPipeline._try_llm_cypher",
         new_callable=_AsyncMock,
     ) as gen, patch(
         "infona_client.nlp.pipeline.NLQueryPipeline._fetch_ontology",
         new_callable=_AsyncMock,
     ) as onto:
-        gen.return_value = generated
+        gen.side_effect = CrossTenantQueryError(
+            f"generated query names <{VICTIM_GRAPH}>"
+        )
         onto.return_value = "ONTOLOGY"
         res = client.post(
             f"/graphs/{TENANT}/ask",
-            json={"question": "how many things"},
+            json={"question": "reconcile the zzqx rollups", "kg_name": CYPHER_KG},
             headers=auth_headers,
         )
 
     assert res.status_code == 200
+    gen.assert_awaited()  # the fixture path must not have short-circuited it
     NLResult(**res.json())
-    # The ROUTE's degraded message, not the pipeline's "after N attempts" one:
-    # this pins that the error PROPAGATED rather than being retried three times
-    # with the model iterating against its own rejection.
+    # The ROUTE's degraded message: the error PROPAGATED rather than the model
+    # being handed its own rejection to iterate against.
     assert "internal error" in res.json()["answer"]
     assert not res.json()["sparql"]
+    assert VICTIM_GRAPH not in res.text
     for call in mock_neptune.query.await_args_list + mock_neptune.query.call_args_list:
         assert VICTIM_GRAPH not in str(call), call
 

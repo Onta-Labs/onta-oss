@@ -902,43 +902,104 @@ def test_read_only_get_paths_do_not_write(reader_client, mock_neptune):
     SPARQL UPDATE to store triple counts, upserted rows into the durable stats
     store, kicked off the billed summary backfill, and scheduled the SAME
     whole-KG recompute that ``POST /recompute-stats`` refuses to a reader.
+
+    **Ported by ONTA-527.** The listing reads the ``:KnowledgeGraph`` registry
+    now, so the KG is registered rather than mocked as SPARQL bindings, and the
+    entity count comes from a seeded durable stats row rather than
+    ``read_kg_summary_from_stats``. The four write-shaped side effects are still
+    asserted absent — but note WHY they are absent has changed: on this branch
+    they are unreachable for EVERYONE, not gated on the caller. That is a
+    fail-safe direction (a writer's listing writes nothing either, asserted
+    below) rather than a hole, but it does mean this test no longer proves the
+    ``persist=can_write(...)`` threading itself works — the reachable-write half
+    of ONTA-452 lives on in the recompute xfail underneath.
     """
     from infona_client.api.routes import explore as explore_mod
     from infona_client.api.routes import knowledge_graphs as kg_mod
+    from infona_client.graph.kg_registry import upsert_registered_kg
+    from infona_client.graph.kg_stats_store import KgStats, get_kg_stats_store
 
-    mock_neptune.query.return_value = {
-        "head": {"vars": ["name"]},
-        "results": {"bindings": [{"name": {"value": "kg"}}]},
-    }
+    _run(upsert_registered_kg(_READER_TENANT, "kg"))
+    stats_store = get_kg_stats_store()
+    _run(
+        stats_store.upsert(
+            KgStats(
+                tenant_id=_READER_TENANT, kg_name="kg", entity_count=3, edge_count=1
+            )
+        )
+    )
+
     upsert = AsyncMock()
-    with patch.object(kg_mod, "_store_triple_count", AsyncMock()) as store_count, patch(
-        "infona_client.graph.kg_stats_store.get_kg_stats_store"
-    ) as stats_store, patch.object(
+    with patch.object(kg_mod, "_store_triple_count", AsyncMock()) as store_count, patch.object(
+        stats_store, "upsert", upsert
+    ), patch.object(
         explore_mod, "schedule_recompute"
     ) as sched, patch.object(
         explore_mod, "schedule_summary_backfill"
-    ) as summary, patch.object(
-        explore_mod, "read_kg_summary_from_stats", AsyncMock(return_value=(3, 1, {}))
-    ):
-        stats_store.return_value.list_for_tenant = AsyncMock(return_value=[])
-        stats_store.return_value.upsert = upsert
+    ) as summary:
         resp = reader_client.get(f"/graphs/{_READER_TENANT}/kgs")
 
     assert resp.status_code == 200, resp.text
     assert store_count.await_count == 0, "reader wrote the stored triple count"
     assert upsert.await_count == 0, "reader upserted a stats row"
     assert summary.call_count == 0, "reader kicked off the billed summary backfill"
-    # The listing still WORKS and still carries the computed numbers.
+    # The listing still WORKS and still carries the stored numbers.
     assert [row["name"] for row in resp.json()] == ["kg"]
     assert resp.json()[0]["entity_count"] == 3
-    # ...and nothing had to be recomputed, because the stats graph was readable.
+    # ...and nothing had to be recomputed, because the stats row was readable.
     assert sched.call_count == 0
+    # No SPARQL either — the whole listing is one scoped registry read.
+    mock_neptune.query.assert_not_called()
+    mock_neptune.update.assert_not_called()
 
 
+def test_writer_listing_also_persists_nothing_now(client, auth_headers, mock_neptune):
+    """The other side of the same coin, so the change above is not a silent one.
+
+    ONTA-452's fix was "gate the WRITE on the caller's capability, keep the READ
+    open". The property-graph listing does no lazy materialization at all, so a
+    WRITER's listing is now as side-effect-free as a reader's. Pinned so that
+    re-introducing lazy persistence (a triple-count backfill is the obvious
+    candidate — see test_kg_list_counts.py's xfail) has to decide the capability
+    question again rather than inherit an open path.
+    """
+    from infona_client.api.routes import explore as explore_mod
+    from infona_client.api.routes import knowledge_graphs as kg_mod
+    from infona_client.graph.kg_registry import upsert_registered_kg
+
+    _run(upsert_registered_kg("test-tenant", "kg"))
+    with patch.object(kg_mod, "_store_triple_count", AsyncMock()) as store_count, patch.object(
+        explore_mod, "schedule_summary_backfill"
+    ) as summary:
+        resp = client.get("/graphs/test-tenant/kgs", headers=auth_headers)
+
+    assert resp.status_code == 200, resp.text
+    assert store_count.await_count == 0
+    assert summary.call_count == 0
+    mock_neptune.update.assert_not_called()
+
+
+@pytest.mark.xfail(
+    reason=(
+        "BUG (introduced by the Neo4j cutover, surfaced by ONTA-527): "
+        "api/routes/knowledge_graphs.py::list_kgs returns from its "
+        "neo4j_kg_registry_active() branch before reaching _kg_stats_for, which "
+        "is the only caller of explore.schedule_recompute on this route. So a "
+        "stats MISS now yields entity_count/edge_count 0 with nothing scheduled "
+        "to ever compute them — the exact 'permanent, indistinguishable zero' "
+        "ONTA-452 deliberately accepted a reader-triggered recompute to avoid. "
+        "It affects writers identically (that branch ignores its own `persist` "
+        "flag), so this is a lost behaviour rather than a capability hole. The "
+        "recompute itself, explore.recompute_kg_stats, is still an un-ported "
+        "whole-KG SPARQL scan, so the fix is a store-backed recompute, not "
+        "re-adding this call."
+    ),
+    strict=True,
+)
 def test_reader_stats_miss_still_schedules_the_recompute(reader_client, mock_neptune):
     """The one write a reader's listing MAY trigger, and must.
 
-    When the stats graph was never materialized there is no number to read, so
+    When the stats row was never materialized there is no number to read, so
     skipping the recompute would leave a reader looking at ``entity_count: 0``
     permanently, with nothing to distinguish "not computed yet" from "empty".
     A confident wrong number with no signal is the worse failure, so the
@@ -946,21 +1007,14 @@ def test_reader_stats_miss_still_schedules_the_recompute(reader_client, mock_nep
     readers too. The unbounded on-demand twin POST /recompute-stats stays gated.
     """
     from infona_client.api.routes import explore as explore_mod
+    from infona_client.graph.kg_registry import upsert_registered_kg
 
-    mock_neptune.query.return_value = {
-        "head": {"vars": ["name"]},
-        "results": {"bindings": [{"name": {"value": "kg"}}]},
-    }
-    with patch(
-        "infona_client.graph.kg_stats_store.get_kg_stats_store"
-    ) as stats_store, patch.object(explore_mod, "schedule_recompute") as sched, patch.object(
-        explore_mod, "read_kg_summary_from_stats", AsyncMock(return_value=None)
-    ):
-        stats_store.return_value.list_for_tenant = AsyncMock(return_value=[])
-        stats_store.return_value.upsert = AsyncMock()
+    _run(upsert_registered_kg(_READER_TENANT, "kg"))
+    with patch.object(explore_mod, "schedule_recompute") as sched:
         resp = reader_client.get(f"/graphs/{_READER_TENANT}/kgs")
 
     assert resp.status_code == 200, resp.text
+    assert resp.json()[0]["entity_count"] == 0, "premise: the stats row is missing"
     assert sched.call_count == 1, "a reader's stats miss must still be recomputed"
 
 

@@ -4,6 +4,17 @@ spatio-temporal index.
 Covers :func:`extract_spatiotemporal_facts` (triples → facts) and the auto-index
 hook inside :func:`infona_client.graph.kg_writer.insert_facts` (every converged
 writer indexes its geometry-bearing entities, scoped per-KG, best-effort).
+
+**Ported by ONTA-527.** The three write-path tests used to drive
+``insert_facts`` with a fake Neptune and prove the primary write happened by
+asserting the SPARQL it recorded (``assert neptune.updates``). ``insert_facts``
+runs the property-graph path now and emits no SPARQL, so that proof was
+testing a transport that no longer runs; it is replaced by reading the written
+entity back out of the :class:`MemoryGraphStore` the write actually lands in.
+The spatio-temporal hook itself is UNCHANGED and still live: unlike the
+semantic hook (see ``test_semantic_write_hook.py``) it derives its facts from
+the write's own triples and needs no re-read, so it is still called from
+``_insert_facts_store``.
 """
 
 from __future__ import annotations
@@ -11,7 +22,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from infona_client.graph.kg_writer import insert_facts
+from infona_client.graph.memory_store import MemoryGraphStore
 from infona_client.graph.queries import kg_graph_uri, parse_kg_graph_uri
+from infona_client.graph.scope import GraphScopeError
+from infona_client.graph.store import configure_graph_store
 from infona_client.spatiotemporal.extract import extract_spatiotemporal_facts
 from infona_client.spatiotemporal.registry import (
     get_spatiotemporal_index,
@@ -35,7 +49,10 @@ def _dt(y: int, m: int = 1, d: int = 1) -> datetime:
 
 
 def _geom(uri: str, lon: float, lat: float) -> tuple:
-    return (uri, f"https://graph.infona.ai/types/T/loc", f"POINT({lon} {lat})^^{GEO}")
+    # Canonical literal-attribute predicate shape (`types/<T>/attrs/<leaf>`) so
+    # the same triple is BOTH extractable (the extractor is datatype-driven and
+    # predicate-blind) and writable as an Entity property on the store path.
+    return (uri, "https://graph.infona.ai/types/T/attrs/loc", f"POINT({lon} {lat})^^{GEO}")
 
 
 @pytest.fixture(autouse=True)
@@ -43,6 +60,15 @@ def _reset_registry():
     reset_spatiotemporal_index()
     yield
     reset_spatiotemporal_index()
+
+
+@pytest.fixture
+def store():
+    """The GraphStore ``insert_facts`` writes into (conftest installs one too;
+    this makes the instance the assertions read back from explicit)."""
+    st = MemoryGraphStore()
+    configure_graph_store(st)
+    return st
 
 
 # ---------------------------------------------------------------------------
@@ -156,24 +182,20 @@ def test_plain_string_with_caret_not_mistyped():
 # ---------------------------------------------------------------------------
 
 
-class _FakeNeptune:
-    def __init__(self) -> None:
-        self.updates: list[str] = []
-
-    async def update(self, sparql: str) -> None:
-        self.updates.append(sparql)
-
-
-async def test_insert_facts_populates_index_scoped_to_kg():
-    neptune = _FakeNeptune()
+async def test_insert_facts_populates_index_scoped_to_kg(store):
     graph = kg_graph_uri(TENANT, KG)
     triples = [
         ("e:venue", RDF_TYPE, "https://graph.infona.ai/types/Venue"),
         _geom("e:venue", -122.4194, 37.7749),
-        ("e:noband", "https://graph.infona.ai/types/Band/name", "no geo here"),
+        # `name` is a RESERVED Entity property key on the store path, so this
+        # geometry-less row carries `band_name` instead; its only job is to show
+        # that a subject without coordinates adds no index row.
+        ("e:noband", "https://graph.infona.ai/types/Band/attrs/band_name", "no geo here"),
     ]
-    await insert_facts(neptune, graph, triples)
-    assert neptune.updates  # the primary write still happened
+    await insert_facts(None, graph, triples, store=store)
+    # The primary write still happened — read it back out of the store the write
+    # goes to now (this assertion used to be `assert neptune.updates`).
+    assert {e["id"] for e in store.snapshot_entities()} == {"e:venue", "e:noband"}
 
     idx = get_spatiotemporal_index()
     hit = await idx.query_radius(TENANT, -122.4194, 37.7749, 1_000, kg_name=KG)
@@ -182,16 +204,26 @@ async def test_insert_facts_populates_index_scoped_to_kg():
     assert await idx.query_radius(TENANT, -122.4194, 37.7749, 1_000, kg_name="Other") == []
 
 
-async def test_insert_facts_skips_non_kg_graph():
-    """Writing to the tenant ontology graph (not a per-KG graph) indexes nothing."""
-    neptune = _FakeNeptune()
+async def test_insert_facts_rejects_non_kg_graph_and_indexes_nothing(store):
+    """A write aimed at the tenant ontology graph (no ``/kg/`` segment) indexes
+    nothing — and no longer writes anything either.
+
+    ``_index_spatiotemporal`` still carries its own ``parse_kg_graph_uri``
+    guard, but on the property-graph path the write never reaches it:
+    ``_resolve_graph_session`` cannot derive a (tenant, kg) scope from a tenant
+    URI and fails closed first. The property under test is unchanged — a non-KG
+    graph produces no index row — the enforcement just moved earlier and got
+    louder.
+    """
     onto_graph = "https://graph.infona.ai/graphs/demo-tenant"  # no /kg/ segment
-    await insert_facts(neptune, onto_graph, [_geom("e:x", 1.0, 1.0)])
+    with pytest.raises(GraphScopeError):
+        await insert_facts(None, onto_graph, [_geom("e:x", 1.0, 1.0)], store=store)
     idx = get_spatiotemporal_index()
     assert await idx.query_radius(TENANT, 1.0, 1.0, 1_000) == []
+    assert store.snapshot_entities() == []
 
 
-async def test_index_failure_does_not_fail_write():
+async def test_index_failure_does_not_fail_write(store):
     """A derived-index error must never propagate out of the primary KG write."""
 
     class _BoomIndex:
@@ -199,8 +231,7 @@ async def test_index_failure_does_not_fail_write():
             raise RuntimeError("index down")
 
     register_spatiotemporal_index(_BoomIndex())
-    neptune = _FakeNeptune()
     graph = kg_graph_uri(TENANT, KG)
     # Must not raise despite the index blowing up.
-    await insert_facts(neptune, graph, [_geom("e:venue", -122.4, 37.7)])
-    assert neptune.updates  # write went through
+    await insert_facts(None, graph, [_geom("e:venue", -122.4, 37.7)], store=store)
+    assert [e["id"] for e in store.snapshot_entities()] == ["e:venue"]  # write went through

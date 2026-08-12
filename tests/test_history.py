@@ -14,11 +14,29 @@ casing), that:
     companion HISTORY graph via the shared batched-insert seam;
   * a first insert / an unchanged re-write records NO change (no false positives);
   * the whole mechanism is env-gated (byte-stable when off).
+
+**LOST CAPABILITY (ONTA-527).** Everything in the third and fifth bullets is
+gone on the shipped path. ``kg_writer.delete_facts`` is property-graph-only now
+(``_delete_facts_store``); its SPARQL branch — the one place that read the OLD
+value before clearing it and composed ``build_value_change_triples`` — was
+deleted with the Neptune backend. ``kg_writer._record_value_history`` still
+exists but has **no caller**: an attribute UPDATE writes no version node, the
+``INFONA_VALUE_HISTORY_ENABLED`` gate controls nothing, and ``GET /history``
+therefore returns an empty ``old_value`` on every row (pinned in
+``tests/test_history_route.py``). The ``delete_facts`` cases below are xfailed
+strictly rather than softened, so they flip to XPASS the day the property-graph
+:ValueHistory port lands.
+
+The pure builder / reader / injection-guard cases are untouched and still green:
+``build_value_change_triples``, ``value_history_query`` and
+``fetch_value_history`` are live library functions with their own callers.
 """
 
 import asyncio
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
+
+import pytest
 
 from infona_client.graph.history import (
     build_value_change_triples,
@@ -28,6 +46,16 @@ from infona_client.graph.history import (
     value_history_query,
 )
 from infona_client.graph.kg_writer import delete_facts
+
+#: One reason for every ``delete_facts`` value-history case below.
+_NO_VALUE_HISTORY_WRITE = (
+    "LOST CAPABILITY (ONTA-527): graph/kg_writer.py::delete_facts lost its "
+    "SPARQL branch, so kg_writer._record_value_history — the composer of "
+    "build_value_change_triples into the companion `<graph>/history` graph — is "
+    "now unreachable dead code with no caller. An attribute UPDATE records no "
+    "old→new version node and INFONA_VALUE_HISTORY_ENABLED gates nothing. "
+    "Needs the property-graph :ValueHistory port."
+)
 
 GRAPH = "https://graph.infona.ai/graphs/t/kg/widgets"
 SUBJ = "https://graph.infona.ai/entities/Widget/w1"
@@ -90,6 +118,7 @@ def test_build_value_change_triples_noop_when_unchanged():
 # --- delete_facts: value history rides the shared write path (behavioral) -------
 
 
+@pytest.mark.xfail(strict=True, reason=_NO_VALUE_HISTORY_WRITE)
 def test_delete_facts_records_change_to_history_graph(monkeypatch):
     """A predicate-scoped clear WITH a new value + history enabled → an old→new
     version node lands in the companion HISTORY graph (not the data graph), via
@@ -125,7 +154,15 @@ def test_delete_facts_records_change_to_history_graph(monkeypatch):
 
 def test_delete_facts_no_history_for_first_insert(monkeypatch):
     """No prior value (first insert) → the read returns nothing → NO change
-    recorded (a value appearing for the first time is not a change)."""
+    recorded (a value appearing for the first time is not a change).
+
+    NOTE (ONTA-527): this now holds VACUOUSLY — nothing writes a version node on
+    any path, so "no version node" is true for reasons that have nothing to do
+    with the first-insert discriminator this was written to pin. Kept green
+    rather than xfailed because it asserts an ABSENCE (a strict xfail would
+    invert into a failure), but it proves nothing until the :ValueHistory port
+    lands. See ``_NO_VALUE_HISTORY_WRITE``.
+    """
 
     async def run():
         monkeypatch.setenv("INFONA_VALUE_HISTORY_ENABLED", "1")
@@ -149,7 +186,11 @@ def test_delete_facts_no_history_for_first_insert(monkeypatch):
 
 
 def test_delete_facts_no_history_for_unchanged_value(monkeypatch):
-    """Re-writing the SAME value records nothing (no false positive)."""
+    """Re-writing the SAME value records nothing (no false positive).
+
+    Vacuous for the same reason as ``test_delete_facts_no_history_for_first_insert``
+    (ONTA-527) — see that docstring and ``_NO_VALUE_HISTORY_WRITE``.
+    """
 
     async def run():
         monkeypatch.setenv("INFONA_VALUE_HISTORY_ENABLED", "1")
@@ -170,8 +211,15 @@ def test_delete_facts_no_history_for_unchanged_value(monkeypatch):
     asyncio.run(run())
 
 
+@pytest.mark.xfail(strict=True, reason=_NO_VALUE_HISTORY_WRITE)
 def test_delete_facts_no_history_when_disabled(monkeypatch):
-    """Env gate OFF → byte-stable: no history read, no history write."""
+    """Env gate OFF → byte-stable: no history read, no history write.
+
+    Fails on ``neptune.query.await_count == 1``: the predicate-scoped delete no
+    longer issues ANY SPARQL, so there is neither a delete round-trip to count
+    nor a gate to be off. Kept (rather than reduced to the surviving "no history
+    write" half) so the gate's disappearance is visible, not papered over.
+    """
 
     async def run():
         monkeypatch.delenv("INFONA_VALUE_HISTORY_ENABLED", raising=False)
@@ -191,6 +239,7 @@ def test_delete_facts_no_history_when_disabled(monkeypatch):
     asyncio.run(run())
 
 
+@pytest.mark.xfail(strict=True, reason=_NO_VALUE_HISTORY_WRITE)
 def test_delete_facts_history_only_for_pairs_with_new_value(monkeypatch):
     """A pair cleared WITHOUT a declared new value (a pure removal, not an update)
     is not read and not versioned — only declared replacements are tracked."""
@@ -220,6 +269,7 @@ def test_delete_facts_history_only_for_pairs_with_new_value(monkeypatch):
     asyncio.run(run())
 
 
+@pytest.mark.xfail(strict=True, reason=_NO_VALUE_HISTORY_WRITE)
 def test_delete_facts_history_best_effort(monkeypatch):
     """A history-read hiccup must NOT fail the update (history is a derived
     companion). The delete still proceeds."""
@@ -251,9 +301,15 @@ def test_delete_facts_history_best_effort(monkeypatch):
 # --- Two updates → ordered old→new transitions, each dated ----------------------
 
 
+@pytest.mark.xfail(strict=True, reason=_NO_VALUE_HISTORY_WRITE)
 def test_two_updates_yield_ordered_transitions(monkeypatch):
     """weight_kg: 10 → 12.5 → 9.0. Two delete_facts updates emit two version nodes;
-    fetch_value_history reads them back as ordered old→new transitions, dated."""
+    fetch_value_history reads them back as ordered old→new transitions, dated.
+
+    The READ half (``fetch_value_history``) still works — see
+    ``test_fetch_value_history_since_returns_only_post_cutoff``. It is the WRITE
+    half that is gone, so no version node ever exists to read back.
+    """
 
     async def run():
         monkeypatch.setenv("INFONA_VALUE_HISTORY_ENABLED", "1")

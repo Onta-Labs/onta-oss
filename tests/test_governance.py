@@ -17,6 +17,16 @@ accumulating stale vote/reasoning triples.
 
 All mocked — no live Neptune, no LLM, no network. Env is only touched via
 patch.dict (auto-restored), never process-globally.
+
+**Ported by ONTA-527 (resolver-wiring section only).** The TENANT-layer half of
+the wiring tests read "was the type minted?" off the SPARQL handed to
+``mock_neptune.update``. Type minting runs through ``ontology_commit`` →
+``ontology_catalog.upsert_type`` on the GraphStore now and emits no SPARQL, so
+that read had gone silent — the assertions had to be rewritten against the
+tenant ontology CATALOG (:func:`_tenant_types`). The GLOBAL-layer half is
+unchanged: ``GovernanceEngine`` still writes the Public / provenance /
+changelog graphs as SPARQL updates, so those assertions still pin live
+behaviour of the module under test (see the note in ``_tenant_types``).
 """
 
 from __future__ import annotations
@@ -109,6 +119,19 @@ class StubPanel:
 
 def _update_sparql(mock_neptune) -> list[str]:
     return [c.args[0] for c in mock_neptune.update.call_args_list]
+
+
+async def _tenant_types(tenant_id: str = "acme") -> set[str]:
+    """Type names in the TENANT ontology catalog (the GraphStore path).
+
+    The tenant-layer mint no longer emits SPARQL, so ``_update_sparql`` is blind
+    to it — it stays in use only for the GLOBAL-layer governance writes
+    (Public / provenance / changelog), which ``GovernanceEngine`` still issues
+    as SPARQL updates.
+    """
+    from infona_client.graph.ontology_catalog import list_types
+
+    return {t.name for t in await list_types(tenant_id=tenant_id)}
 
 
 # ---------------------------------------------------------------------------
@@ -493,11 +516,10 @@ async def test_flag_off_new_type_path_identical_regression(mock_neptune):
     resolved = await resolver._resolve_type(_new_entity(), TENANT_GRAPH, {}, {}, result)
 
     assert resolved == "LoyaltyTier"
+    # ONTA-403: tenant type mint via commit_ontology — a catalog row now, not a
+    # SPARQL update against the tenant graph.
+    assert "LoyaltyTier" in await _tenant_types()
     calls = _update_sparql(mock_neptune)
-    # ONTA-403: tenant type mint via commit_ontology (+ revision + workspace changelog).
-    tenant_writes = [c for c in calls if f"GRAPH <{TENANT_GRAPH}>" in c]
-    assert tenant_writes
-    assert any(f"<{type_uri('LoyaltyTier')}>" in c for c in tenant_writes)
     assert all(public_graph_uri() not in c for c in calls)
     # Workspace commit changelog uses GOV_NS entry URIs under the tenant companion
     # graph — not the global Public governance path.
@@ -519,8 +541,8 @@ async def test_flag_on_majority_approve_also_writes_public_layer(mock_neptune):
     assert resolved == "LoyaltyTier"
     # The ingest path returned after the tenant commit alone — governance is
     # scheduled, retained on the resolver, and not yet (necessarily) done.
+    assert "LoyaltyTier" in await _tenant_types()
     pre_gov = _update_sparql(mock_neptune)
-    assert any(f"<{type_uri('LoyaltyTier')}>" in c for c in pre_gov)
     assert all(public_graph_uri() not in c for c in pre_gov)
     assert len(resolver._governance_tasks) == 1
 
@@ -529,8 +551,9 @@ async def test_flag_on_majority_approve_also_writes_public_layer(mock_neptune):
     assert resolver._governance_tasks == []
     calls = _update_sparql(mock_neptune)
     joined = " ".join(calls)
-    # Tenant write is present.
-    assert f"<{type_uri('LoyaltyTier')}>" in joined
+    # Tenant write is present (in the catalog; the SPARQL below is the Public
+    # layer only, which is exactly the separation this test is about).
+    assert "LoyaltyTier" in await _tenant_types()
     # Then the governed Public-layer copy with provenance + global changelog.
     assert f"GRAPH <{public_graph_uri()}>" in joined
     assert f"<{layer_type_uri(Layer.PUBLIC, 'LoyaltyTier')}>" in joined
@@ -553,9 +576,10 @@ async def test_flag_on_majority_reject_stays_tenant_only(mock_neptune):
     await resolver.drain_governance()
 
     assert resolved == "LoyaltyTier"
+    # Tenant layer got the type; the rejected proposal must add NO Public-layer /
+    # global-governance writes.
+    assert "LoyaltyTier" in await _tenant_types()
     calls = _update_sparql(mock_neptune)
-    # Rejected proposal must add NO Public-layer / global-governance writes.
-    assert any(f"<{type_uri('LoyaltyTier')}>" in c for c in calls)
     assert all(public_graph_uri() not in c for c in calls)
     assert all(f"GRAPH <{changelog_graph_uri()}>" not in c for c in calls)
 
@@ -575,10 +599,10 @@ async def test_flag_on_governance_write_failure_never_blocks_ingest(mock_neptune
 
     assert resolved == "LoyaltyTier"
     assert "LoyaltyTier" in result.types_created
-    # Tenant commit only (no successful Public write) — ONTA-403 may emit
-    # revision/changelog alongside the type mint.
+    # Tenant commit only (no successful Public write): the type is in the tenant
+    # catalog and nothing reached the Public layer.
+    assert "LoyaltyTier" in await _tenant_types()
     calls = _update_sparql(mock_neptune)
-    assert any(f"<{type_uri('LoyaltyTier')}>" in c for c in calls)
     assert all(public_graph_uri() not in c for c in calls)
 
 

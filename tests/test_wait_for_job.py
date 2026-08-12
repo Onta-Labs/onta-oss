@@ -311,10 +311,29 @@ def test_partial_graph_is_queryable_mid_job(
     client, auth_headers, app, mock_neptune
 ):
     """A graph that is only PARTIALLY populated by an in-flight discovery job
-    (job status still `running`, filled>0) is queryable: the read path hits the
-    live graph store with NO job-status gate, so `/query` returns the entities
+    (job status still `running`, filled>0) is readable: the read path hits the
+    live graph store with NO job-status gate, so a client sees the entities
     landed so far. This is what lets 'graph populated with sourced entities' be
-    confirmed before the job fully completes."""
+    confirmed before the job fully completes.
+
+    **Ported by ONTA-527.** The read used to be ``POST /graphs/{t}/query`` with a
+    hand-written ``SELECT (COUNT(?e))`` answered by a mocked SPARQL response —
+    that route is a 410 tombstone now, and the mock meant the "12 entities" were
+    the fixture's claim rather than the graph's. It reads the 12 through the
+    Explorer records endpoint over a store the job's own write path
+    (``kg_writer.insert_facts``) actually populated, so the partial graph is
+    observed instead of asserted.
+    """
+    from infona_client.graph.iri import IRI_BASE
+    from infona_client.graph.kg_writer import insert_facts
+    from infona_client.graph.ontology_queries import entity_uri
+    from infona_client.graph.store import get_graph_store
+
+    KG = "widgets"
+    GRAPH = f"{IRI_BASE}/graphs/test-tenant/kg/{KG}"
+    RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+    WIDGET = f"{IRI_BASE}/types/Widget"
+
     # A running discovery job that has already written some entities.
     store = InMemoryJobStore()
     asyncio.run(
@@ -328,30 +347,26 @@ def test_partial_graph_is_queryable_mid_job(
     )
     _override_store(app, store)
 
-    # The live graph already has 12 Widget entities written by the in-flight job.
-    mock_neptune.query.return_value = {
-        "head": {"vars": ["cnt"]},
-        "results": {
-            "bindings": [{"cnt": {"type": "literal", "value": "12"}}]
-        },
-    }
+    # The in-flight job has landed 12 of its 200 Widgets so far.
+    async def land_partial_results():
+        triples = []
+        for i in range(12):
+            uri = entity_uri("Widget", f"w{i:02d}")
+            triples.append((uri, RDF_TYPE, WIDGET))
+            triples.append((uri, f"{IRI_BASE}/types/Widget/attrs/price", str(i)))
+        await insert_facts(None, GRAPH, triples, store=get_graph_store())
+
+    asyncio.run(land_partial_results())
 
     # Reading the graph mid-job returns the landed entities — the running job
     # never blocks or hides them.
-    r = client.post(
-        "/graphs/test-tenant/query",
+    r = client.get(
+        f"/graphs/test-tenant/explore/kgs/{KG}/types/Widget/records",
         headers=auth_headers,
-        json={
-            "query": (
-                "SELECT (COUNT(?e) AS ?cnt) "
-                "FROM <https://graph.infona.ai/graphs/test-tenant/kg/widgets> "
-                "WHERE { ?e a <https://graph.infona.ai/types/Widget> }"
-            )
-        },
     )
-    assert r.status_code == 200
-    bindings = r.json()["bindings"]
-    assert bindings[0]["cnt"] == "12"
+    assert r.status_code == 200, r.text
+    assert r.json()["total"] == 12
+    mock_neptune.query.assert_not_called()
 
     # And the job it came from is still running — we confirmed a partial graph.
     job = client.get(
