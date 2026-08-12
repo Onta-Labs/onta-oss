@@ -536,6 +536,43 @@ async def test_ask_default_path_does_not_enter_cypher_when_disabled(monkeypatch)
     assert "9" in result.answer or "count" in result.explanation.lower() or result.answer
 
 
+@pytest.mark.asyncio
+async def test_ask_cypher_retrieve_passes_language_cypher(monkeypatch):
+    """ONTA-539: _ask_cypher must call ExampleBank.retrieve(language='cypher')."""
+    store = MemoryGraphStore()
+    await _seed_bookstore(store)
+
+    neptune = MagicMock()
+    neptune.query = AsyncMock(side_effect=AssertionError("SPARQL path must not run"))
+    pipe = NLQueryPipeline(neptune, anthropic_key="", graph_store=store)
+    pipe._fetch_ontology = AsyncMock(return_value=ONTOLOGY)  # type: ignore[method-assign]
+
+    retrieve_calls: list[dict] = []
+
+    class _Bank:
+        _examples = [object()]  # truthy so the bank branch runs
+
+        async def retrieve(self, *args, **kwargs):
+            retrieve_calls.append({"args": args, "kwargs": kwargs})
+            return []
+
+    import infona_client.nlp.example_bank as eb
+
+    monkeypatch.setattr(eb, "get_example_bank", lambda: _Bank())
+
+    result = await pipe.ask(
+        "How many books?",
+        graph_uri=f"{IRI_BASE}/graphs/demo-tenant",
+        instance_graph=_kg_uri(),
+        use_cypher=True,
+    )
+    assert retrieve_calls, "expected bank.retrieve to be called on cypher path"
+    kw = retrieve_calls[0]["kwargs"]
+    assert kw.get("language") == "cypher", retrieve_calls[0]
+    assert result.timing.get("query_language") == "cypher"
+    assert "3" in result.answer
+
+
 def test_graph_backend_default_neo4j(monkeypatch):
     """INFONA_GRAPH_BACKEND defaults to neo4j (Cypher /ask path)."""
     from infona_client.graph.store import graph_backend
