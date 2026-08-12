@@ -25,13 +25,13 @@ What changed, precisely, in isolation terms:
   records the scope of every session the request opens and asserts the same
   thing about those. That is a like-for-like port, not a weakening: it is the
   same server-derived-identity property, checked one layer lower.
-* **Layered reads are not served on this path.** ``_workspace_ontology`` returns
-  the TENANT layer only (its own ONTA-527 docstring says so — the Public /
-  Enhanced ``LayerStack`` read went out with SPARQL), so ``layers`` is ``[]`` and
-  the shared Public ``BaseHotel`` is invisible to both tenants. That is strictly
-  LESS data crossing into a workspace response, so no isolation assertion is
-  weakened by it; the shadowing assertions that remain (one ``Hotel`` per tenant,
-  carrying that tenant's own description) still hold and are pinned below.
+* **Layered catalog reads restored (ONTA-535).** ``_workspace_ontology_store``
+  merges Tenant > Enhanced (entitled) > Public from the GraphStore ontology
+  catalog and populates the viewer's per-layer status strip (``layers`` is
+  non-empty). This fixture seeds **tenant catalogs only**, so the shared Public
+  ``BaseHotel`` is still invisible; isolation remains "no peer markers / peer
+  type descriptions." Shadowing (one ``Hotel`` per tenant, carrying that
+  tenant's own description) is still pinned below.
 * **No isolation assertion was relaxed, and no leak was found.** Every
   ``_assert_no_peer_markers`` / peer-entity-URI check in this file survives, and
   the planted-violation self-tests were re-planted against the store so they
@@ -973,14 +973,17 @@ def test_ontology_workspace_get_isolated():
     assert _status_why(a_body) == A_ATTR_WHY
     assert _status_why(b_body) == B_ATTR_WHY
 
-    # GAP, not a leak (ONTA-527): the Public / Enhanced LayerStack read was
-    # SPARQL and ``_workspace_ontology`` now returns the TENANT layer only (its
-    # own docstring says so), so the shared Public BaseHotel is invisible to
-    # both tenants and ``layers`` is empty. Strictly less data reaches a
-    # workspace response, so nothing this suite guards is weakened — pinned so
-    # the day layering returns, it comes back through a test that checks BOTH
-    # tenants see the same PUBLIC row and neither sees the other's.
-    assert a_body["layers"] == [] and b_body["layers"] == []
+    # ONTA-535: layered catalog merge restores the status strip (tenant +
+    # public; enhanced only when entitled). Strip entries are status-only —
+    # they must not name the peer tenant. Public types only appear when
+    # seeded into the public catalog; this fixture seeds tenant catalogs
+    # only, so BaseHotel stays absent (still not a cross-tenant leak).
+    a_layer_names = {L["layer"] for L in a_body["layers"]}
+    b_layer_names = {L["layer"] for L in b_body["layers"]}
+    assert "tenant" in a_layer_names and "public" in a_layer_names
+    assert "tenant" in b_layer_names and "public" in b_layer_names
+    assert all(TENANT_B not in str(L) for L in a_body["layers"])
+    assert all(TENANT_A not in str(L) for L in b_body["layers"])
     assert not any(t["name"] == PUBLIC_TYPE for t in a_body["types"])
     assert not any(t["name"] == PUBLIC_TYPE for t in b_body["types"])
     assert PUBLIC_DESC not in a_dump and PUBLIC_DESC not in b_dump
@@ -1023,11 +1026,16 @@ def test_ontology_get_type_isolated():
 
 
 def test_planted_catalog_scope_leak_is_caught():
-    """Self-test for the ported ontology cases: a catalog session that reads
-    past its scope MUST turn the assertions above red.
+    """Self-test: a catalog session that reads past its scope MUST turn red.
 
-    Without this the three tests above could pass merely because the peer's
+    Without this the isolation cases above could pass merely because the peer's
     catalog rows were never written — this proves they fail when a leak is real.
+
+    ONTA-535 layered merge shadows by type **name** (first-visible wins), so a
+    peer's colliding ``Hotel`` type description may not surface. The leak still
+    lands as **peer attributes** under the winning type (attrs are keyed by
+    domain leaf, not shadowed away) — that is the surface the planted
+    ``_UnionSession`` exercises against the current GraphStore path.
     """
     store = _seed_adversarial_store()
     leaky = _LeakyStore(store, GraphScope.for_catalog(layer="tenant", tenant_id=TENANT_B))
@@ -1037,9 +1045,15 @@ def test_planted_catalog_scope_leak_is_caught():
         f"/graphs/{TENANT_A}/ontology"
     )
     assert res.status_code == 200, res.text
-    assert B_TYPE_DESC in str(res.json()), "premise: the planted leak must leak"
+    dump = str(res.json())
+    # Attribute-level leak (type-name shadowing can hide B_TYPE_DESC).
+    assert (
+        B_ATTR_PRIVATE in dump
+        or B_ATTR_PRIVATE_WHY in dump
+        or B_ATTR_WHY in dump
+    ), "premise: the planted leak must leak peer attributes via the unioned session"
     with pytest.raises(AssertionError, match="cross-tenant leak"):
-        _assert_no_peer_markers(str(res.json()), peer="B")
+        _assert_no_peer_markers(dump, peer="B")
 
 
 @pytest.mark.asyncio
