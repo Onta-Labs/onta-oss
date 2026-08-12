@@ -50,7 +50,7 @@ from infona_client.graph.client import NeptuneClient
 from infona_client.graph.kg_writer import insert_facts
 from infona_client.graph.memory_store import MemoryGraphStore
 from infona_client.graph.queries import kg_graph_uri
-from infona_client.graph.store import configure_graph_store
+from infona_client.graph.store import configure_graph_store, reset_graph_store_for_tests
 from infona_client.spatiotemporal.extract import GEO_WKT
 
 TENANT = "test-tenant"
@@ -304,12 +304,18 @@ def test_type_counts_returns_flagged_rows_without_touching_neptune(
 
 # ---------------------------------------------------------------------------
 # 4. /summary surfaces the flags — from materialized stats AND the live scan.
+#
+# These are pure SPARQL-path unit tests of stats-graph / live-scan flag
+# assembly. P-A1a serves /summary from GraphStore (flags default off until a
+# GraphStore port — see type-counts xfail above), so unconfigure the process
+# store so GraphConfigError falls through to the mocked SPARQL branch.
 # ---------------------------------------------------------------------------
 
 
 def test_summary_reads_flags_from_stats(client, mock_neptune, auth_headers):
     from infona_client.api.routes import explore as _explore_mod
     _explore_mod._summary_cache.clear()
+    reset_graph_store_for_tests()
 
     def route(sparql, *a, **k):
         if "?label" in sparql and "subClassOf" in sparql:
@@ -338,6 +344,7 @@ def test_summary_accepts_numeric_boolean_lexical_form(client, mock_neptune, auth
     numeric lexical form must not silently read as False."""
     from infona_client.api.routes import explore as _explore_mod
     _explore_mod._summary_cache.clear()
+    reset_graph_store_for_tests()
 
     def route(sparql, *a, **k):
         if "?label" in sparql and "subClassOf" in sparql:
@@ -363,6 +370,7 @@ def test_summary_accepts_numeric_boolean_lexical_form(client, mock_neptune, auth
 def test_summary_computes_flags_on_live_scan_fallback(client, mock_neptune, auth_headers):
     from infona_client.api.routes import explore as _explore_mod
     _explore_mod._summary_cache.clear()
+    reset_graph_store_for_tests()
 
     def route(sparql, *a, **k):
         if "?label" in sparql and "subClassOf" in sparql:

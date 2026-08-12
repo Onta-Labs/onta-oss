@@ -1073,7 +1073,10 @@ async def test_fetch_ontology_under_graph_union_isolated():
 
 
 def test_explore_summary_isolated():
+    # P-A1a: /summary is served from the process GraphStore. Seed both tenants
+    # via the real write path (same adversarial twin as records/type-counts).
     neptune = _seed_adversarial()
+    _seed_adversarial_store()
     a = _explore_client(neptune, TENANT_A).get(
         f"/graphs/{TENANT_A}/explore/kgs/{KG_NAME}/types/{TYPE_NAME}/summary"
     )
@@ -1456,6 +1459,7 @@ async def test_ask_ontology_summary_no_prompt_leakage():
 def test_summary_cache_keyed_by_tenant_no_poisoning():
     """A then B back-to-back: B never receives A's cached summary."""
     neptune = _seed_adversarial()
+    _seed_adversarial_store()
     explore_routes._summary_cache.clear()
 
     client_a = _explore_client(neptune, TENANT_A)
@@ -1501,8 +1505,9 @@ def test_summary_cache_planted_cross_tenant_key_is_not_hit():
         time.monotonic(),
         {"name": TYPE_NAME, "description": A_TYPE_DESC, "attributes": []},
     )
-    # Production keys are 3-tuples with tenant first.
+    # Production keys are 3-tuples with tenant first. GraphStore path (P-A1a).
     neptune = _seed_adversarial()
+    _seed_adversarial_store()
     r_b = _explore_client(neptune, TENANT_B).get(
         f"/graphs/{TENANT_B}/explore/kgs/{KG_NAME}/types/{TYPE_NAME}/summary"
     )

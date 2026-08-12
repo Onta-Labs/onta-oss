@@ -43,6 +43,12 @@ _ALLOWLIST: dict[str, str] = {
     "graph/ontology_commit.py": "the ONE commit path that applies builders (ONTA-403)",
     # Dual-backend catalog apply path (SPARQL builders + Neo4j pg upserts).
     "graph/ontology_catalog.py": "catalog dual-backend apply; wraps builders for SPARQL stores",
+    # False positive: OntologyMentionIndex.upsert_type builds embed-text strings
+    # for NL type resolve — never writes ontology schema (ONTA-537).
+    "nlp/ontology_mention_index.py": (
+        "OntologyMentionIndex.upsert_type is an embed-index method, not a "
+        "schema builder call (name collision with ontology_queries.upsert_type)"
+    ),
 }
 
 _PKG_ROOT = pathlib.Path(infona_client.__file__).parent
