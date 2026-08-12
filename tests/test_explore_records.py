@@ -14,19 +14,15 @@ write path (``kg_writer.insert_facts``) into a ``MemoryGraphStore``, and the
 NeptuneClient mock is left un-stubbed so ``assert_not_called()`` proves the
 store path ran.
 
-Three contract differences the port makes visible, rather than papering over:
+Contract notes (ONTA-535 closed the Neo4j cutover gaps):
 
-* **total** is a live count of the type in the KG. The stats-graph lookup and
-  its ``COUNT`` fallback are both gone, so "stats present → 10 / stats absent →
-  COUNT 42" collapses into one number that is always the real one.
-* **columns** come from the properties observed on the page, not from the
-  ontology. An attribute DECLARED on the type but absent from every row on the
-  page is no longer a column (pinned as a strict xfail below).
-* **system predicates are no longer filtered** — ``onto/ingested_at`` reaches
-  the table as a data column (also a strict xfail below). ``onto/source`` and
-  ``rdfs:label`` still don't, but for a different reason than before: they land
-  on RESERVED Entity keys that ``_public_properties`` strips, not on a
-  predicate filter.
+* **total** is a live count of the type in the KG (always the real one).
+* **columns** = ontology-declared attributes (always shown, COG-112) ∪
+  properties observed on the page. Internal/housekeeping keys
+  (``ingested_at``, ``batch_id``, ``blockKey``, …) are stripped via
+  ``is_internal_property_key`` before the page is assembled.
+* ``onto/source`` and ``rdfs:label`` land on RESERVED Entity keys
+  (``source`` / ``name``) and never become data columns.
 
 Scenarios covered:
   1. Page of rows with attribute columns
@@ -239,27 +235,12 @@ def test_records_empty_type(store, client, auth_headers):
 # 4. System predicates; rdfs:label used as the row name
 # ---------------------------------------------------------------------------
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG (introduced by the Neo4j cutover, surfaced by ONTA-527): the "
-        "property-graph records path does not filter internal/system "
-        "predicates. api/routes/explore.py::get_type_records runs "
-        "_is_internal_predicate over every row on its SPARQL branch (and skips "
-        "SYSTEM_PREDICATES), but _records_from_explore_store builds columns "
-        "straight from EntityDetail.properties, and graph/explore_store.py's "
-        "_public_properties strips only RESERVED_ENTITY_PROPERTY_KEYS. "
-        "onto/ingested_at and onto/batch_id are ordinary Entity props "
-        "(graph/facts.py::classify_triple keeps them by leaf), so the ingest "
-        "bookkeeping stamp is rendered to users as a data column in the "
-        "Explorer table. rdfs:label and onto/source stay out only incidentally "
-        "— they land on the reserved 'name'/'source' keys. Not fixed here: the "
-        "fix is a read-side filter in explore_store (and the same defect class "
-        "as the grep one xfailed in test_grep_route.py)."
-    ),
-    strict=True,
-)
 def test_records_system_predicates_excluded(store, client, auth_headers):
-    """ingested_at and source are excluded from columns; label becomes the name."""
+    """ingested_at and source are excluded from columns; label becomes the name.
+
+    ONTA-535: ``_public_properties`` filters via ``is_internal_property_key``
+    so ``onto/ingested_at`` no longer leaks as a data column.
+    """
     _seed(
         store,
         [
@@ -367,26 +348,10 @@ def test_records_rare_attribute_is_a_column_with_blanks(store, client, auth_head
             assert col in r
 
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG (introduced by the Neo4j cutover, surfaced by ONTA-527): "
-        "ontology-DECLARED attributes are no longer table columns. The SPARQL "
-        "branch of api/routes/explore.py::get_type_records reads the type's "
-        "attribute definitions and makes every declared label a column exempt "
-        "from the _MAX_COLS budget (COG-112: an enriched attr present on 1 of "
-        "N entities must still be visible, and a declared-but-empty column is "
-        "how a user sees an attribute exists at all). "
-        "_records_from_explore_store never touches the ontology catalog — "
-        "columns are the union of properties observed on the page — so a "
-        "declared attribute with no value on this page silently disappears "
-        "from the Explorer table. Not fixed here: the fix is to join "
-        "ontology_catalog.list_attributes into the store records path."
-    ),
-    strict=True,
-)
 def test_records_declared_attribute_with_no_value_is_still_a_column(
     store, client, auth_headers
 ):
+    """ONTA-535: declared attrs are always columns even when empty on the page."""
     async def declare():
         from infona_client.graph.ontology_catalog import (
             upsert_attribute,

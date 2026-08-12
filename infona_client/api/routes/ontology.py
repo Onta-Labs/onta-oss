@@ -126,27 +126,34 @@ async def _workspace_catalog(tenant_id: str):
 async def _workspace_ontology(
     tenant: TenantContext, client: NeptuneClient
 ) -> WorkspaceOntologyResponse:
-    """Effective (shadowed) ontology for ``tenant`` — single LayerStack read.
+    """Effective (shadowed) ontology for ``tenant`` — LayerStack catalog merge.
 
     Full browser payload (ONTA-408): layered types + tenant-custom sources +
     tenant-layer skills overlay. Writes never go through this path.
 
-    Base layer is resolved from the workspace pin (ONTA-405) so a global
-    release does not silently change the effective ontology until upgrade.
-
-    **Tenant catalog only (ONTA-527).** Types/attrs come from
-    :mod:`ontology_catalog` (GraphStore). Layered Public / Enhanced shadowing
-    was a SPARQL ``LayerStack`` read and went out with the SPARQL backend, so
-    this returns the tenant layer until catalog layers are ported to the store.
+    **Catalog layers (ONTA-535).** Types/attrs come from
+    :mod:`ontology_catalog` (GraphStore) for every visible layer — Tenant >
+    Enhanced (when entitled) > Public — with first-visible-layer-wins
+    shadowing. Replaces the SPARQL ``LayerStack`` / ``fetch_ontology`` path
+    that went out with the SPARQL backend (ONTA-527). ``client`` is unused
+    (no SPARQL); kept on the signature so route call sites stay stable.
     """
-    del client  # SPARQL LayerStack path removed (ONTA-527)
+    del client  # catalog path; no SPARQL
     return await _workspace_ontology_store(tenant)
 
 
 async def _workspace_ontology_store(
     tenant: TenantContext,
 ) -> WorkspaceOntologyResponse:
-    """Tenant-layer ontology from the GraphStore ontology catalog."""
+    """Layered ontology from the GraphStore ontology catalog (ONTA-535).
+
+    Reads each visible catalog layer (via :func:`layer_stack_for`) and merges
+    with Tenant > Enhanced > Public shadowing. Per-layer status (available /
+    type_count) is reported so the Explorer layer strip is never empty for a
+    layer that was actually consulted.
+    """
+    from infona_client.graph.entitlement import layer_stack_for
+    from infona_client.graph.layers import Layer
     from infona_client.graph.ontology_catalog import (
         list_attributes as cat_list_attrs,
         list_types as cat_list_types,
@@ -154,62 +161,111 @@ async def _workspace_ontology_store(
     from infona_client.models.ontology import (
         GlobalOntologyAttribute,
         GlobalOntologyRelationship,
+        WorkspaceOntologyLayer,
     )
 
-    type_rows = await cat_list_types(
-        layer="tenant", tenant_id=tenant.tenant_id
-    )
-    attr_rows = await cat_list_attrs(
-        layer="tenant", tenant_id=tenant.tenant_id, type_name=None
-    )
-    attrs_by_domain: dict[str, list] = {}
-    for a in attr_rows:
-        attrs_by_domain.setdefault(a.domain, []).append(a)
+    entitled = is_entitled(tenant)
+    stack = layer_stack_for(tenant)
 
-    children: dict[str, list[str]] = {}
-    for t in type_rows:
-        if t.parent_type:
-            children.setdefault(t.parent_type, []).append(t.name)
+    # name → winning WorkspaceOntologyType (first-visible-layer wins).
+    types_by_name: dict[str, WorkspaceOntologyType] = {}
+    # parent_name → child names that survived shadowing (built after merge).
+    raw_children: dict[str, list[str]] = {}
+    layer_infos: list[WorkspaceOntologyLayer] = []
 
-    types_out: list[WorkspaceOntologyType] = []
-    for t in type_rows:
-        attributes: list[GlobalOntologyAttribute] = []
-        relationships: list[GlobalOntologyRelationship] = []
-        for a in attrs_by_domain.get(t.name, []):
-            if a.kind == "relationship":
-                relationships.append(
-                    GlobalOntologyRelationship(
-                        name=a.name,
-                        target_type=a.range_type or "Thing",
-                        description=a.description or None,
-                    )
+    for layer in stack.layers:
+        layer_name = layer.value
+        available = True
+        try:
+            if layer is Layer.TENANT:
+                type_rows = await cat_list_types(
+                    layer="tenant", tenant_id=tenant.tenant_id
+                )
+                attr_rows = await cat_list_attrs(
+                    layer="tenant",
+                    tenant_id=tenant.tenant_id,
+                    type_name=None,
                 )
             else:
-                attributes.append(
-                    GlobalOntologyAttribute(
-                        name=a.name,
-                        datatype=a.datatype or "string",
-                        description=a.description or None,
-                    )
+                # Public / Enhanced global catalog — reads need no privilege.
+                type_rows = await cat_list_types(layer=layer_name)
+                attr_rows = await cat_list_attrs(
+                    layer=layer_name, type_name=None
                 )
-        types_out.append(
-            WorkspaceOntologyType(
+        except Exception:
+            # Degrade this layer only; others still contribute (ADR 0002 §1).
+            available = False
+            type_rows = []
+            attr_rows = []
+
+        attrs_by_domain: dict[str, list] = {}
+        for a in attr_rows:
+            attrs_by_domain.setdefault(a.domain, []).append(a)
+
+        layer_infos.append(
+            WorkspaceOntologyLayer(
+                layer=layer_name,
+                graph_uri=stack.graph_uri_for(layer),
+                type_count=len(type_rows),
+                available=available,
+            )
+        )
+
+        for t in type_rows:
+            if t.name in types_by_name:
+                # Higher-precedence layer already owns this name.
+                continue
+            attributes: list[GlobalOntologyAttribute] = []
+            relationships: list[GlobalOntologyRelationship] = []
+            for a in attrs_by_domain.get(t.name, []):
+                if a.kind == "relationship":
+                    relationships.append(
+                        GlobalOntologyRelationship(
+                            name=a.name,
+                            target_type=a.range_type or "Thing",
+                            description=a.description or None,
+                        )
+                    )
+                else:
+                    attributes.append(
+                        GlobalOntologyAttribute(
+                            name=a.name,
+                            datatype=a.datatype or "string",
+                            description=a.description or None,
+                        )
+                    )
+            if t.parent_type:
+                raw_children.setdefault(t.parent_type, []).append(t.name)
+            types_by_name[t.name] = WorkspaceOntologyType(
                 name=t.name,
                 description=t.description or None,
                 parent_type=t.parent_type,
                 attributes=attributes,
                 relationships=relationships,
-                subtypes=sorted(children.get(t.name, [])),
-                functions=[],
-                layer="tenant",
+                subtypes=[],  # filled below from surviving children
+                functions=[],  # GraphStore function attach still SPARQL-only
+                layer=layer_name,
             )
-        )
+
+    # Subtype inversion only over types that survived shadowing, so a
+    # shadowed child never appears under a winner from another layer.
+    for t in types_by_name.values():
+        kids = [
+            c for c in raw_children.get(t.name, []) if c in types_by_name
+        ]
+        # Rebuild with sorted subtypes (frozen model fields are mutable lists).
+        t.subtypes = sorted(kids)
+
+    types_out = sorted(
+        types_by_name.values(),
+        key=lambda t: (t.name.lower(), t.layer),
+    )
 
     return WorkspaceOntologyResponse(
         tenant_id=tenant.tenant_id,
         types=types_out,
-        entitled=is_entitled(tenant),
-        layers=[],
+        entitled=entitled,
+        layers=layer_infos,
     )
 
 
