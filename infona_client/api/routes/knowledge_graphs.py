@@ -655,10 +655,21 @@ async def delete_kg(
     client: NeptuneClient = Depends(get_neptune_client),
     schedule_store=Depends(get_schedule_store),
 ):
-    """Delete a knowledge graph and all its data."""
+    """Delete a knowledge graph and all its data.
+
+    Store-specific purge (registry + DETACH on Neo4j; DROP GRAPH + metadata on
+    SPARQL) runs first. Every derived-state eviction then runs for BOTH backends
+    (ONTA-532): the Neo4j branch used to early-return after registry / DETACH /
+    durable-stats and skip semantic clear, spatiotemporal clear, example bank,
+    NL cache, kg_status, explore stats cache, and reconcile schedule — leaving
+    stale answers and schedules for a recreated same-name KG.
+    """
     from infona_client.graph.kg_registry import delete_registered_kg, neo4j_kg_registry_active
 
-    if neo4j_kg_registry_active():
+    base = tenant_graph_uri(tenant.tenant_id)
+    neo4j = neo4j_kg_registry_active()
+
+    if neo4j:
         # Registry row first; instance entity purge is best-effort via Cypher.
         await delete_registered_kg(tenant.tenant_id, kg_name)
         try:
@@ -678,37 +689,36 @@ async def delete_kg(
             structlog.get_logger("infona.kg").warning(
                 "neo4j_kg_instance_delete_failed", kg_name=kg_name, exc_info=True
             )
-        try:
-            from infona_client.graph.kg_stats_store import get_kg_stats_store
+    else:
+        graph = kg_graph_uri(tenant.tenant_id, kg_name)
+        # The shared builder, not a fourth hand-rolled copy of this URI (ONTA-422):
+        # `kg_meta_uri` is the canonical one and now validates the tenant half.
+        kg_uri = kg_meta_uri(tenant.tenant_id, kg_name)
 
-            await get_kg_stats_store().delete(tenant.tenant_id, kg_name)
-        except Exception:  # noqa: BLE001
-            pass
-        return {"deleted": kg_name}
+        # Drop all triples in the KG graph
+        await client.update(f"DROP SILENT GRAPH <{graph}>")
 
-    base = tenant_graph_uri(tenant.tenant_id)
-    graph = kg_graph_uri(tenant.tenant_id, kg_name)
-    # The shared builder, not a fourth hand-rolled copy of this URI (ONTA-422):
-    # `kg_meta_uri` is the canonical one and now validates the tenant half.
-    kg_uri = kg_meta_uri(tenant.tenant_id, kg_name)
+        # Remove KG metadata
+        await client.update(
+            f"DELETE WHERE {{\n"
+            f"  GRAPH <{base}> {{\n"
+            f"    <{kg_uri}> ?p ?o .\n"
+            f"  }}\n"
+            f"}}"
+        )
 
-    # Drop all triples in the KG graph
-    await client.update(f"DROP SILENT GRAPH <{graph}>")
+    # ------------------------------------------------------------------
+    # Shared derived-state cleanup (ONTA-532). Runs for Neo4j AND SPARQL.
+    # Do not early-return above this block.
+    # ------------------------------------------------------------------
 
-    # Drop the precomputed type-stats graph + in-memory summary cache. The stats
-    # graph URI is derived from the KG name, so a KG recreated under the same
-    # name would otherwise serve this deleted graph's stale counts.
+    # Drop precomputed type-stats + in-memory summary cache. The stats key is
+    # derived from the KG name, so a KG recreated under the same name would
+    # otherwise serve this deleted graph's stale counts. Backend-aware: on
+    # Neo4j this skips SPARQL named-graph DROP and only clears cache + durable
+    # row (see explore.drop_kg_stats).
     from infona_client.api.routes.explore import drop_kg_stats
     await drop_kg_stats(client, tenant.tenant_id, kg_name)
-
-    # Remove KG metadata
-    await client.update(
-        f"DELETE WHERE {{\n"
-        f"  GRAPH <{base}> {{\n"
-        f"    <{kg_uri}> ?p ?o .\n"
-        f"  }}\n"
-        f"}}"
-    )
 
     # Purge stale examples from the example bank for this KG
     try:
