@@ -402,3 +402,67 @@ def test_missing_template_params_helper():
         "WHERE x IN $type_names LIMIT $limit",
         {"type_names": ["Book"], "limit": 10},
     )
+
+
+def test_made_by_and_written_by_fixtures_type_local():
+    from infona_client.nlp.cypher_generate import try_deterministic_cypher
+
+    onto = (
+        "Type: Book\n"
+        "  - has_author -> Author (relationship, key=has_author)\n"
+        "  - has_genre -> Genre (relationship, key=has_genre)\n"
+        "Type: Product\n"
+        "  - made_by -> Organization (relationship, key=made_by)\n"
+        "  - has_genre -> Genre (relationship, key=has_genre)\n"
+    )
+    g = try_deterministic_cypher(
+        "products made by Acme",
+        onto,
+        type_names=["Book", "Product"],
+    )
+    assert g is not None
+    assert g["params"]["rel_attr"] == "made_by"
+    assert g["params"]["target_name"] == "Acme"
+
+    g2 = try_deterministic_cypher(
+        "books written by Orwell",
+        onto,
+        type_names=["Book", "Product"],
+    )
+    assert g2 is not None
+    assert g2["params"]["rel_attr"] == "has_author"
+    assert g2["params"]["target_name"] == "Orwell"
+
+    # Genre-only type must not invent a made_by fixture.
+    onto_g = "Type: Book\n  - has_genre -> Genre (relationship, key=has_genre)\n"
+    assert (
+        try_deterministic_cypher(
+            "books written by Orwell",
+            onto_g,
+            type_names=["Book"],
+        )
+        is None
+        or try_deterministic_cypher(
+            "books written by Orwell",
+            onto_g,
+            type_names=["Book"],
+        )["template"]
+        != "related_entity_name_filter"
+        or try_deterministic_cypher(
+            "books written by Orwell",
+            onto_g,
+            type_names=["Book"],
+        )["params"].get("rel_attr")
+        != "has_genre"
+    )
+    # Stronger: written-by must return None when only has_genre exists.
+    from infona_client.nlp.cypher_generate import try_made_by_filter_query
+
+    assert (
+        try_made_by_filter_query(
+            "books written by Orwell",
+            onto_g,
+            type_names=["Book"],
+        )
+        is None
+    )

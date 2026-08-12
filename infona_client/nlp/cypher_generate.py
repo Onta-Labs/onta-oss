@@ -318,6 +318,16 @@ _CMP_OP_MAP = {
 # Prefer short leaves first (export dual-writes both `price` and `has_price`).
 _COST_PROP_CANDIDATES = ("price", "has_price", "cost", "has_cost", "amount")
 
+# "products made by Acme" / "books written by Orwell" / "books by Herbert"
+_MADE_BY_FILTER_RE = re.compile(
+    r"(?ix)^"
+    r"(?:(?:list|show(?:\s+me)?|find|get|which|what)\s+)?"
+    r"(?P<label>.+?)\s+"
+    r"(?:made\s+by|written\s+by|sold\s+by|published\s+by|authored\s+by|by)\s+"
+    r"[\"']?(?P<value>.+?)[\"']?"
+    r"$"
+)
+
 # "authors of books" / "list organizations related to people"
 _HOP_OF_RE = re.compile(
     r"(?ix)^"
@@ -759,6 +769,87 @@ def try_related_name_filter_query(
     )
 
 
+def try_made_by_filter_query(
+    question: str,
+    ontology_summary: str = "",
+    *,
+    type_names: list[str] | None = None,
+) -> dict[str, Any] | None:
+    """Filter subjects by a related party name (made by / written by / by X)."""
+    q = _TRAILING_PUNCT_RE.sub("", (question or "").strip())
+    if not q:
+        return None
+    q, _order_prop, _order_dir = _strip_order_by_suffix(q)
+    q, limit = _strip_limit_suffix(q)
+    m = _MADE_BY_FILTER_RE.match(q)
+    if not m:
+        return None
+    label = (m.group("label") or "").strip()
+    value = _TRAILING_PUNCT_RE.sub("", (m.group("value") or "").strip())
+    value, lim_from_value = _strip_limit_suffix(value)
+    if lim_from_value is not None:
+        limit = lim_from_value
+    if not value:
+        return None
+    matched = resolve_type_name(label, type_names, ontology_summary)
+    if matched is None:
+        return None
+    # Phrase → preferred leaves (makers / creators only — never has_genre).
+    phrase = (m.group(0) or "").lower()
+    if "written" in phrase or "authored" in phrase:
+        candidates = ("has_author", "written_by", "authored_by")
+    elif "published" in phrase:
+        candidates = ("has_publisher", "published_by", "publisher")
+    elif "sold" in phrase:
+        candidates = ("sold_by", "has_seller", "seller")
+    elif "made" in phrase:
+        candidates = ("made_by", "manufacturer", "has_manufacturer")
+    else:
+        # bare "by X" — prefer maker/author leaves present on this type
+        candidates = (
+            "made_by",
+            "has_author",
+            "written_by",
+            "sold_by",
+            "published_by",
+            "has_publisher",
+        )
+    text = ontology_summary or ""
+    section = text
+    if matched:
+        m_sec = re.search(
+            rf"(?ims)Type:\s*{re.escape(matched)}\b.*?(?=^Type:|\Z)",
+            text,
+        )
+        if m_sec:
+            section = m_sec.group(0)
+    rel_attr: str | None = None
+    for cand in candidates:
+        if re.search(rf"(?i)\b{re.escape(cand)}\b", section):
+            rel_attr = cand
+            break
+    if rel_attr is None:
+        # No type-local maker/author edge — do not claim a fixture (let LLM try).
+        return None
+    expanded = type_names_with_subclasses(
+        matched, ontology_summary=ontology_summary, include_subclasses=True
+    )
+    return _fixture(
+        cypher=RELATED_ENTITY_NAME_FILTER_CYPHER,
+        params={
+            "type_names": expanded,
+            "rel_attr": rel_attr,
+            "target_name": value,
+            "limit": limit if limit is not None else DEFAULT_LIST_LIMIT,
+        },
+        explanation=(
+            f"Find {matched} entities related via {rel_attr} to "
+            f"{value!r} via related_entity_name_filter."
+        ),
+        template=TEMPLATE_RELATED_ENTITY_NAME_FILTER,
+    )
+
+
 def try_hop_query(
     question: str,
     ontology_summary: str = "",
@@ -847,6 +938,7 @@ def try_deterministic_cypher(
         try_stub_count_query,
         try_numeric_filter_query,  # before equality so "price under 15" wins
         try_related_name_filter_query,  # before equality so "with genre X" wins
+        try_made_by_filter_query,  # "products made by Acme" / "books by X"
         try_filter_query,  # before list so "list X where …" wins
         try_hop_query,  # before list so "authors of books" wins
         try_list_query,
@@ -1007,6 +1099,7 @@ __all__ = [
     "try_filter_query",
     "try_hop_query",
     "try_list_query",
+    "try_made_by_filter_query",
     "try_numeric_filter_query",
     "try_related_name_filter_query",
     "try_stub_count_query",
