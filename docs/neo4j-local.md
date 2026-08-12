@@ -84,6 +84,20 @@ export NEO4J_PASSWORD=infona-dev-password
 Wait until healthy (`docker compose ps` shows `neo4j` healthy, or open
 http://localhost:7474).
 
+### CLI connect (after the API is up)
+
+```bash
+# Start API (open-access when INFONA_API_KEYS is empty):
+#   uvicorn infona_client.api.app:create_app --factory --port 8000
+./scripts/oss_setup.sh          # probe health → ~/.infona/config.json (local)
+infona kg list                  # bare CLI; no --local needed
+# or: infona init --local       # same non-interactive local write
+# or: infona init               # interactive connect wizard
+```
+
+See root [README.md](../README.md) § “Connect the CLI” and
+[packages/cli/README.md](../packages/cli/README.md).
+
 ## Schema bootstrap (required before uniqueness-sensitive writes)
 
 Uniqueness (ADR 0013 §12): `(tenant_id, kg, id)` on `Entity`, `Class`,
