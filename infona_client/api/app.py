@@ -427,6 +427,15 @@ def create_app() -> FastAPI:
     app.add_exception_handler(
         InvalidGraphIdentifier, _invalid_graph_identifier_handler
     )
+    # GraphScopeError is the GraphStore/scope fail-closed family (reserved
+    # attr keys, unscoped Cypher, etc.). Surface as 422 with the real message
+    # so CLI/MCP agents can self-correct instead of an opaque 500.
+    from infona_client.graph.scope import GraphScopeError
+
+    async def _graph_scope_error_handler(request: Request, exc: Exception):
+        return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+    app.add_exception_handler(GraphScopeError, _graph_scope_error_handler)
     app.add_middleware(RequestLoggingMiddleware)
     app.include_router(health.router, tags=["health"])
     app.include_router(triples.router, tags=["triples"])
