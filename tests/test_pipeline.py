@@ -1,11 +1,10 @@
-"""``NLQueryPipeline.ask`` end to end (ONTA-527: the Cypher path).
+"""``NLQueryPipeline.ask`` end to end (ONTA-527/534: the Cypher path).
 
 ``POST /ask`` generates **Cypher** now — ``nlp/cypher_generate.py::neo4j_ask_enabled``
 returns True unconditionally, so ``ask`` takes ``_ask_cypher`` and executes
-through a scoped ``GraphSession``. The SPARQL generator still exists in
-``nlp/pipeline.py`` but is reachable only via an explicit ``use_cypher=False``
-from the eval/archive harnesses, so a test that asserts on generated SPARQL is
-asserting a language production no longer emits.
+through a scoped ``GraphSession``. The SPARQL generator helpers still exist in
+``nlp/pipeline.py`` for unit tests that call them directly; ``ask(...,
+use_cypher=False)`` is fail-closed (``SparqlAskPathRetired``, ONTA-534).
 
 The three behavioural cases below (an answered question, a refused mutation, an
 honest empty) were ported onto the Cypher path against a seeded

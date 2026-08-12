@@ -1,4 +1,9 @@
-"""Ontology-decomposition quality harness.
+"""Ontology-decomposition quality harness — **QUARANTINED (ONTA-534)**.
+
+**Status:** Requires a local SPARQL endpoint (``scripts/local_sparql.py`` /
+Fuseki). Product graph backend is Neo4j-only; this harness is migration /
+archaeology tooling, not a supported product path. See
+``docs/onta-534-neptune-purge-residual.md``.
 
 Ingests deliberately "trappy" rows through SchemaResolver under one or more
 extraction POLICIES, reads the resulting ontology back via SPARQL, and scores it

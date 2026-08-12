@@ -148,9 +148,11 @@ def test_public_sparql_routes_hold_no_store_client():
 # ---------------------------------------------------------------------------
 
 # Modules that still import NeptuneClient. These are read paths (Explorer
-# aggregates, NL SPARQL generation, ontology reads, QC) whose GraphStore ports
-# are follow-up work to ONTA-527 — they are NOT sanctioned, just not yet gone.
+# aggregates, residual SPARQL arms, ontology reads, QC) whose GraphStore ports
+# are follow-up work to ONTA-527 / ONTA-534 — they are NOT sanctioned, just not
+# yet gone. NL→SPARQL production /ask is already fail-closed (ONTA-534).
 # Nothing may be ADDED here; delete an entry when its module is ported.
+# Inventory: docs/onta-534-neptune-purge-residual.md
 _RESIDUAL_NEPTUNE_IMPORTERS = {
     "agent/registry.py",
     "api/app.py",
@@ -222,3 +224,48 @@ def test_residual_neptune_list_has_no_stale_entries():
         "These modules no longer reference NeptuneClient — remove them from "
         f"_RESIDUAL_NEPTUNE_IMPORTERS so the ratchet keeps tightening: {sorted(stale)}"
     )
+
+
+def test_ask_sparql_path_is_fail_closed():
+    """ONTA-534: product ask() never runs SPARQL; use_cypher=False raises."""
+    import asyncio
+    from unittest.mock import MagicMock
+
+    from infona_client.nlp.pipeline import NLQueryPipeline, SparqlAskPathRetired
+
+    pipe = NLQueryPipeline(MagicMock(), anthropic_key="x", graph_store=None)
+
+    async def _run():
+        with pytest.raises(SparqlAskPathRetired, match="ONTA-534"):
+            await pipe.ask(
+                "how many?",
+                graph_uri="https://graph.infona.ai/graphs/t",
+                use_cypher=False,
+            )
+
+    asyncio.run(_run())
+
+
+def test_ask_method_body_has_no_sparql_retry_loop():
+    """The retired SPARQL retry loop must not reappear inside ask()."""
+    import re
+
+    src = (PKG / "nlp" / "pipeline.py").read_text()
+    # Isolate the ask() method text up to the next method at class indent.
+    start = src.index("    async def ask(")
+    rest = src[start + 1 :]
+    m = re.search(r"\n    (?:async )?def ", rest)
+    assert m, "could not bound ask()"
+    body = rest[: m.start()]
+    assert "SparqlAskPathRetired" in body
+    # Strip comments/docstrings before looking for live call sites.
+    code_only = "\n".join(
+        line.split("#", 1)[0]
+        for line in body.splitlines()
+        if '"""' not in line and "'''" not in line
+    )
+    assert "_generate_sparql" not in code_only, (
+        "ask() must not call _generate_sparql after ONTA-534; "
+        "Cypher path uses _ask_cypher / _generate_cypher_* only"
+    )
+    assert "max_attempts" not in code_only
