@@ -249,3 +249,11 @@ def test_less_than_routes_to_numeric_not_equality():
     assert payload["template"] == "literal_compare"
     assert payload["params"]["op"] == "lt"
     assert payload["params"]["threshold"] == 15.0
+
+def test_count_fixture_refuses_are_at_scope():
+    onto = "Type: Widget\n  - site: string (literal)\n"
+    assert try_stub_count_query(
+        "How many widgets are at Plant-A?",
+        onto,
+        type_names=["Widget"],
+    ) is None
