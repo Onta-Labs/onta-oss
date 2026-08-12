@@ -12,6 +12,7 @@ import pytest
 
 from infona_client.nlp.cypher_generate import (
     TEMPLATE_COUNT_BY_TYPE,
+    _resolve_relationship_attr,
     resolve_type_name,
     resolve_type_name_async,
     try_stub_count_query,
@@ -320,17 +321,11 @@ async def test_exact_empty_type_does_not_silent_zero_when_populated_near():
 
 @pytest.mark.asyncio
 async def test_parent_mention_binds_parent_for_subclass_count_expand():
-    """'animals' → Animal; fixture expands subclasses via type_names_with_subclasses."""
+    """'animals' → Animal (not CanineUnit); count expands subclasses."""
     fe = _default_fake()
     idx = await _build_index(fe)
-    idx.set_activity({"Animal": 0, "CanineUnit": 4})  # instances on child
-    onto = (
-        "Type: Animal [no instances]\n"
-        "  parent: \n"
-        "Type: CanineUnit (4 entities)\n"
-        "  parent: Animal\n"
-    )
-    # Fix ontology parent parse format
+    # Process-global activity deliberately empty — activity is call-local.
+    idx.set_activity({})
     onto = (
         "Type: Animal [no instances]\n"
         "Type: CanineUnit (4 entities)\n"
@@ -345,35 +340,31 @@ async def test_parent_mention_binds_parent_for_subclass_count_expand():
         query_embedding=q,
         require_semantic=True,
     )
-    # Parent concept wins (or populated child if parent demoted empty).
-    # With EMPTY_PENALTY on Animal and child boost on CanineUnit near animal,
-    # either Animal or CanineUnit is acceptable; count path expands Animal.
-    assert hit in ("Animal", "CanineUnit")
+    # Contract: parent-concept mention + populated descendants → parent.
+    assert hit == "Animal"
 
-    # When Animal binds, count expands to include CanineUnit.
-    if hit == "Animal":
-        with semantic_resolve_context(
-            idx,
-            query_embeddings={"animals": q},
-            require_semantic=True,
-        ):
-            payload = try_stub_count_query(
-                "How many animals?",
-                onto,
-                type_names=["Animal", "CanineUnit", "Widget"],
-            )
-        assert payload is not None
-        assert payload["template"] == TEMPLATE_COUNT_BY_TYPE
-        names = payload["params"]["type_names"]
-        assert "Animal" in names
-        assert "CanineUnit" in names
+    with semantic_resolve_context(
+        idx,
+        query_embeddings={"animals": q},
+        require_semantic=True,
+    ):
+        payload = try_stub_count_query(
+            "How many animals?",
+            onto,
+            type_names=["Animal", "CanineUnit", "Widget"],
+        )
+    assert payload is not None
+    assert payload["template"] == TEMPLATE_COUNT_BY_TYPE
+    names = payload["params"]["type_names"]
+    assert "Animal" in names
+    assert "CanineUnit" in names
 
 
 @pytest.mark.asyncio
-async def test_hierarchy_child_boost_when_mention_near_parent():
+async def test_hierarchy_parent_preferred_when_descendants_populated():
+    """Direct index API: animals → Animal when CanineUnit has rows."""
     fe = _default_fake()
     idx = await _build_index(fe)
-    idx.set_activity({"Animal": 0, "CanineUnit": 3, "Widget": 1})
     q = (await fe(["animals"]))[0]
     hit = idx.resolve_type(
         "animals",
@@ -381,9 +372,22 @@ async def test_hierarchy_child_boost_when_mention_near_parent():
         activity={"Animal": 0, "CanineUnit": 3, "Widget": 1},
         type_names=["Animal", "CanineUnit", "Widget"],
     )
-    assert hit in ("Animal", "CanineUnit")
-    # Widget (unrelated) must not win
-    assert hit != "Widget"
+    assert hit == "Animal"
+
+
+@pytest.mark.asyncio
+async def test_child_specific_mention_still_binds_child():
+    """'dog' / canine mention binds CanineUnit, not the parent Animal."""
+    fe = _default_fake()
+    idx = await _build_index(fe)
+    q = (await fe(["dog"]))[0]
+    hit = idx.resolve_type(
+        "dog",
+        query_embedding=q,
+        activity={"Animal": 0, "CanineUnit": 3, "Widget": 1},
+        type_names=["Animal", "CanineUnit", "Widget"],
+    )
+    assert hit == "CanineUnit"
 
 
 # ---------------------------------------------------------------------------
@@ -405,6 +409,64 @@ async def test_rel_mention_phase_to_has_phase():
     idx = await _build_index(fe)
     hit = await idx.resolve_rel_async("phase", embed_fn=fe)
     assert hit == "has_phase"
+
+
+@pytest.mark.asyncio
+async def test_resolve_relationship_attr_uses_semantic_under_guards():
+    """Fixture path wires resolve_rel when index embeds all allowed leaves."""
+    fe = _default_fake()
+    idx = await _build_index(fe)
+    onto = (
+        "Type: InventorySKU\n"
+        "  - stored_in -> WarehouseNode (relationship, key=stored_in)\n"
+        "  - has_phase -> PhaseNode (relationship, key=has_phase)\n"
+        "Type: WarehouseNode\n"
+        "Type: PhaseNode\n"
+    )
+    q = (await fe(["warehouse"]))[0]
+    with semantic_resolve_context(
+        idx,
+        query_embeddings={"warehouse": q},
+        require_semantic=False,
+    ):
+        hit = _resolve_relationship_attr(
+            "warehouse",
+            type_name="InventorySKU",
+            ontology_summary=onto,
+        )
+    assert hit == "stored_in"
+
+
+@pytest.mark.asyncio
+async def test_resolve_relationship_attr_skips_semantic_on_partial_rel_index():
+    """Partial rel embeddings must not rank only the embedded subset."""
+    fe = _default_fake()
+    idx = OntologyMentionIndex()
+    idx.upsert_rel(
+        "stored_in",
+        domain="InventorySKU",
+        range_type="WarehouseNode",
+        description="warehouse edge",
+    )
+    # has_phase known to ontology section but NOT in index → partial.
+    await idx.embed_missing(fe)
+    onto = (
+        "Type: InventorySKU\n"
+        "  - stored_in -> WarehouseNode (relationship, key=stored_in)\n"
+        "  - has_phase -> PhaseNode (relationship, key=has_phase)\n"
+    )
+    q = (await fe(["warehouse"]))[0]
+    with semantic_resolve_context(
+        idx,
+        query_embeddings={"warehouse": q},
+    ):
+        hit = _resolve_relationship_attr(
+            "warehouse",
+            type_name="InventorySKU",
+            ontology_summary=onto,
+        )
+    # String path cannot map "warehouse" → stored_in; partial skips semantic.
+    assert hit is None
 
 
 # ---------------------------------------------------------------------------
@@ -455,6 +517,94 @@ async def test_index_is_healthy_only_after_embed():
     fe = _default_fake()
     await idx.embed_missing(fe)
     assert idx.is_healthy()
+
+
+@pytest.mark.asyncio
+async def test_partial_index_does_not_bind_wrong_type_via_semantic():
+    """B1: index only embeds Widget; candidates InventorySKU + Widget.
+
+    Product-synonym mention must NOT return Widget via semantic ranking over
+    the partial subset.
+    """
+    fe = _default_fake()
+    idx = OntologyMentionIndex()
+    idx.upsert_type("Widget", description="generic widget part", parents=[])
+    # InventorySKU is an allowed candidate but NOT in the index at all.
+    await idx.embed_missing(fe)
+    assert idx.is_healthy()  # coarse: any type embedded
+    assert not idx.types_fully_embedded(["InventorySKU", "Widget"])
+
+    q = (await fe(["products"]))[0]
+    hit = resolve_type_name(
+        "products",
+        ["InventorySKU", "Widget"],
+        mention_index=idx,
+        query_embedding=q,
+        require_semantic=False,
+    )
+    assert hit != "Widget"
+    assert hit is None
+
+    # require_semantic on a partial index → EmbedConfigError (fail closed).
+    with pytest.raises(EmbedConfigError):
+        resolve_type_name(
+            "products",
+            ["InventorySKU", "Widget"],
+            mention_index=idx,
+            query_embedding=q,
+            require_semantic=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_partial_index_missing_embedding_on_known_type():
+    """Known type entry without vector also blocks semantic for the call."""
+    fe = _default_fake()
+    idx = OntologyMentionIndex()
+    idx.upsert_type("Widget", description="widget", parents=[])
+    idx.upsert_type("InventorySKU", description="sku", parents=[])
+    # Embed only Widget
+    widget = idx._entries[idx._type_key("Widget")]
+    vecs = await fe([widget.embed_text])
+    widget.embedding = np.asarray(vecs[0], dtype=np.float32)
+    assert idx.is_healthy()
+    assert not idx.types_fully_embedded(["InventorySKU", "Widget"])
+    q = (await fe(["products"]))[0]
+    hit = resolve_type_name(
+        "products",
+        ["InventorySKU", "Widget"],
+        mention_index=idx,
+        query_embedding=q,
+    )
+    assert hit is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_does_not_mutate_process_activity_or_hierarchy():
+    """B2: ask-time resolve must not merge_activity / set_hierarchy on index."""
+    fe = _default_fake()
+    idx = await _build_index(fe)
+    idx.set_activity({"Widget": 1})
+    idx.set_hierarchy({"CanineUnit": "Animal"})
+    act_before = idx.activity()
+    hier_before = idx.hierarchy()
+    onto = (
+        "Type: Animal [no instances]\n"
+        "Type: CanineUnit (4 entities)\n"
+        "  parent: Animal\n"
+        "Type: Widget (1 entities)\n"
+    )
+    q = (await fe(["animals"]))[0]
+    _ = resolve_type_name(
+        "animals",
+        ["Animal", "CanineUnit", "Widget"],
+        onto,
+        mention_index=idx,
+        query_embedding=q,
+        require_semantic=True,
+    )
+    assert idx.activity() == act_before
+    assert idx.hierarchy() == hier_before
 
 
 # ---------------------------------------------------------------------------

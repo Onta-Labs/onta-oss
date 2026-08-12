@@ -1720,12 +1720,16 @@ class NLQueryPipeline:
 
             bank = get_example_bank()
             if bank and bank._examples:
+                # language="cypher" filters the retrieval pool to rows with a
+                # non-empty cypher field (ONTA-539) so top-k is never filled
+                # with SPARQL-only examples that format away to empty.
                 examples = await bank.retrieve(
                     question=question,
                     ontology_context=ontology,
                     exclude_questions=exclude_questions or [],
                     kg_name=kg_name,
                     top_k=3,
+                    language="cypher",
                 )
                 if examples:
                     examples_text = format_examples_for_prompt(
@@ -1745,9 +1749,10 @@ class NLQueryPipeline:
         # 1) Deterministic fixtures (count / list / filter / 1-hop).
         # ONTA-537: when a healthy ontology mention index exists, bind a
         # semantic resolve context so fixtures rank type mentions by embed
-        # similarity + hierarchy + instance prior (not string-only). Fail
-        # closed when INFONA_REQUIRE_SEMANTIC_RESOLVE=1 and the index is
-        # missing / embed config unset.
+        # similarity + hierarchy + instance prior (not string-only).
+        # Fail-closed is **opt-in** via INFONA_REQUIRE_SEMANTIC_RESOLVE=1
+        # until cold-start full-catalog reindex is solid; default is
+        # best-effort semantic when ready, else string heuristics.
         from infona_client.nlp.ontology_mention_index import (
             EmbedConfigError,
             get_process_mention_index,

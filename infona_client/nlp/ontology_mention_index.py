@@ -4,25 +4,41 @@ ONTA-537 (P-F1a): deterministic string-only type matching is insufficient when
 tenants carry empty leftover types from sibling KGs. Ask-time resolution must
 use **semantic similarity** of ontology nodes (entity types + relationship
 leaves), informed by **hierarchy** (parent/child) and **in-KG instance
-counts**, with **fail-closed** embed config for the production path.
+counts**.
 
 Reuses the shared OpenRouter embed client (:mod:`infona_client.nlp.embed_client`)
 — no third embedding stack. Hermetic tests inject a FakeEmbedder; production
-requires an API key (``INFONA_OPENROUTER_API_KEY`` / ``OPENROUTER_API_KEY``) and
+uses an API key (``INFONA_OPENROUTER_API_KEY`` / ``OPENROUTER_API_KEY``) and
 optional ``INFONA_EMBED_MODEL`` override (default
 ``openai/text-embedding-3-small``).
+
+**Fail-closed is opt-in.** Production ask path only refuses string-only
+fallback when ``INFONA_REQUIRE_SEMANTIC_RESOLVE=1`` (or
+``require_semantic=True``). Until cold-start reindex is solid (full catalog
+on process boot), the default is best-effort semantic when the index is ready
+for the candidate set, else string heuristics. Do not claim always-fail-closed.
 
 Scoring (documented for tests):
 
 1. **Primary** — cosine similarity of mention ↔ catalog entry embed text.
-2. **Secondary** — hierarchy expand/boost: if the best match is a parent with
-   populated descendants, prefer the parent (callers expand via
-   ``type_names_with_subclasses``); children with instances get a small boost
-   when the mention is close to a parent.
+2. **Secondary** — hierarchy: when the mention is a **parent concept** and that
+   parent has **populated descendants**, prefer the **parent** so count/list
+   fixtures expand subclasses via ``type_names_with_subclasses``. Child
+   instance boost applies only when the parent is not also competing (or the
+   mention is clearly child-specific).
 3. **Tertiary** — instance prior: ``entity_count > 0`` in the active KG boosts;
-   known-empty (0) demotes so leftovers never win a silent typed 0.
+   known-empty (0) demotes so leftovers never win a silent typed 0. Parents
+   with populated descendants are not treated as empty leftovers.
+
+**Partial index safety:** never rank only the embedded subset of
+``type_names``. If any allowed candidate lacks an embedding, skip semantic
+for that call (string fallback, or ``None`` / error when
+``require_semantic``).
 
 Ambiguous top-2 scores → ``None`` (clarify / LLM fallthrough), never invent.
+
+**Ask-time purity:** resolve paths accept activity/hierarchy as call-local
+overlays only — they must not mutate the process-global index.
 """
 
 from __future__ import annotations
@@ -58,7 +74,12 @@ MIN_ACCEPT_SIM = 0.42
 AMBIGUITY_MARGIN = 0.04  # top-2 within this band → ambiguous
 INSTANCE_BOOST = 0.12
 EMPTY_PENALTY = 0.28
-HIERARCHY_CHILD_BOOST = 0.06  # when mention near parent and child has instances
+# When parent is NOT competing as a candidate, slight boost for populated
+# children near a parent-concept mention.
+HIERARCHY_CHILD_BOOST = 0.06
+# Parent preference for expand is a post-process (lexical parent-concept
+# alignment), not a score boost — a boost made empty abstract parents
+# (ProductLike) ambiguous with populated children (InventorySKU).
 
 EmbedFn = Callable[[Sequence[str]], Awaitable[list[list[float]]]]
 
@@ -66,8 +87,9 @@ EmbedFn = Callable[[Sequence[str]], Awaitable[list[list[float]]]]
 class EmbedConfigError(RuntimeError):
     """NL type/rel semantic resolution requires embed configuration.
 
-    Fail-closed for the production ask path: never silently fall back to
-    string-only matching that binds empty leftover types.
+    Raised when ``require_semantic=True`` / ``INFONA_REQUIRE_SEMANTIC_RESOLVE``
+    is set and the embed index or API key is unavailable. Opt-in fail-closed —
+    not the default until cold-start reindex is reliable.
     """
 
     def __init__(self, message: str | None = None) -> None:
@@ -78,7 +100,8 @@ class EmbedConfigError(RuntimeError):
                 "Set INFONA_OPENROUTER_API_KEY (or OPENROUTER_API_KEY) and "
                 "optionally INFONA_EMBED_MODEL "
                 f"(default: {DEFAULT_EMBED_MODEL}). "
-                "See docs: nlp/embed_client.py / ONTA-537. "
+                "Fail-closed is opt-in via INFONA_REQUIRE_SEMANTIC_RESOLVE=1 "
+                "or require_semantic=True (ONTA-537). "
                 "Hermetic tests may inject a FakeEmbedder via OntologyMentionIndex."
             )
         )
@@ -177,6 +200,31 @@ def _space_camel(name: str) -> str:
     s = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", s)
     s = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", s)
     return s.strip()
+
+
+def _mention_aligns_with_type(mention: str, type_name: str) -> bool:
+    """True when NL mention is a parent-concept word for ``type_name``.
+
+    Used to prefer a parent type so count/list expand subclasses (e.g.
+    ``animals`` → Animal, not CanineUnit). Strict: stem/plural of the type
+    leaf only — does **not** match loose synonyms (``products`` ↛ ProductLike).
+    """
+    m = re.sub(r"[^a-z0-9]", "", (mention or "").lower())
+    if not m:
+        return False
+    m_stem = m[:-1] if m.endswith("s") and len(m) > 3 else m
+    t = re.sub(r"[^a-z0-9]", "", (type_name or "").lower())
+    spaced = re.sub(r"[^a-z0-9]", "", _space_camel(type_name or "").lower())
+    if not t:
+        return False
+    return (
+        m == t
+        or m_stem == t
+        or m == t + "s"
+        or m == spaced
+        or m_stem == spaced
+        or m == spaced + "s"
+    )
 
 
 def _l2_normalize(vec: np.ndarray) -> np.ndarray:
@@ -298,10 +346,54 @@ class OntologyMentionIndex:
         return sorted(e.name for e in self._entries.values() if e.kind == "rel")
 
     def is_healthy(self) -> bool:
-        """True when at least one type has an embedding (sim index ready)."""
+        """Coarse readiness: at least one type has an embedding.
+
+        Not sufficient for ask-time resolve — use
+        :meth:`types_fully_embedded` / :meth:`rels_fully_embedded` so a
+        partial index (restart + one small ingest) cannot rank only the
+        embedded subset of the allowed candidate set.
+        """
         return any(
             e.kind == "type" and e.embedding is not None for e in self._entries.values()
         )
+
+    def types_fully_embedded(self, type_names: Sequence[str] | None) -> bool:
+        """True iff every allowed type candidate has a stored embedding.
+
+        When ``type_names`` is provided, **each** name must exist as a type
+        entry with a non-None embedding. Missing catalog rows count as
+        "lacks embedding" — partial indexes must not bind wrong leaves.
+        When ``type_names`` is None, every indexed type must be embedded.
+        """
+        if type_names is None:
+            type_entries = [e for e in self._entries.values() if e.kind == "type"]
+            return bool(type_entries) and all(
+                e.embedding is not None for e in type_entries
+            )
+        names = [str(n) for n in type_names if n]
+        if not names:
+            return False
+        for name in names:
+            entry = self._entries.get(self._type_key(name))
+            if entry is None or entry.kind != "type" or entry.embedding is None:
+                return False
+        return True
+
+    def rels_fully_embedded(self, rel_names: Sequence[str] | None) -> bool:
+        """True iff every allowed relationship leaf candidate is embedded."""
+        if rel_names is None:
+            rel_entries = [e for e in self._entries.values() if e.kind == "rel"]
+            return bool(rel_entries) and all(
+                e.embedding is not None for e in rel_entries
+            )
+        names = [str(n) for n in rel_names if n]
+        if not names:
+            return False
+        for name in names:
+            entry = self._entries.get(self._rel_key(name))
+            if entry is None or entry.kind != "rel" or entry.embedding is None:
+                return False
+        return True
 
     # -- batch embed --------------------------------------------------------
 
@@ -335,12 +427,17 @@ class OntologyMentionIndex:
         query_embedding: Sequence[float] | np.ndarray,
         activity: Mapping[str, int] | None = None,
         type_names: Sequence[str] | None = None,
+        hierarchy: Mapping[str, str] | None = None,
     ) -> str | None:
         """Rank type entries for ``mention``; return leaf or None if ambiguous/miss.
 
-        ``activity`` overrides the index's stored activity map when provided
-        (per-KG instance prior). ``type_names`` restricts candidates (ontology
-        known to the fixture); when None, all indexed types compete.
+        ``activity`` and ``hierarchy`` are **call-local overlays** (never mutate
+        the index). ``type_names`` restricts candidates; when None, all indexed
+        types compete.
+
+        Callers must only invoke this when
+        :meth:`types_fully_embedded` is true for ``type_names`` — partial
+        indexes must not rank a subset of allowed leaves.
         """
         return self._resolve_kind(
             mention,
@@ -348,6 +445,7 @@ class OntologyMentionIndex:
             query_embedding=query_embedding,
             activity=activity,
             name_filter=type_names,
+            hierarchy=hierarchy,
         )
 
     def resolve_rel(
@@ -357,14 +455,40 @@ class OntologyMentionIndex:
         query_embedding: Sequence[float] | np.ndarray,
         rel_names: Sequence[str] | None = None,
     ) -> str | None:
-        """Rank relationship leaves for ``mention``."""
+        """Rank relationship leaves for ``mention``.
+
+        Callers should gate on :meth:`rels_fully_embedded` for ``rel_names``.
+        """
         return self._resolve_kind(
             mention,
             kind="rel",
             query_embedding=query_embedding,
             activity=None,
             name_filter=rel_names,
+            hierarchy=None,
         )
+
+    def _effective_hierarchy(
+        self, hierarchy: Mapping[str, str] | None
+    ) -> dict[str, str]:
+        """Call-local hierarchy overlay on top of stored map (no mutation)."""
+        base = dict(self._child_to_parent)
+        if hierarchy:
+            base.update({str(c): str(p) for c, p in hierarchy.items() if c and p})
+        return base
+
+    def _has_populated_descendant(
+        self,
+        name: str,
+        *,
+        child_to_parent: Mapping[str, str],
+        activity: Mapping[str, int],
+    ) -> bool:
+        """True when any direct child of ``name`` has instance count > 0."""
+        for child, parent in child_to_parent.items():
+            if parent == name and activity.get(child, -1) > 0:
+                return True
+        return False
 
     def _resolve_kind(
         self,
@@ -374,19 +498,23 @@ class OntologyMentionIndex:
         query_embedding: Sequence[float] | np.ndarray,
         activity: Mapping[str, int] | None,
         name_filter: Sequence[str] | None,
+        hierarchy: Mapping[str, str] | None,
     ) -> str | None:
         if not mention or not mention.strip():
             return None
         q = _l2_normalize(np.asarray(query_embedding, dtype=np.float32))
+        # Call-local activity only — do not merge into self._activity.
         act = dict(self._activity)
         if activity is not None:
-            act.update({str(k): int(v) for k, v in activity.items()})
+            act = {**act, **{str(k): int(v) for k, v in activity.items()}}
+
+        child_to_parent = self._effective_hierarchy(hierarchy)
 
         allowed: set[str] | None = None
         if name_filter is not None:
             allowed = {n for n in name_filter}
 
-        # Exact name fast path (index healthy): case-insensitive exact leaf.
+        # Exact name fast path: case-insensitive exact leaf.
         # Still applies instance prior so empty leftover loses when a synonym
         # exists — exact match on empty type with populated near-synonym is
         # handled below only when exact is unambiguous and not demoted.
@@ -419,44 +547,56 @@ class OntologyMentionIndex:
         sims = cosine_similarity(q, matrix)
 
         scored: list[tuple[str, float]] = []
-        parent_names = set(self._child_to_parent.values())
-        # Mention closeness to any parent (for child boost).
+        parent_names = set(child_to_parent.values())
+        candidate_names = {e.name for e in candidates}
+        # Mention closeness to any parent (for parent/child hierarchy scoring).
         parent_sim: dict[str, float] = {}
         for i, e in enumerate(candidates):
-            if e.name in parent_names or e.name in self._child_to_parent.values():
+            if e.name in parent_names:
                 parent_sim[e.name] = float(sims[i])
+
+        sim_by_name: dict[str, float] = {
+            e.name: float(sims[i]) for i, e in enumerate(candidates)
+        }
 
         for i, e in enumerate(candidates):
             sim = float(sims[i])
             score = sim
             if kind == "type":
                 count = act.get(e.name, -1)
-                if count == 0:
+                has_pop_desc = self._has_populated_descendant(
+                    e.name, child_to_parent=child_to_parent, activity=act
+                )
+                # Parents with populated descendants are not "empty leftovers":
+                # count/list expand subclasses via type_names_with_subclasses.
+                if count == 0 and not has_pop_desc:
                     score -= EMPTY_PENALTY
                 elif count > 0:
                     score += INSTANCE_BOOST
-                # Hierarchy: child of a parent the mention is near → slight boost
-                parent = self._child_to_parent.get(e.name)
+                parent = child_to_parent.get(e.name)
                 if parent and count != 0:
                     psim = parent_sim.get(parent)
                     if psim is None:
-                        # parent may not be in candidate list; check entry
                         pkey = self._type_key(parent)
                         pe = self._entries.get(pkey)
                         if pe is not None and pe.embedding is not None:
                             psim = float(
                                 cosine_similarity(q, pe.embedding.reshape(1, -1))[0]
                             )
-                    if psim is not None and psim >= MIN_ACCEPT_SIM:
+                    # Child boost only when parent is NOT also competing —
+                    # otherwise parent-concept scoring is handled post-rank.
+                    if (
+                        psim is not None
+                        and psim >= MIN_ACCEPT_SIM
+                        and parent not in candidate_names
+                    ):
                         score += HIERARCHY_CHILD_BOOST
             scored.append((e.name, score))
 
         scored.sort(key=lambda kv: kv[1], reverse=True)
         top_name, top_score = scored[0]
         # Recover raw sim for threshold (score may be demoted below MIN).
-        top_entry = next(e for e in candidates if e.name == top_name)
-        top_idx = candidates.index(top_entry)
-        top_sim = float(sims[top_idx])
+        top_sim = sim_by_name[top_name]
 
         if top_sim < MIN_ACCEPT_SIM and top_score < MIN_ACCEPT_SIM:
             return None
@@ -469,14 +609,33 @@ class OntologyMentionIndex:
             ):
                 return None
 
-        # Empty leftover: if winner is known-empty and a high-sim populated
-        # alternative exists, prefer the populated one or None (never silent 0).
+        # Hierarchy AC: parent-concept mention + populated descendants → parent
+        # so count/list expand subclasses. Only when the mention lexically
+        # aligns with the parent (animals→Animal), not loose synonyms
+        # (products→InventorySKU, not empty ProductLike).
+        if kind == "type":
+            parent = child_to_parent.get(top_name)
+            if (
+                parent
+                and parent in candidate_names
+                and sim_by_name.get(parent, 0.0) >= MIN_ACCEPT_SIM
+                and self._has_populated_descendant(
+                    parent, child_to_parent=child_to_parent, activity=act
+                )
+                and _mention_aligns_with_type(mention, parent)
+            ):
+                return parent
+
+        # Empty leftover: if winner is known-empty (no populated descendants)
+        # and a high-sim populated alternative exists, prefer that or None.
         if kind == "type" and act.get(top_name, -1) == 0:
-            for name, sc in scored[1:]:
-                if act.get(name, -1) > 0 and sc >= MIN_ACCEPT_SIM - EMPTY_PENALTY:
-                    # populated alternative that survived demotion of empty top
-                    return name
-            return None
+            if not self._has_populated_descendant(
+                top_name, child_to_parent=child_to_parent, activity=act
+            ):
+                for name, sc in scored[1:]:
+                    if act.get(name, -1) > 0 and sc >= MIN_ACCEPT_SIM - EMPTY_PENALTY:
+                        return name
+                return None
 
         return top_name
 
@@ -487,6 +646,7 @@ class OntologyMentionIndex:
         embed_fn: EmbedFn,
         activity: Mapping[str, int] | None = None,
         type_names: Sequence[str] | None = None,
+        hierarchy: Mapping[str, str] | None = None,
     ) -> str | None:
         vecs = await embed_fn([mention.strip()])
         if not vecs:
@@ -496,6 +656,7 @@ class OntologyMentionIndex:
             query_embedding=vecs[0],
             activity=activity,
             type_names=type_names,
+            hierarchy=hierarchy,
         )
 
     async def resolve_rel_async(
