@@ -226,6 +226,33 @@ async def fetch_ontology_changelog(
     read never breaks a caller (same contract as
     :func:`infona_client.graph.history.fetch_value_history`).
     """
+    if limit < 1:
+        raise ValueError("limit must be >= 1")
+    if offset < 0:
+        raise ValueError("offset must be >= 0")
+
+    # GraphStore path (ONTA-531) — companion bag on the process store.
+    # Prefer companion entries when present; fall through to SPARQL so pure
+    # unit tests that mock neptune.query still exercise the codec path.
+    try:
+        from infona_client.graph.store import GraphConfigError, get_graph_store
+
+        get_graph_store()
+        bag_entries = _fetch_changelog_graph_store(
+            ontology_graph_uri,
+            since=since,
+            subject=subject,
+            action=action,
+            limit=limit,
+            offset=offset,
+        )
+        if bag_entries:
+            return bag_entries
+    except GraphConfigError:
+        pass
+    except Exception:
+        pass
+
     try:
         raw = await neptune.query(
             ontology_changelog_query(
@@ -258,6 +285,55 @@ async def fetch_ontology_changelog(
             )
         )
     return out
+
+
+def _fetch_changelog_graph_store(
+    ontology_graph_uri: str,
+    *,
+    since: str | None,
+    subject: str | None,
+    action: str | None,
+    limit: int,
+    offset: int,
+) -> list[ChangelogEntry]:
+    from infona_client.graph.ontology_companion import (
+        get_ontology_companion,
+        live_graph_uri,
+    )
+
+    live = live_graph_uri(ontology_graph_uri)
+    bag = get_ontology_companion()
+    rows = list(bag.changelog.get(live) or [])
+    out: list[ChangelogEntry] = []
+    for row in rows:
+        if action is not None and row.get("action") != action:
+            continue
+        if subject is not None and row.get("subject") != subject:
+            continue
+        ts = row.get("timestamp") or ""
+        if since and ts and not (ts > since):
+            # Same strict-after semantic as the SPARQL FILTER.
+            continue
+        out.append(
+            ChangelogEntry(
+                entry_uri=row.get("entry_uri") or "",
+                action=row.get("action") or "",
+                subject=row.get("subject") or "",
+                timestamp=ts,
+                tenant_id=row.get("tenant_id") or None,
+                actor=row.get("actor") or None,
+                message=row.get("message") or None,
+                version_before=row.get("version_before") or None,
+                version_after=row.get("version_after") or None,
+                revision=_parse_revision(
+                    None if row.get("revision") is None else str(row.get("revision"))
+                ),
+                changes=parse_change_records(row.get("delta")),
+            )
+        )
+    if offset:
+        out = out[offset:]
+    return out[:limit]
 
 
 # ---------------------------------------------------------------------------

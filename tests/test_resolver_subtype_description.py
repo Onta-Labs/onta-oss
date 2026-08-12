@@ -119,7 +119,6 @@ async def _ingest_one(resolver, entity: ExtractedEntity, existing_types=None):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason=_SET_COMMENT_GAP)
 @pytest.mark.asyncio
 async def test_subtype_branch_writes_description(mock_neptune, mock_cache):
     """match.verdict == SUBTYPE → the description IS written on the new type."""
@@ -138,7 +137,6 @@ async def test_subtype_branch_writes_description(mock_neptune, mock_cache):
     mock_neptune.update.assert_not_called()
 
 
-@pytest.mark.xfail(strict=True, reason=_SET_COMMENT_GAP)
 @pytest.mark.asyncio
 async def test_subtype_description_is_single_valued_across_reingest(
     mock_neptune, mock_cache
@@ -163,7 +161,6 @@ async def test_subtype_description_is_single_valued_across_reingest(
     mock_neptune.update.assert_not_called()
 
 
-@pytest.mark.xfail(strict=True, reason=_SET_COMMENT_GAP)
 @pytest.mark.asyncio
 async def test_brand_new_lineage_via_parent_chain_writes_description(mock_neptune, mock_cache):
     """A DIFFERENT verdict but the entity carries a parent_chain → _link_parent

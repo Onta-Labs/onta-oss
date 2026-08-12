@@ -325,7 +325,6 @@ async def test_write_into_published_version_graph_refused():
         await plan_snapshot(n, f"{TENANT}/revisions/r3", kind="revision")
 
 
-@pytest.mark.xfail(reason=SNAPSHOT_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_snapshot_mutate_restore_fingerprint_identity():
     """The ONTA-406 acceptance: snapshot → mutate heavily → restore → identity."""
@@ -373,7 +372,6 @@ async def test_snapshot_mutate_restore_fingerprint_identity():
     assert await fingerprint_ontology(n, PUBLIC) == fp0
 
 
-@pytest.mark.xfail(reason=SNAPSHOT_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_snapshot_overwrite_refused():
     """Re-publishing an existing version number must refuse, not rewrite it."""
@@ -390,7 +388,6 @@ async def test_snapshot_overwrite_refused():
         await execute_snapshot(n, plan)
 
 
-@pytest.mark.xfail(reason=SNAPSHOT_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_list_snapshots_orders_versions_and_carries_the_parent_delta():
     n = _DecommissionedSparql()
@@ -417,7 +414,6 @@ async def test_list_snapshots_orders_versions_and_carries_the_parent_delta():
     )
 
 
-@pytest.mark.xfail(reason=SNAPSHOT_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_revision_snapshot_for_a_workspace():
     n = _DecommissionedSparql()
@@ -433,7 +429,6 @@ async def test_revision_snapshot_for_a_workspace():
     assert [r.version for r in listed] == [rec.version]
 
 
-@pytest.mark.xfail(reason=SNAPSHOT_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_enhanced_layer_release_uri():
     n = _DecommissionedSparql()
@@ -443,7 +438,6 @@ async def test_enhanced_layer_release_uri():
     assert rec.snapshot_graph_uri == f"{ENHANCED}/v1"
 
 
-@pytest.mark.xfail(reason=SNAPSHOT_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_plan_and_dry_run_write_nothing():
     """Planning and dry-running are read-only; only execute publishes."""
@@ -467,7 +461,6 @@ async def test_plan_and_dry_run_write_nothing():
     assert await execute_restore(n, rplan, dry_run=True) == plan.fingerprint
 
 
-@pytest.mark.xfail(reason=SNAPSHOT_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_cleanup_drops_version_artifacts_but_not_the_live_graph():
     n = _DecommissionedSparql()
@@ -488,7 +481,6 @@ async def test_cleanup_drops_version_artifacts_but_not_the_live_graph():
     assert await fingerprint_ontology(n, TENANT) == live_before
 
 
-@pytest.mark.xfail(reason=SNAPSHOT_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_cleanup_dry_run_keeps_every_artifact():
     n = _DecommissionedSparql()
@@ -500,7 +492,6 @@ async def test_cleanup_dry_run_keeps_every_artifact():
     assert [r.version for r in await list_snapshots(n, TENANT, kind="release")] == [1]
 
 
-@pytest.mark.xfail(reason=SNAPSHOT_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_diff_between_consecutive_releases_matches_the_stored_delta():
     n = _DecommissionedSparql()

@@ -329,7 +329,6 @@ CHANGELOG_GAP = (
 )
 
 
-@pytest.mark.xfail(reason=CHANGELOG_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_commit_records_an_entry_carrying_the_full_delta():
     g = "https://graph.infona.ai/graphs/acme"
@@ -363,7 +362,6 @@ async def test_commit_records_an_entry_carrying_the_full_delta():
     assert entry.changes[1].slot_name == "full_name"
 
 
-@pytest.mark.xfail(reason=CHANGELOG_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_append_only_n_commits_n_distinct_entries():
     """N commits → N entries, all distinct; earlier ones are never rewritten."""
@@ -379,7 +377,6 @@ async def test_append_only_n_commits_n_distinct_entries():
     assert len({e.entry_uri for e in entries}) == 5
 
 
-@pytest.mark.xfail(reason=CHANGELOG_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_same_ms_commits_still_yield_distinct_entries(monkeypatch):
     """Two commits forced to the same timestamp stay two entries.

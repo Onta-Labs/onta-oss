@@ -382,18 +382,6 @@ def test_create_type_rejects_a_reserved_attribute_name_with_a_4xx(
 # than deleted: they are the acceptance criteria for the catalog port.
 
 
-@pytest.mark.xfail(
-    reason=(
-        "LOST CAPABILITY (ONTA-527): POST /ontology/aliases silently writes "
-        "nothing. graph/ontology_commit.py::_commit_ontology_graph_store has no "
-        "REGISTER_ALIAS branch — the mutation is logged as "
-        "'ontology_store_op_skipped' — so graph/aliases.py::register_alias never "
-        "runs, the route returns 201 with old_attr_uri/new_attr_uri = null, and "
-        "GET /ontology/aliases (fetch_alias_map, still SPARQL) returns {}. "
-        "Attribute rename/alias needs an OntoAttr-level catalog port."
-    ),
-    strict=True,
-)
 def test_register_and_list_aliases(client, auth_headers, store):
     """POST /aliases records old→new; GET returns the map."""
     from infona_client.graph.ontology_queries import attr_uri
@@ -418,17 +406,6 @@ def test_register_and_list_aliases(client, auth_headers, store):
     assert listed.json()["aliases"][old_uri] == new_uri
 
 
-@pytest.mark.xfail(
-    reason=(
-        "LOST CAPABILITY (ONTA-527): aliasing a slot to ITSELF is no longer "
-        "rejected. The 400 came from graph/aliases.py::register_alias raising "
-        "ValueError, which the route maps to HTTP 400; on the GraphStore path "
-        "_commit_ontology_graph_store never reaches that validation (no "
-        "REGISTER_ALIAS branch), so the nonsense request is answered 201. A "
-        "validation gate that only exists inside a skipped branch is no gate."
-    ),
-    strict=True,
-)
 def test_register_alias_rejects_self(client, auth_headers):
     response = client.post(
         f"/graphs/{TENANT}/ontology/aliases",
@@ -440,17 +417,6 @@ def test_register_alias_rejects_self(client, auth_headers):
     assert "different" in detail or "itself" in detail
 
 
-@pytest.mark.xfail(
-    reason=(
-        "LOST CAPABILITY (ONTA-527): POST /ontology/aliases/rename is a no-op. "
-        "RENAME_ATTRIBUTE has no branch in "
-        "graph/ontology_commit.py::_commit_ontology_graph_store, so the new "
-        "declaration is not written, the old one is not dropped, no alias edge "
-        "is recorded, and the route still answers 201 with null URIs and an "
-        "empty change_records list."
-    ),
-    strict=True,
-)
 def test_rename_attribute_via_api(client, auth_headers):
     """POST /aliases/rename renames the slot AND always leaves an alias."""
     from infona_client.graph.ontology_queries import attr_uri
@@ -477,20 +443,6 @@ def test_rename_attribute_via_api(client, auth_headers):
     assert listed.json()["aliases"][old_uri] == new_uri
 
 
-@pytest.mark.xfail(
-    reason=(
-        "LOST CAPABILITY with a data-integrity edge (ONTA-527): DELETE "
-        "/ontology/aliases answers 200 {'retired': true} unconditionally. "
-        "RETIRE_ALIAS has no branch in "
-        "graph/ontology_commit.py::_commit_ontology_graph_store, so "
-        "graph/aliases.py::retire_alias — which is what counts remaining "
-        "instance references and raises AliasStillReferencedError → HTTP 409 — "
-        "never runs. The route therefore reports a retirement that did not "
-        "happen, and the refusal that protects un-backfilled instance data is "
-        "gone with it."
-    ),
-    strict=True,
-)
 def test_retire_alias_conflict_when_refs_remain(client, auth_headers, store):
     """DELETE /aliases must 409 while instance triples still use the old slot."""
     from infona_client.graph.ontology_queries import attr_uri
