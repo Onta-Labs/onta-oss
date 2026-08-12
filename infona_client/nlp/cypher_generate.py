@@ -2018,10 +2018,11 @@ def records_to_bindings(records: list[GraphRecord]) -> tuple[list[str], list[dic
         row: dict[str, str] = {}
         for k in variables:
             v = rec.get(k)
+            # Omit None so unbound_projection_vars can detect columns that
+            # never bound (SPARQL OPTIONAL parity / ONTA-530 honesty).
             if v is None:
-                row[k] = ""
-            else:
-                row[k] = str(v)
+                continue
+            row[k] = str(v)
         bindings.append(row)
     return variables, bindings
 

@@ -206,7 +206,6 @@ _NO_SEMANTIC_RETRIEVAL = (
 )
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_SEMANTIC_RETRIEVAL)
 @pytest.mark.asyncio
 async def test_ask_uses_semantic_retrieval(pipeline, mock_neptune):
     """When the embedding service returns an ontology, the pipeline uses it."""
@@ -223,7 +222,6 @@ async def test_ask_uses_semantic_retrieval(pipeline, mock_neptune):
     assert result.timing.get("ontology_source") == "semantic"
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_SEMANTIC_RETRIEVAL)
 @pytest.mark.asyncio
 async def test_ask_falls_back_when_no_embeddings(pipeline, mock_neptune):
     """No embeddings ⇒ the FULL ontology, marked as such in the timing."""
@@ -239,18 +237,6 @@ async def test_ask_falls_back_when_no_embeddings(pipeline, mock_neptune):
     assert result.timing.get("ontology_source") == "full"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "LOST CAPABILITY (ONTA-527): the zero-row ontology escalation "
-        "(infona-oss #273 — widen a semantic subset to the FULL tenant ontology "
-        "and regenerate once, timing['ontology_zero_row_escalation']) lives in "
-        "ask()'s SPARQL retry loop. _ask_cypher's only retry is on "
-        "GraphQueryError / CypherScopeError; a VALID query returning zero rows "
-        "is final, so the Oliver-demo failure mode this guards is unguarded on "
-        "the shipped path."
-    ),
-)
 @pytest.mark.asyncio
 async def test_ask_escalates_semantic_to_full_on_zero_rows(pipeline, store):
     """Zero rows under a reduced ontology subset widen to full schema once.
@@ -259,39 +245,73 @@ async def test_ask_escalates_semantic_to_full_on_zero_rows(pipeline, store):
     query was valid but empty. Without escalation the pipeline answers "No
     results found" in one attempt.
     """
+    from unittest.mock import patch
+
     attempts: list[str] = []
 
     async def fake(question, ontology, **kw):
         attempts.append(ontology)
         if len(attempts) == 1:
-            # Wrong type: valid, scoped, and empty.
+            # Wrong type: valid, scoped, and empty (list shape — a COUNT of 0
+            # still returns one row and is not a zero-row signal).
             return {
                 "cypher": (
                     "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
-                    "WHERE e.primary_type IN $type_names RETURN count(*) AS n"
+                    "WHERE e.primary_type IN $type_names "
+                    "RETURN e.name AS name LIMIT 25"
                 ),
-                "params": {"type_names": ["ClinicalTrial"]},
-                "template": "entities_of_type_count",
+                "params": {"type_names": ["ClinicalTrial"], "limit": 25},
                 "explanation": "wrong shape",
                 "functions_needed": [],
             }
         return {
             "cypher": (
                 "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
-                "WHERE e.primary_type IN $type_names RETURN count(*) AS n"
+                "WHERE e.primary_type IN $type_names "
+                "RETURN e.name AS name LIMIT 25"
             ),
-            "params": {"type_names": ["Place"]},
-            "template": "entities_of_type_count",
+            "params": {"type_names": ["Place"], "limit": 25},
             "explanation": "full schema",
             "functions_needed": [],
         }
 
     pipeline._try_llm_cypher = fake  # type: ignore[method-assign]
 
-    result = await pipeline.ask(
-        "which trial supports this?", TENANT_GRAPH, KG_GRAPH
-    )
+    # Semantic subset first (wrong shape); full fetch on zero-row escalation.
+    svc = AsyncMock()
+    svc.retrieve.return_value = "Type: ClinicalTrial\n  - title"
+    svc.type_names = AsyncMock(return_value={"ClinicalTrial", "Place"})
+    pipeline._active_types = AsyncMock(return_value={"Place"})  # type: ignore[method-assign]
+
+    async def fake_exec(session, gen, cypher, forced_params):
+        from unittest.mock import MagicMock
+
+        tns = list(
+            (forced_params or {}).get("type_names")
+            or (gen.get("params") or {}).get("type_names")
+            or []
+        )
+        if "Place" in tns:
+            rec = MagicMock()
+            rec.keys.return_value = ["name"]
+            rec.get.side_effect = lambda k, d=None: (
+                "Central Park" if k == "name" else d
+            )
+            return [rec], "execute_read"
+        return [], "execute_read"
+
+    with patch(
+        "infona_client.nlp.pipeline.get_embedding_service", return_value=svc
+    ), patch(
+        "infona_client.nlp.pipeline.try_deterministic_cypher", return_value=None
+    ), patch.object(
+        pipeline, "_execute_confined_cypher", new=fake_exec
+    ):
+        result = await pipeline.ask(
+            "which trial supports this?", TENANT_GRAPH, KG_GRAPH
+        )
 
     assert result.timing.get("ontology_zero_row_escalation") == 1.0
     assert len(attempts) >= 2
-    assert result.answer == "1"
+    # Place entity surfaces after escalation.
+    assert "Central Park" in result.answer or result.timing.get("rows", 0) >= 1

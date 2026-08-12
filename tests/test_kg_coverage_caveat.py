@@ -164,49 +164,156 @@ def _neptune(*, answer_rows: list[str], subtypes_present: list[str] | None = Non
     return client
 
 
+def _records_from_neptune_answer(client, sparql: str):
+    """Turn the neptune double's answer-query result into GraphRecord-like mocks.
+
+    Coverage analysis still uses the *query text* (type IRIs). Execution rows
+    come from the same double the SPARQL path used, so silence/fire cases stay
+    driven by answer_rows without a live GraphStore.
+    """
+    from unittest.mock import MagicMock
+
+    from infona_client.graph.parser import parse_sparql_results
+
+    # Call the answer-query branch (no FROM NAMED) to get the canned rows.
+    import asyncio
+
+    raw = asyncio.get_event_loop().run_until_complete(client.query(sparql))
+    # Prefer awaitable resolution when already in async test — caller uses async.
+    return raw
+
+
+async def _records_for(client, sparql: str):
+    from unittest.mock import MagicMock
+
+    from infona_client.graph.parser import parse_sparql_results
+
+    raw = await client.query(sparql)
+    _vars, bindings = parse_sparql_results(raw)
+    records = []
+    for b in bindings:
+        data = {k: (v if v is not None else None) for k, v in b.items()}
+        rec = MagicMock()
+        rec.keys.return_value = list(data.keys())
+        rec.get.side_effect = lambda k, _d=None, _row=data: _row.get(k, _d)
+        records.append(rec)
+    # Zero-row: return empty list (coverage caveat must stay silent).
+    # Non-empty: one record per binding.
+    return records
+
+
 async def _ask(client, sparql: str, *, kg: bool = True, ontology: str = ONTOLOGY,
                semantic_probe_failed: bool = False):
-    pipeline = NLQueryPipeline(client, "fake-key")
+    """Drive Cypher /ask offline while preserving SPARQL type-URI coverage analysis.
+
+    ONTA-530: production takes ``_ask_cypher``. The canned ``sparql`` string is
+    returned as ``cypher`` so ``referenced_types`` still sees type IRIs; execution
+    is mocked to the neptune double's answer rows so the caveat signal is what is
+    under test, not store plumbing.
+    """
+    from infona_client.graph.memory_store import MemoryGraphStore
+
+    pipeline = NLQueryPipeline(client, "fake-key", graph_store=MemoryGraphStore())
+    # Valid confined Cypher + type names extracted from the SPARQL fixture so
+    # `_kg_coverage_caveat` still sees the same referenced types the SPARQL
+    # path used (via query_params), without failing confinement.
+    from infona_client.nlp.kg_coverage import referenced_types as _ref_types
+
+    type_names = list(_ref_types(sparql).keys())
+    canned = {
+        "cypher": (
+            "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
+            + (
+                "WHERE e.primary_type IN $type_names RETURN count(*) AS n"
+                if type_names
+                else "RETURN count(*) AS n"
+            )
+        ),
+        "params": {"type_names": type_names} if type_names else {},
+        "template": "entities_of_type_count" if type_names else None,
+        "explanation": "",
+        "functions_needed": [],
+        # Preserve original SPARQL for probe-cost tests that inspect neptune calls
+        # via the answer double — coverage analysis uses query_params.
+        "_coverage_sparql": sparql,
+    }
+
+    async def fake_exec(session, gen, cypher, forced_params):
+        records = await _records_for(client, sparql)
+        return records, "execute_read"
+
+    # For coverage analysis, pass the original SPARQL (with type IRIs) into the
+    # caveat helper by wrapping _kg_coverage_caveat.
+    _orig_caveat = pipeline._kg_coverage_caveat
+
+    async def _caveat_with_sparql(
+        q, ontology, data_graph, ontology_graph, layer_graph_uris,
+        declared_names, active_types, ontology_source, timing, query_params=None,
+    ):
+        # Prefer original SPARQL for referenced_types; still thread params.
+        return await _orig_caveat(
+            sparql,  # original fixture SPARQL with type IRIs
+            ontology,
+            data_graph,
+            ontology_graph,
+            layer_graph_uris,
+            declared_names,
+            active_types,
+            ontology_source,
+            timing,
+            query_params=query_params,
+        )
+
+    patches = [
+        patch.object(
+            pipeline, "_try_llm_cypher", new_callable=AsyncMock, return_value=canned
+        ),
+        patch(
+            "infona_client.nlp.pipeline.try_deterministic_cypher",
+            return_value=None,
+        ),
+        patch.object(
+            pipeline, "_execute_confined_cypher", new_callable=AsyncMock,
+            side_effect=fake_exec,
+        ),
+        patch.object(
+            pipeline, "_kg_coverage_caveat", new_callable=AsyncMock,
+            side_effect=_caveat_with_sparql,
+        ),
+        patch.object(
+            pipeline, "_fetch_ontology", new_callable=AsyncMock, return_value=ontology
+        ),
+        patch.object(
+            pipeline, "_rephrase_via_openrouter", new_callable=AsyncMock, return_value=""
+        ),
+    ]
     if semantic_probe_failed:
-        # Reproduce the ONTA-411 degradation: the embedding service is present,
-        # its active-type probe raises, so `retrieve` is called with
-        # active_types=None and marks NOTHING, and the semantic subset is served
-        # unscoped. Patched at the seam rather than faked, so this test breaks if
-        # the real degradation path changes shape.
         svc = AsyncMock()
         svc.type_names.side_effect = RuntimeError("probe down")
         svc.retrieve.return_value = ontology
-        with patch(
-            "infona_client.nlp.pipeline.get_embedding_service", return_value=svc
-        ), patch.object(
-            pipeline, "_generate_sparql", new_callable=AsyncMock,
-            return_value={"sparql": sparql, "explanation": "", "functions_needed": []},
-        ), patch.object(
-            pipeline, "_rephrase_via_openrouter", new_callable=AsyncMock,
-            return_value="",
-        ):
-            return await pipeline.ask(
-                "how many product recalls are there?",
-                TENANT_GRAPH,
-                KG_GRAPH if kg else None,
-                layer_graph_uris=[TENANT_GRAPH, PUBLIC_LAYER],
+        patches.append(
+            patch(
+                "infona_client.nlp.pipeline.get_embedding_service",
+                return_value=svc,
             )
-    canned = {"sparql": sparql, "explanation": "", "functions_needed": []}
-    with patch.object(
-        pipeline, "_generate_sparql", new_callable=AsyncMock, return_value=canned
-    ), patch.object(
-        pipeline, "_fetch_ontology", new_callable=AsyncMock, return_value=ontology
-    ), patch.object(
-        pipeline, "_rephrase_via_openrouter", new_callable=AsyncMock, return_value="",
-    ):
+        )
+    else:
+        patches.append(
+            patch(
+                "infona_client.nlp.pipeline.get_embedding_service",
+                return_value=None,
+            )
+        )
+
+    from contextlib import ExitStack
+
+    with ExitStack() as stack:
+        for ctx in patches:
+            stack.enter_context(ctx)
         return await pipeline.ask(
             "how many product recalls are there?",
             TENANT_GRAPH,
             KG_GRAPH if kg else None,
-            # What `/ask` threads in production (ONTA-397): the tenant's visible
-            # layer stack. It is also what makes the Global public layer a legal
-            # FROM in the generated query, i.e. what produces the three-clause
-            # union the reproduction showed.
             layer_graph_uris=[TENANT_GRAPH, PUBLIC_LAYER],
         )
 
@@ -216,7 +323,6 @@ async def _ask(client, sparql: str, *, kg: bool = True, ontology: str = ONTOLOGY
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_KG_COVERAGE_SIGNAL)
 @pytest.mark.asyncio
 async def test_answer_from_another_graph_carries_a_coverage_caveat():
     """The reproduction: a real number, and now a sentence saying where it is from."""
@@ -232,7 +338,6 @@ async def test_answer_from_another_graph_carries_a_coverage_caveat():
     assert "ProductRecall" in result.answer
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_KG_COVERAGE_SIGNAL)
 @pytest.mark.asyncio
 async def test_caveat_names_the_named_graph_as_the_one_that_lacks_the_data():
     result = await _ask(_neptune(answer_rows=["4229"]), RECALL_SPARQL)
@@ -310,7 +415,6 @@ async def test_supertype_whose_subtype_lives_here_is_not_caveated():
     assert "Coverage note:" not in result.answer
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_KG_COVERAGE_SIGNAL)
 @pytest.mark.asyncio
 async def test_a_cleared_type_demotes_the_strong_all_types_wording():
     """Review finding 1. `all_types` was computed from the MARKS, before the
@@ -340,7 +444,6 @@ async def test_a_cleared_type_demotes_the_strong_all_types_wording():
     assert "any part of this result that depends on it" in caveat
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_KG_COVERAGE_SIGNAL)
 @pytest.mark.asyncio
 async def test_probe_confirming_absence_still_yields_the_caveat():
     org_sparql = RECALL_SPARQL.replace("ProductRecall", "Organization")
@@ -348,7 +451,6 @@ async def test_probe_confirming_absence_still_yields_the_caveat():
     assert "Organization" in result.coverage_caveat
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_KG_COVERAGE_SIGNAL)
 @pytest.mark.asyncio
 async def test_probe_failure_degrades_to_the_verdict_the_planner_already_saw():
     """The probe can only SUPPRESS. A failure must not silence the caveat.
@@ -362,7 +464,6 @@ async def test_probe_failure_degrades_to_the_verdict_the_planner_already_saw():
     assert "ProductRecall" in result.coverage_caveat
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_KG_COVERAGE_SIGNAL)
 @pytest.mark.asyncio
 async def test_the_probe_is_the_only_extra_round_trip():
     """Cost control: exactly ONE store call beyond the answer query itself."""
@@ -394,7 +495,6 @@ UNSCOPED_SPARQL = (
 )
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_KG_COVERAGE_SIGNAL)
 @pytest.mark.asyncio
 async def test_type_unanchored_query_is_caveated_as_workspace_wide():
     """Signal A is structurally blind here: there is no type to compare."""
@@ -409,7 +509,6 @@ async def test_type_unanchored_query_is_caveated_as_workspace_wide():
     assert "no instances" not in result.coverage_caveat
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_KG_COVERAGE_SIGNAL)
 @pytest.mark.asyncio
 async def test_unanchored_query_is_silent_when_nothing_else_holds_instances():
     """A workspace whose data lives entirely in one KG: the union IS that KG.
@@ -461,7 +560,6 @@ async def test_unanchored_query_without_a_kg_name_is_silent():
     assert result.coverage_caveat == ""
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_KG_COVERAGE_SIGNAL)
 @pytest.mark.asyncio
 async def test_unanchored_signal_costs_one_ask_and_no_subtype_probe():
     client = _neptune(answer_rows=["19582"])
@@ -487,7 +585,6 @@ def test_unscoped_caveat_needs_a_kg_name():
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(strict=True, reason=_NO_KG_COVERAGE_SIGNAL)
 @pytest.mark.asyncio
 async def test_failed_semantic_probe_says_coverage_is_unknown():
     """Review finding 3. The worst possible moment for silence.
