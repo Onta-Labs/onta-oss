@@ -221,3 +221,31 @@ def test_author_does_not_bind_has_authority():
         )
         == "has_author"
     )
+
+
+def test_count_fixture_refuses_filtered_how_many():
+    """Silent-wrong class: must not answer filtered count with unfiltered total."""
+    onto = "Type: Widget\n  - wing: string (literal)\n"
+    assert try_stub_count_query(
+        "How many widgets have wing East?",
+        onto,
+        type_names=["Widget"],
+    ) is None
+    assert try_stub_count_query(
+        "How many widgets are there?",
+        onto,
+        type_names=["Widget"],
+    ) is not None
+
+
+def test_less_than_routes_to_numeric_not_equality():
+    onto = "Type: Widget\n  - unit_cost: float (literal)\n"
+    payload = try_deterministic_cypher(
+        "widgets where unit_cost is less than 15",
+        onto,
+        type_names=["Widget"],
+    )
+    assert payload is not None
+    assert payload["template"] == "literal_compare"
+    assert payload["params"]["op"] == "lt"
+    assert payload["params"]["threshold"] == 15.0
