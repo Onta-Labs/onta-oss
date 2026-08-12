@@ -39,6 +39,8 @@ def _embeddings_url() -> str:
 
 
 OPENROUTER_EMBEDDINGS_URL = _embeddings_url()  # back-compat name; re-read at call time
+# Default cheap OpenRouter embedding model (ONTA-537 NL type/rel resolve +
+# ontology chunks + example bank). Override with INFONA_EMBED_MODEL.
 EMBEDDING_MODEL = os.environ.get(
     "INFONA_EMBED_MODEL", "openai/text-embedding-3-small"
 )

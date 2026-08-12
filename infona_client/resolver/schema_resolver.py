@@ -2532,6 +2532,39 @@ class SchemaResolver:
             except Exception:
                 logger.warning("embed_new_types_failed", exc_info=True)
 
+        # ONTA-537: keep the NL mention index in sync as the ontology expands
+        # (ask-time type/rel resolve). Best-effort — never blocks ingest.
+        # Requires embed API key; hermetic / no-key deploys skip until configured.
+        if result.types_created:
+            try:
+                from infona_client.nlp.ontology_mention_index import reindex_types
+
+                api_key = (getattr(self, "_openrouter_key", "") or "").strip()
+                if api_key:
+                    parent_of = getattr(self, "_parent_of", None) or {}
+                    specs = [
+                        {
+                            "name": tn,
+                            "description": "",
+                            "parents": (
+                                [parent_of[tn]]
+                                if isinstance(parent_of, dict) and tn in parent_of
+                                else []
+                            ),
+                        }
+                        for tn in result.types_created
+                    ]
+                    await reindex_types(
+                        specs,
+                        api_key=api_key,
+                        child_to_parent=(
+                            parent_of if isinstance(parent_of, dict) else None
+                        ),
+                        replace=False,
+                    )
+            except Exception:
+                logger.warning("ontology_mention_reindex_failed", exc_info=True)
+
         # Step 4: Insert relationships (instance triples to instance graph, ontology to base graph)
         # instance_graph resolved once at method top (ONTA-268 call-local).
         rel_triples: list[tuple[str, str, str]] = []
