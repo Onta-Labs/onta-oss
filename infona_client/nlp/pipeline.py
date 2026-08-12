@@ -22,8 +22,6 @@ from infona_client.nlp.cypher_generate import (
     neo4j_ask_enabled,
     ontology_from_graph_store,
     records_to_bindings,
-    try_deterministic_cypher,
-    try_stub_count_query,
 )
 
 _TEMPLATE_PARAM_RE = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*)")
@@ -1043,8 +1041,12 @@ class NLQueryPipeline:
     ) -> NLResult:
         """Neo4j /ask path with SPARQL-parity recovery mechanisms (ONTA-530).
 
-        Hermetic fixtures cover count / list / property-eq / 1-hop without keys.
-        When an LLM key is present, free-form Cypher is generated and confined.
+        **Product rule:** user-facing NL→Cypher generation always uses the LLM
+        (:meth:`_try_llm_cypher`). Deterministic fixtures
+        (``try_deterministic_cypher``) are **not** consulted on this path — they
+        remain for unit tests of template builders and non-ask helpers such as
+        :meth:`select_entity_uris` (internal URI resolution only).
+
         Execution is always via GraphStore with session-forced ``tenant_id`` /
         ``kg`` — never trust model-supplied scope values.
 
@@ -1215,82 +1217,6 @@ class NLQueryPipeline:
         except Exception:
             pass
 
-        # Semantic type resolve context (fixtures) — best-effort.
-        from infona_client.nlp.ontology_mention_index import (
-            EmbedConfigError,
-            get_process_mention_index,
-            openrouter_embed_fn,
-            semantic_resolve_context,
-        )
-
-        mention_index = get_process_mention_index()
-        require_sem = os.environ.get(
-            "INFONA_REQUIRE_SEMANTIC_RESOLVE", ""
-        ).strip().lower() in ("1", "true", "yes")
-        if require_sem and (mention_index is None or not mention_index.is_healthy()):
-            raise EmbedConfigError(
-                "INFONA_REQUIRE_SEMANTIC_RESOLVE is set but no healthy ontology "
-                "mention embed index is available. Configure "
-                "INFONA_OPENROUTER_API_KEY / OPENROUTER_API_KEY (and optional "
-                "INFONA_EMBED_MODEL), reindex the catalog after ontology "
-                "writes, then retry. Refusing string-only type resolution."
-            )
-
-        query_embeddings: dict[str, list[float]] = {}
-        if mention_index is not None and mention_index.is_healthy():
-            try:
-                fn = openrouter_embed_fn(self._openrouter_key or None)
-                vecs = await fn([question])
-                if vecs:
-                    from infona_client.nlp.cypher_generate import (
-                        extract_type_names_from_ontology,
-                    )
-
-                    labels = list(type_names or []) or extract_type_names_from_ontology(
-                        ontology
-                    )
-                    seed_phrases = {question.strip().lower()}
-                    for tn in labels:
-                        seed_phrases.add(tn.lower())
-                        seed_phrases.add(tn.lower() + "s")
-                    import re as _re
-
-                    m = _re.match(
-                        r"(?is)^\s*(?:how\s+many|list|show(?:\s+me)?|count)\s+(.+?)[\s?!.]*$",
-                        question.strip(),
-                    )
-                    if m:
-                        seed_phrases.add(m.group(1).strip().lower())
-                    phrase_list = sorted(p for p in seed_phrases if p)
-                    if phrase_list:
-                        pvecs = await fn(phrase_list)
-                        query_embeddings = {
-                            p: list(v) for p, v in zip(phrase_list, pvecs)
-                        }
-                    else:
-                        query_embeddings = {question.strip().lower(): list(vecs[0])}
-            except EmbedConfigError:
-                if require_sem:
-                    raise
-            except Exception:
-                if require_sem:
-                    raise
-                query_embeddings = {}
-
-        def _deterministic() -> dict | None:
-            if mention_index is not None and mention_index.is_healthy() and query_embeddings:
-                with semantic_resolve_context(
-                    mention_index,
-                    query_embeddings=query_embeddings,
-                    require_semantic=require_sem,
-                ):
-                    return try_deterministic_cypher(
-                        question, ontology, type_names=type_names or None
-                    )
-            return try_deterministic_cypher(
-                question, ontology, type_names=type_names or None
-            )
-
         max_attempts = 3
         last_error = ""
         cypher = ""
@@ -1320,68 +1246,58 @@ class NLQueryPipeline:
                             CEREBRAS_LENGTH_RECOVERY_TOKENS
                         )
 
-                gen: dict | None = None
-                # Fixtures only on first attempt without error-driven regeneration.
-                if (
-                    attempt == 0
-                    and not last_was_empty_query
-                    and not last_was_enum_filter_mismatch
-                    and not last_was_length_truncated
-                ):
-                    gen = _deterministic()
-
+                # Production NL→Cypher is always LLM (never fixture short-circuit).
                 error_feedback = ""
-                if gen is None:
-                    if last_was_empty_query:
-                        if not full_ontology_loaded:
-                            try:
-                                full_ontology = await self._fetch_ontology(
-                                    graph_uri,
-                                    data_graph,
-                                    layer_graph_uris=layer_graph_uris,
+                if last_was_empty_query:
+                    if not full_ontology_loaded:
+                        try:
+                            full_ontology = await self._fetch_ontology(
+                                graph_uri,
+                                data_graph,
+                                layer_graph_uris=layer_graph_uris,
+                            )
+                            if (
+                                full_ontology
+                                and full_ontology.strip()
+                                and full_ontology
+                                not in (ONTOLOGY_FETCH_ERROR, ONTOLOGY_EMPTY)
+                            ):
+                                ontology = full_ontology
+                                ontology_source = "full"
+                                timing["ontology_escalated_to_full_attempt"] = (
+                                    attempt
                                 )
-                                if (
-                                    full_ontology
-                                    and full_ontology.strip()
-                                    and full_ontology
-                                    not in (ONTOLOGY_FETCH_ERROR, ONTOLOGY_EMPTY)
-                                ):
-                                    ontology = full_ontology
-                                    ontology_source = "full"
-                                    timing["ontology_escalated_to_full_attempt"] = (
-                                        attempt
-                                    )
-                            except Exception:
-                                logger.debug(
-                                    "ontology_escalation_fetch_failed", exc_info=True
-                                )
-                            full_ontology_loaded = True
-                        error_feedback = (
-                            "The previous attempt returned an EMPTY or unparseable "
-                            "Cypher query. You MUST output a VALID, non-empty Cypher "
-                            "query in the `cypher` field, using the exact type/"
-                            "attribute names from the ontology schema above. Never "
-                            "return an empty string."
-                        )
-                    elif last_was_enum_filter_mismatch:
-                        error_feedback = last_error
-                    elif attempt > 0 and last_error:
-                        error_feedback = (
-                            f"The previous query failed with: {last_error}\n"
-                            f"Query was: {cypher}\n"
-                            "Please fix the Cypher and try again. Keep "
-                            "$tenant_id / $kg parameters; do not hardcode scope."
-                        )
-
-                    gen = await self._try_llm_cypher(
-                        question,
-                        ontology,
-                        tenant_id=tenant_id,
-                        kg_name=kg_name,
-                        examples_text=examples_text,
-                        error_feedback=error_feedback,
-                        **gen_recovery,
+                        except Exception:
+                            logger.debug(
+                                "ontology_escalation_fetch_failed", exc_info=True
+                            )
+                        full_ontology_loaded = True
+                    error_feedback = (
+                        "The previous attempt returned an EMPTY or unparseable "
+                        "Cypher query. You MUST output a VALID, non-empty Cypher "
+                        "query in the `cypher` field, using the exact type/"
+                        "attribute names from the ontology schema above. Never "
+                        "return an empty string."
                     )
+                elif last_was_enum_filter_mismatch:
+                    error_feedback = last_error
+                elif attempt > 0 and last_error:
+                    error_feedback = (
+                        f"The previous query failed with: {last_error}\n"
+                        f"Query was: {cypher}\n"
+                        "Please fix the Cypher and try again. Keep "
+                        "$tenant_id / $kg parameters; do not hardcode scope."
+                    )
+
+                gen = await self._try_llm_cypher(
+                    question,
+                    ontology,
+                    tenant_id=tenant_id,
+                    kg_name=kg_name,
+                    examples_text=examples_text,
+                    error_feedback=error_feedback,
+                    **gen_recovery,
+                )
 
                 last_was_length_truncated = False
                 last_was_enum_filter_mismatch = False
@@ -2529,7 +2445,9 @@ class NLQueryPipeline:
             )
             return []
 
-        # 1) Deterministic Cypher fixtures (list / filter / hop) — no SPARQL.
+        # 1) Deterministic Cypher fixtures for *internal* URI resolution only
+        # (not user-facing /ask — that path is always LLM). Prefer a template
+        # when the subset description matches a list/filter/hop shape.
         try:
             ontology, type_names = await ontology_from_graph_store(
                 store, tenant_id=tenant_id, kg=kg_name

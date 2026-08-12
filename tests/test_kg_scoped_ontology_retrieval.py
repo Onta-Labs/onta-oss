@@ -499,9 +499,6 @@ async def _ask_with_recorder(monkeypatch, neptune, instance_graph):
     from infona_client.graph.memory_store import MemoryGraphStore
     pipe._graph_store = MemoryGraphStore()
     monkeypatch.setattr(pipe, "_try_llm_cypher", fake_cypher)
-    monkeypatch.setattr(
-        "infona_client.nlp.pipeline.try_deterministic_cypher", lambda *a, **k: None
-    )
     monkeypatch.setattr(pipe, "_execute_confined_cypher", fake_exec)
     monkeypatch.setattr(pipe, "_rephrase_via_openrouter", fake_rephrase)
     result = await pipe.ask("any question", GRAPH, instance_graph=instance_graph)

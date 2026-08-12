@@ -293,6 +293,100 @@ async def _seed_bookstore(store: MemoryGraphStore) -> None:
     )
 
 
+def _wire_llm_from_fixture_helpers(pipe: NLQueryPipeline) -> list[str]:
+    """Mock ``_try_llm_cypher`` with template-helper payloads (not the ask path).
+
+    Production /ask is always LLM; hermetic tests still need a canned generator
+    so GraphStore execution can be asserted offline. Fixture helpers remain the
+    convenient payload builders — they must not be called by ``_ask_cypher``.
+    """
+    questions: list[str] = []
+
+    async def fake(question: str, ontology: str, **kw):
+        questions.append(question)
+        return try_deterministic_cypher(question, ontology)
+
+    pipe._try_llm_cypher = fake  # type: ignore[method-assign]
+    return questions
+
+
+@pytest.mark.asyncio
+async def test_ask_cypher_never_calls_deterministic_fixtures(monkeypatch):
+    """Product rule: user-facing /ask NL→Cypher always uses the LLM path.
+
+    Questions that historically matched count/list/filter fixtures must still
+    go through ``_try_llm_cypher``; ``try_deterministic_cypher`` must not run.
+    """
+    store = MemoryGraphStore()
+    await _seed_bookstore(store)
+    neptune = MagicMock()
+    neptune.query = AsyncMock(side_effect=AssertionError("SPARQL path must not run"))
+    pipe = NLQueryPipeline(neptune, anthropic_key="", graph_store=store)
+    pipe._fetch_ontology = AsyncMock(return_value=ONTOLOGY)  # type: ignore[method-assign]
+
+    det_calls: list[tuple] = []
+    real_det = try_deterministic_cypher
+
+    def spy_det(*args, **kwargs):
+        det_calls.append((args, kwargs))
+        return real_det(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "infona_client.nlp.cypher_generate.try_deterministic_cypher", spy_det
+    )
+    # If a stale import reappears on the pipeline module, catch that too.
+    monkeypatch.setattr(
+        "infona_client.nlp.pipeline.try_deterministic_cypher",
+        spy_det,
+        raising=False,
+    )
+
+    llm_questions: list[str] = []
+
+    async def fake_llm(question: str, ontology: str, **kw):
+        llm_questions.append(question)
+        # Canned count — do not call the spied fixture helper.
+        return {
+            "cypher": (
+                "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
+                "WHERE e.primary_type IN $type_names "
+                "RETURN count(*) AS n"
+            ),
+            "params": {"type_names": ["Book"]},
+            "explanation": "llm count books",
+            "functions_needed": [],
+            "template": "entities_of_type_count",
+        }
+
+    pipe._try_llm_cypher = fake_llm  # type: ignore[method-assign]
+
+    fixture_shaped = (
+        "How many books?",
+        "list all books",
+        "books where name is Dune",
+        "authors of books",
+        "top 2 books",
+    )
+    for q in fixture_shaped:
+        det_calls.clear()
+        llm_questions.clear()
+        result = await pipe.ask(
+            q,
+            graph_uri=f"{IRI_BASE}/graphs/demo-tenant",
+            instance_graph=_kg_uri(),
+            use_cypher=True,
+        )
+        assert not det_calls, (
+            f"try_deterministic_cypher must not run on /ask for {q!r}; "
+            f"got {len(det_calls)} call(s)"
+        )
+        assert llm_questions == [q], f"_try_llm_cypher not used for {q!r}"
+        assert result.timing.get("query_language") == "cypher"
+        assert "3" in result.answer
+        # Fixture flag must stay off for pure LLM payloads.
+        assert result.timing.get("cypher_stub") == 0.0
+
+
 @pytest.mark.asyncio
 async def test_ask_cypher_count_e2e_memory_store():
     store = MemoryGraphStore()
@@ -303,6 +397,7 @@ async def test_ask_cypher_count_e2e_memory_store():
 
     pipe = NLQueryPipeline(neptune, anthropic_key="", graph_store=store)
     pipe._fetch_ontology = AsyncMock(return_value=ONTOLOGY)  # type: ignore[method-assign]
+    llm_qs = _wire_llm_from_fixture_helpers(pipe)
 
     result = await pipe.ask(
         "How many books?",
@@ -311,8 +406,8 @@ async def test_ask_cypher_count_e2e_memory_store():
         use_cypher=True,
     )
 
+    assert llm_qs == ["How many books?"]
     assert result.timing.get("query_language") == "cypher"
-    assert result.timing.get("cypher_stub") == 1.0
     assert result.timing.get("cypher_exec_path") == "template:entities_of_type_count"
     assert "$tenant_id" in result.sparql
     assert "3" in result.answer
@@ -327,6 +422,7 @@ async def test_ask_cypher_list_e2e_memory_store():
     neptune.query = AsyncMock(side_effect=AssertionError("no sparql"))
     pipe = NLQueryPipeline(neptune, anthropic_key="", graph_store=store)
     pipe._fetch_ontology = AsyncMock(return_value=ONTOLOGY)  # type: ignore[method-assign]
+    _wire_llm_from_fixture_helpers(pipe)
 
     result = await pipe.ask(
         "list all books",
@@ -349,6 +445,7 @@ async def test_ask_cypher_top_n_list_e2e_memory_store():
     neptune.query = AsyncMock(side_effect=AssertionError("no sparql"))
     pipe = NLQueryPipeline(neptune, anthropic_key="", graph_store=store)
     pipe._fetch_ontology = AsyncMock(return_value=ONTOLOGY)  # type: ignore[method-assign]
+    _wire_llm_from_fixture_helpers(pipe)
 
     result = await pipe.ask(
         "top 2 books",
@@ -357,7 +454,6 @@ async def test_ask_cypher_top_n_list_e2e_memory_store():
         use_cypher=True,
     )
     assert result.timing.get("cypher_exec_path") == "template:entities_of_type"
-    assert result.timing.get("cypher_stub") == 1.0
     # Bookstore seed has 3 books; limit 2 returns first two by id order.
     assert result.timing.get("rows") == 2
 
@@ -370,6 +466,7 @@ async def test_ask_cypher_filter_e2e_memory_store():
     neptune.query = AsyncMock(side_effect=AssertionError("no sparql"))
     pipe = NLQueryPipeline(neptune, anthropic_key="", graph_store=store)
     pipe._fetch_ontology = AsyncMock(return_value=ONTOLOGY)  # type: ignore[method-assign]
+    _wire_llm_from_fixture_helpers(pipe)
 
     result = await pipe.ask(
         "books where name is Dune",
@@ -390,6 +487,7 @@ async def test_ask_cypher_hop_e2e_memory_store():
     neptune.query = AsyncMock(side_effect=AssertionError("no sparql"))
     pipe = NLQueryPipeline(neptune, anthropic_key="", graph_store=store)
     pipe._fetch_ontology = AsyncMock(return_value=ONTOLOGY)  # type: ignore[method-assign]
+    _wire_llm_from_fixture_helpers(pipe)
 
     result = await pipe.ask(
         "authors of books",
@@ -420,6 +518,7 @@ async def test_ask_cypher_ontology_from_graph_store_catalog():
     pipe._fetch_ontology = AsyncMock(  # type: ignore[method-assign]
         side_effect=AssertionError("SPARQL ontology must not run when catalog works")
     )
+    _wire_llm_from_fixture_helpers(pipe)
 
     result = await pipe.ask(
         "How many books?",
@@ -443,7 +542,6 @@ async def test_ask_cypher_retry_on_graph_query_error():
     pipe = NLQueryPipeline(neptune, anthropic_key="", graph_store=store)
     pipe._fetch_ontology = AsyncMock(return_value=ONTOLOGY)  # type: ignore[method-assign]
 
-    # Force LLM path (no fixture match) with a first broken cypher then a good one.
     calls = {"n": 0}
     feedbacks: list[str] = []
 
@@ -476,9 +574,8 @@ async def test_ask_cypher_retry_on_graph_query_error():
 
     pipe._try_llm_cypher = fake_llm  # type: ignore[method-assign]
 
-    # Use a question fixtures won't match
     result = await pipe.ask(
-        "aggregate book inventory somehow",
+        "How many books?",
         graph_uri=f"{IRI_BASE}/graphs/demo-tenant",
         instance_graph=_kg_uri(),
         use_cypher=True,
@@ -530,6 +627,7 @@ async def test_ask_cypher_retrieve_passes_language_cypher(monkeypatch):
     neptune.query = AsyncMock(side_effect=AssertionError("SPARQL path must not run"))
     pipe = NLQueryPipeline(neptune, anthropic_key="", graph_store=store)
     pipe._fetch_ontology = AsyncMock(return_value=ONTOLOGY)  # type: ignore[method-assign]
+    _wire_llm_from_fixture_helpers(pipe)
 
     retrieve_calls: list[dict] = []
 
@@ -591,7 +689,7 @@ def test_neo4j_ask_enabled_ignores_the_env(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_ask_cypher_rejects_model_tenant_in_params_via_confine():
-    """Session overwrites evil tenant even if fixture somehow set it."""
+    """Session overwrites evil tenant/kg even if the LLM params try to set them."""
     from infona_client.graph.rdf_model import AssertionFact, assert_fact
 
     store = MemoryGraphStore()
@@ -622,32 +720,31 @@ async def test_ask_cypher_rejects_model_tenant_in_params_via_confine():
     pipe = NLQueryPipeline(neptune, anthropic_key="", graph_store=store)
     pipe._fetch_ontology = AsyncMock(return_value="Type: Book")  # type: ignore[method-assign]
 
-    original = try_deterministic_cypher
-
-    def evil_det(question, ontology_summary="", **kw):
-        out = original(question, ontology_summary, **kw)
-        if out:
-            out = dict(out)
-            out["params"] = {
-                **out.get("params", {}),
+    async def evil_llm(question, ontology, **kw):
+        return {
+            "cypher": (
+                "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
+                "WHERE e.primary_type IN $type_names "
+                "RETURN count(*) AS n"
+            ),
+            "params": {
+                "type_names": ["Book"],
                 "tenant_id": "evil-tenant",
                 "kg": "other",
-            }
-        return out
+            },
+            "explanation": "evil scope attempt",
+            "functions_needed": [],
+            "template": "entities_of_type_count",
+        }
 
-    import infona_client.nlp.pipeline as pl
+    pipe._try_llm_cypher = evil_llm  # type: ignore[method-assign]
 
-    old = pl.try_deterministic_cypher
-    pl.try_deterministic_cypher = evil_det  # type: ignore[assignment]
-    try:
-        result = await pipe.ask(
-            "How many books?",
-            graph_uri=f"{IRI_BASE}/graphs/demo-tenant",
-            instance_graph=_kg_uri(),
-            use_cypher=True,
-        )
-    finally:
-        pl.try_deterministic_cypher = old  # type: ignore[assignment]
+    result = await pipe.ask(
+        "How many books?",
+        graph_uri=f"{IRI_BASE}/graphs/demo-tenant",
+        instance_graph=_kg_uri(),
+        use_cypher=True,
+    )
 
     assert "1" in result.answer  # still demo-tenant bookstore data
     assert result.timing.get("query_language") == "cypher"

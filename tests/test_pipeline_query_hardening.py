@@ -154,7 +154,6 @@ async def test_empty_first_sparql_escalates_to_full_ontology_and_recovers():
     with patch.object(pipeline_mod, "get_embedding_service", return_value=embed), \
          patch.object(p, "_fetch_ontology", new=AsyncMock(return_value=FULL_ONTOLOGY)) as fetch_full, \
          patch.object(p, "_try_llm_cypher", new=gen), \
-         patch.object(pipeline_mod, "try_deterministic_cypher", return_value=None), \
          patch.object(p, "_execute_confined_cypher", new=fake_exec), \
          patch.object(p, "_rephrase_via_openrouter", new=AsyncMock(return_value="")), \
          patch.object(p, "_active_types", new=AsyncMock(return_value={"Widget"})):
@@ -208,7 +207,6 @@ async def test_empty_sparql_does_not_escalate_when_already_full():
     with patch.object(pipeline_mod, "get_embedding_service", return_value=None), \
          patch.object(p, "_fetch_ontology", new=fetch_full), \
          patch.object(p, "_try_llm_cypher", new=gen), \
-         patch.object(pipeline_mod, "try_deterministic_cypher", return_value=None), \
          patch.object(p, "_execute_confined_cypher", new=fake_exec), \
          patch.object(p, "_rephrase_via_openrouter", new=AsyncMock(return_value="")):
         result = await p.ask("show details for zzqx", "https://graph.infona.ai/graphs/t1", KG_GRAPH)
