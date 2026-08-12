@@ -46,6 +46,8 @@ from infona_client.graph.schema_bootstrap import (
     ENTITY_LITERAL_GREP_CYPHER,
     ENTITY_MERGE_CYPHER,
     ENTITY_RELS_CYPHER,
+    ENTITY_TYPE_ATTR_COVERAGE_CYPHER,
+    ENTITY_TYPE_REL_COVERAGE_CYPHER,
     ONTO_ATTR_LIST_CYPHER,
     ONTO_ATTR_RANGE_TYPE_CYPHER,
     ONTO_ATTR_UPSERT_CYPHER,
@@ -81,6 +83,8 @@ _COUNT_BY_TYPE_SINGLE_NORM = _norm_cypher(ENTITY_COUNT_BY_TYPE_CYPHER)
 _COUNT_TOTAL_NORM = _norm_cypher(ENTITY_COUNT_TOTAL_CYPHER)
 _DETAIL_NORM = _norm_cypher(ENTITY_DETAIL_CYPHER)
 _RELS_NORM = _norm_cypher(ENTITY_RELS_CYPHER)
+_TYPE_ATTR_COVERAGE_NORM = _norm_cypher(ENTITY_TYPE_ATTR_COVERAGE_CYPHER)
+_TYPE_REL_COVERAGE_NORM = _norm_cypher(ENTITY_TYPE_REL_COVERAGE_CYPHER)
 _LITERAL_GREP_NORM = _norm_cypher(ENTITY_LITERAL_GREP_CYPHER)
 _FILTER_PROP_EQ_NORM = _norm_cypher(ENTITY_FILTER_PROP_EQ_CYPHER)
 _HOP_OUT_NORM = _norm_cypher(ENTITY_1HOP_OUT_CYPHER)
@@ -2490,6 +2494,69 @@ class MemoryGraphStore:
         out.sort(key=lambda rec: (rec.get("direction"), rec.get("attr"), rec.get("other_id")))
         return out
 
+    def _entity_type_attr_coverage(
+        self, tenant_id: str, kg: str, primary_type: str
+    ) -> list[GraphRecord]:
+        """Property-key coverage for entities of ``primary_type`` (P-A1a)."""
+        matched = self._entity_ids_via_instance_of(tenant_id, kg, [primary_type])
+        counts: dict[str, int] = {}
+        for eid in matched:
+            row = self._entities.get((tenant_id, kg, eid))
+            if row is None:
+                continue
+            # Mirror Neo4j keys(e): system fields + props map keys with values.
+            keys: set[str] = set()
+            for k in ("id", "tenant_id", "kg", "primary_type", "name", "source"):
+                if getattr(row, k, None) is not None:
+                    keys.add(k)
+            for k, v in row.props.items():
+                if v is not None:
+                    keys.add(str(k))
+            for k in keys:
+                counts[k] = counts.get(k, 0) + 1
+        return [
+            GraphRecord(data={"attr": attr, "n": n})
+            for attr, n in sorted(counts.items(), key=lambda x: (-x[1], x[0]))
+        ]
+
+    def _entity_type_rel_coverage(
+        self, tenant_id: str, kg: str, primary_type: str
+    ) -> list[GraphRecord]:
+        """Outgoing relationship coverage for entities of ``primary_type`` (P-A1a)."""
+        matched = self._entity_ids_via_instance_of(tenant_id, kg, [primary_type])
+        entity_sets: dict[str, set[str]] = {}
+        edge_totals: dict[str, int] = {}
+        targets: dict[str, str | None] = {}
+        for r in self._rels.values():
+            if r.tenant_id != tenant_id or r.kg != kg:
+                continue
+            if r.start_id not in matched:
+                continue
+            attr = r.attr or r.rel_type
+            if not attr:
+                continue
+            entity_sets.setdefault(attr, set()).add(r.start_id)
+            edge_totals[attr] = edge_totals.get(attr, 0) + 1
+            if attr not in targets:
+                other = self._entities.get((tenant_id, kg, r.end_id))
+                targets[attr] = other.primary_type if other else None
+        out: list[GraphRecord] = []
+        for attr in sorted(
+            entity_sets.keys(),
+            key=lambda a: (-len(entity_sets[a]), a),
+        ):
+            out.append(
+                GraphRecord(
+                    data={
+                        "attr": attr,
+                        "n": len(entity_sets[attr]),
+                        "rel_total": edge_totals.get(attr, 0),
+                        "target_type": targets.get(attr),
+                    }
+                )
+            )
+        return out
+
     def _entity_prop_value(self, row: _EntityRow, prop_key: str) -> Any:
         """Read a property the way Neo4j ``e[$prop_key]`` would for Entity."""
         if prop_key in ("id", "tenant_id", "kg", "primary_type", "name", "source"):
@@ -2731,6 +2798,16 @@ class MemoryGraphStore:
             if entity_id is None:
                 return []
             return self._entity_rels(tenant_id, kg, str(entity_id))
+
+        if norm == _TYPE_ATTR_COVERAGE_NORM:
+            return self._entity_type_attr_coverage(
+                tenant_id, kg, str(params.get("primary_type") or "")
+            )
+
+        if norm == _TYPE_REL_COVERAGE_NORM:
+            return self._entity_type_rel_coverage(
+                tenant_id, kg, str(params.get("primary_type") or "")
+            )
 
         if norm == _LITERAL_GREP_NORM:
             lim = params.get("limit")

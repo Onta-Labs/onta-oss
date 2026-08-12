@@ -83,6 +83,8 @@ def test_explore_templates_registered():
         "entity_detail",
         "entity_rels",
         "entity_count_by_primary_type",
+        "entity_type_attr_coverage",
+        "entity_type_rel_coverage",
     ):
         assert name in TEMPLATES
         assert "$tenant_id" in TEMPLATES[name].cypher
