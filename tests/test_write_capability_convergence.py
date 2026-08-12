@@ -849,7 +849,7 @@ def test_reader_can_still_run_a_read_only_capability_plan(reader_client):
     assert spy.await_count == 1
 
 
-def test_writer_can_still_execute_a_mutating_plan(app):
+def test_writer_can_still_execute_a_mutating_plan(app, mock_neptune):
     """Regression floor: the fix must not lock out writers."""
     from fastapi.testclient import TestClient
     from infona_client.agent.capabilities.dedup_cap import DedupCapability
@@ -872,10 +872,18 @@ def test_writer_can_still_execute_a_mutating_plan(app):
             )
         )
     )
+    # ONTA-534: duck-typed kg probe must report OK so SCOPE_REQUIRE does not
+    # refuse before the write-capability gate under test.
+    async def _ask_ok(sparql: str) -> bool:
+        return True
+
+    mock_neptune.ask.side_effect = _ask_ok
     try:
         spy = AsyncMock(return_value={"status": "queued"})
         with patch.object(DedupCapability, "execute", spy):
-            resp = TestClient(app).post(
+            tc = TestClient(app)
+            app.state.neptune_client = mock_neptune
+            resp = tc.post(
                 "/graphs/esc-ws-w/agent",
                 json={
                     "message": "",

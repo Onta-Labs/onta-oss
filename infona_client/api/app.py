@@ -293,10 +293,11 @@ async def lifespan(app: FastAPI):
     from infona_client.graph.store import graph_backend
 
     logger.info("starting", graph_backend=graph_backend())
-    # Vestigial SPARQL client (ONTA-527): no route executes SPARQL any more, but
-    # a number of handlers still declare `Depends(get_neptune_client)` and read
-    # `app.state.neptune_client` for ontology / explore reads that have not been
-    # ported to GraphStore yet. Constructing it opens no connection. "neptune" is
+    # Vestigial SPARQL client (ONTA-527 / ONTA-534): handlers still declare
+    # Depends(get_neptune_client) for residual type-hints / dual-arm archaeology.
+    # Constructing it opens no connection. Under a configured GraphStore,
+    # NeptuneClient.query/update/ask fail closed (SparqlClientRetired) so
+    # residual arms cannot hang on decommissioned Neptune HTTP. "neptune" is
     # the path layout, not a backend selection — BACKENDS has no neo4j key.
     app.state.neptune_client = NeptuneClient(
         settings.neptune_endpoint or "http://127.0.0.1:8182",

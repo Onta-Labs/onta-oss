@@ -41,16 +41,77 @@ def _select(var: str, values: list[str]) -> dict:
 
 
 def _wire_kg(
-    mock_neptune, *, registered: bool, has_data: bool, base_instances=False, others=()
+    mock_neptune,
+    *,
+    registered: bool,
+    has_data: bool,
+    base_instances=False,
+    others=(),
+    kg_name: str = "widgets",
 ):
     """Make the shared KG-status probe report a specific state.
 
-    The probe fires two ASKs on the hot path (the registration record in the
-    tenant base graph, and "does the KG graph hold a triple"), a third only when
-    the KG graph is empty ("does the tenant BASE graph hold instance data", the
-    union-aware check), and one SELECT for the tenant's real KG names on the
-    missing path.
+    **ONTA-534:** /ask uses a real ``NeptuneClient`` under TestClient lifespan
+    and the hermetic ``MemoryGraphStore``. Seed the process store so the
+    GraphStore-first probe matches the intended state. Also wire residual
+    SPARQL side effects on ``mock_neptune`` for any duck-typed call sites.
     """
+    import asyncio
+
+    from infona_client.graph.kg_status import invalidate_kg_status
+    from infona_client.graph.store import GraphScope, get_graph_store
+
+    invalidate_kg_status(TENANT)
+    store = get_graph_store()
+
+    async def _seed() -> None:
+        native_list = getattr(store, "kg_registry_list", None)
+        native_del = getattr(store, "kg_registry_delete", None)
+        if callable(native_list) and callable(native_del):
+            for row in list(await native_list(TENANT)):
+                name = row.get("name")
+                if name:
+                    await native_del(TENANT, name)
+        if hasattr(store, "_entities"):
+            for key in [k for k in list(store._entities) if k[0] == TENANT]:
+                store._entities.pop(key, None)
+        if hasattr(store, "_assertions"):
+            for key in [k for k in list(store._assertions) if k[0] == TENANT]:
+                store._assertions.pop(key, None)
+
+        for name in others:
+            await store.kg_registry_upsert(TENANT, name, description="", triple_count=0)
+        if registered:
+            await store.kg_registry_upsert(
+                TENANT, kg_name, description="", triple_count=0
+            )
+        if has_data:
+            sess = store.session(GraphScope.for_instance(TENANT, kg_name))
+            await sess.write_merge_entity(
+                id="https://graph.infona.ai/entities/Widget/seed",
+                name="seed",
+                primary_type="Widget",
+            )
+            await sess.write_instance_of(
+                "https://graph.infona.ai/entities/Widget/seed",
+                "Widget",
+            )
+        if base_instances and not has_data:
+            # Tenant has instance data outside the named KG (union rescue).
+            other = "base-data-kg"
+            await store.kg_registry_upsert(TENANT, other, description="", triple_count=0)
+            sess = store.session(GraphScope.for_instance(TENANT, other))
+            await sess.write_merge_entity(
+                id="https://graph.infona.ai/entities/Widget/base",
+                name="base",
+                primary_type="Widget",
+            )
+            await sess.write_instance_of(
+                "https://graph.infona.ai/entities/Widget/base",
+                "Widget",
+            )
+
+    asyncio.run(_seed())
 
     async def fake_ask(sparql: str) -> bool:
         if "/kg_name>" in sparql:
@@ -113,7 +174,13 @@ def test_ask_missing_kg_returns_404_naming_the_available_kgs(
     client, auth_headers, mock_neptune
 ):
     """(a) The KG does not exist: an explicit 404, not "No results found."."""
-    _wire_kg(mock_neptune, registered=False, has_data=False, others=["imdb", "events"])
+    _wire_kg(
+        mock_neptune,
+        registered=False,
+        has_data=False,
+        others=["imdb", "events"],
+        kg_name="no-such-kg",
+    )
 
     with patch(
         "infona_client.api.routes.ask.NLQueryPipeline.ask",
@@ -130,7 +197,7 @@ def test_ask_missing_kg_returns_404_naming_the_available_kgs(
     assert detail["error"] == "kg_not_found"
     assert detail["kg_name"] == "no-such-kg"
     # The available names ride along so an agent can self-correct in one hop.
-    assert detail["available_kgs"] == ["imdb", "events"]
+    assert set(detail["available_kgs"]) == {"imdb", "events"}
     assert "imdb" in detail["message"]
     # No LLM generation was wasted on a graph that does not exist.
     mock_ask.assert_not_called()
@@ -193,7 +260,7 @@ def test_ask_unregistered_but_populated_kg_is_not_reported_missing(
     hold data with no ``kg_name`` record. Refusing to answer those would be a
     worse regression than the bug being fixed: "missing" requires BOTH signals.
     """
-    _wire_kg(mock_neptune, registered=False, has_data=True)
+    _wire_kg(mock_neptune, registered=False, has_data=True, kg_name="legacy")
     ok = NLResult(answer="42", sparql="SELECT ...", explanation="e")
 
     with patch(
@@ -223,7 +290,13 @@ def test_ask_empty_kg_still_answers_when_data_lives_in_the_base_graph(
     per-KG ASK alone would turn an answer main gives today into a confident
     "nothing to query" refusal.
     """
-    _wire_kg(mock_neptune, registered=True, has_data=False, base_instances=True)
+    _wire_kg(
+        mock_neptune,
+        registered=True,
+        has_data=False,
+        base_instances=True,
+        kg_name="fresh",
+    )
     ok = NLResult(answer="42", sparql="SELECT ...", explanation="e")
 
     with patch(
@@ -266,6 +339,7 @@ def test_ask_missing_kg_is_404_even_when_the_base_graph_has_instances(
         has_data=False,
         base_instances=True,
         others=["imdb", "events"],
+        kg_name="typo",
     )
 
     with patch(
@@ -282,7 +356,8 @@ def test_ask_missing_kg_is_404_even_when_the_base_graph_has_instances(
     detail = res.json()["detail"]
     assert detail["error"] == "kg_not_found"
     assert detail["kg_name"] == "typo"
-    assert detail["available_kgs"] == ["imdb", "events"]
+    # Registry may also list the base-data-kg seeded for the union rescue probe.
+    assert {"imdb", "events"}.issubset(set(detail["available_kgs"]))
     mock_ask.assert_not_called()
 
 
@@ -326,6 +401,9 @@ def test_ask_probe_failure_degrades_to_answering(client, auth_headers, mock_nept
     ok = NLResult(answer="42", sparql="SELECT ...", explanation="e")
 
     with patch(
+        "infona_client.graph.kg_status._kg_data_status_graph_store",
+        new=AsyncMock(side_effect=RuntimeError("store probe down")),
+    ), patch(
         "infona_client.api.routes.ask.NLQueryPipeline.ask",
         new_callable=AsyncMock,
     ) as mock_ask:

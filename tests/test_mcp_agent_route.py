@@ -71,12 +71,25 @@ def _fresh_registry():
 @pytest.fixture
 def app_client(monkeypatch):
     """A TestClient with a mocked Neptune (no live graph) — the SDK/MCP target."""
+    import asyncio
+
     monkeypatch.setenv("OPENROUTER_API_KEY", "fake-key")
     app = create_app()
     n = AsyncMock(spec=NeptuneClient)
     n.query.return_value = {"head": {"vars": []}, "results": {"bindings": []}}
     n.update.return_value = None
     app.state.neptune_client = n
+    # ONTA-534: GraphStore-first kg_data_status for the real NeptuneClient that
+    # TestClient lifespan installs. Register the fixture KG so agent scope does
+    # not clarify "missing".
+    from infona_client.graph.store import get_graph_store
+
+    async def _reg():
+        await get_graph_store().kg_registry_upsert(
+            TENANT, "kg1", description="", triple_count=0
+        )
+
+    asyncio.run(_reg())
     return TestClient(app)
 
 
