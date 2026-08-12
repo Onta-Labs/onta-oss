@@ -146,3 +146,78 @@ def test_equality_routes_relationship_to_related_filter():
     assert payload["template"] == "related_entity_name_filter"
     assert payload["params"]["rel_attr"] == "has_status"
     assert payload["params"]["target_name"] == "backorder"
+
+
+def test_short_type_not_substring_of_unrelated_word():
+    assert match_type_name("medication", ["Ion"]) is None
+    assert match_type_name("information", ["Form"]) is None
+
+
+def test_related_filter_rejects_literal_attrs():
+    """Broadened regex must not steal literal equality shapes."""
+    onto = (
+        "Type: Widget\n"
+        "  - unit_cost: float (literal, key=unit_cost)\n"
+        "  - title: string (literal, key=title)\n"
+        "  - has_phase -> Phase (relationship, key=has_phase)\n"
+        "Type: Phase\n"
+    )
+    # Literals — fall through (None) so equality/LLM can handle.
+    assert try_related_name_filter_query(
+        "widgets with title Alpha", onto, type_names=["Widget", "Phase"]
+    ) is None
+    assert try_related_name_filter_query(
+        "widgets with unit_cost 9.99", onto, type_names=["Widget", "Phase"]
+    ) is None
+    # Equality on literals stays literal_values
+    payload = try_deterministic_cypher(
+        "widgets where title is Alpha",
+        onto,
+        type_names=["Widget", "Phase"],
+    )
+    assert payload is not None
+    assert payload["template"] == "literal_values"
+
+
+def test_related_filter_production_arrow_format():
+    onto = (
+        "Type: Widget\n"
+        "  - unit_cost: float (literal, key=unit_cost)\n"
+        "  - has_phase -> Phase (relationship, key=has_phase)\n"
+        "  - supplied_by -> Vendor (relationship, key=supplied_by)\n"
+        "Type: Phase\n"
+        "Type: Vendor\n"
+    )
+    phase = try_related_name_filter_query(
+        "widgets with phase 2", onto, type_names=["Widget", "Phase", "Vendor"]
+    )
+    assert phase is not None
+    assert phase["params"]["rel_attr"] == "has_phase"
+    assert phase["params"]["target_name"] == "2"
+
+    # Equality on relationship attr routes to related filter
+    eq = try_deterministic_cypher(
+        "widgets where has_phase is 2",
+        onto,
+        type_names=["Widget", "Phase", "Vendor"],
+    )
+    assert eq is not None
+    assert eq["template"] == "related_entity_name_filter"
+    assert eq["params"]["rel_attr"] == "has_phase"
+
+
+def test_author_does_not_bind_has_authority():
+    onto = (
+        "Type: Widget\n"
+        "  - has_author -> Person (relationship, key=has_author)\n"
+        "  - has_authority -> Org (relationship, key=has_authority)\n"
+        "Type: Person\n"
+        "Type: Org\n"
+    )
+    from infona_client.nlp.cypher_generate import _resolve_relationship_attr
+    assert (
+        _resolve_relationship_attr(
+            "author", type_name="Widget", ontology_summary=onto
+        )
+        == "has_author"
+    )

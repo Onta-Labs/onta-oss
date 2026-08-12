@@ -177,9 +177,10 @@ def _score_type_match(label: str, type_name: str) -> int:
     elif head and (needle == head or sing == head) and len(head) >= 3:
         # "trials" → ClinicalTrial (head noun of CamelCase compound)
         score = 800 + min(len(head), 40)
-    elif len(sing) >= 4 and (sing in tl_compact or tl_compact in sing):
+    elif len(sing) >= 4 and sing in tl_compact and len(sing) >= max(4, len(tl_compact) // 2):
+        # Needle singular is a substantial substring of the type (not type ⊂ needle).
         score = 500 + min(len(sing), 40)
-    elif len(needle) >= 4 and (needle in tl_compact or tl_compact in needle):
+    elif len(needle) >= 4 and needle in tl_compact and len(needle) >= max(4, len(tl_compact) // 2):
         score = 400 + min(len(needle), 40)
     else:
         # Word-token overlap with CamelCase parts (require content match ≥3 chars)
@@ -702,19 +703,33 @@ def _ontology_section_for_type(type_name: str, ontology_summary: str) -> str:
 
 
 def _relationship_leaves_in_section(section: str) -> list[str]:
-    """Parse relationship attribute leaves from a type ontology section."""
+    """Parse relationship attribute leaves from a type ontology section.
+
+    Accepts both hand-written colon form and production
+    ``format_schema_types_for_cypher`` form::
+
+        - has_phase: relationship → Phase
+        - has_phase -> Phase (relationship, key=has_phase)
+    """
     leaves: list[str] = []
     seen: set[str] = set()
-    for m in re.finditer(
+    patterns = (
+        # Production: "- name -> Range (relationship, key=name)"
+        r"(?im)^\s*-\s*([A-Za-z_][A-Za-z0-9_]*)\s*->.*\brelationship\b"
+        r"(?:,\s*key=([A-Za-z_][A-Za-z0-9_]*))?",
+        # Colon form used in tests / older summaries
         r"(?im)^\s*-\s*([A-Za-z_][A-Za-z0-9_]*)\s*:.*\brelationship\b",
-        section or "",
-    ):
-        name = m.group(1)
-        key = name.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        leaves.append(name)
+    )
+    for pat in patterns:
+        for m in re.finditer(pat, section or ""):
+            name = (m.group(2) if m.lastindex and m.lastindex >= 2 and m.group(2) else m.group(1))
+            if not name:
+                continue
+            key = name.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            leaves.append(name)
     return leaves
 
 
@@ -726,47 +741,31 @@ def _resolve_relationship_attr(
 ) -> str | None:
     """Map a free-text dimension word to a relationship leaf on the type.
 
-    Prefer ``has_<word>`` / exact leaf / ``*_by`` when ontology marks them as
-    relationships. Works for novel dimensions (phase, status, supplier, …)
-    without domain hard-codes.
+    Only returns leaves that the ontology marks as **relationships** on the
+    subject type. No bare-text fallback onto literals.
     """
     rel = (rel_word or "").strip()
     if not rel or not _SAFE_PROP_RE.match(rel):
         return None
     section = _ontology_section_for_type(type_name, ontology_summary)
     leaves = _relationship_leaves_in_section(section)
-    if not leaves and ontology_summary:
-        leaves = _relationship_leaves_in_section(ontology_summary)
     if not leaves:
-        candidates = [f"has_{rel.lower()}", rel.lower(), f"{rel.lower()}_by"]
-        text = section or ontology_summary or ""
-        for cand in candidates:
-            if re.search(rf"(?i)\b{re.escape(cand)}\b", text):
-                return cand
         return None
 
     rel_l = rel.lower()
+    sing = _singularize_token(rel_l)
     by_lower = {leaf.lower(): leaf for leaf in leaves}
 
-    if rel_l in by_lower:
-        return by_lower[rel_l]
-    if f"has_{rel_l}" in by_lower:
-        return by_lower[f"has_{rel_l}"]
-    if f"{rel_l}_by" in by_lower:
-        return by_lower[f"{rel_l}_by"]
+    # Exact / has_ / _by first (no substring guessing).
+    for cand in (rel_l, sing, f"has_{rel_l}", f"has_{sing}", f"{rel_l}_by", f"{sing}_by"):
+        if cand in by_lower:
+            return by_lower[cand]
 
-    scored: list[tuple[int, str]] = []
+    # Underscore-token equality only (avoid author ⊂ has_authority).
     for leaf in leaves:
-        ll = leaf.lower()
-        if rel_l in ll or ll in rel_l:
-            scored.append((len(ll), leaf))
-            continue
-        leaf_parts = set(ll.split("_"))
-        if rel_l in leaf_parts or _singularize_token(rel_l) in leaf_parts:
-            scored.append((len(ll), leaf))
-    if scored:
-        scored.sort(key=lambda x: -x[0])
-        return scored[0][1]
+        parts = set(leaf.lower().split("_")) - {"has", "by", "the", "a", "an"}
+        if rel_l in parts or sing in parts:
+            return leaf
     return None
 
 
@@ -774,13 +773,12 @@ def _attr_is_relationship(attr: str, type_name: str, ontology_summary: str) -> b
     """True when ontology marks ``attr`` as a relationship on the type."""
     if not attr:
         return False
-    section = _ontology_section_for_type(type_name, ontology_summary)
-    if re.search(
-        rf"(?im)^\s*-\s*{re.escape(attr)}\s*:.*\brelationship\b",
-        section,
-    ):
-        return True
-    leaves = {x.lower() for x in _relationship_leaves_in_section(section)}
+    leaves = {
+        x.lower()
+        for x in _relationship_leaves_in_section(
+            _ontology_section_for_type(type_name, ontology_summary)
+        )
+    }
     return attr.lower() in leaves
 
 
@@ -955,7 +953,13 @@ def try_related_name_filter_query(
     *,
     type_names: list[str] | None = None,
 ) -> dict[str, Any] | None:
-    """Filter subjects by a related entity's display name (genre/author/…)."""
+    """Filter subjects by a related entity's display name (ontology edges only).
+
+    Matches ``<types> with|having|in <rel> <value>`` only when ``<rel>`` resolves
+    to a **relationship** leaf on the type. Literal dimensions fall through to
+    :func:`try_filter_query` / the LLM — never invent a related-entity template
+    for ``title`` / ``status`` literals.
+    """
     q = _TRAILING_PUNCT_RE.sub("", (question or "").strip())
     if not q:
         return None
@@ -965,36 +969,27 @@ def try_related_name_filter_query(
     if not m:
         return None
     label = (m.group("label") or "").strip()
-    rel = (m.group("rel") or "").strip().lower()
+    rel = (m.group("rel") or "").strip()
     value = _TRAILING_PUNCT_RE.sub("", (m.group("value") or "").strip())
     value, lim_from_value = _strip_limit_suffix(value)
     if lim_from_value is not None:
         limit = lim_from_value
     if not value or not _SAFE_PROP_RE.match(rel):
         return None
-    # Defer "with author is Herbert" / "with genre equals Romance" to equality
-    # filter — those are prop=value shapes, not related-entity names.
-    if re.match(r"(?i)^(is|equals?|=|==)\b", value):
+    # Defer equality / numeric shapes to dedicated fixtures.
+    if re.match(r"(?i)^(is|equals?|=|==|less|more|under|over|below|above|at)\b", value):
+        return None
+    if re.match(r"(?i)^(less|more|under|over|below|above|at\s+least|at\s+most)\b", rel):
         return None
     matched = resolve_type_name(label, type_names, ontology_summary)
     if matched is None:
         return None
 
-    # Map natural words onto common relationship leaves used by inferred ingest.
-    rel_map = {
-        "genre": "has_genre",
-        "author": "has_author",
-        "publisher": "has_publisher",
-        "category": "has_genre",
-    }
-    rel_attr = rel_map.get(rel, rel)
-    # Prefer schema keys when present (has_genre vs genre).
-    if ontology_summary:
-        if re.search(rf"(?i)\bhas_{re.escape(rel)}\b", ontology_summary):
-            rel_attr = f"has_{rel}"
-        elif re.search(rf"(?i)\b{re.escape(rel)}\b.*relationship", ontology_summary):
-            # keep has_* default when both literal+rel exist
-            pass
+    rel_attr = _resolve_relationship_attr(
+        rel, type_name=matched, ontology_summary=ontology_summary
+    )
+    if rel_attr is None:
+        return None
 
     expanded = type_names_with_subclasses(
         matched, ontology_summary=ontology_summary, include_subclasses=True
