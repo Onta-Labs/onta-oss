@@ -56,9 +56,10 @@ _NOISE_RE = re.compile(
 )
 _NON_ALNUM_RE = re.compile(r"[^a-zA-Z0-9_]+")
 
-# Types listed in ontology summary lines like "Type: Person" / "- Person ["
+# Types listed in ontology summary lines like "Type: Person".
+# Do NOT match bare "- attr" lines (those are attributes, not types).
 _TYPE_LINE_RE = re.compile(
-    r"(?im)^\s*(?:Type:\s*|[-*]\s+|•\s+)([A-Za-z][A-Za-z0-9_]*)\b"
+    r"(?im)^\s*Type:\s*([A-Za-z][A-Za-z0-9_]*)\b"
 )
 
 # Safe property / attr keys only (never interpolate free text into Cypher).
@@ -97,34 +98,147 @@ _IRREGULAR_SINGULAR = {
 }
 
 
+def _singularize_token(token: str) -> str:
+    """Best-effort English singular for type matching (general, not domain-specific)."""
+    t = (token or "").lower()
+    if not t:
+        return t
+    if t in _IRREGULAR_SINGULAR:
+        return _IRREGULAR_SINGULAR[t]
+    if t.endswith("ies") and len(t) > 4:
+        return t[:-3] + "y"
+    if t.endswith(("sses", "ches", "shes", "xes")):
+        return t[:-2]
+    if t.endswith("s") and not t.endswith("ss") and len(t) > 2:
+        return t[:-1]
+    return t
+
+
+def _camel_words(name: str) -> list[str]:
+    """Split PascalCase / snake_case type leaves into lower words."""
+    if not name:
+        return []
+    s = re.sub(r"[_\-]+", " ", name)
+    s = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", s)
+    s = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", s)
+    return [w.lower() for w in s.split() if w]
+
+
+def _label_alternatives(label: str) -> list[str]:
+    """Split multi-option NL labels: 'inventory items or SKUs' → candidates.
+
+    Keeps full phrase first so exact multi-word matches still win, then each
+    ``or`` / ``/`` / comma alternative.
+    """
+    raw = (label or "").strip()
+    if not raw:
+        return []
+    parts = re.split(r"(?i)\s+(?:or|/)\s+|,\s*", raw)
+    out: list[str] = []
+    seen: set[str] = set()
+    for p in [raw, *parts]:
+        p = p.strip()
+        if not p:
+            continue
+        key = p.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(p)
+    return out
+
+
+def _score_type_match(label: str, type_name: str) -> int:
+    """Score how well a free-text label matches one ontology type leaf.
+
+    Higher is better. 0 = no match. Prefer longer / more specific types so
+    compound CamelCase leaves beat short accidental tokens.
+    """
+    if not label or not type_name:
+        return 0
+    needle = _normalize_type_token(label).lower()
+    if not needle:
+        return 0
+    tl = type_name.lower()
+    tl_compact = re.sub(r"[^a-z0-9]", "", tl)
+    sing = _singularize_token(needle)
+    words = _camel_words(type_name)
+    head = words[-1] if words else tl_compact
+    score = 0
+
+    if needle == tl or needle == tl_compact:
+        score = 1000
+    elif sing == tl or sing == tl_compact:
+        score = 950
+    elif words and " ".join(words) == needle.replace("_", " "):
+        score = 900
+    elif words and " ".join(words) == sing:
+        score = 890
+    elif head and (needle == head or sing == head) and len(head) >= 3:
+        # "trials" → ClinicalTrial (head noun of CamelCase compound)
+        score = 800 + min(len(head), 40)
+    elif len(sing) >= 4 and sing in tl_compact and len(sing) >= max(4, len(tl_compact) // 2):
+        # Needle singular is a substantial substring of the type (not type ⊂ needle).
+        score = 500 + min(len(sing), 40)
+    elif len(needle) >= 4 and needle in tl_compact and len(needle) >= max(4, len(tl_compact) // 2):
+        score = 400 + min(len(needle), 40)
+    else:
+        # Word-token overlap with CamelCase parts (require content match ≥3 chars)
+        label_tokens = {
+            _singularize_token(_normalize_type_token(w))
+            for w in re.split(r"[^a-zA-Z0-9]+", label)
+            if w and _normalize_type_token(w)
+        }
+        label_tokens = {t for t in label_tokens if len(t) >= 3}
+        type_tokens = set(words) | {tl_compact}
+        overlap = label_tokens & type_tokens
+        if overlap:
+            score = 300 + 20 * len(overlap) + max(len(t) for t in overlap)
+
+    if score <= 0:
+        return 0
+    # Tie-break: longer type names win (more specific compound leaves).
+    return score * 100 + min(len(type_name), 99)
+
+
 def match_type_name(label: str, type_names: list[str]) -> str | None:
     """Match a free-text label to an ontology type leaf (case-insensitive).
 
-    Tries exact, singular/plural strip, and substring containment.
+    General matching (no domain hard-codes):
+
+    * exact / singular / plural
+    * CamelCase head-noun (``trials`` → ``ClinicalTrial`` / ``TrialRun``)
+    * multi-alternative labels (``A or B``)
+    * singularized containment and token overlap
+
+    Returns None on no match or when two distinct types score equally best
+    (ambiguous) so callers can fall through to the LLM instead of inventing
+    a type and counting zero.
     """
     if not label or not type_names:
         return None
-    needle = _normalize_type_token(label).lower()
-    if not needle:
+
+    best: dict[str, int] = {}
+    for alt in _label_alternatives(label):
+        for t in type_names:
+            s = _score_type_match(alt, t)
+            if s <= 0:
+                continue
+            prev = best.get(t, 0)
+            if s > prev:
+                best[t] = s
+
+    if not best:
         return None
-    by_lower = {t.lower(): t for t in type_names}
-    if needle in by_lower:
-        return by_lower[needle]
-    # irregular plurals
-    if needle in _IRREGULAR_SINGULAR and _IRREGULAR_SINGULAR[needle] in by_lower:
-        return by_lower[_IRREGULAR_SINGULAR[needle]]
-    # singular: books → book
-    if needle.endswith("s") and needle[:-1] in by_lower:
-        return by_lower[needle[:-1]]
-    if needle.endswith("ies") and (needle[:-3] + "y") in by_lower:
-        return by_lower[needle[:-3] + "y"]
-    # Containment either way (longest first)
-    ordered = sorted(type_names, key=lambda t: len(t), reverse=True)
-    for t in ordered:
-        tl = t.lower()
-        if tl in needle or needle in tl:
-            return t
-    return None
+
+    ranked = sorted(best.items(), key=lambda kv: kv[1], reverse=True)
+    top_type, top_score = ranked[0]
+    # Ambiguous: two different types within the same score band.
+    if len(ranked) > 1:
+        second_type, second_score = ranked[1]
+        if second_type != top_type and second_score // 100 == top_score // 100:
+            return None
+    return top_type
 
 
 def guess_type_name(label: str) -> str | None:
@@ -136,6 +250,11 @@ def guess_type_name(label: str) -> str | None:
     if lower in _IRREGULAR_SINGULAR:
         stem = _IRREGULAR_SINGULAR[lower]
         return stem[0].upper() + stem[1:]
+    # Prefer last content token for multi-word labels ("inventory skus" → Sku)
+    parts = [p for p in re.split(r"[^a-zA-Z0-9]+", raw) if p]
+    if parts:
+        raw = parts[-1]
+        lower = raw.lower()
     guess = raw
     if guess.islower():
         guess = guess[0].upper() + guess[1:]
@@ -147,17 +266,24 @@ def guess_type_name(label: str) -> str | None:
             guess = guess[:-1]
     return guess or None
 
+
 def resolve_type_name(
     label: str, type_names: list[str] | None, ontology_summary: str = ""
 ) -> str | None:
+    """Resolve a free-text type mention to an ontology leaf.
+
+    When the ontology is known (non-empty ``type_names`` / summary types),
+    **never invent** a PascalCase guess — a miss returns ``None`` so fixtures
+    fall through to the LLM instead of counting a non-existent type as 0.
+    """
     names = (
         list(type_names)
         if type_names is not None
         else extract_type_names_from_ontology(ontology_summary)
     )
-    matched = match_type_name(label, names) if names else None
-    if matched is not None:
-        return matched
+    if names:
+        return match_type_name(label, names)
+    # Bootstrap / empty ontology only — invent PascalCase for hermetic tests.
     return guess_type_name(label)
 
 
@@ -290,7 +416,7 @@ _REL_NAME_FILTER_RE = re.compile(
     r"(?P<label>.+?)\s+"
     r"(?:with|having|that\s+have|have|in|of|from)\s+"
     r"(?:the\s+)?"
-    r"(?P<rel>genre|author|publisher|category)\s+"
+    r"(?P<rel>[A-Za-z_][A-Za-z0-9_]*)\s+"
     r"[\"']?(?P<value>.+?)[\"']?"
     r"$"
 )
@@ -324,7 +450,8 @@ _MADE_BY_FILTER_RE = re.compile(
     r"(?ix)^"
     r"(?:(?:list|show(?:\s+me)?|find|get|which|what)\s+)?"
     r"(?P<label>.+?)\s+"
-    r"(?:made\s+by|written\s+by|sold\s+by|published\s+by|authored\s+by|by)\s+"
+    r"(?:made\s+by|written\s+by|sold\s+by|published\s+by|authored\s+by|"
+    r"supplied\s+by|from\s+vendor|from\s+supplier|by\s+vendor|by\s+supplier|by)\s+"
     r"[\"']?(?P<value>.+?)[\"']?"
     r"$"
 )
@@ -562,6 +689,99 @@ def try_list_query(
     )
 
 
+
+def _ontology_section_for_type(type_name: str, ontology_summary: str) -> str:
+    """Return the Type: block for ``type_name`` (or full text if not found)."""
+    text = ontology_summary or ""
+    if not type_name:
+        return text
+    m = re.search(
+        rf"(?ims)Type:\s*{re.escape(type_name)}\b.*?(?=^Type:|\Z)",
+        text,
+    )
+    return m.group(0) if m else text
+
+
+def _relationship_leaves_in_section(section: str) -> list[str]:
+    """Parse relationship attribute leaves from a type ontology section.
+
+    Accepts both hand-written colon form and production
+    ``format_schema_types_for_cypher`` form::
+
+        - has_phase: relationship → Phase
+        - has_phase -> Phase (relationship, key=has_phase)
+    """
+    leaves: list[str] = []
+    seen: set[str] = set()
+    patterns = (
+        # Production: "- name -> Range (relationship, key=name)"
+        r"(?im)^\s*-\s*([A-Za-z_][A-Za-z0-9_]*)\s*->.*\brelationship\b"
+        r"(?:,\s*key=([A-Za-z_][A-Za-z0-9_]*))?",
+        # Colon form used in tests / older summaries
+        r"(?im)^\s*-\s*([A-Za-z_][A-Za-z0-9_]*)\s*:.*\brelationship\b",
+    )
+    for pat in patterns:
+        for m in re.finditer(pat, section or ""):
+            name = (m.group(2) if m.lastindex and m.lastindex >= 2 and m.group(2) else m.group(1))
+            if not name:
+                continue
+            key = name.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            leaves.append(name)
+    return leaves
+
+
+def _resolve_relationship_attr(
+    rel_word: str,
+    *,
+    type_name: str,
+    ontology_summary: str,
+) -> str | None:
+    """Map a free-text dimension word to a relationship leaf on the type.
+
+    Only returns leaves that the ontology marks as **relationships** on the
+    subject type. No bare-text fallback onto literals.
+    """
+    rel = (rel_word or "").strip()
+    if not rel or not _SAFE_PROP_RE.match(rel):
+        return None
+    section = _ontology_section_for_type(type_name, ontology_summary)
+    leaves = _relationship_leaves_in_section(section)
+    if not leaves:
+        return None
+
+    rel_l = rel.lower()
+    sing = _singularize_token(rel_l)
+    by_lower = {leaf.lower(): leaf for leaf in leaves}
+
+    # Exact / has_ / _by first (no substring guessing).
+    for cand in (rel_l, sing, f"has_{rel_l}", f"has_{sing}", f"{rel_l}_by", f"{sing}_by"):
+        if cand in by_lower:
+            return by_lower[cand]
+
+    # Underscore-token equality only (avoid author ⊂ has_authority).
+    for leaf in leaves:
+        parts = set(leaf.lower().split("_")) - {"has", "by", "the", "a", "an"}
+        if rel_l in parts or sing in parts:
+            return leaf
+    return None
+
+
+def _attr_is_relationship(attr: str, type_name: str, ontology_summary: str) -> bool:
+    """True when ontology marks ``attr`` as a relationship on the type."""
+    if not attr:
+        return False
+    leaves = {
+        x.lower()
+        for x in _relationship_leaves_in_section(
+            _ontology_section_for_type(type_name, ontology_summary)
+        )
+    }
+    return attr.lower() in leaves
+
+
 def try_filter_query(
     question: str,
     ontology_summary: str = "",
@@ -606,6 +826,29 @@ def try_filter_query(
     expanded = type_names_with_subclasses(
         matched, ontology_summary=ontology_summary, include_subclasses=True
     )
+    # Relationship-valued attrs: use related-entity name filter, not literal eq.
+    rel_attr = None
+    if _attr_is_relationship(prop_key, matched, ontology_summary):
+        rel_attr = prop_key
+    else:
+        rel_attr = _resolve_relationship_attr(
+            prop_key, type_name=matched, ontology_summary=ontology_summary
+        )
+    if rel_attr is not None:
+        return _fixture(
+            cypher=RELATED_ENTITY_NAME_FILTER_CYPHER,
+            params={
+                "type_names": expanded,
+                "rel_attr": rel_attr,
+                "target_name": value,
+                "limit": limit if limit is not None else DEFAULT_LIST_LIMIT,
+            },
+            explanation=(
+                f"Find {matched} entities related via {rel_attr} to "
+                f"{value!r} via related_entity_name_filter."
+            ),
+            template=TEMPLATE_RELATED_ENTITY_NAME_FILTER,
+        )
     return _fixture(
         cypher=FILTER_PROP_EQ_CYPHER,
         params={
@@ -710,7 +953,13 @@ def try_related_name_filter_query(
     *,
     type_names: list[str] | None = None,
 ) -> dict[str, Any] | None:
-    """Filter subjects by a related entity's display name (genre/author/…)."""
+    """Filter subjects by a related entity's display name (ontology edges only).
+
+    Matches ``<types> with|having|in <rel> <value>`` only when ``<rel>`` resolves
+    to a **relationship** leaf on the type. Literal dimensions fall through to
+    :func:`try_filter_query` / the LLM — never invent a related-entity template
+    for ``title`` / ``status`` literals.
+    """
     q = _TRAILING_PUNCT_RE.sub("", (question or "").strip())
     if not q:
         return None
@@ -720,36 +969,27 @@ def try_related_name_filter_query(
     if not m:
         return None
     label = (m.group("label") or "").strip()
-    rel = (m.group("rel") or "").strip().lower()
+    rel = (m.group("rel") or "").strip()
     value = _TRAILING_PUNCT_RE.sub("", (m.group("value") or "").strip())
     value, lim_from_value = _strip_limit_suffix(value)
     if lim_from_value is not None:
         limit = lim_from_value
     if not value or not _SAFE_PROP_RE.match(rel):
         return None
-    # Defer "with author is Herbert" / "with genre equals Romance" to equality
-    # filter — those are prop=value shapes, not related-entity names.
-    if re.match(r"(?i)^(is|equals?|=|==)\b", value):
+    # Defer equality / numeric shapes to dedicated fixtures.
+    if re.match(r"(?i)^(is|equals?|=|==|less|more|under|over|below|above|at)\b", value):
+        return None
+    if re.match(r"(?i)^(less|more|under|over|below|above|at\s+least|at\s+most)\b", rel):
         return None
     matched = resolve_type_name(label, type_names, ontology_summary)
     if matched is None:
         return None
 
-    # Map natural words onto common relationship leaves used by inferred ingest.
-    rel_map = {
-        "genre": "has_genre",
-        "author": "has_author",
-        "publisher": "has_publisher",
-        "category": "has_genre",
-    }
-    rel_attr = rel_map.get(rel, rel)
-    # Prefer schema keys when present (has_genre vs genre).
-    if ontology_summary:
-        if re.search(rf"(?i)\bhas_{re.escape(rel)}\b", ontology_summary):
-            rel_attr = f"has_{rel}"
-        elif re.search(rf"(?i)\b{re.escape(rel)}\b.*relationship", ontology_summary):
-            # keep has_* default when both literal+rel exist
-            pass
+    rel_attr = _resolve_relationship_attr(
+        rel, type_name=matched, ontology_summary=ontology_summary
+    )
+    if rel_attr is None:
+        return None
 
     expanded = type_names_with_subclasses(
         matched, ontology_summary=ontology_summary, include_subclasses=True
@@ -803,12 +1043,31 @@ def try_made_by_filter_query(
         candidates = ("has_publisher", "published_by", "publisher")
     elif "sold" in phrase:
         candidates = ("sold_by", "has_seller", "seller")
-    elif "made" in phrase:
-        candidates = ("made_by", "manufacturer", "has_manufacturer")
-    else:
-        # bare "by X" — prefer maker/author leaves present on this type
+    elif "made" in phrase or "manufactur" in phrase:
         candidates = (
             "made_by",
+            "manufacturer",
+            "has_manufacturer",
+            "supplied_by",
+            "has_supplier",
+            "has_vendor",
+            "vendor",
+        )
+    elif "suppl" in phrase or "vendor" in phrase:
+        candidates = (
+            "supplied_by",
+            "has_supplier",
+            "has_vendor",
+            "vendor",
+            "made_by",
+        )
+    else:
+        # bare "by X" — prefer maker/author/supplier leaves present on this type
+        candidates = (
+            "made_by",
+            "supplied_by",
+            "has_supplier",
+            "has_vendor",
             "has_author",
             "written_by",
             "sold_by",
