@@ -1720,16 +1720,17 @@ class NLQueryPipeline:
 
             bank = get_example_bank()
             if bank and bank._examples:
-                # language="cypher" filters the retrieval pool to rows with a
-                # non-empty cypher field (ONTA-539) so top-k is never filled
-                # with SPARQL-only examples that format away to empty.
+                # retrieve() has no language= yet (ONTA-539). Do not pass
+                # language="cypher" here — TypeError is swallowed below and
+                # silently empties few-shots on every cypher ask (R1).
+                # format_examples_for_prompt(language="cypher") still drops
+                # SPARQL-only rows after retrieval.
                 examples = await bank.retrieve(
                     question=question,
                     ontology_context=ontology,
                     exclude_questions=exclude_questions or [],
                     kg_name=kg_name,
                     top_k=3,
-                    language="cypher",
                 )
                 if examples:
                     examples_text = format_examples_for_prompt(
