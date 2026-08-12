@@ -454,6 +454,24 @@ def _parse_point_wkt(wkt: str):
     return lon, lat
 
 
+
+def _cypher_uses_forbidden_shapes(cypher: str) -> str | None:
+    """Return a short reason if free-form Cypher uses non-existent graph shapes.
+
+    The LLM sometimes invents ``HAS_ASSERTION`` / ``predicate_key`` despite the
+    system prompt; that path returns silent zeros for SUM/AVG. Detect before
+    execute so we can retry with corrective feedback.
+    """
+    c = cypher or ""
+    if re.search(r"(?i)\bHAS_ASSERTION\b", c):
+        return "uses forbidden HAS_ASSERTION (does not exist; use Assertion-[:PREDICATE]->Property and a.literal_value or e[prop])"
+    if re.search(r"(?i)\bpredicate_key\b", c):
+        return "uses forbidden predicate_key (Property.name is the leaf key)"
+    if re.search(r"(?i)Assertion\.prop_key", c):
+        return "uses forbidden Assertion.prop_key"
+    return None
+
+
 def _sanitize_sparql_literal(text: str) -> str:
     """Strip characters that could break out of a SPARQL string literal, and cap
     length — the anchor description comes from the LLM and is interpolated into a
@@ -1791,6 +1809,46 @@ class NLQueryPipeline:
                 timing["cypher_stub"] = 1.0
             else:
                 timing["cypher_stub"] = 0.0
+
+            # Reject invented Assertion shapes before execute (silent SUM/AVG zeros).
+            forbidden = _cypher_uses_forbidden_shapes(cypher_raw)
+            if forbidden and not (gen.get("stub") or gen.get("fixture")):
+                last_error = forbidden
+                if attempt == 0:
+                    gen2 = await self._try_llm_cypher(
+                        question,
+                        ontology,
+                        tenant_id=tenant_id,
+                        kg_name=kg_name,
+                        examples_text=examples_text,
+                        error_feedback=(
+                            f"FORBIDDEN shape: {forbidden}\n"
+                            f"Query was: {cypher_raw}\n"
+                            "Rewrite using: "
+                            "MATCH (e:Entity {tenant_id:$tenant_id, kg:$kg})-[:INSTANCE_OF]->(c:Class)\n"
+                            "OPTIONAL MATCH (a:Assertion {subject_id:e.id})-[:PREDICATE]->(p:Property)\n"
+                            "WHERE p.name = $prop_key\n"
+                            "WITH coalesce(a.literal_value, e[p.name]) AS raw ...\n"
+                            "NEVER use HAS_ASSERTION, predicate_key, or Assertion.prop_key."
+                        ),
+                    )
+                    if gen2 is not None:
+                        gen = gen2
+                        timing["cypher_retry"] = 1.0
+                        timing["cypher_forbidden_shape"] = 1.0
+                        continue
+                return NLResult(
+                    answer=f"Could not answer: generated Cypher {forbidden}",
+                    sparql=cypher_raw,
+                    explanation=explanation,
+                    ontology=ontology,
+                    timing={
+                        **timing,
+                        "total_ms": round((time.time() - t0) * 1000, 1),
+                        "attempts": attempts,
+                        "cypher_forbidden_shape": 1.0,
+                    },
+                )
 
             try:
                 cypher, forced_params = confine_generated_cypher(
