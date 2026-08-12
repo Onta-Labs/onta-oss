@@ -402,6 +402,7 @@ _NUMERIC_FILTER_RE = re.compile(
     r"(?:\$|USD\s*)?(?P<cost_num>\d+(?:\.\d+)?)\s*(?:dollars?|usd|\$)?"
     r"|"
     r"(?:with|having|where)\s+(?P<prop>[A-Za-z_][A-Za-z0-9_]*)\s+"
+    r"(?:is\s+)?"
     r"(?P<cmp><=|>=|<|>|=|==|less\s+than|under|below|more\s+than|over|above|at\s+least|at\s+most|equals?)\s+"
     r"(?:\$|USD\s*)?(?P<num>\d+(?:\.\d+)?)\s*(?:dollars?|usd|\$)?"
     r")"
@@ -580,6 +581,15 @@ def try_stub_count_query(
             explanation="Count all entities in the knowledge graph.",
             template=TEMPLATE_COUNT_TOTAL,
         )
+
+    # Refuse silent wrong counts: "how many X have/with/where …" is NOT a bare
+    # type count. Fall through so LLM / filter fixtures handle it.
+    if re.search(
+        r"(?i)\b(?:have|has|with|where|having|that\s+have|under|over|above|below|"
+        r"less\s+than|more\s+than|at\s+least|at\s+most|equals?|is\s+not)\b",
+        label,
+    ):
+        return None
 
     matched = resolve_type_name(label, type_names, ontology_summary)
     if matched is None:
@@ -808,6 +818,12 @@ def try_filter_query(
     if not _SAFE_PROP_RE.match(prop):
         return None
     if not value:
+        return None
+    # Do not treat "less than 500" as an equality value — numeric fixture owns it.
+    if re.match(
+        r"(?i)^(less\s+than|more\s+than|under|over|below|above|at\s+least|at\s+most)\s+\d",
+        value,
+    ):
         return None
     matched = resolve_type_name(label, type_names, ontology_summary)
     if matched is None:
