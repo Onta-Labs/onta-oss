@@ -1568,10 +1568,22 @@ function isMainModule(): boolean {
   const argv1 = process.argv[1];
   if (!argv1) return false;
   try {
-    return fileURLToPath(import.meta.url) === realpathSync(argv1);
+    // realpath BOTH sides so npm `.bin` symlinks match (COG-129) and so
+    // CI runners that resolve import.meta.url via a different mount still hit.
+    const self = realpathSync(fileURLToPath(import.meta.url));
+    const entry = realpathSync(argv1);
+    if (self === entry) return true;
   } catch {
-    return false;
+    // fall through to basename heuristics
   }
+  // Fallback for exotic layouts (Windows junctions, partial realpath failure):
+  // treat as main when the process was clearly launched as our bin / cli.js.
+  const norm = argv1.replace(/\\/g, "/");
+  return (
+    norm.endsWith("/cli.js") ||
+    norm.endsWith("/infona") ||
+    norm.endsWith("/onta")
+  );
 }
 
 /** Run the CLI. Exported (and reachable via the `"./cli"` subpath export in
@@ -1585,7 +1597,13 @@ export async function main(argv: string[] = process.argv): Promise<void> {
 }
 
 if (isMainModule()) {
-  void main();
+  void main().catch((err) => {
+    // Surface unexpected async failures (otherwise spawnSync can see exit 1
+    // with empty stdout — which broke packages/cli symlink --version on CI).
+    const msg = err instanceof Error ? err.stack ?? err.message : String(err);
+    process.stderr.write(msg.endsWith("\n") ? msg : `${msg}\n`);
+    process.exitCode = 1;
+  });
 }
 
 // silence unused import warning if ever needed
