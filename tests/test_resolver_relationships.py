@@ -409,21 +409,6 @@ class TestRelationshipRegistration:
         assert len([k for k in await _attrs() if k == ("Person", "lives_in")]) == 1
         _assert_no_sparql_write_but_the_rel_flush(mock_neptune)
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "PRODUCT BUG (Neo4j port): extracted relationship EDGES never reach "
-            "the graph. schema_resolver._resolve_and_insert flushes its "
-            "rel_triples with `batched_insert_triples(...)` + "
-            "`await self._neptune.update(sparql)` (step 4) instead of the "
-            "converged `insert_facts`, so on the GraphStore path the SPARQL "
-            "goes to the dead Neptune client and the edge is silently dropped. "
-            "The ontology half still lands (Person.lives_in is declared with "
-            "range City), so the schema promises an edge the KG does not have — "
-            "and result.triples_inserted counts it as written."
-        ),
-    )
-    @pytest.mark.asyncio
     async def test_instance_triple_always_inserted(self, mock_neptune, mock_cache):
         """Instance relationship triples should always be inserted regardless of ontology state."""
         resolver = SchemaResolver(mock_neptune, "fake-key", mock_cache)
@@ -575,14 +560,13 @@ class TestDomainModeling:
         humanness = await _detail("HumannessIndex", "eleven-v3-humanness")
         assert humanness is not None
         assert humanness.primary_type == "HumannessIndex"
-        assert (
-            humanness.properties["value"]
-            == "87.5^^http://www.w3.org/2001/XMLSchema#float"
-        )
+        # The datatype annotation is SPLIT OFF the value now (it used to be
+        # stored inside it — the leak this file previously tolerated), so the
+        # stored property is the native scalar.
+        assert float(humanness.properties["value"]) == 87.5
         # (the validator coerces the datetime to xsd form, dropping the 'Z').
-        assert (
-            humanness.properties["timestamp"]
-            == "2026-06-01T00:00:00^^http://www.w3.org/2001/XMLSchema#dateTime"
+        assert str(humanness.properties["timestamp"]).startswith(
+            "2026-06-01T00:00:00"
         )
 
         # --- all three entities resolved (Model, Organization, HumannessIndex)

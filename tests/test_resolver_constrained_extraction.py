@@ -378,23 +378,6 @@ async def test_ingest_constraint_prompt_pins_type_and_drops_off_type(
     assert {a.name for a in ex.entities[0].attributes} == {"name", "specialty"}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "PRODUCT BUG (Neo4j port): an extracted attribute named `name` aborts "
-        "the ENTIRE ingest. ontology_catalog._validate_attr_leaf rejects the "
-        "reserved Entity property keys (graph/facts.py "
-        "RESERVED_ENTITY_PROPERTY_KEYS: name/label/source/id/kg/…), and the "
-        "resolver declares every extracted attribute, so commit_ontology raises "
-        "GraphScopeError out of ingest (a 500 on /ingest) instead of skipping or "
-        "renaming the declaration. The INSTANCE side has no such problem — "
-        "facts.classify_triple already maps an attrs/name literal onto the "
-        "Entity display property — so a whole run dies over a declaration alone. "
-        "`name` is the single most common extracted attribute, and discovery's "
-        "own constraint guard is specified to always keep it."
-    ),
-)
-@pytest.mark.asyncio
 async def test_ingest_of_an_extracted_name_attribute_reaches_the_graph(
     mock_neptune, mock_cache
 ):

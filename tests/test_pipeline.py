@@ -158,13 +158,24 @@ async def test_ask_refuses_a_generated_mutation(pipeline, store):
 
 @pytest.mark.asyncio
 async def test_ask_no_results(pipeline):
-    """A well-formed query that matches nothing answers honestly."""
+    """Nothing to answer with ⇒ say so; never invent rows.
+
+    Behaviour changed upstream (fix(ask) #338): a question naming a type the
+    ontology does not have is now REFUSED before a query is generated, rather
+    than generating one that returns zero rows. Both are honest, and honesty is
+    what this test owns — so it accepts either, and fails if the pipeline ever
+    answers as though it had data.
+    """
     result = await pipeline.ask(
         "list all sprockets", TENANT_GRAPH, KG_GRAPH
     )
 
-    assert result.answer == "No results found."
-    assert result.timing.get("rows") == 0
+    answer = result.answer.lower()
+    assert "no results found" in answer or "could not answer" in answer, result.answer
+    assert "sprocket" not in answer.replace("sprockets", ""), "fabricated a row"
+    rows = result.timing.get("rows")
+    # A query ran ⇒ it must have returned nothing. It refused ⇒ no row count.
+    assert rows in (0, None), rows
 
 
 @pytest.mark.asyncio

@@ -351,22 +351,6 @@ def test_type_detail_lists_attached_functions(client, auth_headers, store):
     assert response.json()["functions"] == ["calculate_distance"]
 
 
-@pytest.mark.xfail(
-    reason=(
-        "PRODUCT BUG (pre-dates ONTA-527, surfaced by it): declaring an "
-        "attribute whose leaf collides with a reserved Entity property key — "
-        "and 'name' is in RESERVED_ENTITY_PROPERTY_KEYS (graph/facts.py), i.e. "
-        "the single commonest attribute name there is — 500s instead of "
-        "returning a 4xx. ontology_catalog._validate_attr_leaf raises "
-        "GraphScopeError (a plain ValueError subclass, not an HTTPException) "
-        "and api/routes/ontology.py::create_type / add_attributes do not catch "
-        "it, so the B2 schema-time gate reaches the client as an unhandled "
-        "server error with no field-level detail. POST /ontology/apply/batch "
-        "already isolates the same exception into a per-change ok=False, which "
-        "is what these routes should do."
-    ),
-    strict=True,
-)
 def test_create_type_rejects_a_reserved_attribute_name_with_a_4xx(
     client, auth_headers
 ):

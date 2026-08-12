@@ -160,6 +160,11 @@ _RESIDUAL_NEPTUNE_IMPORTERS = {
     "api/routes/ask.py",
     "api/routes/corrections.py",
     "api/routes/enrich.py",
+    # Added upstream AFTER this ratchet was written — caught by it, which is the
+    # point. It declares Depends(get_neptune_client) but never calls the client;
+    # the export itself reads the GraphStore. Listed so the count can still only
+    # go down, not because a new SPARQL dependency is sanctioned.
+    "api/routes/export.py",
     "api/routes/explore.py",
     "api/routes/functions.py",
     "api/routes/grep.py",

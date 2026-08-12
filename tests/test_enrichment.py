@@ -4136,7 +4136,6 @@ _TYPED_LITERAL_LEAK = (
 )
 
 
-@pytest.mark.xfail(reason=_TYPED_LITERAL_LEAK, strict=True)
 def test_executor_apply_writes_typed_integer_literal(monkeypatch):
     """A numeric enriched value is stored as a TYPED literal
     ``"92"^^<…#integer>`` matching the declared integer range — NOT a bare
@@ -4232,7 +4231,6 @@ def test_executor_apply_writes_comma_number_as_string_not_dropped(monkeypatch):
     asyncio.run(run())
 
 
-@pytest.mark.xfail(reason=_TYPED_LITERAL_LEAK, strict=True)
 def test_executor_apply_writes_typed_datetime_literal(monkeypatch):
     """A date enriched value is stored as a date matching the declared dateTime
     range — the ISO instant itself, not the instant with its datatype URI glued
@@ -4523,7 +4521,6 @@ def test_provenance_triples_stamps_per_fact_verified_at():
     assert bare_verified and bare_verified[0].endswith(f"^^{XSD_DT}")
 
 
-@pytest.mark.xfail(reason=_TYPED_LITERAL_LEAK, strict=True)
 def test_apply_decisions_writes_typed_integer_literal(monkeypatch):
     """The review-apply path (apply_decisions) also types the accepted value: a
     numeric accepted value is stored as the number, matching the declared range —

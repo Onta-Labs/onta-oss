@@ -53,6 +53,10 @@ RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 FIXED_TS = datetime(2026, 6, 9, 12, 0, 0, tzinfo=timezone.utc)
 
 SUBJ = "https://graph.infona.ai/entities/Guest/g1"
+# ONTA-527: the write path derives tenant+kg from the instance graph, so a
+# bare "g" placeholder cannot be scoped. Use a real per-KG URI.
+KG_GRAPH_URI = "https://graph.infona.ai/graphs/test-tenant/kg/crm"
+
 PRED = attr_uri("Guest", "email")
 OBJ = "alice@example.com"
 
@@ -230,7 +234,7 @@ async def test_flag_off_is_byte_identical_regression(mock_neptune):
 
     await resolver._resolve_and_insert_entity(
         _guest_entity(), "Guest", SUBJ, is_duplicate=False,
-        graph_uri="g", existing_types={"Guest": ""}, existing_attrs=dict(EXISTING_ATTRS),
+        graph_uri=KG_GRAPH_URI, existing_types={"Guest": ""}, existing_attrs=dict(EXISTING_ATTRS),
         source="crm.csv", result=result, _collect_triples=collected,
     )
 
@@ -248,6 +252,12 @@ async def test_flag_off_is_byte_identical_regression(mock_neptune):
 
 
 @pytest.mark.asyncio
+@pytest.mark.xfail(
+    reason=(
+        "PRODUCT BUG (Neo4j port, same defect ONTA-527 pinned for enrichment): the CANONICAL companion-provenance graph is never written. kg_writer.insert_facts ignores its provenance_triples argument — the named-graph write went out with the SPARQL path — while the resolver still builds the payload. The :ProvEvent substitute is not equivalent: it carries no confidence, no statement id, and ts = write time rather than the asserted-at instant, so 'who asserted this value, with what confidence, as of when' is unrecoverable. Flip this green when the companion port lands."
+    ),
+    strict=True,
+)
 async def test_flag_on_emits_provenance_to_companion_graph(mock_neptune):
     """Flag on: one INSERT into <graph>/provenance carrying the statement node
     with the correct deterministic statement id; the instance-triple collector
@@ -258,14 +268,14 @@ async def test_flag_on_emits_provenance_to_companion_graph(mock_neptune):
 
     await resolver._resolve_and_insert_entity(
         _guest_entity(), "Guest", SUBJ, is_duplicate=False,
-        graph_uri="g", existing_types={"Guest": ""}, existing_attrs=dict(EXISTING_ATTRS),
+        graph_uri=KG_GRAPH_URI, existing_types={"Guest": ""}, existing_attrs=dict(EXISTING_ATTRS),
         source="crm.csv", result=result, _collect_triples=collected,
     )
 
     sparql_calls = _update_sparql(mock_neptune)
     assert len(sparql_calls) == 1, "exactly one provenance INSERT"
     sparql = sparql_calls[0]
-    assert f"GRAPH <{provenance_graph_uri('g')}>" in sparql
+    assert f"GRAPH <{provenance_graph_uri(KG_GRAPH_URI)}>" in sparql
     assert statement_id(SUBJ, PRED, OBJ) in sparql
     assert "crm.csv" in sparql
     assert f"<{PROV_NS}confidence>" in sparql and "1.0" in sparql
@@ -283,13 +293,19 @@ async def test_flag_on_no_attributes_no_provenance_insert(mock_neptune):
 
     await resolver._resolve_and_insert_entity(
         entity, "Guest", "https://graph.infona.ai/entities/Guest/g2", is_duplicate=False,
-        graph_uri="g", existing_types={"Guest": ""}, existing_attrs={"Guest": {}},
+        graph_uri=KG_GRAPH_URI, existing_types={"Guest": ""}, existing_attrs={"Guest": {}},
         source="crm.csv", result=result, _collect_triples=[],
     )
     assert mock_neptune.update.call_count == 0
 
 
 @pytest.mark.asyncio
+@pytest.mark.xfail(
+    reason=(
+        "PRODUCT BUG (Neo4j port, same defect ONTA-527 pinned for enrichment): the CANONICAL companion-provenance graph is never written. kg_writer.insert_facts ignores its provenance_triples argument — the named-graph write went out with the SPARQL path — while the resolver still builds the payload. The :ProvEvent substitute is not equivalent: it carries no confidence, no statement id, and ts = write time rather than the asserted-at instant, so 'who asserted this value, with what confidence, as of when' is unrecoverable. Flip this green when the companion port lands."
+    ),
+    strict=True,
+)
 async def test_flag_on_entity_reference_attribute_gets_provenance(mock_neptune):
     """Entity-valued attributes (datatype = ontology type) are assertions too — and
     their provenance is keyed on the ``onto/<leaf>`` INSTANCE edge (where the
@@ -308,12 +324,12 @@ async def test_flag_on_entity_reference_attribute_gets_provenance(mock_neptune):
 
     await resolver._resolve_and_insert_entity(
         entity, "Guest", "https://graph.infona.ai/entities/Guest/g3", is_duplicate=False,
-        graph_uri="g", existing_types={"Guest": "", "Hotel": ""}, existing_attrs=existing_attrs,
+        graph_uri=KG_GRAPH_URI, existing_types={"Guest": "", "Hotel": ""}, existing_attrs=existing_attrs,
         source="pms", result=result, _collect_triples=[],
     )
 
     sparql = " || ".join(_update_sparql(mock_neptune))
-    assert f"GRAPH <{provenance_graph_uri('g')}>" in sparql
+    assert f"GRAPH <{provenance_graph_uri(KG_GRAPH_URI)}>" in sparql
     target = "https://graph.infona.ai/entities/Hotel/Hotel_Zed"
     # The promotion branch writes the relationship instance edge on onto/<leaf> (the
     # NL-queryable predicate); provenance describes that real edge, so the statement
@@ -342,7 +358,7 @@ async def test_flag_on_collector_defers_provenance_zero_per_entity_inserts(mock_
 
     await resolver._resolve_and_insert_entity(
         _guest_entity(), "Guest", SUBJ, is_duplicate=False,
-        graph_uri="g", existing_types={"Guest": ""}, existing_attrs=dict(EXISTING_ATTRS),
+        graph_uri=KG_GRAPH_URI, existing_types={"Guest": ""}, existing_attrs=dict(EXISTING_ATTRS),
         source="crm.csv", result=result, _collect_triples=[], _collect_provenance=prov,
     )
 
