@@ -53,14 +53,14 @@ from infona_client.graph.text_markers import (
 )
 from infona_client.graph.parser import parse_sparql_results
 from infona_client.graph.kg_writer import build_graph_delta, insert_facts
-from infona_client.graph.store import graph_backend, resolve_optional_graph_store
+from infona_client.graph.store import resolve_optional_graph_store
 from infona_client.pipeline.envelope import derive_fact_id
 from infona_client.graph.provenance import (
     build_attribute_provenance_companions,
     build_provenance_triples,
     build_truth_verdict_companion,
 )
-from infona_client.graph.queries import BATCH_PREDICATE, delete_batch_query, tenant_graph_uri
+from infona_client.graph.queries import BATCH_PREDICATE, tenant_graph_uri
 from infona_client.resolver.attribute_resolver import (
     AttributeSchema,
     _normalize_attr_name,
@@ -2159,23 +2159,19 @@ class SchemaResolver:
                 exc_info=True,
             )
             instance_graph = target_instance_graph  # ONTA-268: call-local, not self
-            # Best-effort SPARQL batch delete is Neptune-only. On Neo4j/GraphStore
-            # there is no SPARQL endpoint — attempting update() raises ConnectError
-            # that muddies logs and can mask the original ingest failure. Skip and
-            # re-raise the original exception unchanged.
-            if graph_backend() == "neo4j":
-                logger.info(
-                    "batch_rollback_skipped_neo4j",
-                    batch_id=batch_id,
-                    reason="SPARQL delete_batch unavailable on GraphStore",
-                )
-            else:
-                try:
-                    sparql = delete_batch_query(instance_graph, batch_id)
-                    await self._neptune.update(sparql)
-                    logger.info("batch_rollback_complete", batch_id=batch_id)
-                except Exception:
-                    logger.error("batch_rollback_failed", batch_id=batch_id, exc_info=True)
+            # ONTA-528: batch delete-by-id is not yet ported to GraphStore. The
+            # old path called ``await self._neptune.update(delete_batch_query(...))``
+            # — a dead SPARQL client on Neo4j-only that either ConnectError'd
+            # (masking the original failure) or silently no-op'd. Do not call
+            # NeptuneClient.update here; re-raise the original ingest failure.
+            # Partial writes for this batch_id may remain until a GraphStore
+            # batch-rollback lands; never claim rollback succeeded via SPARQL.
+            logger.info(
+                "batch_rollback_skipped",
+                batch_id=batch_id,
+                instance_graph=instance_graph,
+                reason="delete_batch not ported to GraphStore (ONTA-528)",
+            )
             raise
 
     async def _resolve_and_insert(
@@ -2496,7 +2492,6 @@ class SchemaResolver:
         )
         if verdict_companions:
             all_entity_triples.extend(verdict_companions)
-            result.triples_inserted += len(verdict_companions)
 
         # Single shared write path (graph/kg_writer.py) — the SAME function the
         # enrichment writer uses: batched instance-triple insert + the companion
@@ -2506,6 +2501,8 @@ class SchemaResolver:
         # write would produce; only the write pattern is batched.)
         # E7: resolve GraphStore once per write batch when neo4j backend is
         # active; None keeps the Neptune SPARQL default.
+        # ONTA-528: triples_inserted counts only facts that actually landed —
+        # increment AFTER a successful insert_facts, never on collect/stage.
         if all_entity_triples or all_provenance_triples:
             # instance_graph resolved once at method top (ONTA-268 call-local).
             await insert_facts(
@@ -2515,6 +2512,7 @@ class SchemaResolver:
                 provenance_triples=all_provenance_triples or None,
                 store=resolve_optional_graph_store(),
             )
+            result.triples_inserted += len(all_entity_triples)
 
         # ONTA-177: decide + persist free-text candidacy for the attributes this
         # schema pass touched — written alongside the other attribute upserts of
@@ -3166,10 +3164,9 @@ class SchemaResolver:
                 )
 
             # Flush collected instance (+ companion provenance) triples through
-            # the SAME shared write path as the extract / enrichment rails. On
-            # Neo4j, SPARQL batched_insert is unavailable — insert_facts dual-
-            # routes to GraphStore. The triple COUNT was already tallied inside
-            # `_resolve_and_insert_entity`, so do NOT re-increment.
+            # the SAME shared write path as the extract / enrichment rails.
+            # ONTA-528: count triples_inserted only after insert_facts succeeds
+            # (never on collect inside `_resolve_and_insert_entity`).
             if collected_entity_triples or collected_provenance_triples:
                 await insert_facts(
                     self._neptune,
@@ -3178,6 +3175,7 @@ class SchemaResolver:
                     provenance_triples=collected_provenance_triples or None,
                     store=resolve_optional_graph_store(),
                 )
+                result.triples_inserted += len(collected_entity_triples)
 
             # ONTA-177: persist the schema pass's free-text verdicts (the
             # mapping's per-column text_kind, decided ONCE at schema-inference
@@ -3290,20 +3288,14 @@ class SchemaResolver:
                 exc_info=True,
             )
             # instance_graph resolved once at method top (ONTA-268 call-local).
-            # Best-effort SPARQL batch delete is Neptune-only (see ingest path).
-            if graph_backend() == "neo4j":
-                logger.info(
-                    "csv_batch_rollback_skipped_neo4j",
-                    batch_id=batch_id,
-                    reason="SPARQL delete_batch unavailable on GraphStore",
-                )
-            else:
-                try:
-                    sparql = delete_batch_query(instance_graph, batch_id)
-                    await self._neptune.update(sparql)
-                    logger.info("csv_batch_rollback_complete", batch_id=batch_id)
-                except Exception:
-                    logger.error("csv_batch_rollback_failed", batch_id=batch_id, exc_info=True)
+            # ONTA-528: no NeptuneClient.update / SPARQL delete_batch — see
+            # the extract-path rollback note above.
+            logger.info(
+                "csv_batch_rollback_skipped",
+                batch_id=batch_id,
+                instance_graph=instance_graph,
+                reason="delete_batch not ported to GraphStore (ONTA-528)",
+            )
             raise
 
     async def _extract(
@@ -4778,7 +4770,8 @@ class SchemaResolver:
                     # a domain fact, so it gets no provenance record of its own).
                     if validated.surface_form_companion:
                         triples_to_insert.append(validated.surface_form_companion)
-                    result.triples_inserted += 1
+                    # ONTA-528: do not count here — triples_inserted increments
+                    # only after insert_facts lands the batch.
                 else:
                     result.rejections.append(validated)
 
@@ -4809,7 +4802,6 @@ class SchemaResolver:
                     # ONTA-347: preserve the ORIGINAL surface form on transform.
                     if validated.surface_form_companion:
                         triples_to_insert.append(validated.surface_form_companion)
-                    result.triples_inserted += 1
                 else:
                     result.rejections.append(validated)
                 continue
@@ -4894,7 +4886,6 @@ class SchemaResolver:
                         )
                         if validated.surface_form_companion:
                             triples_to_insert.append(validated.surface_form_companion)
-                        result.triples_inserted += 1
                     else:
                         result.rejections.append(validated)
                     continue
@@ -4936,7 +4927,6 @@ class SchemaResolver:
                 # refresh coverage (Part 3): the newly-minted node's TYPE must be
                 # re-embedded / re-stat'd now, not only on its next write.
                 result.node_target_types.append(resolved.datatype)
-                result.triples_inserted += 1
             else:
                 pred_uri = attr_uri(resolved_type, resolved.name)
                 # ONTA-373: record the A3 clean outcome (passed/transformed/dropped
@@ -4961,7 +4951,6 @@ class SchemaResolver:
                     # ONTA-347: preserve the ORIGINAL surface form on transform.
                     if validated.surface_form_companion:
                         triples_to_insert.append(validated.surface_form_companion)
-                    result.triples_inserted += 1
                     # ONTA-177: sample validated string values as free-text
                     # candidacy evidence (bounded per attribute).
                     if _collect_text_values is not None and resolved.datatype == "string":
@@ -5045,15 +5034,17 @@ class SchemaResolver:
         if batch_id:
             triples_to_insert.append((entity_uri, BATCH_PREDICATE, batch_id))
 
-        # Collect triples for batch insert (or insert immediately if no collector)
+        # Collect triples for batch insert (or insert immediately if no collector).
+        # ONTA-528: never increment triples_inserted on collect — only after a
+        # successful insert_facts (here for the legacy no-collector path; the
+        # batched callers count after their own insert_facts).
         if triples_to_insert:
             if _collect_triples is not None:
                 _collect_triples.extend(triples_to_insert)
-                result.triples_inserted += len(triples_to_insert)
             else:
-                # Legacy path: insert per-entity via shared write (dual-routes
-                # Neptune SPARQL / GraphStore Neo4j). Callers without a collector
-                # (direct unit tests / older entry points) still stay Neo4j-safe.
+                # Legacy path: insert per-entity via shared write. Callers without
+                # a collector (direct unit tests / older entry points) stay on
+                # insert_facts — never NeptuneClient.update / SPARQL INSERT.
                 instance_graph = (
                     instance_graph if instance_graph is not None
                     else getattr(self, "_instance_graph", graph_uri)

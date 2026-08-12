@@ -82,17 +82,27 @@ def test_ingest_route_delegates_housekeeping_to_shared_writer(
 
 # --- Structural tripwire: deny-by-default scan of the whole package ------------
 
-# Markers of a bespoke instance-graph write (ADR 0007 §4):
+# Markers of a bespoke instance-graph write (ADR 0007 §4 + ONTA-528):
 #   M1 — a call to the single-statement insert builder ``insert_triples(`` (the
-#        un-batched / un-refreshed insert smell). Word-boundary so
-#        ``batched_insert_triples`` (the sanctioned batched builder used by
-#        kg_writer + the ingest engine) and ``delete_...`` never match.
+#        un-batched / un-refreshed insert smell). Word-boundary so the bare name
+#        is not matched inside ``batched_insert_triples`` (that combo is M4).
 #   M2 — hand-written SPARQL removal against a graph: ``DELETE {``, ``DELETE WHERE``,
 #        or ``DELETE DATA``. SQL ``DELETE FROM ...`` (the Postgres durable stores:
 #        job/plan/schedule/stats/spatiotemporal) is intentionally NOT matched — it
 #        is not a triple write.
+#   M4 — ``batched_insert_triples(...)`` composed with a SPARQL client
+#        ``.update(...)`` flush (ONTA-528). On a Neo4j-only product that path is
+#        the silent write-drop: the SPARQL goes to the vestigial NeptuneClient,
+#        the facts never land, and a premature ``triples_inserted += len(...)``
+#        still reports success. The builder alone (in ``graph/queries.py``) is
+#        fine; the *flush* is the violation. Instance writes must use
+#        ``insert_facts``.
 _M1 = re.compile(r"(?<![\w.])insert_triples\(")
 _M2 = re.compile(r"DELETE\s*\{|DELETE\s+WHERE|DELETE\s+DATA")
+_M4_BATCHED = re.compile(r"(?<![\w.])batched_insert_triples\(")
+_M4_SPARQL_UPDATE = re.compile(
+    r"(?:await\s+)?(?:self\._neptune|neptune|client|n)\.update\s*\("
+)
 # E3 / Neo4j: free-form instance CREATE/MERGE outside the write path (or schema
 # bootstrap) is the Cypher-era twin of bespoke insert_triples. Allowlisted
 # modules own the only sanctioned emitters.
@@ -118,6 +128,11 @@ _M3b = re.compile(
 # converged write path — uses batched_insert/delete_triples + rewrite_subject_update)
 # and ``graph/provenance.py`` (returns triple lists, no SPARQL string construction).
 _ALLOWLIST: dict[str, str] = {
+    # Residual SPARQL value-history companion inside the converged writer
+    # (pre-Neo4j history port). Instance inserts go through _insert_facts_store /
+    # pg_ops only; this entry exists solely because M4 flags the history path's
+    # batched_insert_triples + neptune.update. Remove when history is ported.
+    "graph/kg_writer.py": "converged write path — residual value-history SPARQL companion still uses batched_insert_triples + neptune.update (ONTA-528 allowlist until history GraphStore port); instance inserts are store-path only.",
     # The SPARQL builder library the whole write path composes.
     "graph/queries.py": "SPARQL builder library — defines the insert/delete/rewrite statement builders every writer composes; not itself a writer.",
     # Non-instance graphs: schema / aliases / governance.
@@ -188,6 +203,9 @@ def _bespoke_markers(code: str) -> list[str]:
         marks.append("insert_triples(")
     if _M2.search(code):
         marks.append("raw SPARQL DELETE")
+    # ONTA-528: the Neo4j-era silent-drop pattern.
+    if _M4_BATCHED.search(code) and _M4_SPARQL_UPDATE.search(code):
+        marks.append("batched_insert_triples+neptune.update")
     return marks
 
 
@@ -334,11 +352,25 @@ def test_enrichment_writer_uses_shared_path_not_bespoke_insert():
 def test_ingest_writer_uses_shared_insert_and_refresh():
     """The ingest resolver writes through insert_facts, and the ingest routes
     delegate housekeeping to refresh_after_write rather than re-inlining the
-    embed / cache-invalidate steps."""
+    embed / cache-invalidate steps.
+
+    ONTA-528: schema_resolver must not flush via NeptuneClient.update (dead
+    SPARQL client on Neo4j-only) or compose batched_insert_triples + update.
+    """
     resolver_src = inspect.getsource(schema_resolver_mod)
     assert _calls(resolver_src, "insert_facts"), (
         "ingest resolver must write instance facts via kg_writer.insert_facts"
     )
+    clean = _strip_comments(resolver_src)
+    assert not _M4_SPARQL_UPDATE.search(clean), (
+        "schema_resolver reintroduced NeptuneClient.update — instance writes and "
+        "rollbacks must not call the dead SPARQL client (ONTA-528)."
+    )
+    assert not _M4_BATCHED.search(clean), (
+        "schema_resolver reintroduced batched_insert_triples — flush via "
+        "kg_writer.insert_facts (ONTA-528)."
+    )
+    assert "batched_insert_triples+neptune.update" not in _bespoke_markers(clean)
 
     route_src = inspect.getsource(ingest_route_mod)
     assert _calls(route_src, "refresh_after_write"), (
@@ -525,14 +557,40 @@ def test_guard_ignores_sql_delete_from():
     assert _bespoke_markers(_strip_comments(planted)) == []
 
 
-def test_guard_ignores_batched_builders_and_delete_facts():
-    """The sanctioned batched builder + the convergence primitives are not markers."""
+def test_guard_ignores_delete_facts_and_rewrite_subject():
+    """The convergence primitives themselves are not markers (no bespoke write)."""
     planted = (
-        "for s in batched_insert_triples(g, t):\n    await n.update(s)\n"
         "await delete_facts(n, g, subjects=x)\n"
         "await rewrite_subject(n, g, old, new)\n"
+        "await insert_facts(n, g, triples)\n"
     )
     assert _bespoke_markers(_strip_comments(planted)) == []
+
+
+def test_guard_flags_batched_insert_plus_neptune_update():
+    """ONTA-528: batched_insert_triples + client.update is the silent-drop pattern.
+
+    The old M1 lookbehind deliberately ignored batched_insert_triples — correct
+    when that builder *was* the sanctioned write, wrong once GraphStore is the
+    only backend and the SPARQL flush is dead.
+    """
+    planted = (
+        "for s in batched_insert_triples(g, t):\n"
+        "    await neptune.update(s)\n"
+    )
+    marks = _bespoke_markers(_strip_comments(planted))
+    assert "batched_insert_triples+neptune.update" in marks, marks
+
+    planted_self = (
+        "for sparql in batched_insert_triples(instance_graph, triples):\n"
+        "    await self._neptune.update(sparql)\n"
+    )
+    marks_self = _bespoke_markers(_strip_comments(planted_self))
+    assert "batched_insert_triples+neptune.update" in marks_self, marks_self
+
+    # Builder alone (queries.py style) is fine — no flush.
+    builder_only = "def f(g, t):\n    return list(batched_insert_triples(g, t))\n"
+    assert _bespoke_markers(_strip_comments(builder_only)) == []
 
 
 def test_guard_strips_comment_prose():
@@ -549,3 +607,18 @@ def test_guard_would_fail_for_a_new_unallowlisted_writer():
     marks = _bespoke_markers(_strip_comments(fake_src))
     is_violation = bool(marks) and fake_rel not in _ALLOWLIST
     assert is_violation, "a new hand-rolled instance writer must be denied by default"
+
+
+def test_guard_would_fail_for_planted_batched_insert_flush():
+    """Planted-violation self-test (ONTA-528): a new unallowlisted module that
+    flushes via batched_insert_triples + neptune.update is denied by default."""
+    fake_rel = "resolver/some_new_flush.py"
+    planted = (
+        "async def flush(n, g, t):\n"
+        "    for s in batched_insert_triples(g, t):\n"
+        "        await n.update(s)\n"
+    )
+    marks = _bespoke_markers(_strip_comments(planted))
+    assert "batched_insert_triples+neptune.update" in marks
+    assert fake_rel not in _ALLOWLIST
+    assert bool(marks) and fake_rel not in _ALLOWLIST
