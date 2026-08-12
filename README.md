@@ -79,24 +79,44 @@ set -a && source .env && set +a
 uvicorn infona_client.api.app:create_app --factory --port 8000
 ```
 
-No API key required for local open-access (`INFONA_API_KEYS` empty → tenant `default`). Pass `--tenant default` (or `INFONA_TENANT=default`) on the CLI if your config still defaults to another tenant.
+No API key required for local open-access (`INFONA_API_KEYS` empty → tenant `default`).
 
-### 4. Ingest, ask, export
+### 4. Connect the CLI (local open-access)
+
+**Canonical OSS entry** — after the API is healthy, run the one-shot setup script.
+It probes `/health`, confirms open-access, writes `~/.infona/config.json`
+(`apiUrl=http://localhost:8000`, `tenant=default`), and best-effort builds/links
+the CLI when Node is present:
 
 ```bash
-# Workspace CLI (until a published release ships export + local tenant defaults):
-node packages/cli/dist/cli.js --local ingest examples/bookstore.csv --kg bookstore
-node packages/cli/dist/cli.js --local ask "How many books are there?" --kg bookstore
-
-# Get data back out (F10)
-node packages/cli/dist/cli.js --local export --kg bookstore -f json -o bookstore.json
-node packages/cli/dist/cli.js --local export --kg bookstore -f csv --type Book -o books.csv
+./scripts/oss_setup.sh
+# equivalent non-interactive CLI:  infona init --local
 ```
 
-`--local` targets `http://localhost:8000` and defaults the tenant to **`default`**
-(open-access when `INFONA_API_KEYS` is empty). Reserved attribute leaves such as
-`name` are rewritten to ontology-safe names (e.g. `display_name`) so Neo4j ingest
-does not 500 on model B2 collisions.
+After that, **bare `infona` works without `--local`**. Re-run configuration any
+time with `infona init` (interactive menu; confirms before overwriting credentials).
+
+> Pure `npm install -g @infona-ai/cli` does **not** force local mode — first run
+> opens a connect wizard (local / browser / API key). Only this repo setup path
+> (or choosing “local” in the wizard) writes the open-access config.
+
+### 5. Ingest, ask, export
+
+```bash
+# After oss_setup.sh — no --local needed:
+infona ingest examples/bookstore.csv --kg bookstore
+infona ask "How many books are there?" --kg bookstore
+
+# Or one-off without touching config:
+infona --local ingest examples/bookstore.csv --kg bookstore
+infona --local export --kg bookstore -f json -o bookstore.json
+infona --local export --kg bookstore -f csv --type Book -o books.csv
+```
+
+`--local` is a **one-off flag** (does not rewrite config): targets
+`http://localhost:8000` and tenant **`default`**. Reserved attribute leaves such
+as `name` are rewritten to ontology-safe names (e.g. `display_name`) so Neo4j
+ingest does not 500 on model B2 collisions.
 
 HTTP:
 
@@ -119,14 +139,18 @@ CSV / JSON / text
 ## CLI (self-hosted)
 
 ```bash
-infona --local                    # shell → http://localhost:8000, tenant default
-infona --local kg list
-infona --local ingest data.csv --kg my-dataset
-infona --local ask "How many records?" --kg my-dataset
-infona --local export --kg my-dataset -f json -o out.json
-infona --local export --kg my-dataset -f csv -o out.csv
-infona --local ontology types
+./scripts/oss_setup.sh            # write local open-access config (once)
+infona                            # shell → uses ~/.infona/config.json
+infona kg list
+infona ingest data.csv --kg my-dataset
+infona ask "How many records?" --kg my-dataset
+infona export --kg my-dataset -f json -o out.json
+infona init                       # re-run connect wizard (confirm before clobber)
+infona --local kg list            # one-off; does not change saved config
 ```
+
+Precedence: **flags** (one-off) **> env** (`INFONA_API_URL` / `INFONA_API_KEY`)
+**> config file** **> wizard** when empty.
 
 See [packages/cli/README.md](packages/cli/README.md).
 

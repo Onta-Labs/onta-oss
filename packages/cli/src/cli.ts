@@ -1467,6 +1467,63 @@ program
   });
 
 // ---------------------------------------------------------------------------
+// init — connect wizard (first-run / re-init)  ONTA-540
+// ---------------------------------------------------------------------------
+
+program
+  .command("init")
+  .description(
+    "Connect wizard: local open-access, browser sign-in, or API key (re-run to change)",
+  )
+  .option(
+    "--local",
+    "Non-interactive: probe localhost:8000 and write open-access config",
+  )
+  .option(
+    "--force",
+    "With --local: overwrite an existing non-local connection without a TTY confirm",
+  )
+  .action(async (opts: { local?: boolean; force?: boolean }) => {
+    await withErrors(async () => {
+      const {
+        connectLocal,
+        runConnectWizard,
+      } = await import("./connect.js");
+      // Parent --local also counts (infona --local init).
+      const parentOpts = program.opts() as { local?: boolean };
+      const local = Boolean(opts.local || parentOpts.local);
+      if (local) {
+        // Non-interactive local path used by scripts and CI; never opens a browser.
+        // Write-only IO (no readline) so the process exits after success/error.
+        // Existing different connection: TTY confirms; non-TTY needs --force
+        // (same local open-access rewrite stays idempotent without --force).
+        const result = await connectLocal({
+          replace: true,
+          force: Boolean(opts.force),
+        });
+        if (!result.ok) {
+          if (result.error === "cancelled") {
+            process.exitCode = 0;
+            return;
+          }
+          fail(`Error: ${result.error}`);
+        }
+        return;
+      }
+      const result = await runConnectWizard({ force: true });
+      if (result === "non-interactive") {
+        fail(
+          "Error: `infona init` needs a TTY, or pass --local / set INFONA_API_KEY.",
+        );
+      }
+      if (result === "cancelled") {
+        // Soft exit — user kept existing config or backed out.
+        process.exitCode = 0;
+      }
+    });
+  });
+
+// ---------------------------------------------------------------------------
 // shell
 // ---------------------------------------------------------------------------
 

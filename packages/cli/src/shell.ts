@@ -1155,6 +1155,21 @@ export async function runShell(opts: {
   local?: boolean;
   noLogin?: boolean;
 }): Promise<void> {
+  // ONTA-540: first run with no flags/env/config → interactive connect wizard
+  // (not silent cloud browser login, not silent force-local). Flags are
+  // one-off and never wipe ~/.infona/config.json.
+  const { ensureConnected } = await import("./connect.js");
+  const connected = await ensureConnected({
+    local: opts.local,
+    noLogin: opts.noLogin,
+  });
+  if (!connected) {
+    printError(
+      "No connection configured. Run `infona init`, pass --local, or set INFONA_API_URL / INFONA_API_KEY.",
+    );
+    return;
+  }
+
   // These hosts all resolve to the SAME hosted backend (verified: identical
   // openapi.json). api.infona.ai is canonical after the Infona rebrand;
   // the older hosts still work, so any of them counts as "cloud" (not self-hosted).
@@ -1164,21 +1179,43 @@ export async function runShell(opts: {
     "https://api.infona.ai",
     "https://api.infona.cloud",
   ]);
-  // Detection precedence: --local > --no-login > INFONA_API_URL → INFONA_API_URL →
-  // INFONA_API_URL → INFONA_API_URL pointing anywhere besides a known cloud host.
+  // Detection precedence: --local > --no-login > INFONA_API_URL → config
+  // apiUrl pointing anywhere besides a known cloud host.
   // When self-hosted we never trigger login and tenant defaults to "default"
   // (open-access backend behavior).
-  const envUrl =
-    process.env.INFONA_API_URL;
+  const { readConfig, isLocalhostUrl, LOCAL_API_URL, LOCAL_DEFAULT_TENANT } =
+    await import("./config.js");
+  const cfg = readConfig();
+  const envUrl = process.env.INFONA_API_URL;
+  const resolvedUrl = opts.local
+    ? LOCAL_API_URL
+    : envUrl || cfg.apiUrl || "https://api.infona.ai";
   const envIsSelfHosted = !!envUrl && !CLOUD_HOSTS.has(envUrl);
-  const selfHostedHint = !!opts.local || !!opts.noLogin || envIsSelfHosted;
+  const configIsSelfHosted =
+    !!cfg.apiUrl && !CLOUD_HOSTS.has(cfg.apiUrl.replace(/\/+$/, ""));
+  const selfHostedHint =
+    !!opts.local ||
+    !!opts.noLogin ||
+    envIsSelfHosted ||
+    configIsSelfHosted ||
+    isLocalhostUrl(resolvedUrl);
 
   // `let` rather than `const` so /login can swap in a fresh Client after
   // ~/.infona/config.json is rewritten with the new key.
+  // --local is one-off (does not write config); config.apiUrl from OSS setup
+  // or wizard makes bare `infona` hit localhost without the flag (Client
+  // already reads apiUrl/tenant from env + ~/.infona/config.json).
   let client = opts.local
-    ? new Client({ baseUrl: "http://localhost:8000", tenant: "default" })
+    ? new Client({ baseUrl: LOCAL_API_URL, tenant: LOCAL_DEFAULT_TENANT })
     : selfHostedHint
-      ? new Client({ tenant: "default" })
+      ? new Client({
+          // Prefer env / saved tenant; else open-access "default" so a leftover
+          // cloud demo-tenant in an older code path cannot steal local traffic.
+          tenant:
+            process.env.INFONA_TENANT ||
+            cfg.tenant ||
+            LOCAL_DEFAULT_TENANT,
+        })
       : new Client();
 
   // Probe the backend before deciding whether to trigger login. This lets
@@ -1188,7 +1225,10 @@ export async function runShell(opts: {
   const health = await client.healthCheck();
   if (!health.ok) {
     printError(
-      `Could not reach ${health.url}. Is the server running?`,
+      `Could not reach ${health.url}. Is the server running?` +
+        (opts.local || isLocalhostUrl(client.baseUrl)
+          ? " (local: start the API, or re-run `infona init`)"
+          : " (or run `infona init` to reconfigure)"),
     );
     return;
   }
@@ -1196,18 +1236,21 @@ export async function runShell(opts: {
   const selfHosted = selfHostedHint || !health.requiresAuth;
   const mode: "cloud" | "self-hosted" = selfHosted ? "self-hosted" : "cloud";
 
-  // Cloud / auth-required path: behave as before — if no key, log in.
+  // Cloud / auth-required path: if still no key after ensureConnected (e.g.
+  // env pointed at cloud URL without a key), offer the wizard — never silent
+  // browser auto-open (ONTA-540). Open-access local never reaches here.
   if (!selfHosted && health.requiresAuth && !client.apiKey) {
     stdout.write(
-      `\n  ${DIM}Not signed in — opening your browser to log in...${RESET}\n`,
+      `\n  ${DIM}Not signed in — choose how to authenticate.${RESET}\n`,
     );
-    const { runLogin } = await import("./login.js");
-    await runLogin();
+    const { runConnectWizard } = await import("./connect.js");
+    const result = await runConnectWizard({ force: false });
+    if (result !== "ok") {
+      printError("Login did not produce an API key. Aborting.");
+      return;
+    }
     client = new Client();
     if (!client.apiKey) {
-      // runLogin already exits the process on hard failures, so reaching
-      // here means it returned without writing a key (rare). Bail rather
-      // than continue into a broken shell.
       printError("Login did not produce an API key. Aborting.");
       return;
     }
