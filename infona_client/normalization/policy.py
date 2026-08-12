@@ -47,10 +47,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Iterable, Literal, Optional
 
+from infona_client.graph.catalog_config import get_entity_fields, list_entity_fields
 from infona_client.graph.client import NeptuneClient
 from infona_client.graph.kg_writer import delete_facts, insert_facts
-from infona_client.graph.parser import parse_sparql_results
-from infona_client.graph.queries import _escape_literal, tenant_graph_uri
+from infona_client.graph.queries import tenant_graph_uri
 
 # --------------------------------------------------------------------------- #
 # The ONE shared mode axis (P3 ∩ P4). Declared here exactly once; P4's
@@ -296,17 +296,26 @@ class CleanPolicyStore:
 
     A direct mirror of
     :class:`infona_client.normalization.rules.NormalizationRuleStore`: each
-    method is async (one Neptune round-trip) and :meth:`save` is idempotent — it
-    clears any prior triples for the policy's id via the shared
-    ``kg_writer.delete_facts`` (subject-scoped) then writes the current field set
-    via ``kg_writer.insert_facts``, so re-saving an updated policy never leaves
+    method is async and :meth:`save` is idempotent — it clears any prior
+    facts for the policy's id via the shared ``kg_writer.delete_facts``
+    (subject-scoped) then writes the current field set via
+    ``kg_writer.insert_facts``, so re-saving an updated policy never leaves
     stale field triples behind. No ``refresh_after_write`` — a policy row is config
     metadata (never instance data / geometry / schema), so there is no
     derived-index, ontology-cache, or type-stats fan-out to run for it (identical
     reasoning to the rule store).
+
+    Writes and reads both go through GraphStore (ONTA-529): the tenant ontology
+    graph URI resolves to ``GraphScope.for_catalog(layer='tenant')`` inside the
+    converged write path, and get/list use the shared catalog-config reader.
     """
 
+    # Sanitized Entity prop key prefix for ``…/onto/policy/<leaf>`` Facts.
+    _PROP_KEY_PREFIX = "policy_"
+
     def __init__(self, neptune: NeptuneClient):
+        # Vestigial on the Neo4j path (ONTA-527): kept so call sites that still
+        # construct the store with ``app.state.neptune_client`` do not break.
         self._neptune = neptune
 
     async def save(self, tenant_id: str, policy: CleanPolicy) -> None:
@@ -317,17 +326,16 @@ class CleanPolicyStore:
         await insert_facts(self._neptune, graph, self._policy_to_triples(policy))
 
     async def get(self, tenant_id: str, policy_id: str) -> Optional[CleanPolicy]:
-        graph = tenant_graph_uri(tenant_id)
         uri = POLICY_ENTITY_PREFIX + policy_id
-        q = (
-            f"SELECT ?p ?o FROM <{graph}> WHERE {{\n"
-            f"  <{uri}> ?p ?o .\n"
-            f"}}"
+        fields = await get_entity_fields(
+            tenant_id,
+            uri,
+            type_uri=POLICY_TYPE_URI,
+            prop_ns=POLICY_NS,
+            key_prefix=self._PROP_KEY_PREFIX,
         )
-        _, rows = parse_sparql_results(await self._neptune.query(q))
-        if not rows:
+        if not fields:
             return None
-        fields = {r["p"]: r["o"] for r in rows if "p" in r and "o" in r}
         return self._policy_from_fields(fields)
 
     async def list(
@@ -335,30 +343,20 @@ class CleanPolicyStore:
     ) -> list[CleanPolicy]:
         """List policies, optionally filtered by KG name.
 
-        The KG filter is applied as escaped string-literal equality in SPARQL
-        (never spliced into an IRI), so it is injection-safe — same discipline as
-        ``NormalizationRuleStore.list``.
+        The KG filter is applied in-process on the GraphStore field map (the
+        same equality the old SPARQL path used — never spliced into an IRI).
         """
-        graph = tenant_graph_uri(tenant_id)
-        filters = ""
-        if kg is not None:
-            filters += f'  ?s <{P_KG}> "{_escape_literal(kg)}" .\n'
-        q = (
-            f"SELECT ?s ?p ?o FROM <{graph}> WHERE {{\n"
-            f"  ?s <{RDF_TYPE}> <{POLICY_TYPE_URI}> .\n"
-            f"{filters}"
-            f"  ?s ?p ?o .\n"
-            f"}}"
+        rows = await list_entity_fields(
+            tenant_id,
+            type_leaf="CleanPolicy",
+            type_uri=POLICY_TYPE_URI,
+            prop_ns=POLICY_NS,
+            key_prefix=self._PROP_KEY_PREFIX,
         )
-        _, rows = parse_sparql_results(await self._neptune.query(q))
-        by_subject: dict[str, dict[str, str]] = {}
-        for r in rows:
-            s, p, o = r.get("s"), r.get("p"), r.get("o")
-            if not s or not p:
-                continue
-            by_subject.setdefault(s, {})[p] = o
         out: list[CleanPolicy] = []
-        for fields in by_subject.values():
+        for _s, fields in rows:
+            if kg is not None and fields.get(P_KG) != kg:
+                continue
             policy = self._policy_from_fields(fields)
             if policy is not None:
                 out.append(policy)

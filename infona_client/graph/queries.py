@@ -302,6 +302,13 @@ _KG_GRAPH_RE = re.compile(
     rf"^{re.escape(IRI_BASE)}/graphs/(?P<tenant>[^/]+)/kg/(?P<kg>[^/]+)$"
 )
 
+# Exact tenant-base ontology graph (``…/graphs/<tenant>``) — NOT a per-KG URI and
+# NOT a companion (``…/graphs/<tenant>/versions``, provenance, …). Anchored at end
+# of string so a `/kg/…` tail never greeds into this form.
+_TENANT_GRAPH_RE = re.compile(
+    rf"^{re.escape(IRI_BASE)}/graphs/(?P<tenant>[^/]+)$"
+)
+
 
 def parse_kg_graph_uri(graph_uri: str) -> tuple[str, str] | None:
     """Inverse of :func:`kg_graph_uri`: ``(tenant_id, kg_name)`` or ``None``.
@@ -316,6 +323,21 @@ def parse_kg_graph_uri(graph_uri: str) -> tuple[str, str] | None:
     if not m:
         return None
     return m.group("tenant"), m.group("kg")
+
+
+def parse_tenant_graph_uri(graph_uri: str) -> str | None:
+    """Inverse of :func:`tenant_graph_uri`: ``tenant_id`` or ``None``.
+
+    Matches only the bare tenant ontology graph (``…/graphs/<tenant>``). Returns
+    ``None`` for per-KG instance graphs, companion graphs, and anything else so
+    callers can branch onto :func:`GraphScope.for_catalog` without mis-scoping.
+    """
+    if not isinstance(graph_uri, str):
+        return None
+    m = _TENANT_GRAPH_RE.match(graph_uri)
+    if not m:
+        return None
+    return m.group("tenant")
 
 
 # ``_IRI_FORBIDDEN`` (defined at the top of this module) is what stops a

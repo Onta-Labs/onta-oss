@@ -4,19 +4,11 @@ Four layers:
   1. CleanPolicy value shape — defaults + ``__post_init__`` axis/knob validation.
   2. apply_clean_policy behavior — unknown token dropped-with-reason; a normal
      value passed/canonicalized per toggles; mode == "off" is a pass-through.
-  3. Store round-trip — pure serialize/deserialize AND a save -> get -> list over a
-     tiny in-memory fake Neptune that evaluates the handful of SPARQL shapes the
-     store emits (mirroring test_normalization.py's rule-store roundtrip).
+  3. Store round-trip — pure serialize/deserialize AND a save -> get -> list over
+     :class:`~infona_client.graph.memory_store.MemoryGraphStore` (ONTA-529 —
+     catalog scope + GraphStore reads).
   4. Shared-shape proof — a minimal P4-style VerifyPolicy extends the SAME
      PolicyBase and reuses the mode axis with ZERO duplication of the enum.
-
-**ONTA-527: layer 3b is xfail(strict) — CleanPolicyStore cannot persist on the
-Neo4j path at all.** See the reason on :func:`test_store_roundtrip`. Layers 1, 2,
-3a and 4 are pure value/serialization logic with no store in them; they are
-unaffected and still pass, which is why the ``_FakeNeptune`` below is kept rather
-than deleted — it is the harness the three xfailed cases need the day the write
-path learns the tenant-ontology scope, and it also documents the SPARQL the
-store's READ half still emits.
 """
 
 from __future__ import annotations
@@ -26,6 +18,10 @@ from dataclasses import dataclass
 
 import pytest
 
+from infona_client.graph import pg_ops
+from infona_client.graph.memory_store import MemoryGraphStore
+from infona_client.graph.scope import GraphScope
+from infona_client.graph.store import configure_graph_store, reset_graph_store_for_tests
 from infona_client.normalization.policy import (
     DEFAULT_UNKNOWN_TOKENS,
     MODE_AUTO,
@@ -212,38 +208,20 @@ def _lexical(obj: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# 3b. Store save -> get -> list over an in-memory fake Neptune
-#
-# All three cases below are xfail(strict) on ONE product bug, spelled out in
-# full on the first of them.
+# 3b. Store save -> get -> list over MemoryGraphStore (ONTA-529)
 # --------------------------------------------------------------------------- #
-_STORE_WRITE_BUG = (
-    "BUG (surfaced by ONTA-527): CleanPolicyStore cannot persist anything on the "
-    "Neo4j path. normalization/policy.py::CleanPolicyStore.save does its "
-    "clear-then-write through the converged write path — kg_writer.delete_facts "
-    "then insert_facts — passing the TENANT ONTOLOGY graph "
-    "(queries.tenant_graph_uri → '.../graphs/<tenant>'), because a policy row is "
-    "tenant config, not instance data. kg_writer._resolve_graph_session only ever "
-    "derives GraphScope.for_instance from a PER-KG uri ('.../graphs/<t>/kg/<kg>') "
-    "via parse_kg_graph_uri, so a tenant/ontology graph raises GraphScopeError "
-    "'Cannot derive tenant/kg scope' and save() dies before writing a triple. The "
-    "scope it needs already exists — GraphScope.for_catalog(layer='tenant', "
-    "tenant_id=...) (kg='__ontology__'), and insert_facts writes fine when handed "
-    "that session explicitly — so the fix is one branch in _resolve_graph_session "
-    "(or the store passing a catalog session), NOT a change to these tests. The "
-    "read half is independently dead: get()/list() still issue raw SPARQL through "
-    "NeptuneClient, which has no store behind it now. Same defect in "
-    "verification/policy.py::VerifyPolicyStore and "
-    "normalization/rules.py::NormalizationRuleStore (which takes POST "
-    "/normalize/rules down with it — see tests/test_normalization.py)."
-)
+@pytest.fixture
+def memory_store():
+    reset_graph_store_for_tests()
+    store = MemoryGraphStore()
+    configure_graph_store(store)
+    yield store
+    reset_graph_store_for_tests()
 
 
-@pytest.mark.xfail(reason=_STORE_WRITE_BUG, strict=True)
 @pytest.mark.asyncio
-async def test_store_roundtrip():
-    neptune = _FakeNeptune()
-    store = CleanPolicyStore(neptune)
+async def test_store_roundtrip(memory_store):
+    store = CleanPolicyStore(_FakeNeptune())  # neptune arg is vestigial
     policy = CleanPolicy(
         kg_name=KG,
         type_name="Person",
@@ -274,38 +252,49 @@ async def test_store_roundtrip():
     assert await store.get(TENANT, "nope") is None
 
 
-@pytest.mark.xfail(reason=_STORE_WRITE_BUG, strict=True)
 @pytest.mark.asyncio
-async def test_store_save_is_idempotent_no_stale_fields():
-    neptune = _FakeNeptune()
-    store = CleanPolicyStore(neptune)
+async def test_store_save_is_idempotent_no_stale_fields(memory_store):
+    store = CleanPolicyStore(_FakeNeptune())
     policy = CleanPolicy(kg_name=KG, type_name="Person", mode=MODE_AUTO)
     await store.save(TENANT, policy)
 
     # Re-save with a flipped mode: the clear-then-write upsert must leave exactly
-    # one mode triple (no stale "auto" left behind).
+    # one mode value (no stale "auto" left behind).
     from dataclasses import replace
 
     await store.save(TENANT, replace(policy, mode=MODE_OFF))
 
-    graph = neptune.quads["https://graph.infona.ai/graphs/t1"]
-    mode_triples = [t for t in graph if t[0] == policy.uri and t[1].endswith("/mode")]
-    assert len(mode_triples) == 1 and mode_triples[0][2] == MODE_OFF
+    sess = memory_store.session(
+        GraphScope.for_catalog(layer="tenant", tenant_id=TENANT)
+    )
+    ent = await pg_ops.get_entity(sess, policy.uri)
+    assert ent is not None
+    assert ent["props"].get("policy_mode") == MODE_OFF
 
     got = await store.get(TENANT, policy.scope_id)
     assert got is not None and got.mode == MODE_OFF
 
 
-@pytest.mark.xfail(reason=_STORE_WRITE_BUG, strict=True)
 @pytest.mark.asyncio
-async def test_store_lists_only_policy_typed_subjects():
-    """The list query is typed on <CleanPolicy>, so an unrelated subject sharing
-    the ontology graph is never mistaken for a policy."""
-    neptune = _FakeNeptune()
-    neptune.quads.setdefault("https://graph.infona.ai/graphs/t1", set()).add(
-        ("https://graph.infona.ai/entities/Person/1", RDF_TYPE, "https://graph.infona.ai/types/Person")
+async def test_store_lists_only_policy_typed_subjects(memory_store):
+    """List is typed on CleanPolicy, so an unrelated Person entity sharing the
+    catalog scope is never mistaken for a policy."""
+    from infona_client.graph.kg_writer import insert_facts
+    from infona_client.graph.queries import tenant_graph_uri
+
+    # Seed an unrelated Person entity into the same catalog scope.
+    await insert_facts(
+        None,
+        tenant_graph_uri(TENANT),
+        [
+            (
+                "https://graph.infona.ai/entities/Person/1",
+                RDF_TYPE,
+                "https://graph.infona.ai/types/Person",
+            )
+        ],
     )
-    store = CleanPolicyStore(neptune)
+    store = CleanPolicyStore(_FakeNeptune())
     await store.save(TENANT, CleanPolicy(kg_name=KG, type_name="Person"))
     listed = await store.list(TENANT)
     assert len(listed) == 1 and listed[0].type_name == "Person"

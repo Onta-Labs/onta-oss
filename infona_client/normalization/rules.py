@@ -31,13 +31,10 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from infona_client.graph.catalog_config import get_entity_fields, list_entity_fields
 from infona_client.graph.client import NeptuneClient
 from infona_client.graph.kg_writer import delete_facts, insert_facts
-from infona_client.graph.parser import parse_sparql_results
-from infona_client.graph.queries import (
-    _escape_literal,
-    tenant_graph_uri,
-)
+from infona_client.graph.queries import tenant_graph_uri
 
 # Namespaces. The rule resource is an entity (so it shows up under the same
 # `…/entities/<Type>/<id>` shape every other resource uses); its fields hang off
@@ -131,13 +128,24 @@ def make_rule_id(
 class NormalizationRuleStore:
     """Persist + read :class:`NormalizationRule`\\ s in the tenant ontology graph.
 
-    All methods are async (one Neptune round-trip each). :meth:`save` is
-    idempotent — it DELETEs any prior triples for the rule's id, then INSERTs the
-    current field set, so re-saving an updated rule never leaves stale field
-    triples behind (matching the upsert discipline elsewhere in the codebase).
+    All methods are async. :meth:`save` is idempotent — it DELETEs any prior
+    facts for the rule's id via the shared write path, then INSERTs the current
+    field set, so re-saving an updated rule never leaves stale field triples
+    behind (matching the upsert discipline elsewhere in the codebase).
+
+    Writes and reads both go through GraphStore (ONTA-529): the tenant ontology
+    graph URI resolves to ``GraphScope.for_catalog(layer='tenant')`` inside
+    :func:`~infona_client.graph.kg_writer.insert_facts` /
+    :func:`~infona_client.graph.kg_writer.delete_facts`, and get/list use the
+    shared catalog-config reader (no SPARQL).
     """
 
+    # Sanitized Entity prop key prefix for ``…/onto/norm/<leaf>`` Facts.
+    _PROP_KEY_PREFIX = "norm_"
+
     def __init__(self, neptune: NeptuneClient):
+        # Vestigial on the Neo4j path (ONTA-527): kept so call sites that still
+        # construct the store with ``app.state.neptune_client`` do not break.
         self._neptune = neptune
 
     async def save(self, tenant_id: str, rule: NormalizationRule) -> None:
@@ -154,17 +162,16 @@ class NormalizationRuleStore:
         await insert_facts(self._neptune, graph, self._rule_to_triples(rule))
 
     async def get(self, tenant_id: str, rule_id: str) -> Optional[NormalizationRule]:
-        graph = tenant_graph_uri(tenant_id)
         uri = RULE_ENTITY_PREFIX + rule_id
-        q = (
-            f"SELECT ?p ?o FROM <{graph}> WHERE {{\n"
-            f"  <{uri}> ?p ?o .\n"
-            f"}}"
+        fields = await get_entity_fields(
+            tenant_id,
+            uri,
+            type_uri=RULE_TYPE_URI,
+            prop_ns=NORM_NS,
+            key_prefix=self._PROP_KEY_PREFIX,
         )
-        _, rows = parse_sparql_results(await self._neptune.query(q))
-        if not rows:
+        if not fields:
             return None
-        fields = {r["p"]: r["o"] for r in rows if "p" in r and "o" in r}
         return self._rule_from_fields(rule_id, fields)
 
     async def list(
@@ -175,32 +182,25 @@ class NormalizationRuleStore:
     ) -> list[NormalizationRule]:
         """List rules, optionally filtered by KG name and/or status.
 
-        Filters are applied as escaped string-literal equality in SPARQL (never
-        spliced into an IRI), so they are injection-safe.
+        Filters are applied in-process on the GraphStore field map (the same
+        equality the old SPARQL path used — never spliced into an IRI).
         """
-        graph = tenant_graph_uri(tenant_id)
-        filters = ""
-        if kg is not None:
-            filters += f'  ?s <{P_KG}> "{_escape_literal(kg)}" .\n'
-        if status is not None:
-            filters += f'  ?s <{P_STATUS}> "{_escape_literal(status)}" .\n'
-        q = (
-            f"SELECT ?s ?p ?o FROM <{graph}> WHERE {{\n"
-            f"  ?s <{RDF_TYPE}> <{RULE_TYPE_URI}> .\n"
-            f"{filters}"
-            f"  ?s ?p ?o .\n"
-            f"}}"
+        rows = await list_entity_fields(
+            tenant_id,
+            type_leaf="NormalizationRule",
+            type_uri=RULE_TYPE_URI,
+            prop_ns=NORM_NS,
+            key_prefix=self._PROP_KEY_PREFIX,
         )
-        _, rows = parse_sparql_results(await self._neptune.query(q))
-        by_subject: dict[str, dict[str, str]] = {}
-        for r in rows:
-            s, p, o = r.get("s"), r.get("p"), r.get("o")
-            if not s or not p:
-                continue
-            by_subject.setdefault(s, {})[p] = o
         out: list[NormalizationRule] = []
-        for s, fields in by_subject.items():
-            rule_id = s[len(RULE_ENTITY_PREFIX):] if s.startswith(RULE_ENTITY_PREFIX) else s
+        for s, fields in rows:
+            if kg is not None and fields.get(P_KG) != kg:
+                continue
+            if status is not None and fields.get(P_STATUS) != status:
+                continue
+            rule_id = (
+                s[len(RULE_ENTITY_PREFIX) :] if s.startswith(RULE_ENTITY_PREFIX) else s
+            )
             rule = self._rule_from_fields(rule_id, fields)
             if rule is not None:
                 out.append(rule)
