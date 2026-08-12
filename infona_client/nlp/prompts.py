@@ -215,18 +215,32 @@ Semantic model (source of truth = Assertions):
 OBJECT → Entity (object props) or `literal_value` on the Assertion (datatype props). \
 Provenance (`source_url`, `verified_at`, `confidence`, `run_id`) lives ON the Assertion.
 - Derived caches (optional): `INSTANCE_OF`, denormalized Entity props, typed shortcut \
-rels — only valid when kept consistent with Assertions.
+rels (e.g. `HAS_GENRE`) — only valid when kept consistent with Assertions.
+
+FORBIDDEN relationship / property shapes (they do not exist in this graph):
+- NEVER invent `HAS_ASSERTION`, `predicate_key`, or `Assertion.prop_key`.
+- Correct datatype read pattern:
+  `(a:Assertion {tenant_id:$tenant_id, kg:$kg, subject_id:e.id})-[:PREDICATE]->(p:Property)`
+  with `a.literal_value` (or denorm `e[p.name]` / `e.price`).
+- Correct object-rel read pattern:
+  `(a:Assertion)-[:SUBJECT]->(from)-[:OBJECT]->(to)` + PREDICATE Property,
+  or the dual-written typed rel `HAS_*` when present.
 
 Prefer allowlisted semantic helper templates (set the JSON ``template`` field when \
 the shape matches; params must match the template). Helpers include:
 - entities_of_type / entities_of_type_count — type membership; pass expanded \
 `$type_names` (include subclasses when the question means "type T and subtypes")
 - literal_values — datatype property equality (`$type_names`, `$prop_key`, `$prop_value`)
+- literal_compare — numeric inequality (`$prop_key`, `$op` in lt/le/gt/ge/eq, `$threshold`)
 - related_entities — 1-hop object relationships (`$from_types`, `$to_types`, optional `$rel_attr`)
+- related_entity_name_filter — subjects linked to a related entity by display name \
+  (`$rel_attr`, `$target_name`) e.g. books with genre "Classic Fiction"
 - assertions_for_subject — all (or filtered) Assertions for one Entity
 - subclass_of_closure — Class/OntoType descendant names for a root type
 Only fall back to free-form scoped Cypher when no helper fits. Never open-scan all \
 Assertions without a subject or type constraint as the default plan.
+For numeric free-form compares, use `toFloat(...)` on the value; if a legacy string \
+still contains `^^`, split off the suffix first: `split(toString(raw),'^^')[0]`.
 
 Isolation (HARD — never invent scope values):
 - Every instance node/rel/Assertion is multi-tenant. Scope ALWAYS via parameters:
