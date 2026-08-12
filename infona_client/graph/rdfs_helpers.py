@@ -213,16 +213,14 @@ WITH e, toFloat(
   END
 ) AS num
 WHERE num IS NOT NULL
-WITH collect(DISTINCT num) AS nums
-WITH CASE
-  WHEN size(nums) = 0 THEN null
-  WHEN $agg_op = 'sum' THEN reduce(s = 0.0, x IN nums | s + x)
-  WHEN $agg_op = 'avg' THEN reduce(s = 0.0, x IN nums | s + x) / size(nums)
-  WHEN $agg_op = 'min' THEN reduce(m = head(nums), x IN nums | CASE WHEN x < m THEN x ELSE m END)
-  WHEN $agg_op = 'max' THEN reduce(m = head(nums), x IN nums | CASE WHEN x > m THEN x ELSE m END)
+WITH e, max(num) AS num
+RETURN CASE
+  WHEN $agg_op = 'sum' THEN sum(num)
+  WHEN $agg_op = 'avg' THEN avg(num)
+  WHEN $agg_op = 'min' THEN min(num)
+  WHEN $agg_op = 'max' THEN max(num)
   ELSE null
 END AS value
-RETURN value
 """.strip()
 
 # Filter subjects of a type by a related entity's display name / name

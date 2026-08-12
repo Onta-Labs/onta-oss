@@ -376,3 +376,56 @@ async def test_literal_aggregate_e2e_memory():
     row0 = rows[0]
     val = row0.get("value") if hasattr(row0, "get") else row0.data.get("value")
     assert val == 60.0, val
+
+
+@pytest.mark.asyncio
+async def test_literal_aggregate_duplicates_sum():
+    """Duplicate values must sum per entity (100+100+100=300), not DISTINCT values."""
+    from infona_client.graph.iri import IRI_BASE
+    from infona_client.graph.memory_store import MemoryGraphStore
+    from infona_client.graph.ontology_catalog import upsert_type_pg
+    from infona_client.graph.rdf_model import AssertionFact, assert_fact
+    from infona_client.graph.scope import GraphScope
+    from infona_client.nlp.cypher_generate import try_deterministic_cypher
+    from infona_client.graph.rdfs_helpers import LITERAL_AGGREGATE_CYPHER
+
+    assert "collect(DISTINCT num)" not in LITERAL_AGGREGATE_CYPHER
+
+    store = MemoryGraphStore()
+    cat = store.session(
+        GraphScope.for_catalog(layer="tenant", tenant_id="demo-tenant")
+    )
+    await upsert_type_pg(cat, name="Widget", description="w")
+    scope = GraphScope.for_instance("demo-tenant", "agg-dup")
+    session = store.session(scope)
+    for i in range(1, 4):
+        eid = f"{IRI_BASE}/entities/Widget/d{i}"
+        await session.write_merge_entity(
+            id=eid, primary_type="Widget", name=f"D{i}", source="test"
+        )
+        await assert_fact(
+            session,
+            AssertionFact(subject_id=eid, kind="type", value="Widget"),
+            dual_write_cache=True,
+        )
+        await assert_fact(
+            session,
+            AssertionFact(
+                subject_id=eid,
+                kind="literal",
+                property_leaf="unit_cost",
+                value=100.0,
+            ),
+            dual_write_cache=True,
+        )
+
+    payload = try_deterministic_cypher(
+        "total unit_cost of widgets",
+        "Type: Widget\n  - unit_cost: float (literal)\n",
+        type_names=["Widget"],
+    )
+    rows = await session.execute_template(
+        payload["template"], payload["params"]
+    )
+    val = rows[0].get("value") if hasattr(rows[0], "get") else rows[0].data.get("value")
+    assert val == 300.0, val
