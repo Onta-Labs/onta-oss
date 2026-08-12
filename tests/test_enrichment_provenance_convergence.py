@@ -10,16 +10,13 @@ Sprocket/diameter_mm/finish) across ≥2 unrelated domains — no persona token.
     subset and mints nothing (F3);
   * discovery emits the IDENTICAL per-attribute companions end-to-end (cross-rail F1).
 
-**Ported by ONTA-527.** The enrichment cases used to read the emitted SPARQL for
-`attr_meta/<T>/<attr>/<suffix>` triples in a companion named graph. Enrichment
-writes through `GraphStore` now, where those companions FOLD onto Assertion
-provenance and an `:AttrCitation` node (ADR 0013, `graph/pg_ops.py`), so the
-assertions moved to the seeded store: same claims — per-attribute citation, two
-independent sources, verdict-dated stamp, re-stamp without rewriting the value —
-against the record that actually persists. Two claims did NOT survive and are
-xfailed rather than quietly dropped: the canonical companion-provenance GRAPH
-(`prov:confidence` + source-dated `prov:timestamp`), and the fold onto the
-Assertion on the REFRESH path.
+**Ported by ONTA-527 / ONTA-536.** The enrichment cases used to read the emitted
+SPARQL for `attr_meta/<T>/<attr>/<suffix>` triples in a companion named graph.
+Enrichment writes through `GraphStore` now, where those companions FOLD onto
+Assertion provenance and an `:AttrCitation` node (ADR 0013, `graph/pg_ops.py`).
+ONTA-536 restores the canonical companion-provenance fields (`prov:confidence` +
+source-dated timestamp on `:ProvEvent`) and the REFRESH-path fold onto Assertion
+`source_url` / `verified_at`.
 """
 
 from __future__ import annotations
@@ -194,21 +191,6 @@ def test_companions_dated_from_verdict_not_write_time(monkeypatch):
     asyncio.run(run())
 
 
-@pytest.mark.xfail(
-    reason=(
-        "LOST CAPABILITY (ONTA-527): enrichment still BUILDS the canonical "
-        "companion-provenance records (executor._canonical_provenance_triples → "
-        "graph/provenance.build_provenance_triples, keyed sha1(s|p|o|source) with "
-        "prov:confidence and a verdict-dated prov:timestamp) and still hands them "
-        "to the converged seam, but graph/kg_writer.py::insert_facts DROPS its "
-        "provenance_triples argument — that payload was a named-graph SPARQL "
-        "write and the SPARQL path is deleted. The property-graph substitute "
-        "(pg_ops.create_prov_event, fired inside apply_facts) records neither the "
-        "confidence nor the source date: its ts is write time. So with "
-        "INFONA_PROVENANCE_ENABLED=1 the F1 governance record is unrecoverable."
-    ),
-    strict=True,
-)
 def test_canonical_provenance_graph_gets_confidence_and_source_date(monkeypatch):
     """With INFONA_PROVENANCE_ENABLED on, an applied enrichment records the
     verdict's confidence and the SOURCE's date (not the write time)."""
@@ -248,24 +230,6 @@ def test_canonical_provenance_graph_gets_confidence_and_source_date(monkeypatch)
     asyncio.run(run())
 
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG (surfaced by ONTA-527): on the REFRESH policies (verify/overwrite) "
-        "the citation never folds onto the Assertion, so source_url / verified_at "
-        "/ provenance stay NULL on the fact itself. executor.run's is_refresh "
-        "branch routes the primary value through "
-        "pipeline.mutations.write_with_conflict_resolution (its OWN insert_facts "
-        "call) and issues the attr_meta companions in a SECOND, separate "
-        "insert_facts, so pg_ops.fold_attr_citations_onto_facts has no domain Fact "
-        "in the batch to fold onto and only the secondary :AttrCitation residual "
-        "lands. ADR 0013 makes the Assertion the primary destination, and "
-        "neo4j_store's 'assertions changed since' query filters on a.verified_at "
-        "— which never sees an enrichment REFRESH. The initial-fill path "
-        "(skip/stage), where value and companions share one insert_facts, folds "
-        "correctly, so the two enrichment policies disagree."
-    ),
-    strict=True,
-)
 def test_refresh_folds_citation_onto_the_assertion(monkeypatch):
     """A refreshed fact's own Assertion carries its source + freshness stamp, the
     same way an initial fill's does."""

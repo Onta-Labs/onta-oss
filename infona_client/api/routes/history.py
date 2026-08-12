@@ -11,13 +11,11 @@ with optional ``subject`` / ``predicate`` / ``since`` narrowing, so a "changed
 since <cutoff>" question returns only transitions after the cutoff, each dated.
 The WRITE side stays entirely on the shared write path — this route never writes.
 
-**Backing store (ADR 0013 / ONTA-527):** Assertion provenance via
-:func:`fetch_store_assertion_history` / ``rdfs_helpers.session_assertion_history``
-— current facts plus ``verified_at`` as ``changed_at``. The SPARQL companion
-``…/history`` graph, which carried full temporal ``old → new`` transitions, went
-out with the Neptune backend; the property-graph ValueHistory port is deferred,
-so ``old_value`` is empty on every row today. Prefer ``subject=`` for scoped
-reads.
+**Backing store (ADR 0013 / ONTA-536):** ``:ValueHistory`` old→new transitions
+when ``INFONA_VALUE_HISTORY_ENABLED`` recorded them on ``delete_facts``, else
+Assertion provenance via ``fetch_store_assertion_history`` (current value +
+``verified_at`` as ``changed_at``, empty ``old_value``). Prefer ``subject=`` for
+scoped reads.
 """
 
 import re
