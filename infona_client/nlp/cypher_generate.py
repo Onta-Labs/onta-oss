@@ -33,6 +33,7 @@ from infona_client.graph.rdfs_helpers import (
     LITERAL_VALUES_CYPHER,
     RELATED_ENTITIES_CYPHER,
     RELATED_ENTITY_NAME_FILTER_CYPHER,
+    RELATED_ENTITY_NAME_FILTER_INVERSE_CYPHER,
     TEMPLATE_ENTITIES_OF_TYPE,
     TEMPLATE_ENTITIES_OF_TYPE_COUNT,
     TEMPLATE_LITERAL_COMPARE,
@@ -829,8 +830,32 @@ def try_made_by_filter_query(
             rel_attr = cand
             break
     if rel_attr is None:
-        # No type-local maker/author edge — do not claim a fixture (let LLM try).
-        return None
+        # Inverse: Organization.makes -> Product ("products made by Acme").
+        inv_candidates = ("makes", "sells", "manufactures", "produces")
+        inv_rel = None
+        for cand in inv_candidates:
+            if re.search(rf"(?i)\b{re.escape(cand)}\b.*relationship", text):
+                inv_rel = cand
+                break
+        if inv_rel is None:
+            return None
+        expanded = type_names_with_subclasses(
+            matched, ontology_summary=ontology_summary, include_subclasses=True
+        )
+        return _fixture(
+            cypher=RELATED_ENTITY_NAME_FILTER_INVERSE_CYPHER,
+            params={
+                "type_names": expanded,
+                "rel_attr": inv_rel,
+                "target_name": value,
+                "limit": limit if limit is not None else DEFAULT_LIST_LIMIT,
+            },
+            explanation=(
+                f"Find {matched} entities that {inv_rel} from maker named "
+                f"{value!r} (inverse related_entity_name_filter)."
+            ),
+            template="related_entity_name_filter_inverse",
+        )
     expanded = type_names_with_subclasses(
         matched, ontology_summary=ontology_summary, include_subclasses=True
     )
