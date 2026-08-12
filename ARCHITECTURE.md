@@ -423,7 +423,10 @@ current ontology.
 - **Neo4j:** `retrieve(..., language="cypher")` + `format_examples_for_prompt(..., language="cypher")`
   only surface rows with a non-empty `cypher` field — SPARQL bodies never enter the
   Cypher LLM prompt. Rebuild: `python -m infona_client.nlp.cypher_example_seeds`
-  (see `docs/neo4j-local.md`).
+  (see `docs/neo4j-local.md`). Dual-language rows must keep SPARQL/Cypher coarse
+  answer-shape fidelity (`tests/test_example_bank_cypher_fidelity.py`). Synthetic
+  seed rows may reuse a sibling embedding until re-embedded — cosine for those
+  rows is not production-quality until then.
 
 ### Excluded: external benchmark KGs (ONTA-449)
 

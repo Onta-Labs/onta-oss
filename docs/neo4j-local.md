@@ -333,6 +333,19 @@ Neo4j `/ask` uses **Cypher few-shots**, never SPARQL bodies:
 Required shapes: count-by-type, literal filter, numeric compare, related-entity
 name filter, sum, avg, 1-hop `related_entities`.
 
+**Q ↔ Cypher fidelity:** open-data seeds that refresh an existing SPARQL bank
+row must keep the same coarse answer shape (COUNT→`count(`, filtered count still
+scalar, filtered SUM/AVG keep a filter signature). Poison list-for-count or
+bare-sum-for-filtered-sum pairs are refused at seed merge and fail
+`tests/test_example_bank_cypher_fidelity.py`.
+
+**Synthetic embedding reuse:** newly appended synthetic rows copy a sibling
+embedding so the retrieve matrix stays well-defined without OpenRouter. Cosine
+ranks for those rows are **not** meaningful until a real re-embed — they remain
+in the cypher language pool for shape coverage, but production retrieval quality
+should prefer open-data rows that keep their real vectors. Optional follow-up:
+re-embed synthetic questions when `OPENROUTER_API_KEY` is available.
+
 **Rebuild Cypher coverage** (hermetic when seeds match existing questions and
 reuse embeddings — no live Neo4j/OpenRouter required):
 
@@ -345,6 +358,7 @@ python -m infona_client.nlp.cypher_example_seeds --dry-run
 
 Guards: `tests/test_example_bank_cypher.py`,
 `tests/test_example_bank_cypher_coverage.py`,
+`tests/test_example_bank_cypher_fidelity.py`,
 `tests/test_example_bank_benchmark_exclusion.py`.
 
 **Not yet:** multi-hop joins, full Assertion SoT dual-write in writers, enum
