@@ -225,7 +225,8 @@ WHERE $layer IS NULL OR t.layer = $layer
 OPTIONAL MATCH (t)-[:SUBCLASS_OF]->(p:OntoType)
 RETURN t.name AS name, t.layer AS layer, coalesce(t.description, '') AS description,
        t.label_token AS label_token, t.uri AS uri,
-       p.name AS parent_type, t.tenant_id AS tenant_id, t.kg AS kg
+       p.name AS parent_type, t.tenant_id AS tenant_id, t.kg AS kg,
+       t.deprecated_at AS deprecated_at, t.superseded_by AS superseded_by
 ORDER BY t.name
 """.strip()
 
@@ -234,7 +235,8 @@ MATCH (t:OntoType {tenant_id: $tenant_id, kg: $kg, layer: $layer, name: $name})
 OPTIONAL MATCH (t)-[:SUBCLASS_OF]->(p:OntoType)
 RETURN t.name AS name, t.layer AS layer, coalesce(t.description, '') AS description,
        t.label_token AS label_token, t.uri AS uri,
-       p.name AS parent_type, t.tenant_id AS tenant_id, t.kg AS kg
+       p.name AS parent_type, t.tenant_id AS tenant_id, t.kg AS kg,
+       t.deprecated_at AS deprecated_at, t.superseded_by AS superseded_by
 """.strip()
 
 ONTO_ATTR_UPSERT_CYPHER = """
@@ -315,8 +317,71 @@ RETURN a.name AS name, a.domain AS domain, a.kind AS kind,
        a.cardinality AS cardinality, coalesce(a.description, '') AS description,
        a.prop_key AS prop_key, a.layer AS layer,
        a.tenant_id AS tenant_id, a.kg AS kg,
-       a.text_kind AS text_kind
+       coalesce(a.core_slot, false) AS core_slot,
+       a.text_kind AS text_kind,
+       a.deprecated_at AS deprecated_at,
+       a.superseded_by AS superseded_by
 ORDER BY a.domain, a.name
+""".strip()
+
+# ONTA-531 — deletes + marker updates (schema governance on Neo4j)
+ONTO_ATTR_DELETE_CYPHER = """
+MATCH (a:OntoAttr {
+  tenant_id: $tenant_id, kg: $kg, layer: $layer, domain: $domain, name: $name
+})
+DETACH DELETE a
+RETURN $name AS name, $domain AS domain
+""".strip()
+
+ONTO_TYPE_DELETE_CYPHER = """
+MATCH (t:OntoType {tenant_id: $tenant_id, kg: $kg, layer: $layer, name: $name})
+DETACH DELETE t
+RETURN $name AS name
+""".strip()
+
+ONTO_ATTR_SET_MARKERS_CYPHER = """
+MATCH (a:OntoAttr {
+  tenant_id: $tenant_id, kg: $kg, layer: $layer, domain: $domain, name: $name
+})
+SET a.core_slot = CASE WHEN $core_slot IS NULL THEN a.core_slot ELSE $core_slot END,
+    a.text_kind = CASE
+      WHEN $clear_text_kind THEN null
+      WHEN $text_kind IS NULL THEN a.text_kind
+      ELSE $text_kind
+    END,
+    a.deprecated_at = CASE
+      WHEN $clear_deprecation THEN null
+      WHEN $deprecated_at IS NULL THEN a.deprecated_at
+      ELSE $deprecated_at
+    END,
+    a.superseded_by = CASE
+      WHEN $clear_deprecation THEN null
+      WHEN $superseded_by IS NULL THEN a.superseded_by
+      ELSE $superseded_by
+    END
+RETURN a.name AS name, a.domain AS domain,
+       coalesce(a.core_slot, false) AS core_slot, a.text_kind AS text_kind,
+       a.deprecated_at AS deprecated_at, a.superseded_by AS superseded_by
+""".strip()
+
+ONTO_TYPE_SET_MARKERS_CYPHER = """
+MATCH (t:OntoType {tenant_id: $tenant_id, kg: $kg, layer: $layer, name: $name})
+SET t.description = CASE
+      WHEN $description IS NULL THEN t.description
+      ELSE $description
+    END,
+    t.deprecated_at = CASE
+      WHEN $clear_deprecation THEN null
+      WHEN $deprecated_at IS NULL THEN t.deprecated_at
+      ELSE $deprecated_at
+    END,
+    t.superseded_by = CASE
+      WHEN $clear_deprecation THEN null
+      WHEN $superseded_by IS NULL THEN t.superseded_by
+      ELSE $superseded_by
+    END
+RETURN t.name AS name, coalesce(t.description, '') AS description,
+       t.deprecated_at AS deprecated_at, t.superseded_by AS superseded_by
 """.strip()
 
 # Per-Class instance counts via INSTANCE_OF (Explorer type-stats). Column name
@@ -591,6 +656,26 @@ TEMPLATES: Mapping[str, CypherTemplate] = {
         name="onto_attr_list",
         cypher=ONTO_ATTR_LIST_CYPHER,
         writing=False,
+    ),
+    "onto_attr_delete": CypherTemplate(
+        name="onto_attr_delete",
+        cypher=ONTO_ATTR_DELETE_CYPHER,
+        writing=True,
+    ),
+    "onto_type_delete": CypherTemplate(
+        name="onto_type_delete",
+        cypher=ONTO_TYPE_DELETE_CYPHER,
+        writing=True,
+    ),
+    "onto_attr_set_markers": CypherTemplate(
+        name="onto_attr_set_markers",
+        cypher=ONTO_ATTR_SET_MARKERS_CYPHER,
+        writing=True,
+    ),
+    "onto_type_set_markers": CypherTemplate(
+        name="onto_type_set_markers",
+        cypher=ONTO_TYPE_SET_MARKERS_CYPHER,
+        writing=True,
     ),
     "entity_count_by_primary_type": CypherTemplate(
         name="entity_count_by_primary_type",

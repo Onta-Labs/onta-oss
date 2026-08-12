@@ -467,7 +467,6 @@ async def _seed_person(graph_uri: str) -> None:
     )
 
 
-@pytest.mark.xfail(reason=RELEASE_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_gate_blocks_a_breaking_release_by_default():
     n = _DecommissionedSparql()
@@ -493,7 +492,6 @@ async def test_gate_blocks_a_breaking_release_by_default():
     assert "declare_major" in str(ei.value)
 
 
-@pytest.mark.xfail(reason=RELEASE_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_declare_major_publishes_and_stores_breaking():
     n = _DecommissionedSparql()
@@ -516,7 +514,6 @@ async def test_declare_major_publishes_and_stores_breaking():
     assert any(r.kind is ChangeKind.REMOVE_ATTRIBUTE for r in rec.change_records)
 
 
-@pytest.mark.xfail(reason=RELEASE_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_freeform_compat_class_never_overrides_the_classifier():
     """A caller-supplied compat_class is advisory; the classifier decides."""
@@ -527,7 +524,6 @@ async def test_freeform_compat_class_never_overrides_the_classifier():
     assert rec.compat_class == "additive"
 
 
-@pytest.mark.xfail(reason=RELEASE_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_revision_snapshot_is_not_gated_on_breaking():
     """Workspace revisions checkpoint whatever is live — they never refuse."""
@@ -548,7 +544,6 @@ async def test_revision_snapshot_is_not_gated_on_breaking():
     assert rec.kind == "revision"
 
 
-@pytest.mark.xfail(reason=RELEASE_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_dry_run_release_enforces_the_same_gate():
     """A dry run must refuse what the real publish would refuse."""
@@ -565,23 +560,21 @@ async def test_dry_run_release_enforces_the_same_gate():
         await execute_snapshot(n, plan, dry_run=True)
 
 
-@pytest.mark.xfail(
-    reason=(
-        RELEASE_GAP
-        + " This case is the sharpest consequence: the B1 fail-closed guard "
-        "compares the parent's RECORDED fingerprint against the fingerprint of "
-        "the shape it just loaded, so with load_ontology_shape stubbed to empty "
-        "both sides are the empty digest e3b0c44298fc1c14, the guard sees a "
-        "clean parent load, and an unreadable/absent parent can no longer raise "
-        "'cannot classify release vs parent'."
-    ),
-    strict=True,
-)
 @pytest.mark.asyncio
 async def test_release_fails_closed_when_the_parent_shape_is_unreadable():
+    """B1 fail-closed: recorded parent fingerprint must match the loaded shape.
+
+    ONTA-531 freezes parent content into the companion bag on publish, so a
+    normal second release sees a readable parent and classifies correctly.
+    To exercise the unreadable-parent path the test deletes the frozen parent
+    shape after v1 is recorded — the guard then sees fingerprint mismatch
+    (recorded non-empty vs loaded empty) and refuses.
+    """
+    from infona_client.graph.ontology_companion import get_ontology_companion
+
     n = _DecommissionedSparql()
     await _seed_person(PUBLIC)
-    await snapshot_ontology(n, PUBLIC, kind="release")
+    first = await snapshot_ontology(n, PUBLIC, kind="release")
     await commit_ontology(
         None,
         PUBLIC,
@@ -594,13 +587,13 @@ async def test_release_fails_closed_when_the_parent_shape_is_unreadable():
             )
         ],
     )
-    # The parent release's content is gone / unreadable. Publishing must refuse
-    # rather than silently classify the release additive.
+    # Parent release content gone / unreadable.
+    bag = get_ontology_companion()
+    bag.frozen_shapes.pop(first.snapshot_graph_uri.rstrip("/"), None)
     with pytest.raises(RuntimeError, match="cannot classify release vs parent"):
         await snapshot_ontology(n, PUBLIC, kind="release")
 
 
-@pytest.mark.xfail(reason=RELEASE_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_rename_release_does_not_require_declare_major():
     """B2: a rename that keeps the alias is additive, not breaking."""
@@ -643,7 +636,6 @@ DEPRECATE_GAP = (
 )
 
 
-@pytest.mark.xfail(reason=DEPRECATE_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_deprecate_marks_the_type_and_keeps_it():
     await _seed_person(TENANT)
@@ -665,7 +657,6 @@ async def test_deprecate_marks_the_type_and_keeps_it():
     assert shape.deprecated_types.get("Person") == "Entity"
 
 
-@pytest.mark.xfail(reason=DEPRECATE_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_deprecate_marks_a_slot_and_keeps_the_attribute():
     await _seed_person(TENANT)
@@ -686,7 +677,6 @@ async def test_deprecate_marks_a_slot_and_keeps_the_attribute():
     assert shape.attrs.get("Person", {}).get(SLOT) == "string"  # still declared
 
 
-@pytest.mark.xfail(reason=DEPRECATE_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_a_deprecating_release_is_minor_not_breaking():
     n = _DecommissionedSparql()

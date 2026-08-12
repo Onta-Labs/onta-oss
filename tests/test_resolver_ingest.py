@@ -76,12 +76,11 @@ def test_ingest_returns_result(mock_resolver_cls, client, auth_headers):
 # each as a core slot (the enrichment work-queue hook, ADR 0003 §3).
 # SchemaResolver is mocked (no LLM, no row insertion under test).
 #
-# ONTA-527 port: these used to read the generated SPARQL off the mocked Neptune
-# client.
-# Neo4j is the only backend now, so the pre-registration lands in the tenant
-# ``ontology_catalog`` and is asserted there; ``mock_neptune.update`` must never
-# be called at all, which is what proves the store path ran. The core-slot
-# MARKER did not survive the port and is pinned by a strict xfail below.
+# ONTA-527/531 port: these used to read the generated SPARQL off the mocked
+# Neptune client. Neo4j is the only backend now, so the pre-registration lands
+# in the tenant ``ontology_catalog`` (including core-slot markers via
+# SET_CORE_SLOT) and is asserted there; ``mock_neptune.update`` must never be
+# called at all, which is what proves the store path ran.
 #
 # The mapping's identifier column is ``title``, not ``name``: ``name`` is a
 # RESERVED Entity property key (graph/facts.py RESERVED_ENTITY_PROPERTY_KEYS) and
@@ -172,18 +171,6 @@ def test_csv_rows_preregisters_promoted_types_and_core_slots(
     mock_neptune.update.assert_not_called()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "PRODUCT BUG (Neo4j port): the coreSlot MARKER is dropped. The route "
-        "emits OntologyOpKind.SET_CORE_SLOT per declared core slot, and "
-        "ontology_commit._commit_ontology_graph_store has no branch for it — it "
-        "logs 'ontology_store_op_skipped' and moves on, and the catalog carries "
-        "no core-slot field to hold it. The slots themselves are declared, but "
-        "the marker is what makes 'instances with empty core slots' queryable, "
-        "so enrichment's work queue (ADR 0003 §3) has no hook on Neo4j."
-    ),
-)
 @patch("infona_client.api.routes.ingest.SchemaResolver")
 def test_csv_rows_marks_every_core_slot(
     mock_resolver_cls, client, auth_headers, mock_neptune,

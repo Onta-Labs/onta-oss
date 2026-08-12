@@ -48,14 +48,18 @@ from infona_client.graph.schema_bootstrap import (
     ENTITY_RELS_CYPHER,
     ENTITY_TYPE_ATTR_COVERAGE_CYPHER,
     ENTITY_TYPE_REL_COVERAGE_CYPHER,
+    ONTO_ATTR_DELETE_CYPHER,
     ONTO_ATTR_LIST_CYPHER,
     ONTO_ATTR_RANGE_TYPE_CYPHER,
+    ONTO_ATTR_SET_MARKERS_CYPHER,
     ONTO_ATTR_SET_TEXT_KIND_CYPHER,
     ONTO_ATTR_UPSERT_CYPHER,
     ONTO_SUBCLASS_CLEAR_CYPHER,
     ONTO_SUBCLASS_SET_CYPHER,
+    ONTO_TYPE_DELETE_CYPHER,
     ONTO_TYPE_GET_CYPHER,
     ONTO_TYPE_LIST_CYPHER,
+    ONTO_TYPE_SET_MARKERS_CYPHER,
     ONTO_TYPE_UPSERT_CYPHER,
     bootstrap_schema_statements,
     get_template,
@@ -106,6 +110,10 @@ _ONTO_ATTR_UPSERT_NORM = _norm_cypher(ONTO_ATTR_UPSERT_CYPHER)
 _ONTO_ATTR_RANGE_NORM = _norm_cypher(ONTO_ATTR_RANGE_TYPE_CYPHER)
 _ONTO_ATTR_SET_TEXT_KIND_NORM = _norm_cypher(ONTO_ATTR_SET_TEXT_KIND_CYPHER)
 _ONTO_ATTR_LIST_NORM = _norm_cypher(ONTO_ATTR_LIST_CYPHER)
+_ONTO_ATTR_DELETE_NORM = _norm_cypher(ONTO_ATTR_DELETE_CYPHER)
+_ONTO_TYPE_DELETE_NORM = _norm_cypher(ONTO_TYPE_DELETE_CYPHER)
+_ONTO_ATTR_SET_MARKERS_NORM = _norm_cypher(ONTO_ATTR_SET_MARKERS_CYPHER)
+_ONTO_TYPE_SET_MARKERS_NORM = _norm_cypher(ONTO_TYPE_SET_MARKERS_CYPHER)
 _ENTITY_COUNT_BY_TYPE_NORM = _norm_cypher(ENTITY_COUNT_BY_PRIMARY_TYPE_CYPHER)
 
 
@@ -256,6 +264,8 @@ class _OntoTypeRow:
     label_token: str | None = None
     uri: str | None = None
     parent_type: str | None = None
+    deprecated_at: str | None = None
+    superseded_by: str | None = None
 
     def as_record(self) -> GraphRecord:
         return GraphRecord(
@@ -268,6 +278,8 @@ class _OntoTypeRow:
                 "parent_type": self.parent_type,
                 "tenant_id": self.tenant_id,
                 "kg": self.kg,
+                "deprecated_at": self.deprecated_at,
+                "superseded_by": self.superseded_by,
             }
         )
 
@@ -285,7 +297,10 @@ class _OntoAttrRow:
     cardinality: str = "1:1"
     description: str = ""
     prop_key: str | None = None
+    core_slot: bool = False
     text_kind: str | None = None
+    deprecated_at: str | None = None
+    superseded_by: str | None = None
 
     def as_record(self) -> GraphRecord:
         return GraphRecord(
@@ -301,7 +316,10 @@ class _OntoAttrRow:
                 "layer": self.layer,
                 "tenant_id": self.tenant_id,
                 "kg": self.kg,
+                "core_slot": self.core_slot,
                 "text_kind": self.text_kind,
+                "deprecated_at": self.deprecated_at,
+                "superseded_by": self.superseded_by,
             }
         )
 
@@ -775,6 +793,9 @@ class MemoryGraphStore:
         self._onto_attrs.clear()
         self._kg_registry.clear()
         self._bootstrapped.clear()
+        bag = getattr(self, "_ontology_companion", None)
+        if bag is not None and hasattr(bag, "clear"):
+            bag.clear()
 
     async def kg_registry_list(self, tenant_id: str) -> list[dict[str, Any]]:
         out: dict[str, dict[str, Any]] = {}
@@ -1915,6 +1936,102 @@ class MemoryGraphStore:
             rows.append(row)
         rows.sort(key=lambda r: (r.domain, r.name))
         return [r.as_record() for r in rows]
+
+    def _delete_onto_attr(
+        self,
+        tenant_id: str,
+        kg: str,
+        layer: str,
+        domain: str,
+        name: str,
+    ) -> list[GraphRecord]:
+        akey = (tenant_id, kg, layer, domain, name)
+        if akey not in self._onto_attrs:
+            return []
+        del self._onto_attrs[akey]
+        return [GraphRecord(data={"name": name, "domain": domain})]
+
+    def _delete_onto_type(
+        self,
+        tenant_id: str,
+        kg: str,
+        layer: str,
+        name: str,
+    ) -> list[GraphRecord]:
+        tkey = (tenant_id, kg, layer, name)
+        if tkey not in self._onto_types:
+            return []
+        del self._onto_types[tkey]
+        # Drop Class dual-write row when present.
+        from infona_client.graph.ontology_queries import type_uri
+
+        uri = type_uri(name)
+        self._classes.pop((tenant_id, kg, uri), None)
+        self._subclass_of.pop((tenant_id, kg, uri), None)
+        return [GraphRecord(data={"name": name})]
+
+    def _set_onto_attr_markers(
+        self,
+        tenant_id: str,
+        kg: str,
+        layer: str,
+        domain: str,
+        name: str,
+        *,
+        core_slot: Any = None,
+        text_kind: Any = None,
+        clear_text_kind: bool = False,
+        deprecated_at: Any = None,
+        superseded_by: Any = None,
+        clear_deprecation: bool = False,
+    ) -> list[GraphRecord]:
+        akey = (tenant_id, kg, layer, domain, name)
+        attr = self._onto_attrs.get(akey)
+        if attr is None:
+            return []
+        if core_slot is not None:
+            attr.core_slot = bool(core_slot)
+        if clear_text_kind:
+            attr.text_kind = None
+        elif text_kind is not None:
+            attr.text_kind = str(text_kind) if text_kind != "" else None
+        if clear_deprecation:
+            attr.deprecated_at = None
+            attr.superseded_by = None
+        else:
+            if deprecated_at is not None:
+                attr.deprecated_at = str(deprecated_at)
+            if superseded_by is not None:
+                attr.superseded_by = str(superseded_by) if superseded_by else None
+        return [attr.as_record()]
+
+    def _set_onto_type_markers(
+        self,
+        tenant_id: str,
+        kg: str,
+        layer: str,
+        name: str,
+        *,
+        description: Any = None,
+        deprecated_at: Any = None,
+        superseded_by: Any = None,
+        clear_deprecation: bool = False,
+    ) -> list[GraphRecord]:
+        tkey = (tenant_id, kg, layer, name)
+        row = self._onto_types.get(tkey)
+        if row is None:
+            return []
+        if description is not None:
+            row.description = str(description)
+        if clear_deprecation:
+            row.deprecated_at = None
+            row.superseded_by = None
+        else:
+            if deprecated_at is not None:
+                row.deprecated_at = str(deprecated_at)
+            if superseded_by is not None:
+                row.superseded_by = str(superseded_by) if superseded_by else None
+        return [row.as_record()]
 
     def _entity_counts_by_primary_type(
         self, tenant_id: str, kg: str
@@ -3171,6 +3288,55 @@ class MemoryGraphStore:
         if norm == _ONTO_ATTR_LIST_NORM:
             return self._list_onto_attrs(
                 tenant_id, kg, params.get("domain"), params.get("layer")
+            )
+
+        if norm == _ONTO_ATTR_DELETE_NORM:
+            if not writing:
+                raise GraphQueryError("onto_attr_delete requires execute_write")
+            return self._delete_onto_attr(
+                tenant_id,
+                kg,
+                str(params["layer"]),
+                str(params["domain"]),
+                str(params["name"]),
+            )
+
+        if norm == _ONTO_TYPE_DELETE_NORM:
+            if not writing:
+                raise GraphQueryError("onto_type_delete requires execute_write")
+            return self._delete_onto_type(
+                tenant_id, kg, str(params["layer"]), str(params["name"])
+            )
+
+        if norm == _ONTO_ATTR_SET_MARKERS_NORM:
+            if not writing:
+                raise GraphQueryError("onto_attr_set_markers requires execute_write")
+            return self._set_onto_attr_markers(
+                tenant_id,
+                kg,
+                str(params["layer"]),
+                str(params["domain"]),
+                str(params["name"]),
+                core_slot=params.get("core_slot"),
+                text_kind=params.get("text_kind"),
+                clear_text_kind=bool(params.get("clear_text_kind")),
+                deprecated_at=params.get("deprecated_at"),
+                superseded_by=params.get("superseded_by"),
+                clear_deprecation=bool(params.get("clear_deprecation")),
+            )
+
+        if norm == _ONTO_TYPE_SET_MARKERS_NORM:
+            if not writing:
+                raise GraphQueryError("onto_type_set_markers requires execute_write")
+            return self._set_onto_type_markers(
+                tenant_id,
+                kg,
+                str(params["layer"]),
+                str(params["name"]),
+                description=params.get("description"),
+                deprecated_at=params.get("deprecated_at"),
+                superseded_by=params.get("superseded_by"),
+                clear_deprecation=bool(params.get("clear_deprecation")),
             )
 
         if norm == _ENTITY_COUNT_BY_TYPE_NORM:

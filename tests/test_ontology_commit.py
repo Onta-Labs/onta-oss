@@ -235,6 +235,39 @@ async def test_commit_batch_applies_every_op():
 
 
 @pytest.mark.asyncio
+async def test_bare_re_upsert_type_preserves_subclass_parent():
+    """ONTA-531: bare UPSERT_TYPE must not clear SUBCLASS_OF (SPARQL parity).
+
+    SPARQL path uses insert_type / upsert_type_comment when parent_type is
+    unset — never clears hierarchy. GraphStore must mirror that: only set or
+    replace parent when parent_type is explicit.
+    """
+    await commit_ontology(
+        None,
+        GRAPH,
+        [
+            _upsert_type("Person"),
+            _upsert_type("Employee", parent_type="Person"),
+        ],
+    )
+    assert (await _types())["Employee"].parent_type == "Person"
+
+    # Bare re-UPSERT (no parent_type, no description) — hierarchy must remain.
+    await commit_ontology(None, GRAPH, [_upsert_type("Employee")])
+    assert (await _types())["Employee"].parent_type == "Person"
+
+    # Description-only re-UPSERT — still must not clear parent.
+    await commit_ontology(
+        None,
+        GRAPH,
+        [_upsert_type("Employee", description="works for an org")],
+    )
+    types = await _types()
+    assert types["Employee"].parent_type == "Person"
+    assert types["Employee"].description == "works for an org"
+
+
+@pytest.mark.asyncio
 async def test_commit_distinguishes_literal_attributes_from_relationships():
     await commit_ontology(
         None,
@@ -304,20 +337,6 @@ async def test_concurrent_commits_serialize_on_the_shared_lock():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG (ONTA-527 port gap): commit_ontology has no version on Neo4j. "
-        "graph/ontology_commit.py::_commit_ontology_graph_store hardcodes "
-        "`version = \"neo4j\"` and returns it as BOTH version_before and "
-        "version_after, and load_ontology_shape() early-returns an EMPTY "
-        "OntologyShape whenever a GraphStore is configured, so there is nothing "
-        "to fingerprint the catalog with. The ONTA-403 concurrency token is a "
-        "constant in production: /ontology/aliases and every schema route "
-        "reports version_before == version_after == 'neo4j' no matter what "
-        "changed."
-    ),
-    strict=True,
-)
 @pytest.mark.asyncio
 async def test_commit_bumps_the_ontology_version():
     before = await commit_ontology(None, GRAPH, [])
@@ -326,21 +345,6 @@ async def test_commit_bumps_the_ontology_version():
     assert after.version_after != after.version_before
 
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG (ONTA-527 port gap): a commit targeting a GLOBAL layer graph lands "
-        "in the wrong catalog scope. _commit_ontology_graph_store derives its "
-        "scope with re.search(r'/graphs/([^/]+)', graph_uri) and then calls "
-        "ontology_catalog.upsert_* with that string as tenant_id and the DEFAULT "
-        "layer='tenant'. For '…/graphs/global/public' the regex yields 'global', "
-        "so the type is written to a tenant catalog for a workspace literally "
-        "named 'global' instead of the public layer "
-        "(GraphScope.for_catalog(layer='public') → tenant __global__ / kg "
-        "public). Nothing that reads the layered catalog can see it. The RDF "
-        "path had no such ambiguity — it wrote the named graph it was handed."
-    ),
-    strict=True,
-)
 @pytest.mark.asyncio
 async def test_commit_to_a_global_layer_graph_writes_the_global_catalog():
     await commit_ontology(
@@ -350,16 +354,6 @@ async def test_commit_to_a_global_layer_graph_writes_the_global_catalog():
     assert await oc.list_types(tenant_id="global") == []
 
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG (ONTA-527 port gap): optimistic concurrency is silently OFF. "
-        "_commit_ontology_graph_store never reads a fingerprint and never looks "
-        "at expected_version — the parameter is accepted and ignored — so a "
-        "caller holding a stale token gets a success instead of "
-        "OntologyVersionConflict and the lost update lands."
-    ),
-    strict=True,
-)
 @pytest.mark.asyncio
 async def test_stale_expected_version_is_rejected():
     first = await commit_ontology(None, GRAPH, [_upsert_type("A")])
@@ -372,17 +366,6 @@ async def test_stale_expected_version_is_rejected():
         )
 
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG (ONTA-527 port gap): schema DELETES are silently dropped. "
-        "DELETE_ATTRIBUTE / DELETE_TYPE fall through to the `else:` arm of "
-        "_commit_ontology_graph_store, which logs ontology_store_op_skipped and "
-        "returns a SUCCESSFUL OntologyCommitResult with the op missing from "
-        "`applied` — the attribute is still declared in the catalog afterwards. "
-        "ontology_catalog.py has no delete_type/delete_attribute writer at all."
-    ),
-    strict=True,
-)
 @pytest.mark.asyncio
 async def test_delete_attribute_removes_the_declaration():
     await commit_ontology(
@@ -403,16 +386,6 @@ async def test_delete_attribute_removes_the_declaration():
     assert ("Person", FULL_NAME) not in await _attrs()
 
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG (ONTA-527 port gap): SET_CORE_SLOT / SET_TEXT_KIND / SET_COMMENT "
-        "are dropped by _commit_ontology_graph_store's `else:` arm (logged as "
-        "ontology_store_op_skipped). The catalog has no core-slot or text-kind "
-        "column, so the annotations the Explorer and the NL prompt read are "
-        "unwritable on Neo4j; the commit still reports success."
-    ),
-    strict=True,
-)
 @pytest.mark.asyncio
 async def test_core_slot_and_text_kind_ops_are_applied():
     r = await commit_ontology(
@@ -440,17 +413,6 @@ async def test_core_slot_and_text_kind_ops_are_applied():
     assert ChangeKind.CHANGE_CORE_SLOT in kinds
 
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG (ONTA-527 port gap): REGISTER_ALIAS is dropped on Neo4j. "
-        "graph/aliases.py writes the `aliasOf` edge with a raw SPARQL INSERT "
-        "and _commit_ontology_graph_store never calls it, so POST "
-        "/ontology/aliases returns 201 with old_attr_uri/new_attr_uri null and "
-        "no alias is recorded anywhere. Attribute renames (ADR 0002 §7) do not "
-        "exist on the property graph."
-    ),
-    strict=True,
-)
 @pytest.mark.asyncio
 async def test_register_alias_records_the_alias():
     await commit_ontology(
@@ -484,17 +446,6 @@ async def test_register_alias_records_the_alias():
     )
 
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG (ONTA-527 port gap): RENAME_ATTRIBUTE is dropped on Neo4j — same "
-        "`else:` arm as REGISTER_ALIAS. The ONTA-407b lifecycle (rename always "
-        "creates the alias, the old declaration is retired, instance data is "
-        "backfilled) has no GraphStore implementation: POST "
-        "/ontology/aliases/rename reports success while the catalog keeps the "
-        "old attribute and never gains the new one."
-    ),
-    strict=True,
-)
 @pytest.mark.asyncio
 async def test_rename_attribute_moves_the_declaration():
     await commit_ontology(
@@ -520,17 +471,6 @@ async def test_rename_attribute_moves_the_declaration():
     assert ("Guest", "phone_num") not in attrs
 
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG (ONTA-527 port gap): alias-op ARGUMENT VALIDATION is gone with the "
-        "ops. _apply_one raised ValueError for a self-alias, for missing "
-        "alias_from/alias_to, for RETIRE_ALIAS without data_graph_uri and for a "
-        "type-level rename; _commit_ontology_graph_store's `else:` arm accepts "
-        "all four silently, so POST /ontology/aliases* answers 201 for input "
-        "the API used to reject with 400 (routes/ontology.py maps the ValueError)."
-    ),
-    strict=True,
-)
 @pytest.mark.asyncio
 async def test_alias_ops_still_validate_their_arguments():
     with pytest.raises(ValueError, match="alias_from and alias_to"):

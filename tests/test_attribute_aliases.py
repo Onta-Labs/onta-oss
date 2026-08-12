@@ -1,20 +1,25 @@
 """Attribute alias mechanism tests (COG-40, ADR 0002 §7).
 
-Covers: alias registration/retirement SPARQL, alias-map chain flattening +
-cycle guard, the conservative full-IRI query rewriter, the batched lazy
-backfill, and the NL pipeline wiring — including the regression-critical
+Covers: alias registration/retirement (GraphStore companion bag), alias-map
+chain flattening + cycle guard, the conservative full-IRI query rewriter, the
+batched lazy backfill (SPARQL batch builder, gated when a process store is
+present), and the NL pipeline wiring — including the regression-critical
 default path (feature OFF / zero aliases => zero behavior change).
 
-All mocked — no live Neptune, no LLM, no network.
+Hermetic suite injects a ``MemoryGraphStore`` for every test
+(``tests/conftest.py::_hermetic_graph_store``). Production alias authoring
+therefore lands on the ontology companion bag (ONTA-531), not SPARQL
+``INSERT DATA`` / ``DELETE WHERE``. The register / retire / fetch / count
+tests exercise that path. The pure SPARQL batch-builder test for backfill
+clears the process store so the SPARQL mock path remains unit-testable.
 
-**ONTA-527 / ONTA-530 note.** ``graph/aliases.py`` writers remain SPARQL-only
-(no GraphStore register/retire yet — see ``test_ontology_commit`` xfails). The
-builder/parser tests keep their value (chain flattening, cycle guard,
-prefix-overlap rule). The pipeline-wiring block at the bottom runs on the
-Cypher path: when ``INFONA_ALIASES_ENABLED`` and a non-empty alias map are
-present, ``_ask_cypher`` rewrite-only renames leaf tokens in the generated
-Cypher string (``_rewrite_cypher_alias_leaves``); empty map / flag off ⇒ zero
-behavior change.
+**ONTA-530 / ONTA-531 note.** Alias *authoring* lands on the ontology companion
+bag (ONTA-531 GraphStore register/retire). At /ask time, when
+``INFONA_ALIASES_ENABLED`` and a non-empty alias map are present, ``_ask_cypher``
+rewrite-only renames leaf tokens in the generated Cypher string
+(``_rewrite_cypher_alias_leaves``); empty map / flag off ⇒ zero behavior change.
+The builder/parser tests keep their value (chain flattening, cycle guard,
+prefix-overlap rule).
 """
 
 from __future__ import annotations
@@ -34,10 +39,17 @@ from infona_client.graph.aliases import (
     rewrite_query_attrs,
 )
 from infona_client.graph.client import NeptuneClient
+from infona_client.graph.ontology_companion import (
+    get_ontology_companion,
+    live_graph_uri,
+)
+from infona_client.graph.store import get_graph_store, reset_graph_store_for_tests
 from infona_client.nlp.pipeline import NLQueryPipeline
 
 ONTO_GRAPH = "https://graph.infona.ai/graphs/t-alias"
 DATA_GRAPH = "https://graph.infona.ai/graphs/t-alias/kg/main"
+TENANT = "t-alias"
+KG = "main"
 
 PHONE_NUM = "https://graph.infona.ai/types/Guest/attrs/phone_num"
 PHONE = "https://graph.infona.ai/types/Guest/attrs/phone"
@@ -74,18 +86,42 @@ def _count_result(n: int) -> dict:
     }
 
 
+def _seed_entity_props(leaf: str, n: int) -> None:
+    """Plant ``n`` MemoryGraphStore entities carrying ``leaf`` as a prop.
+
+    Used by the GraphStore reference-count path
+    (``_count_attr_references_graph_store``).
+    """
+    from infona_client.graph.memory_store import _EntityRow
+
+    store = get_graph_store()
+    for i in range(n):
+        eid = f"https://graph.infona.ai/entities/Guest/g{i}"
+        store._entities[(TENANT, KG, eid)] = _EntityRow(  # type: ignore[attr-defined]
+            tenant_id=TENANT,
+            kg=KG,
+            id=eid,
+            primary_type="Guest",
+            props={leaf: f"val-{i}"},
+        )
+
+
+def _companion_aliases() -> dict[str, str]:
+    live = live_graph_uri(ONTO_GRAPH)
+    return get_ontology_companion().aliases.get(live) or {}
+
+
 # ---------------------------------------------------------------------------
-# register / retire
+# register / retire (GraphStore companion bag — ONTA-531)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_register_alias_writes_alias_triple(mock_neptune):
+    """With a process store present, register lands on the companion bag."""
     await register_alias(mock_neptune, ONTO_GRAPH, PHONE_NUM, PHONE)
-    sparql = mock_neptune.update.call_args.args[0]
-    assert "INSERT DATA" in sparql
-    assert f"GRAPH <{ONTO_GRAPH}>" in sparql
-    assert f"<{PHONE_NUM}> <{ALIAS_OF}> <{PHONE}> ." in sparql
+    mock_neptune.update.assert_not_called()
+    assert _companion_aliases() == {PHONE_NUM: PHONE}
 
 
 @pytest.mark.asyncio
@@ -93,20 +129,25 @@ async def test_register_alias_rejects_self_alias(mock_neptune):
     with pytest.raises(ValueError):
         await register_alias(mock_neptune, ONTO_GRAPH, PHONE, PHONE)
     mock_neptune.update.assert_not_called()
+    assert _companion_aliases() == {}
 
 
 @pytest.mark.asyncio
 async def test_retire_alias_deletes_alias_triple(mock_neptune):
+    await register_alias(mock_neptune, ONTO_GRAPH, PHONE_NUM, PHONE)
+    assert PHONE_NUM in _companion_aliases()
+
     await retire_alias(mock_neptune, ONTO_GRAPH, PHONE_NUM)
-    sparql = mock_neptune.update.call_args.args[0]
-    assert "DELETE WHERE" in sparql
-    assert f"<{PHONE_NUM}> <{ALIAS_OF}> ?new" in sparql
+    mock_neptune.update.assert_not_called()
+    assert PHONE_NUM not in _companion_aliases()
 
 
 @pytest.mark.asyncio
 async def test_retire_alias_refuses_while_refs_remain(mock_neptune):
     """ONTA-407b: real reference check — retirement blocked while count > 0."""
-    mock_neptune.query.return_value = _count_result(3)
+    _seed_entity_props("phone_num", 3)
+    await register_alias(mock_neptune, ONTO_GRAPH, PHONE_NUM, PHONE)
+
     with pytest.raises(AliasStillReferencedError) as ei:
         await retire_alias(
             mock_neptune, ONTO_GRAPH, PHONE_NUM, data_graph_uri=DATA_GRAPH,
@@ -115,63 +156,73 @@ async def test_retire_alias_refuses_while_refs_remain(mock_neptune):
     assert ei.value.old_attr_uri == PHONE_NUM
     assert ei.value.data_graph_uri == DATA_GRAPH
     mock_neptune.update.assert_not_called()
+    # Alias remains recorded until a successful retire.
+    assert _companion_aliases().get(PHONE_NUM) == PHONE
 
 
 @pytest.mark.asyncio
 async def test_retire_alias_ok_when_zero_refs(mock_neptune):
-    mock_neptune.query.return_value = _count_result(0)
+    await register_alias(mock_neptune, ONTO_GRAPH, PHONE_NUM, PHONE)
+    # No instance props seeded → GraphStore count is 0.
     await retire_alias(
         mock_neptune, ONTO_GRAPH, PHONE_NUM, data_graph_uri=DATA_GRAPH,
     )
-    sparql = mock_neptune.update.call_args.args[0]
-    assert "DELETE WHERE" in sparql
+    mock_neptune.update.assert_not_called()
+    assert PHONE_NUM not in _companion_aliases()
 
 
 @pytest.mark.asyncio
 async def test_count_attr_references(mock_neptune):
-    mock_neptune.query.return_value = _count_result(7)
+    _seed_entity_props("phone_num", 7)
     n = await count_attr_references(mock_neptune, DATA_GRAPH, PHONE_NUM)
     assert n == 7
-    assert f"<{PHONE_NUM}>" in mock_neptune.query.call_args.args[0]
+    # GraphStore path — no SPARQL count probe.
+    mock_neptune.query.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
-# fetch_alias_map — chain flattening + cycle guard
+# fetch_alias_map — chain flattening + cycle guard (companion edges)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_fetch_alias_map_flattens_chains(mock_neptune):
     """a -> b -> c resolves to {a: c, b: c} — every rewrite is one hop."""
-    mock_neptune.query.return_value = _alias_bindings(
-        (PHONE_NUM, PHONE), (PHONE, CONTACT),
-    )
+    live = live_graph_uri(ONTO_GRAPH)
+    get_ontology_companion().aliases[live] = {
+        PHONE_NUM: PHONE,
+        PHONE: CONTACT,
+    }
     got = await fetch_alias_map(mock_neptune, ONTO_GRAPH)
     assert got == {PHONE_NUM: CONTACT, PHONE: CONTACT}
+    mock_neptune.query.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_fetch_alias_map_drops_cycles(mock_neptune):
     """a -> b -> a is nonsensical alias data: both entries dropped, no hang."""
-    mock_neptune.query.return_value = _alias_bindings(
-        (PHONE_NUM, PHONE), (PHONE, PHONE_NUM),
-    )
+    live = live_graph_uri(ONTO_GRAPH)
+    get_ontology_companion().aliases[live] = {
+        PHONE_NUM: PHONE,
+        PHONE: PHONE_NUM,
+    }
     got = await fetch_alias_map(mock_neptune, ONTO_GRAPH)
     assert got == {}
 
 
 @pytest.mark.asyncio
 async def test_fetch_alias_map_self_cycle_dropped_others_kept(mock_neptune):
-    mock_neptune.query.return_value = _alias_bindings(
-        (PHONE, PHONE),          # self-alias: dropped
-        (PHONE_NUM, CONTACT),    # independent alias: kept
-    )
+    live = live_graph_uri(ONTO_GRAPH)
+    get_ontology_companion().aliases[live] = {
+        PHONE: PHONE,            # self-alias: dropped
+        PHONE_NUM: CONTACT,      # independent alias: kept
+    }
     got = await fetch_alias_map(mock_neptune, ONTO_GRAPH)
     assert got == {PHONE_NUM: CONTACT}
 
 
 # ---------------------------------------------------------------------------
-# rewrite_query_attrs — full-IRI matches only
+# rewrite_query_attrs — full-IRI matches only (backend-independent)
 # ---------------------------------------------------------------------------
 
 
@@ -201,13 +252,19 @@ def test_rewrite_query_attrs_empty_map_is_identity():
 
 
 # ---------------------------------------------------------------------------
-# backfill_aliases — batched DELETE/INSERT WHERE
+# backfill_aliases — batched DELETE/INSERT WHERE (SPARQL batch builder)
+#
+# Instance rewrites are still SPARQL-shaped; count/register now prefer the
+# process GraphStore. Clear the store so this unit test exercises the SPARQL
+# batch path with a mocked Neptune client (same pattern as other residual
+# SPARQL unit tests under the hermetic GraphStore fixture).
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_backfill_emits_batched_delete_insert(mock_neptune):
     """2500 triples at batch_size=1000 => 3 batched updates, count returned."""
+    reset_graph_store_for_tests()
     mock_neptune.query.return_value = _count_result(2500)
 
     rewritten = await backfill_aliases(
@@ -228,10 +285,22 @@ async def test_backfill_emits_batched_delete_insert(mock_neptune):
 
 @pytest.mark.asyncio
 async def test_backfill_zero_triples_no_updates(mock_neptune):
-    mock_neptune.query.return_value = _count_result(0)
+    # GraphStore present, zero instance props → count 0, no SPARQL updates.
     rewritten = await backfill_aliases(mock_neptune, DATA_GRAPH, {PHONE_NUM: PHONE})
     assert rewritten == 0
     mock_neptune.update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_backfill_uses_graph_store_count_then_sparql_batches(mock_neptune):
+    """Hybrid path: GraphStore counts refs; rewrite batches still hit Neptune."""
+    _seed_entity_props("phone_num", 5)
+    rewritten = await backfill_aliases(
+        mock_neptune, DATA_GRAPH, {PHONE_NUM: PHONE}, batch_size=2,
+    )
+    assert rewritten == 5
+    assert len(mock_neptune.update.call_args_list) == 3  # ceil(5/2)
+    mock_neptune.query.assert_not_called()  # count came from the store
 
 
 # ---------------------------------------------------------------------------
@@ -244,11 +313,10 @@ async def test_backfill_zero_triples_no_updates(mock_neptune):
 # Cypher path (no longer SPARQL `_fix_common_sparql_issues`).
 # ---------------------------------------------------------------------------
 
-
-TENANT = "test-tenant"
-KG = "guests"
-KG_GRAPH = f"https://graph.infona.ai/graphs/{TENANT}/kg/{KG}"
-TENANT_GRAPH = f"https://graph.infona.ai/graphs/{TENANT}"
+PIPE_TENANT = "test-tenant"
+PIPE_KG = "guests"
+KG_GRAPH = f"https://graph.infona.ai/graphs/{PIPE_TENANT}/kg/{PIPE_KG}"
+TENANT_GRAPH = f"https://graph.infona.ai/graphs/{PIPE_TENANT}"
 GUEST_ONTOLOGY = "Type: Guest\n  - phone\n  - phone_num"
 
 
@@ -259,7 +327,7 @@ async def _seeded_store():
     from infona_client.graph.scope import GraphScope
 
     store = MemoryGraphStore()
-    session = store.session(GraphScope.for_instance(TENANT, KG))
+    session = store.session(GraphScope.for_instance(PIPE_TENANT, PIPE_KG))
     guest = "https://graph.infona.ai/entities/Guest/g1"
     await assert_fact(
         session, AssertionFact(subject_id=guest, kind="type", value="Guest"),
