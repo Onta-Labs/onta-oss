@@ -289,6 +289,7 @@ def build_cypher_generation_prompt(
     kg_name: str = "",
     examples_text: str = "",
     error_feedback: str = "",
+    grounding_text: str = "",
 ) -> str:
     """Build the user prompt for Cypher generation (Neo4j ADR 0013 path).
 
@@ -298,6 +299,10 @@ def build_cypher_generation_prompt(
 
     ``error_feedback`` is optional scrubbed store/generator error text for a
     single retry (mirrors SPARQL retry spirit).
+
+    ``grounding_text`` is optional structured ontology-subgraph grounding from
+    :func:`infona_client.nlp.ontology_subgraph_match.ground_ask_plan` — hints
+    only; the model still produces the final Cypher (always-LLM product rule).
     """
     examples_section = f"\n{examples_text}\n" if examples_text else ""
     error_section = ""
@@ -307,6 +312,9 @@ def build_cypher_generation_prompt(
             f"error (do not invent scope values; do not switch to SPARQL):\n"
             f"{error_feedback}\n"
         )
+    grounding_section = ""
+    if grounding_text and grounding_text.strip():
+        grounding_section = f"\n{grounding_text.strip()}\n"
     scope_line = ""
     if tenant_id or kg_name:
         scope_line = (
@@ -327,7 +335,7 @@ def build_cypher_generation_prompt(
     )
     return f"""{kg_header}Ontology schema:
 {ontology_summary}{scope_line}
-{examples_section}{error_section}
+{examples_section}{grounding_section}{error_section}
 User question: {question}
 
 Compose a read-only Cypher answer using semantic helpers when possible \
