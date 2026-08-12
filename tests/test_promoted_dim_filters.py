@@ -165,6 +165,132 @@ def test_literal_same_name_not_stolen_by_range():
     assert p["params"]["prop_key"] == "site"
 
 
+def test_literal_plural_also_not_stolen_by_range():
+    """Plural of a literal leaf (sites with literal site) must refuse range steal."""
+    onto = (
+        "Type: Widget\n"
+        "  - site: string (literal)\n"
+        "  - stored_in -> Site (relationship, key=stored_in)\n"
+        "Type: Site\n"
+    )
+    assert (
+        _resolve_relationship_attr(
+            "sites", type_name="Widget", ontology_summary=onto
+        )
+        is None
+    )
+
+
+# ---------------------------------------------------------------------------
+# High-precision range resolve (ONTA-538 review blockers)
+# ---------------------------------------------------------------------------
+
+
+def test_range_reject_substring_site_not_website():
+    """Substring tiers must not bind site → Website."""
+    onto = (
+        "Type: Widget\n"
+        "  - has_web -> Website (relationship, key=has_web)\n"
+        "Type: Website\n"
+    )
+    assert (
+        _resolve_relationship_attr(
+            "site", type_name="Widget", ontology_summary=onto
+        )
+        is None
+    )
+
+
+def test_range_reject_substring_state_not_statement():
+    onto = (
+        "Type: Widget\n"
+        "  - cites -> Statement (relationship, key=cites)\n"
+        "Type: Statement\n"
+    )
+    assert (
+        _resolve_relationship_attr(
+            "state", type_name="Widget", ontology_summary=onto
+        )
+        is None
+    )
+
+
+def test_range_reject_substring_form_not_platform():
+    onto = (
+        "Type: Widget\n"
+        "  - runs_on -> Platform (relationship, key=runs_on)\n"
+        "Type: Platform\n"
+    )
+    assert (
+        _resolve_relationship_attr(
+            "form", type_name="Widget", ontology_summary=onto
+        )
+        is None
+    )
+
+
+def test_range_dual_node_suffix_word_falls_through():
+    """Bare word `node` must not pick WarehouseNode over PhaseNode via length."""
+    onto = (
+        "Type: Widget\n"
+        "  - stored_in -> WarehouseNode (relationship, key=stored_in)\n"
+        "  - has_phase -> PhaseNode (relationship, key=has_phase)\n"
+        "Type: WarehouseNode\n"
+        "Type: PhaseNode\n"
+    )
+    assert (
+        _resolve_relationship_attr(
+            "node", type_name="Widget", ontology_summary=onto
+        )
+        is None
+    )
+
+
+def test_range_happy_path_site_region_warehouse_phase():
+    """Exact Site/Region + content-token WarehouseNode/Phase still resolve."""
+    onto = (
+        "Type: Widget\n"
+        "  - stored_in -> WarehouseNode (relationship, key=stored_in)\n"
+        "  - has_region -> Region (relationship, key=has_region)\n"
+        "  - has_phase -> Phase (relationship, key=has_phase)\n"
+        "  - located_at -> Site (relationship, key=located_at)\n"
+        "Type: WarehouseNode\n"
+        "Type: Region\n"
+        "Type: Phase\n"
+        "Type: Site\n"
+    )
+    assert (
+        _resolve_relationship_attr(
+            "site", type_name="Widget", ontology_summary=onto
+        )
+        == "located_at"
+    )
+    assert (
+        _resolve_relationship_attr(
+            "region", type_name="Widget", ontology_summary=onto
+        )
+        == "has_region"
+    )
+    assert (
+        _resolve_relationship_attr(
+            "warehouse", type_name="Widget", ontology_summary=onto
+        )
+        == "stored_in"
+    )
+    assert (
+        _resolve_relationship_attr(
+            "WarehouseNode", type_name="Widget", ontology_summary=onto
+        )
+        == "stored_in"
+    )
+    assert (
+        _resolve_relationship_attr(
+            "phase", type_name="Widget", ontology_summary=onto
+        )
+        == "has_phase"
+    )
+
+
 def test_colon_form_range_resolve():
     onto = (
         "Type: Widget\n"

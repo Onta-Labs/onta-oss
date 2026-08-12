@@ -1079,6 +1079,85 @@ def _literal_leaves_in_section(section: str) -> set[str]:
     return leaves
 
 
+# Generic CamelCase suffixes stripped when matching range **content** tokens
+# (warehouse ↔ WarehouseNode). Bare suffix words must not bind any *Node type.
+_RANGE_GENERIC_SUFFIXES = frozenset(
+    {"node", "entity", "type", "object", "record", "item", "class"}
+)
+
+
+def _score_range_type_precision(rel_word: str, range_type: str) -> int:
+    """High-precision range-type match tier for promoted-dim resolve.
+
+    Returns 0 (no match) or a positive tier (higher = better). Deliberately
+    does **not** reuse :func:`_score_type_match` — that scorer's substring /
+    weak word-overlap tiers (``site``⊂``Website``, ``state``⊂``Statement``,
+    ``form``⊂``Platform``) are too fuzzy for stealing a relationship leaf.
+
+    Tiers (unique winner is decided on tier alone — no length bonus):
+
+    * **3** — exact / singular full type name (``site`` ↔ ``Site``)
+    * **2** — camel / multi-word join equals needle
+      (``warehouse node`` ↔ ``WarehouseNode``)
+    * **1** — content token of the range after stripping generic suffixes
+      (``warehouse`` ↔ ``WarehouseNode``, ``phase`` ↔ ``PhaseNode``)
+
+    Rejected: any substring-of-type / weak token-overlap tier.
+    """
+    if not rel_word or not range_type:
+        return 0
+    needle = _normalize_type_token(rel_word).lower()
+    if not needle:
+        return 0
+    sing = _singularize_token(needle)
+    tl = range_type.lower()
+    tl_compact = re.sub(r"[^a-z0-9]", "", tl)
+    words = _camel_words(range_type)
+
+    # Tier 3: exact / singular full type name (incl. compact CamelCase).
+    if needle in (tl, tl_compact) or sing in (tl, tl_compact):
+        return 3
+
+    raw_sp = re.sub(r"[_\-]+", " ", (rel_word or "").strip().lower())
+    raw_sp = re.sub(r"\s+", " ", raw_sp).strip()
+    sing_sp = " ".join(_singularize_token(w) for w in raw_sp.split() if w)
+
+    # Tier 2: full camel-word join (spaces / underscores) equals needle.
+    # Compact form (``warehousenode``) is already tier 3 via ``tl_compact``.
+    if words:
+        joined = " ".join(words)
+        if joined in (raw_sp, sing_sp) or "".join(words) in (needle, sing):
+            return 2
+
+    # Tier 1: content tokens excluding generic Node/Entity/Type suffixes.
+    content = [w for w in words if w not in _RANGE_GENERIC_SUFFIXES]
+    if not content:
+        return 0
+    for tok in content:
+        if len(tok) >= 3 and (needle == tok or sing == tok):
+            return 1
+    content_join = " ".join(content)
+    if content_join in (raw_sp, sing_sp) or "".join(content) in (needle, sing):
+        return 1
+    return 0
+
+
+def _literal_forms_block_range(rel_l: str, literal_leaves: set[str]) -> bool:
+    """True when ``rel_l`` collides with a declared literal (incl. plurals).
+
+    If the type still has literal leaf ``site``, both ``site`` and ``sites``
+    must refuse range steal so equality keeps the literal prop.
+    """
+    if not rel_l or not literal_leaves:
+        return False
+    sing = _singularize_token(rel_l)
+    lit_forms: set[str] = set()
+    for lit in literal_leaves:
+        lit_forms.add(lit)
+        lit_forms.add(_singularize_token(lit))
+    return rel_l in lit_forms or sing in lit_forms
+
+
 def _resolve_via_range_type(
     rel_word: str,
     specs: list[tuple[str, str | None]],
@@ -1089,34 +1168,38 @@ def _resolve_via_range_type(
 
     Hermetic ONTA-538 path: after CSV promotion, users still say the column /
     entity-type name ("site", "warehouse") even when the edge leaf is a verb
-    (``stored_in``). Prefer a unique range-type hit; fall through (``None``)
-    when ambiguous or when the word is also a declared **literal** on the type
-    (literal equality owns that shape — do not steal).
+    (``stored_in``). Prefer a unique high-precision range-type hit; fall
+    through (``None``) when ambiguous, when the word is also a declared
+    **literal** on the type (incl. plural), or when only a fuzzy substring
+    would match (literal equality / LLM owns those shapes — do not steal).
     """
     rel_l = (rel_word or "").strip().lower()
     if not rel_l:
         return None
-    # If the NL word is a literal attribute on this type, do not rebind via
-    # range (prefer equality / LLM rather than a confident wrong related filter).
-    if rel_l in literal_leaves:
+    # If the NL word (or its singular) is a literal attribute on this type,
+    # do not rebind via range (prefer equality / LLM rather than a confident
+    # wrong related filter). Plural ``sites`` blocks when literal is ``site``.
+    if _literal_forms_block_range(rel_l, literal_leaves):
         return None
 
+    # (tier, leaf) — uniqueness is on **tier only**, never score*100+len.
+    # Longer *Node types must not beat shorter peers at the same precision.
     scored: list[tuple[int, str]] = []
     for leaf, range_type in specs:
         if not range_type:
             continue
-        score = _score_type_match(rel_word, range_type)
-        if score > 0:
-            scored.append((score, leaf))
+        tier = _score_range_type_precision(rel_word, range_type)
+        if tier > 0:
+            scored.append((tier, leaf))
     if not scored:
         return None
-    scored.sort(key=lambda x: (-x[0], x[1]))
-    best_score, best_leaf = scored[0]
-    # Unique winner only — ties fall through (clarify, not confident empty).
-    runners = [leaf for s, leaf in scored if s == best_score]
+    best_tier = max(t for t, _ in scored)
+    # Unique leaf at best tier — multiple ranges at the same tier fall through
+    # (e.g. bare ``node`` must not pick WarehouseNode over PhaseNode via len).
+    runners = list(dict.fromkeys(leaf for t, leaf in scored if t == best_tier))
     if len(runners) != 1:
         return None
-    return best_leaf
+    return runners[0]
 
 
 def _resolve_relationship_attr(
