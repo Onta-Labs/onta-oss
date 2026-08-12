@@ -672,6 +672,97 @@ server.registerTool(
     ingestTextHandler({ text, kg_name, format }),
 );
 
+// F10: get data back out. Thin over the canonical
+// `GET /graphs/{tenant}/kgs/{kg}/export` route via the SDK's `exportKg` — the
+// same path the CLI's `infona export` uses (interface convergence). Exported
+// so the render/truncation contract can be unit-tested with a stubbed client.
+// Cap body size so a multi-MB graph dump never floods the agent context window;
+// agents can re-call with `type`/`limit` or use the CLI for a full dump.
+const EXPORT_MAX_CHARS = 100_000;
+
+export async function exportKgHandler(
+  {
+    kg_name,
+    format,
+    type,
+    limit,
+  }: {
+    kg_name: string;
+    format?: "json" | "csv";
+    type?: string;
+    limit?: number;
+  },
+  makeClient: () => Client = client,
+) {
+  if (!kg_name?.trim()) {
+    return errorResult(
+      new Error("export_kg requires `kg_name` — nothing was exported."),
+    );
+  }
+  try {
+    const fmt = format ?? "json";
+    const data = await makeClient().exportKg(kg_name, {
+      format: fmt,
+      type,
+      limit,
+    });
+    // JSON → pretty object; CSV → raw string body (mirrors the CLI).
+    let body =
+      typeof data === "string" ? data : JSON.stringify(data, null, 2);
+    if (body.length > EXPORT_MAX_CHARS) {
+      // Keep the whole response (body + note) under the cap so the agent
+      // context window still has headroom; the note must never push us over.
+      const notePrefix =
+        "\n\nNote: export truncated for MCP context size (original " +
+        `${body.length} characters). Narrow with \`type\` and/or \`limit\`, ` +
+        "or use the CLI `infona export` for the full dump.";
+      const keep = Math.max(0, EXPORT_MAX_CHARS - notePrefix.length);
+      body = body.slice(0, keep) + notePrefix;
+    }
+    return textResult(body);
+  } catch (err) {
+    return errorResult(err);
+  }
+}
+
+server.registerTool(
+  "export_kg",
+  {
+    description:
+      "Export a context graph's instance data as JSON or CSV. Rides the same " +
+      "canonical `GET /graphs/{tenant}/kgs/{kg}/export` route as the CLI's " +
+      "`infona export`. Use this to pull data out for inspection, download, or " +
+      "handoff to another tool. Large dumps are truncated in the response with " +
+      "a note — narrow with `type`/`limit` or use the CLI for the full file.",
+    inputSchema: {
+      kg_name: z
+        .string()
+        .describe(
+          "Name of the context graph to export. Use list_knowledge_graphs to see available KGs.",
+        ),
+      format: z
+        .enum(["json", "csv"])
+        .optional()
+        .describe('Output format. Default "json". Pass "csv" for a tabular dump.'),
+      type: z
+        .string()
+        .optional()
+        .describe(
+          'Optional entity type filter (e.g. "Book") — export only that type\'s rows.',
+        ),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .describe("Max rows to export (server-side cap still applies)."),
+    },
+  },
+  // Wrapped, not passed directly: the MCP SDK calls the callback with a second
+  // `extra` argument, which would otherwise land in `makeClient`.
+  (args) => exportKgHandler(args),
+);
+
 // ONTA-415: attacks the ROOT CAUSE of ONTA-253. That fix made a guessed path
 // fail LOUDLY (local stat + `asFile:true`) but did nothing to stop the guessing:
 // because `ingest_csv` demands an absolute path, an agent with no way to see the

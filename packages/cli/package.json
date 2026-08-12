@@ -15,7 +15,8 @@
     }
   },
   "bin": {
-    "infona": "./dist/cli.js"
+    "infona": "./dist/cli.js",
+    "onta": "./dist/cli.js"
   },
   "publishConfig": {
     "access": "public"
