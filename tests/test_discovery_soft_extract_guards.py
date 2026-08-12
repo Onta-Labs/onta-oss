@@ -270,8 +270,13 @@ async def test_skewed_year_city_value_kept_literal(tmp_path):
     assert not any(p == LOCATED_IN for _, p, _ in collected)
     assert not any(p == RDF_TYPE and o == type_uri("City") for _, p, o in collected)
     assert "City" not in result.node_target_types
-    # The value is still recorded as a literal fact (nothing silently dropped).
-    assert result.triples_inserted >= 1
+    # The value is still staged as a literal fact (nothing silently dropped).
+    # ONTA-528: triples_inserted only increments after insert_facts lands; this
+    # helper collects without writing, so assert the collector itself.
+    assert any(
+        s == PHYS_URI and "attrs/" in p and o == "2020"
+        for s, p, o in collected
+    ), collected
 
 
 @pytest.mark.asyncio

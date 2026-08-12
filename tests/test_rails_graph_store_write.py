@@ -237,6 +237,78 @@ def test_ingest_mapped_uses_insert_facts_not_sparql(memory_store, monkeypatch):
     mock_neptune.update.assert_not_called()
     # Facts land in MemoryGraphStore (dual-route success).
     assert memory_store.entity_count(tenant_id="demo-tenant", kg="bookstore") >= 2
+    # ONTA-528: triples_inserted equals the number of instance triples that
+    # actually passed through insert_facts (not a premature collect-time count).
+    assert result.triples_inserted == sum(c["n_triples"] for c in captured)
+
+
+def test_triples_inserted_zero_when_insert_facts_fails(memory_store, monkeypatch):
+    """ONTA-528: if insert_facts raises, triples_inserted must stay 0.
+
+    Anti-overfit synthetic: no domain schema, one forced write failure — the
+    counter must not claim facts landed when the shared write path aborted.
+    """
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neo4j")
+    import tempfile
+    from pathlib import Path
+
+    import infona_client.resolver.schema_resolver as sr
+    from infona_client.graph.client import NeptuneClient
+    from infona_client.resolver.attribute_resolver import AttributeSchema
+    from infona_client.resolver.models import (
+        ColumnMapping,
+        ColumnRole,
+        CSVSchemaMapping,
+    )
+    from infona_client.resolver.schema_resolver import SchemaResolver
+    from infona_client.resolver.verdict_cache import JsonVerdictCache
+
+    async def boom(*a, **k):
+        raise RuntimeError("simulated write failure")
+
+    monkeypatch.setattr(sr, "insert_facts", boom)
+
+    mock_neptune = AsyncMock(spec=NeptuneClient)
+    mock_neptune.batch_exists.return_value = set()
+
+    cache = JsonVerdictCache.__new__(JsonVerdictCache)
+    cache._path = Path(tempfile.mkdtemp()) / "verdicts.json"
+    cache._cache = {}
+    resolver = SchemaResolver(mock_neptune, "fake-key", cache)
+    resolver._er_enabled = False
+
+    graph = _graph(tenant="demo-tenant", kg="bookstore")
+    mapping = CSVSchemaMapping(
+        entity_type="Book",
+        columns=[
+            ColumnMapping(
+                column_name="title",
+                role=ColumnRole.TYPE_ID,
+                datatype="string",
+                attribute_name="title",
+            ),
+        ],
+    )
+    existing_types = {"Book": ""}
+    existing_attrs = {
+        "Book": {"title": AttributeSchema(name="title", datatype="string")},
+    }
+
+    async def run():
+        return await resolver._ingest_mapped(
+            mapping,
+            [{"title": "Only"}],
+            graph,
+            existing_types,
+            existing_attrs,
+            source="test.csv",
+            instance_graph=graph,
+        )
+
+    with pytest.raises(RuntimeError, match="simulated write failure"):
+        asyncio.run(run())
+    # Neptune SPARQL flush must never be the fallback on write failure.
+    mock_neptune.update.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
