@@ -25,6 +25,24 @@ from infona_client.nlp.cypher_generate import (
     try_deterministic_cypher,
     try_stub_count_query,
 )
+
+_TEMPLATE_PARAM_RE = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*)")
+
+
+def _missing_template_params(cypher_text: str, params: dict) -> set[str]:
+    """Return allowlisted template ``$name`` tokens not present in params.
+
+    Session-injected scope keys are never "missing". Optional nullables like
+    ``after_id`` / ``rel_attr`` / ``to_types`` may be explicitly ``None``.
+    """
+    needed = set(_TEMPLATE_PARAM_RE.findall(cypher_text or ""))
+    needed.discard("tenant_id")
+    needed.discard("kg")
+    missing: set[str] = set()
+    for name in needed:
+        if name not in params:
+            missing.add(name)
+    return missing
 from infona_client.nlp.cypher_scope import (
     CrossTenantCypherError,
     CypherScopeError,
@@ -1926,24 +1944,48 @@ class NLQueryPipeline:
         :func:`confine_generated_cypher`. Never trusts model tenant/kg values.
         """
         from infona_client.graph.schema_bootstrap import TEMPLATES
+        from infona_client.graph.store import GraphQueryError
 
         template = gen.get("template")
+        is_fixture = bool(gen.get("stub") or gen.get("fixture"))
         if (
             template
             and isinstance(template, str)
             and template in TEMPLATES
             and not TEMPLATES[template].writing
         ):
+            # Fixture/LLM params land in forced_params via confine_generated_cypher.
+            # LLM may name a template without supplying $type_names / $limit —
+            # that used to raise Neo4j ParameterMissing. Only take the template
+            # path when required params are present (or fill safe defaults).
             tmpl_params = {
                 k: v
                 for k, v in forced_params.items()
                 if k not in ("tenant_id", "kg")
             }
-            records = await session.execute_template(template, tmpl_params)
-            return records, f"template:{template}"
+            # Also merge any params left only on gen (defense in depth).
+            for k, v in (gen.get("params") or {}).items():
+                if k not in ("tenant_id", "kg") and k not in tmpl_params:
+                    tmpl_params[k] = v
+            # Safe defaults for common allowlisted templates.
+            cypher_text = TEMPLATES[template].cypher or ""
+            if "$limit" in cypher_text and tmpl_params.get("limit") is None:
+                tmpl_params["limit"] = 25
+            if "$after_id" in cypher_text and "after_id" not in tmpl_params:
+                tmpl_params["after_id"] = None
+            missing = _missing_template_params(cypher_text, tmpl_params)
+            if not missing:
+                records = await session.execute_template(template, tmpl_params)
+                return records, f"template:{template}"
+            # Incomplete free-form "template" claim → execute the confined Cypher.
+            if is_fixture:
+                # Fixtures must be complete; surface clearly rather than empty.
+                raise GraphQueryError(
+                    f"Fixture template {template!r} missing params: {sorted(missing)}"
+                )
 
         # Legacy count stub shapes (pre-template field) still map to templates.
-        if (gen.get("stub") or gen.get("fixture")) and "count(*)" in cypher:
+        if is_fixture and "count(*)" in cypher:
             if "primary_type" in forced_params:
                 records = await session.execute_template(
                     "entity_count_by_type",
