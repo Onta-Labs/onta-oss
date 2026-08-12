@@ -368,6 +368,7 @@ async def commit_ontology_unlocked(
         return await _commit_ontology_graph_store(
             graph_uri,
             mutations,
+            expected_version=expected_version,
             actor=actor,
             message=message,
         )
@@ -427,141 +428,687 @@ async def _commit_ontology_graph_store(
     graph_uri: str,
     mutations: Sequence[OntologyMutation],
     *,
+    expected_version: str | None = None,
     actor: str | None = None,
     message: str | None = None,
 ) -> OntologyCommitResult:
     """Apply schema mutations via GraphStore catalog (Neo4j product path).
 
-    Skips SPARQL fingerprint / revision / changelog until those are ported.
-    Tenant id is recovered from the standard ontology graph URI when possible.
+    Full ONTA-531 surface: all 13 op kinds, real fingerprints, optimistic
+    concurrency, revision bump, and changelog. Catalog scope is derived from
+    the graph URI (global public/enhanced layers included).
     """
     from infona_client.graph import ontology_catalog as oc
+    from infona_client.graph.ontology_companion import (
+        catalog_session_kwargs,
+        catalog_target_from_graph_uri,
+        get_ontology_companion,
+        live_graph_uri,
+    )
     from infona_client.models.ontology import ChangeKind, ChangeRecord
 
-    tenant_id = ""
-    # graph.infona.ai/graphs/{tenant}/ontology  or  .../graphs/{tenant}
-    m = re.search(r"/graphs/([^/]+)", graph_uri or "")
-    if m:
-        tenant_id = m.group(1)
+    target = catalog_target_from_graph_uri(graph_uri)
+    live = target.live_graph_uri
+    cat_kw = catalog_session_kwargs(target)
+
+    version_before = await fingerprint_ontology(None, live)
+    if expected_version is not None and expected_version != version_before:
+        raise OntologyVersionConflict(expected_version, version_before, graph_uri)
 
     applied: list[OntologyMutation] = []
     change_records: list[ChangeRecord] = []
     for mut in mutations:
-        op = mut.op
-        if op is OntologyOpKind.UPSERT_TYPE:
-            await oc.upsert_type(
-                name=mut.type_name,
-                description=mut.description or "",
-                parent_type=mut.parent_type,
-                tenant_id=tenant_id or None,
-            )
-            change_records.append(
-                ChangeRecord(kind=ChangeKind.ADD_TYPE, type_name=mut.type_name)
-            )
-            applied.append(mut)
-        elif op is OntologyOpKind.UPSERT_ATTRIBUTE:
-            if not mut.slot_name:
-                raise ValueError("UPSERT_ATTRIBUTE requires slot_name")
-            await oc.upsert_attribute(
-                type_name=mut.type_name,
-                attr_name=mut.slot_name,
-                description=mut.description or "",
-                datatype=mut.datatype or "string",
-                tenant_id=tenant_id or None,
-            )
-            change_records.append(
-                ChangeRecord(
-                    kind=ChangeKind.ADD_ATTRIBUTE,
-                    type_name=mut.type_name,
-                    slot_name=mut.slot_name,
-                )
-            )
-            applied.append(mut)
-        elif op is OntologyOpKind.UPSERT_RELATIONSHIP:
-            if not mut.slot_name or not mut.target_type:
-                raise ValueError("UPSERT_RELATIONSHIP requires slot_name and target_type")
-            # Relationships are attributes with range type on the catalog path.
-            await oc.upsert_attribute(
-                type_name=mut.type_name,
-                attr_name=mut.slot_name,
-                description=mut.description or "",
-                datatype=mut.target_type,
-                tenant_id=tenant_id or None,
-            )
-            change_records.append(
-                ChangeRecord(
-                    kind=ChangeKind.ADD_ATTRIBUTE,
-                    type_name=mut.type_name,
-                    slot_name=mut.slot_name,
-                )
-            )
-            applied.append(mut)
-        elif op is OntologyOpKind.SET_SUBCLASS:
-            if not mut.parent_type:
-                raise ValueError("SET_SUBCLASS requires parent_type")
-            await oc.upsert_type(
-                name=mut.type_name,
-                parent_type=mut.parent_type,
-                tenant_id=tenant_id or None,
-            )
-            change_records.append(
+        records = await _apply_one_graph_store(mut, cat_kw=cat_kw, graph_uri=live)
+        applied.append(mut)
+        change_records.extend(records)
+
+    version_after = (
+        version_before
+        if not applied
+        else await fingerprint_ontology(None, live)
+    )
+
+    revision: int | None = None
+    if applied:
+        revision = await _bump_revision_graph_store(live)
+        await _emit_changelog_graph_store(
+            live,
+            version_before=version_before,
+            version_after=version_after,
+            actor=actor,
+            message=message,
+            change_records=change_records,
+            revision=revision,
+        )
+        # Touch companion so hermetic stores keep a bag even with zero aliases.
+        get_ontology_companion()
+        logger.info(
+            "ontology_committed_graph_store",
+            graph_uri=live,
+            n_mutations=len(applied),
+            version_before=version_before,
+            version_after=version_after,
+            revision=revision,
+            actor=actor,
+            message=message,
+            layer=target.layer,
+        )
+
+    return OntologyCommitResult(
+        graph_uri=live,
+        version_before=version_before,
+        version_after=version_after,
+        applied=list(applied),
+        change_records=change_records,
+    )
+
+
+async def _apply_one_graph_store(
+    mut: OntologyMutation,
+    *,
+    cat_kw: dict,
+    graph_uri: str,
+) -> list[ChangeRecord]:
+    """Apply one mutation on the property-graph catalog + companion bag."""
+    from infona_client.graph import ontology_catalog as oc
+    from infona_client.graph.ontology_companion import get_ontology_companion
+    from infona_client.models.ontology import ChangeKind, ChangeRecord
+
+    op = mut.op
+    if op is OntologyOpKind.UPSERT_TYPE:
+        # Mirror SPARQL _apply_upsert_type: only set/replace parent when
+        # parent_type is explicitly provided. Bare re-UPSERT_TYPE and
+        # description-only updates must preserve existing SUBCLASS_OF
+        # (SPARQL uses insert_type / upsert_type_comment, never clear).
+        await oc.upsert_type(
+            name=mut.type_name,
+            description=mut.description or "",
+            parent_type=mut.parent_type,
+            clear_parent=False,
+            **cat_kw,
+        )
+        records = [ChangeRecord(kind=ChangeKind.ADD_TYPE, type_name=mut.type_name)]
+        if mut.parent_type:
+            records.append(
                 ChangeRecord(
                     kind=ChangeKind.ADD_SUBCLASS,
                     type_name=mut.type_name,
                     parent_type=mut.parent_type,
                 )
             )
-            applied.append(mut)
-        elif op is OntologyOpKind.SET_TEXT_KIND:
-            # ONTA-533: durable free-text candidacy on the property-graph catalog.
-            if not mut.slot_name:
-                raise ValueError("SET_TEXT_KIND requires slot_name")
-            kind = mut.text_kind or ""
-            await oc.set_attribute_text_kind(
-                type_name=mut.type_name,
-                attr_name=mut.slot_name,
-                text_kind=kind,
-                tenant_id=tenant_id or None,
-            )
-            # Make the just-written marker visible to request-path consumers
-            # before the TTL expires (same invalidation the SPARQL path used).
-            try:
-                from infona_client.graph.text_markers import invalidate
-
-                if tenant_id:
-                    invalidate(tenant_id)
-            except Exception:  # noqa: BLE001 — never fail a commit on cache
-                pass
-            change_records.append(
+        if mut.description:
+            records.append(
                 ChangeRecord(
-                    kind=ChangeKind.CHANGE_TEXT_KIND,
+                    kind=ChangeKind.CHANGE_COMMENT,
                     type_name=mut.type_name,
-                    slot_name=mut.slot_name,
-                    new_value=kind or None,
+                    new_value=mut.description,
                 )
             )
-            applied.append(mut)
-        else:
-            logger.warning(
-                "ontology_store_op_skipped",
-                op=str(op),
-                type_name=getattr(mut, "type_name", None),
-            )
+        return records
 
-    version = "neo4j"
-    logger.info(
-        "ontology_committed_graph_store",
-        graph_uri=graph_uri,
-        n_mutations=len(applied),
-        actor=actor,
-        message=message,
+    if op is OntologyOpKind.UPSERT_ATTRIBUTE:
+        if not mut.slot_name:
+            raise ValueError("UPSERT_ATTRIBUTE requires slot_name")
+        datatype = mut.datatype or "string"
+        await oc.upsert_attribute(
+            type_name=mut.type_name,
+            attr_name=mut.slot_name,
+            description=mut.description or "",
+            datatype=datatype,
+            **cat_kw,
+        )
+        return [
+            ChangeRecord(
+                kind=ChangeKind.ADD_ATTRIBUTE,
+                type_name=mut.type_name,
+                slot_name=mut.slot_name,
+                new_value=datatype,
+            )
+        ]
+
+    if op is OntologyOpKind.UPSERT_RELATIONSHIP:
+        if not mut.slot_name or not mut.target_type:
+            raise ValueError("UPSERT_RELATIONSHIP requires slot_name and target_type")
+        await oc.upsert_attribute(
+            type_name=mut.type_name,
+            attr_name=mut.slot_name,
+            description=mut.description or "",
+            datatype=mut.target_type,
+            **cat_kw,
+        )
+        return [
+            ChangeRecord(
+                kind=ChangeKind.ADD_RELATIONSHIP
+                if mut.description is not None
+                else ChangeKind.CHANGE_RANGE,
+                type_name=mut.type_name,
+                slot_name=mut.slot_name,
+                new_value=mut.target_type,
+            )
+        ]
+
+    if op is OntologyOpKind.SET_SUBCLASS:
+        if not mut.parent_type:
+            raise ValueError("SET_SUBCLASS requires parent_type")
+        await oc.upsert_type(
+            name=mut.type_name,
+            parent_type=mut.parent_type,
+            clear_parent=True,
+            **cat_kw,
+        )
+        return [
+            ChangeRecord(
+                kind=ChangeKind.ADD_SUBCLASS,
+                type_name=mut.type_name,
+                parent_type=mut.parent_type,
+            )
+        ]
+
+    if op is OntologyOpKind.DELETE_ATTRIBUTE:
+        if not mut.slot_name:
+            raise ValueError("DELETE_ATTRIBUTE requires slot_name")
+        await oc.delete_attribute(
+            mut.type_name, mut.slot_name, **cat_kw
+        )
+        return [
+            ChangeRecord(
+                kind=ChangeKind.REMOVE_ATTRIBUTE,
+                type_name=mut.type_name,
+                slot_name=mut.slot_name,
+            )
+        ]
+
+    if op is OntologyOpKind.DELETE_TYPE:
+        await oc.delete_type(mut.type_name, **cat_kw)
+        return [ChangeRecord(kind=ChangeKind.REMOVE_TYPE, type_name=mut.type_name)]
+
+    if op is OntologyOpKind.SET_CORE_SLOT:
+        if not mut.slot_name:
+            raise ValueError("SET_CORE_SLOT requires slot_name")
+        # Marker-only: do not upsert (B2 reserved leaves like `name` must not
+        # be re-minted here; SPARQL mark_core_slot was also attach-only).
+        await oc.set_attr_markers(
+            mut.type_name,
+            mut.slot_name,
+            core_slot=False if mut.core_slot is False else True,
+            **cat_kw,
+        )
+        return [
+            ChangeRecord(
+                kind=ChangeKind.CHANGE_CORE_SLOT,
+                type_name=mut.type_name,
+                slot_name=mut.slot_name,
+                new_value="true" if mut.core_slot is not False else "false",
+            )
+        ]
+
+    if op is OntologyOpKind.SET_TEXT_KIND:
+        # ONTA-533 coherent path: dedicated set_attribute_text_kind (MERGE
+        # stub + empty clears) + marker-cache invalidation so reconciler /
+        # request path see the verdict immediately. set_attr_markers remains
+        # for core_slot / deprecation companions (ONTA-531).
+        if not mut.slot_name:
+            raise ValueError("SET_TEXT_KIND requires slot_name")
+        kind = mut.text_kind or ""
+        await oc.set_attribute_text_kind(
+            type_name=mut.type_name,
+            attr_name=mut.slot_name,
+            text_kind=kind,
+            **cat_kw,
+        )
+        try:
+            from infona_client.graph.text_markers import invalidate
+
+            tid = cat_kw.get("tenant_id")
+            if tid:
+                invalidate(tid)
+        except Exception:  # noqa: BLE001 — never fail a commit on cache
+            pass
+        return [
+            ChangeRecord(
+                kind=ChangeKind.CHANGE_TEXT_KIND,
+                type_name=mut.type_name,
+                slot_name=mut.slot_name,
+                new_value=kind or None,
+            )
+        ]
+
+    if op is OntologyOpKind.SET_COMMENT:
+        if mut.slot_name:
+            await oc.upsert_attribute(
+                type_name=mut.type_name,
+                attr_name=mut.slot_name,
+                description=mut.description or "",
+                datatype=mut.datatype or "string",
+                **cat_kw,
+            )
+            return [
+                ChangeRecord(
+                    kind=ChangeKind.CHANGE_COMMENT,
+                    type_name=mut.type_name,
+                    slot_name=mut.slot_name,
+                    new_value=mut.description,
+                )
+            ]
+        # Type-level comment — never clear an existing parent edge.
+        await oc.upsert_type(
+            name=mut.type_name,
+            description=mut.description or "",
+            parent_type=None,
+            clear_parent=False,
+            **cat_kw,
+        )
+        # Also stamp description via markers path so empty-string clears work.
+        await oc.set_type_markers(
+            mut.type_name,
+            description=mut.description or "",
+            **cat_kw,
+        )
+        return [
+            ChangeRecord(
+                kind=ChangeKind.CHANGE_COMMENT,
+                type_name=mut.type_name,
+                new_value=mut.description,
+            )
+        ]
+
+    if op is OntologyOpKind.REGISTER_ALIAS:
+        return await _apply_register_alias_graph_store(mut, graph_uri=graph_uri)
+
+    if op is OntologyOpKind.RENAME_ATTRIBUTE:
+        return await _apply_rename_attribute_graph_store(
+            mut, cat_kw=cat_kw, graph_uri=graph_uri
+        )
+
+    if op is OntologyOpKind.RETIRE_ALIAS:
+        return await _apply_retire_alias_graph_store(mut, graph_uri=graph_uri)
+
+    if op is OntologyOpKind.DEPRECATE:
+        return await _apply_deprecate_graph_store(mut, cat_kw=cat_kw)
+
+    raise ValueError(f"unknown ontology op: {op!r}")
+
+
+async def _apply_deprecate_graph_store(
+    mut: OntologyMutation, *, cat_kw: dict
+) -> list[ChangeRecord]:
+    from infona_client.graph import ontology_catalog as oc
+    from infona_client.models.ontology import ChangeKind, ChangeRecord
+
+    if not mut.type_name:
+        raise ValueError("DEPRECATE requires type_name")
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    sup_leaf = ""
+    if mut.superseded_by:
+        raw = mut.superseded_by.strip()
+        sup_leaf = raw.rsplit("/", 1)[-1] if raw else ""
+
+    if mut.slot_name:
+        await oc.upsert_attribute(
+            type_name=mut.type_name,
+            attr_name=mut.slot_name,
+            datatype=mut.datatype or "string",
+            description=mut.description or "",
+            **cat_kw,
+        )
+        await oc.set_attr_markers(
+            mut.type_name,
+            mut.slot_name,
+            deprecated_at=ts,
+            superseded_by=sup_leaf or None,
+            **cat_kw,
+        )
+    else:
+        await oc.upsert_type(
+            name=mut.type_name,
+            description=mut.description or "",
+            clear_parent=False,
+            **cat_kw,
+        )
+        await oc.set_type_markers(
+            mut.type_name,
+            deprecated_at=ts,
+            superseded_by=sup_leaf or None,
+            **cat_kw,
+        )
+    return [
+        ChangeRecord(
+            kind=ChangeKind.DEPRECATE,
+            type_name=mut.type_name,
+            slot_name=mut.slot_name,
+            superseded_by=mut.superseded_by,
+            new_value=ts,
+        )
+    ]
+
+
+async def _apply_register_alias_graph_store(
+    mut: OntologyMutation, *, graph_uri: str
+) -> list[ChangeRecord]:
+    from infona_client.graph.ontology_companion import get_ontology_companion
+    from infona_client.models.ontology import ChangeKind, ChangeRecord
+
+    if not mut.alias_from or not mut.alias_to:
+        raise ValueError("REGISTER_ALIAS requires alias_from and alias_to")
+    old_uri = _resolve_attr_endpoint(
+        mut.alias_from, type_name=mut.type_name, op_label="REGISTER_ALIAS",
     )
-    return OntologyCommitResult(
-        graph_uri=graph_uri,
-        version_before=version,
-        version_after=version,
-        applied=list(applied),
-        change_records=change_records,
+    new_uri = _resolve_attr_endpoint(
+        mut.alias_to,
+        type_name=mut.type_name,
+        target_type=mut.target_type,
+        op_label="REGISTER_ALIAS",
+    )
+    if old_uri == new_uri:
+        raise ValueError(
+            f"alias must point to a different attribute, got {old_uri} -> itself"
+        )
+    bag = get_ontology_companion()
+    bag.aliases.setdefault(graph_uri, {})[old_uri] = new_uri
+    from_name = _leaf_name(mut.alias_from, old_uri)
+    to_name = _leaf_name(mut.alias_to, new_uri)
+    return [
+        ChangeRecord(
+            kind=ChangeKind.RENAME_WITH_ALIAS,
+            type_name=mut.type_name or None,
+            slot_name=from_name if not mut.alias_from.startswith("http") else None,
+            from_name=from_name,
+            to_name=to_name,
+            old_value=old_uri,
+            new_value=new_uri,
+        )
+    ]
+
+
+async def _apply_rename_attribute_graph_store(
+    mut: OntologyMutation, *, cat_kw: dict, graph_uri: str
+) -> list[ChangeRecord]:
+    from infona_client.graph import ontology_catalog as oc
+    from infona_client.graph.ontology_companion import get_ontology_companion
+    from infona_client.models.ontology import ChangeKind, ChangeRecord
+
+    old_leaf = mut.alias_from or mut.slot_name
+    if not old_leaf or not mut.alias_to:
+        raise ValueError(
+            "RENAME_ATTRIBUTE requires alias_from (or slot_name) and alias_to"
+        )
+    if not mut.type_name:
+        raise ValueError("RENAME_ATTRIBUTE requires type_name")
+
+    old_uri = _resolve_attr_endpoint(
+        old_leaf, type_name=mut.type_name, op_label="RENAME_ATTRIBUTE",
+    )
+    new_owner = (mut.target_type or mut.type_name).strip()
+    new_uri = _resolve_attr_endpoint(
+        mut.alias_to,
+        type_name=mut.type_name,
+        target_type=mut.target_type,
+        op_label="RENAME_ATTRIBUTE",
+    )
+    if old_uri == new_uri:
+        raise ValueError(
+            f"RENAME_ATTRIBUTE must change the attribute, got {old_uri} -> itself"
+        )
+
+    from_name = _leaf_name(old_leaf, old_uri)
+    to_name = _leaf_name(mut.alias_to, new_uri)
+    datatype = mut.datatype or "string"
+    records: list[ChangeRecord] = []
+
+    await oc.upsert_attribute(
+        type_name=new_owner,
+        attr_name=to_name,
+        description=mut.description or "",
+        datatype=datatype,
+        **cat_kw,
+    )
+    records.append(
+        ChangeRecord(
+            kind=ChangeKind.ADD_ATTRIBUTE,
+            type_name=new_owner,
+            slot_name=to_name,
+            new_value=datatype,
+        )
+    )
+
+    if not old_leaf.startswith("http"):
+        await oc.delete_attribute(mut.type_name, from_name, **cat_kw)
+    records.append(
+        ChangeRecord(
+            kind=ChangeKind.REMOVE_ATTRIBUTE,
+            type_name=mut.type_name,
+            slot_name=from_name,
+        )
+    )
+
+    bag = get_ontology_companion()
+    bag.aliases.setdefault(graph_uri, {})[old_uri] = new_uri
+    records.append(
+        ChangeRecord(
+            kind=ChangeKind.RENAME_WITH_ALIAS,
+            type_name=mut.type_name,
+            slot_name=from_name if not old_leaf.startswith("http") else None,
+            from_name=from_name,
+            to_name=to_name,
+            old_value=old_uri,
+            new_value=new_uri,
+        )
+    )
+    return records
+
+
+async def _apply_retire_alias_graph_store(
+    mut: OntologyMutation, *, graph_uri: str
+) -> list[ChangeRecord]:
+    from infona_client.graph.ontology_companion import get_ontology_companion
+    from infona_client.models.ontology import ChangeKind, ChangeRecord
+    from infona_client.graph.aliases import AliasStillReferencedError
+
+    old_leaf = mut.alias_from or mut.slot_name
+    if not old_leaf:
+        raise ValueError("RETIRE_ALIAS requires alias_from (or slot_name)")
+    if not mut.data_graph_uri:
+        raise ValueError(
+            "RETIRE_ALIAS requires data_graph_uri for the instance reference check"
+        )
+    old_uri = _resolve_attr_endpoint(
+        old_leaf, type_name=mut.type_name, op_label="RETIRE_ALIAS",
+    )
+    remaining = await _count_attr_references_graph_store(
+        mut.data_graph_uri, old_uri
+    )
+    if remaining > 0:
+        raise AliasStillReferencedError(old_uri, remaining, mut.data_graph_uri)
+
+    bag = get_ontology_companion()
+    amap = bag.aliases.get(graph_uri) or {}
+    amap.pop(old_uri, None)
+    if amap:
+        bag.aliases[graph_uri] = amap
+    else:
+        bag.aliases.pop(graph_uri, None)
+
+    from_name = _leaf_name(old_leaf, old_uri)
+    return [
+        ChangeRecord(
+            kind=ChangeKind.RENAME_WITH_ALIAS,
+            type_name=mut.type_name or None,
+            slot_name=from_name if not old_leaf.startswith("http") else None,
+            from_name=from_name,
+            to_name=None,
+            old_value=old_uri,
+            new_value=None,
+        )
+    ]
+
+
+async def _count_attr_references_graph_store(
+    data_graph_uri: str, attr_uri_s: str
+) -> int:
+    """Count instance facts that still use ``attr_uri_s`` (leaf property).
+
+    Fail-closed: unparseable data graph URI or a failed store probe raises so
+    ``RETIRE_ALIAS`` cannot succeed without a real zero-count check.
+    """
+    from infona_client.graph.store import get_graph_store
+    from infona_client.graph.scope import GraphScope
+
+    # leaf from …/attrs/<leaf> or …/properties/<leaf>
+    leaf = attr_uri_s.rsplit("/", 1)[-1]
+    # Parse tenant + kg from …/graphs/{tenant}/kg/{kg}
+    m = re.search(r"/graphs/([^/]+)/kg/([^/]+)", data_graph_uri or "")
+    if not m:
+        m = re.search(r"/graphs/([^/]+)", data_graph_uri or "")
+        if not m:
+            raise ValueError(
+                f"cannot parse tenant/kg from data_graph_uri={data_graph_uri!r} "
+                f"for attribute reference count; refusing RETIRE_ALIAS"
+            )
+        tenant_id, kg = m.group(1), "main"
+    else:
+        tenant_id, kg = m.group(1), m.group(2)
+
+    store = get_graph_store()
+    # Prefer assertion / entity prop scan on MemoryGraphStore.
+    n = 0
+    entities = getattr(store, "_entities", None)
+    if isinstance(entities, dict):
+        for (t, k, _eid), row in entities.items():
+            if t != tenant_id or k != kg:
+                continue
+            props = getattr(row, "props", None) or {}
+            if leaf in props:
+                n += 1
+        if n:
+            return n
+    assertions = getattr(store, "_assertions", None)
+    if isinstance(assertions, dict):
+        prop_id_suffix = f"/{leaf}"
+        for (t, k, _aid), row in assertions.items():
+            if t != tenant_id or k != kg:
+                continue
+            pid = getattr(row, "property_id", "") or ""
+            if pid.endswith(prop_id_suffix) or pid.rsplit("/", 1)[-1] == leaf:
+                n += 1
+        return n
+
+    # Neo4j: COUNT entities that have the property key set.
+    try:
+        session = store.session(GraphScope.for_instance(tenant_id, kg))
+        rows = await session.execute_read(
+            "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
+            f"WHERE e.`{leaf}` IS NOT NULL "
+            "RETURN count(e) AS n",
+            {},
+        )
+        if rows:
+            return int(rows[0].get("n") or 0)
+        return 0
+    except Exception as exc:
+        logger.warning(
+            "attr_reference_count_failed",
+            data_graph_uri=data_graph_uri,
+            attr=attr_uri_s,
+            exc_info=True,
+        )
+        raise RuntimeError(
+            f"attribute reference count failed for {attr_uri_s!r} in "
+            f"{data_graph_uri!r}; refusing RETIRE_ALIAS"
+        ) from exc
+
+
+async def _bump_revision_graph_store(graph_uri: str) -> int:
+    from infona_client.graph.ontology_companion import get_ontology_companion
+
+    bag = get_ontology_companion()
+    nxt = int(bag.revisions.get(graph_uri, 0)) + 1
+    bag.revisions[graph_uri] = nxt
+    return nxt
+
+
+async def _emit_changelog_graph_store(
+    graph_uri: str,
+    *,
+    version_before: str,
+    version_after: str,
+    actor: str | None,
+    message: str | None,
+    change_records: list[ChangeRecord],
+    revision: int,
+) -> None:
+    from infona_client.graph.ontology_changelog import serialize_change_records
+    from infona_client.graph.ontology_companion import get_ontology_companion
+
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    entry_uri = f"{_GOV_NS}log/{uuid4()}"
+    tenant_id = ""
+    prefix = GRAPH_URI_PREFIX
+    if graph_uri.startswith(prefix):
+        rest = graph_uri[len(prefix):]
+        tenant_id = rest.split("/", 1)[0]
+    entry = {
+        "entry_uri": entry_uri,
+        "action": "commit_ontology",
+        "subject": graph_uri,
+        "timestamp": ts,
+        "tenant_id": tenant_id or None,
+        "actor": actor,
+        "message": message,
+        "version_before": version_before,
+        "version_after": version_after,
+        "revision": revision,
+        "delta": serialize_change_records(change_records),
+    }
+    bag = get_ontology_companion()
+    bag.changelog.setdefault(graph_uri, []).insert(0, entry)
+
+
+def shape_to_dict(shape: OntologyShape) -> dict:
+    """JSON-serializable form of :class:`OntologyShape` for frozen snapshots."""
+    return {
+        "types": dict(shape.types),
+        "attrs": {t: dict(a) for t, a in shape.attrs.items()},
+        "parent_of": dict(shape.parent_of),
+        "attr_comments": {t: dict(a) for t, a in shape.attr_comments.items()},
+        "core_slots": [list(p) for p in shape.core_slots],
+        "text_kinds": {
+            f"{t}.{a}": k for (t, a), k in shape.text_kinds.items()
+        },
+        "alias_map": dict(shape.alias_map),
+        "deprecated_types": dict(shape.deprecated_types),
+        "deprecated_slots": {
+            f"{t}.{a}": s for (t, a), s in shape.deprecated_slots.items()
+        },
+    }
+
+
+def shape_from_dict(data: dict | None) -> OntologyShape:
+    """Inverse of :func:`shape_to_dict`."""
+    if not data:
+        return OntologyShape()
+    text_kinds: dict[tuple[str, str], str] = {}
+    for key, kind in (data.get("text_kinds") or {}).items():
+        if "." in key:
+            t, a = key.split(".", 1)
+            text_kinds[(t, a)] = kind
+    deprecated_slots: dict[tuple[str, str], str] = {}
+    for key, sup in (data.get("deprecated_slots") or {}).items():
+        if "." in key:
+            t, a = key.split(".", 1)
+            deprecated_slots[(t, a)] = sup
+    core_slots = [tuple(p) for p in (data.get("core_slots") or [])]
+    return OntologyShape(
+        types=dict(data.get("types") or {}),
+        attrs={t: dict(a) for t, a in (data.get("attrs") or {}).items()},
+        parent_of=dict(data.get("parent_of") or {}),
+        attr_comments={
+            t: dict(a) for t, a in (data.get("attr_comments") or {}).items()
+        },
+        core_slots=list(core_slots),  # type: ignore[arg-type]
+        text_kinds=text_kinds,
+        alias_map=dict(data.get("alias_map") or {}),
+        deprecated_types=dict(data.get("deprecated_types") or {}),
+        deprecated_slots=deprecated_slots,
     )
 
 
@@ -571,23 +1118,19 @@ async def load_ontology_shape(neptune, graph_uri: str) -> OntologyShape:
     Shared by :func:`fingerprint_ontology` and the ONTA-406 diff/snapshot path
     so the two cannot disagree on what counts as ontology content.
 
-    On Neo4j / GraphStore, SPARQL is unavailable — return an empty shape for now
-    (catalog list APIs cover product reads; full fingerprint port is follow-up).
+    On Neo4j / GraphStore (always, in production) the shape is loaded from the
+    ontology catalog + companion bag. Frozen snapshot graphs (``…/v{N}``,
+    ``…/revisions/r{N}``) read the companion's stored shape JSON.
     """
     from infona_client.graph.store import GraphConfigError, get_graph_store
 
     try:
         get_graph_store()
-        return OntologyShape(
-            types={},
-            attrs={},
-            attr_comments={},
-            core_slots=[],
-        )
     except GraphConfigError:
         pass
-    except Exception:
-        pass
+    else:
+        # GraphStore is configured — never fall through to SPARQL (ONTA-531).
+        return await _load_ontology_shape_graph_store(graph_uri)
 
     types: dict[str, str] = {}
     attrs: dict[str, dict[str, str]] = {}
@@ -608,7 +1151,6 @@ async def load_ontology_shape(neptune, graph_uri: str) -> OntologyShape:
         if tlabel not in types:
             types[tlabel] = row.get("typeComment") or ""
             attrs[tlabel] = {}
-        # Prefer a non-empty type comment if a later row carries one.
         if row.get("typeComment") and not types[tlabel]:
             types[tlabel] = row["typeComment"]
         alabel = row.get("attrLabel") or ""
@@ -647,12 +1189,10 @@ async def load_ontology_shape(neptune, graph_uri: str) -> OntologyShape:
             kind = row.get("kind") or ""
             if not a_uri or not kind:
                 continue
-            # attr URI: https://graph.infona.ai/types/<Type>/attrs/<leaf>
             parts = a_uri.split("/types/", 1)
             if len(parts) != 2 or "/attrs/" not in parts[1]:
                 continue
             type_part, attr_part = parts[1].split("/attrs/", 1)
-            # Strip layer prefixes (public/, x/) if present — bare name for fingerprint.
             type_name = type_part.rsplit("/", 1)[-1]
             attr_name = attr_part
             if type_name and attr_name:
@@ -681,7 +1221,6 @@ async def load_ontology_shape(neptune, graph_uri: str) -> OntologyShape:
             if not s:
                 continue
             sup = (row.get("sup") or "").strip()
-            # Attribute: …/types/<Type>/attrs/<leaf>
             if "/attrs/" in s and "/types/" in s:
                 try:
                     after = s.split("/types/", 1)[1]
@@ -716,6 +1255,98 @@ async def load_ontology_shape(neptune, graph_uri: str) -> OntologyShape:
         deprecated_types=deprecated_types,
         deprecated_slots=deprecated_slots,
     )
+
+
+async def _load_ontology_shape_graph_store(graph_uri: str) -> OntologyShape:
+    """Load OntologyShape from catalog + companion (Neo4j product path)."""
+    from infona_client.graph import ontology_catalog as oc
+    from infona_client.graph.ontology_companion import (
+        catalog_session_kwargs,
+        catalog_target_from_graph_uri,
+        get_ontology_companion,
+        live_graph_uri,
+    )
+
+    bag = get_ontology_companion()
+
+    # Frozen snapshot graph — return the stored shape (empty if never written).
+    if is_immutable_version_graph(graph_uri):
+        frozen = bag.frozen_shapes.get(graph_uri.rstrip("/"))
+        if frozen is None:
+            # Unreadable / missing parent content → empty shape so the B1
+            # fingerprint mismatch fails closed at the publish gate.
+            return OntologyShape()
+        return shape_from_dict(frozen)
+
+    target = catalog_target_from_graph_uri(graph_uri)
+    live = target.live_graph_uri
+    cat_kw = catalog_session_kwargs(target, for_write=False)
+
+    types_list = await oc.list_types(**cat_kw)
+    attrs_list = await oc.list_attributes(**cat_kw)
+
+    types: dict[str, str] = {}
+    parent_of: dict[str, str] = {}
+    deprecated_types: dict[str, str] = {}
+    for t in types_list:
+        types[t.name] = t.description or ""
+        if t.parent_type:
+            parent_of[t.name] = t.parent_type
+        if t.deprecated_at:
+            deprecated_types[t.name] = t.superseded_by or ""
+
+    attrs: dict[str, dict[str, str]] = {name: {} for name in types}
+    attr_comments: dict[str, dict[str, str]] = {}
+    core_slots: list[tuple[str, str]] = []
+    text_kinds: dict[tuple[str, str], str] = {}
+    deprecated_slots: dict[tuple[str, str], str] = {}
+    for a in attrs_list:
+        attrs.setdefault(a.domain, {})
+        if a.kind == "relationship" and a.range_type:
+            attrs[a.domain][a.name] = a.range_type
+        else:
+            attrs[a.domain][a.name] = a.datatype or "string"
+        if a.description:
+            attr_comments.setdefault(a.domain, {})[a.name] = a.description
+        if a.core_slot:
+            core_slots.append((a.domain, a.name))
+        if a.text_kind:
+            text_kinds[(a.domain, a.name)] = a.text_kind
+        if a.deprecated_at:
+            deprecated_slots[(a.domain, a.name)] = a.superseded_by or ""
+
+    # Alias map (flatten chains for fingerprint parity with SPARQL path).
+    raw_aliases = dict(bag.aliases.get(live) or {})
+    alias_map = _flatten_alias_map(raw_aliases)
+
+    return OntologyShape(
+        types=types,
+        attrs=attrs,
+        parent_of=parent_of,
+        attr_comments=attr_comments,
+        core_slots=core_slots,
+        text_kinds=text_kinds,
+        alias_map=alias_map,
+        deprecated_types=deprecated_types,
+        deprecated_slots=deprecated_slots,
+    )
+
+
+def _flatten_alias_map(edges: dict[str, str]) -> dict[str, str]:
+    """Flatten a→b→c chains; drop cycles (same as fetch_alias_map)."""
+    resolved: dict[str, str] = {}
+    for old in edges:
+        target = edges[old]
+        seen = {old}
+        while target in edges:
+            if target in seen:
+                target = ""
+                break
+            seen.add(target)
+            target = edges[target]
+        if target and target != old:
+            resolved[old] = target
+    return resolved
 
 
 async def fingerprint_ontology(neptune, graph_uri: str) -> str:

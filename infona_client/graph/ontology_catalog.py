@@ -57,10 +57,9 @@ LITERAL_DATATYPES: frozenset[str] = frozenset(
 
 VALID_CARDINALITIES: frozenset[str] = frozenset({"1:1", "1:N", "N:1", "N:N"})
 
-# TODO(E5 / B7): ontology_commit, ontology_changelog, ontology_snapshots,
-# ontology_base_pin, and versioned catalog history are **not** ported here.
-# Callers that need governance history still use the SPARQL modules until a
-# dedicated epic ports them onto ProvEvent / catalog events.
+# ONTA-531 ports the remaining ontology_commit surface onto this catalog
+# (deletes, markers, aliases, changelog, revision, load_ontology_shape).
+# Snapshots/base-pin still use the companion bag + frozen shapes.
 
 
 # ---------------------------------------------------------------------------
@@ -80,6 +79,9 @@ class OntoTypeRecord:
     parent_type: str | None = None
     label_token: str | None = None
     uri: str | None = None
+    # ONTA-531 / ONTA-404 — deprecation markers (schema identity).
+    deprecated_at: str | None = None
+    superseded_by: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,9 +99,13 @@ class OntoAttrRecord:
     cardinality: str = "1:1"
     description: str = ""
     prop_key: str | None = None
+    # ONTA-531 — markers that used to be SPARQL triples on the attr subject.
+    core_slot: bool = False
     #: Free-text candidacy marker (ONTA-177 / ONTA-533). ``"free_text"`` /
     #: ``"not_text"`` when decided; ``None`` when candidacy was never adjudicated.
     text_kind: str | None = None
+    deprecated_at: str | None = None
+    superseded_by: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -237,6 +243,8 @@ def resolve_catalog_session(
 def _record_from_type_row(
     row: Mapping[str, Any], *, default_layer: str | None = None
 ) -> OntoTypeRecord:
+    dep = row.get("deprecated_at")
+    sup = row.get("superseded_by")
     return OntoTypeRecord(
         name=str(row["name"]),
         layer=str(row.get("layer") or default_layer or ""),
@@ -246,6 +254,8 @@ def _record_from_type_row(
         parent_type=row.get("parent_type"),
         label_token=row.get("label_token"),
         uri=row.get("uri"),
+        deprecated_at=str(dep) if dep else None,
+        superseded_by=str(sup) if sup else None,
     )
 
 
@@ -255,6 +265,12 @@ def _record_from_attr_row(
     kind = row.get("kind") or "literal"
     if kind not in ("literal", "relationship"):
         kind = "literal"
+    core = row.get("core_slot")
+    core_bool = bool(core) if core not in (None, "", False, "false", "False", 0) else False
+    if isinstance(core, str) and core.lower() in ("true", "1"):
+        core_bool = True
+    dep = row.get("deprecated_at")
+    sup = row.get("superseded_by")
     raw_tk = row.get("text_kind")
     text_kind = str(raw_tk).strip() if raw_tk else None
     if text_kind == "":
@@ -271,7 +287,10 @@ def _record_from_attr_row(
         cardinality=str(row.get("cardinality") or "1:1"),
         description=str(row.get("description") or ""),
         prop_key=row.get("prop_key"),
+        core_slot=core_bool,
         text_kind=text_kind,
+        deprecated_at=str(dep) if dep else None,
+        superseded_by=str(sup) if sup else None,
     )
 
 
@@ -702,6 +721,176 @@ async def list_attributes(
     )
     return await list_attributes_pg(gs, domain=type_name)
 
+
+# ---------------------------------------------------------------------------
+# Deletes + marker writers (ONTA-531 — previously SPARQL-only)
+# ---------------------------------------------------------------------------
+
+
+async def delete_attribute(
+    type_name: str,
+    attr_name: str,
+    *,
+    store: Optional["GraphStore"] = None,
+    session: Optional["GraphSession"] = None,
+    layer: LayerName | str = "tenant",
+    tenant_id: str | None = None,
+    privileged: bool = False,
+) -> bool:
+    """Drop an ``:OntoAttr`` declaration (instance data untouched)."""
+    domain = _validate_type_leaf(type_name)
+    leaf, _ = _validate_attr_leaf(attr_name)
+    gs = resolve_catalog_session(
+        store=store,
+        session=session,
+        layer=layer,
+        tenant_id=tenant_id,
+        privileged=privileged,
+    )
+    return await delete_attribute_pg(gs, domain, leaf)
+
+
+async def delete_attribute_pg(
+    session: "GraphSession", type_name: str, attr_name: str
+) -> bool:
+    """Property-graph DELETE for one attribute declaration."""
+    domain = _validate_type_leaf(type_name)
+    leaf, _ = _validate_attr_leaf(attr_name)
+    layer = layer_from_scope(session.scope)
+    rows = await session.execute_template(
+        "onto_attr_delete",
+        {"layer": layer, "domain": domain, "name": leaf},
+    )
+    if rows:
+        return True
+    # Template may return empty; fall back to store-native helper when present.
+    delete_fn = getattr(session, "write_delete_onto_attr", None)
+    if callable(delete_fn):
+        return bool(await delete_fn(domain, leaf))
+    # Memory / Neo4j templates that return deleted count.
+    return False
+
+
+async def delete_type(
+    name: str,
+    *,
+    store: Optional["GraphStore"] = None,
+    session: Optional["GraphSession"] = None,
+    layer: LayerName | str = "tenant",
+    tenant_id: str | None = None,
+    privileged: bool = False,
+) -> bool:
+    """Drop an ``:OntoType`` (attributes not cascaded — matches SPARQL path)."""
+    leaf = _validate_type_leaf(name)
+    gs = resolve_catalog_session(
+        store=store,
+        session=session,
+        layer=layer,
+        tenant_id=tenant_id,
+        privileged=privileged,
+    )
+    return await delete_type_pg(gs, leaf)
+
+
+async def delete_type_pg(session: "GraphSession", name: str) -> bool:
+    leaf = _validate_type_leaf(name)
+    layer = layer_from_scope(session.scope)
+    rows = await session.execute_template(
+        "onto_type_delete",
+        {"layer": layer, "name": leaf},
+    )
+    if rows:
+        return True
+    delete_fn = getattr(session, "write_delete_onto_type", None)
+    if callable(delete_fn):
+        return bool(await delete_fn(leaf))
+    return False
+
+
+async def set_attr_markers(
+    type_name: str,
+    attr_name: str,
+    *,
+    core_slot: bool | None = None,
+    text_kind: str | None = None,
+    clear_text_kind: bool = False,
+    deprecated_at: str | None = None,
+    superseded_by: str | None = None,
+    clear_deprecation: bool = False,
+    store: Optional["GraphStore"] = None,
+    session: Optional["GraphSession"] = None,
+    layer: LayerName | str = "tenant",
+    tenant_id: str | None = None,
+    privileged: bool = False,
+) -> None:
+    """Set core-slot / text-kind / deprecation markers on an attribute.
+
+    Does **not** re-validate B2 reserved property keys: markers attach to an
+    already-declared row (or no-op if missing). Callers that mint attributes
+    still go through :func:`upsert_attribute` which enforces B2.
+    """
+    domain = require_valid_type_name(type_name, "type name")
+    leaf = require_valid_type_name(attr_name, "attribute name")
+    gs = resolve_catalog_session(
+        store=store,
+        session=session,
+        layer=layer,
+        tenant_id=tenant_id,
+        privileged=privileged,
+    )
+    lyr = layer_from_scope(gs.scope)
+    await gs.execute_template(
+        "onto_attr_set_markers",
+        {
+            "layer": lyr,
+            "domain": domain,
+            "name": leaf,
+            "core_slot": core_slot,
+            "text_kind": text_kind,
+            "clear_text_kind": clear_text_kind,
+            "deprecated_at": deprecated_at,
+            "superseded_by": superseded_by,
+            "clear_deprecation": clear_deprecation,
+        },
+    )
+
+
+async def set_type_markers(
+    name: str,
+    *,
+    description: str | None = None,
+    deprecated_at: str | None = None,
+    superseded_by: str | None = None,
+    clear_deprecation: bool = False,
+    store: Optional["GraphStore"] = None,
+    session: Optional["GraphSession"] = None,
+    layer: LayerName | str = "tenant",
+    tenant_id: str | None = None,
+    privileged: bool = False,
+) -> None:
+    """Set type-level description and/or deprecation markers."""
+    leaf = _validate_type_leaf(name)
+    gs = resolve_catalog_session(
+        store=store,
+        session=session,
+        layer=layer,
+        tenant_id=tenant_id,
+        privileged=privileged,
+    )
+    lyr = layer_from_scope(gs.scope)
+    await gs.execute_template(
+        "onto_type_set_markers",
+        {
+            "layer": lyr,
+            "name": leaf,
+            "description": description,
+            "deprecated_at": deprecated_at,
+            "superseded_by": superseded_by,
+            "clear_deprecation": clear_deprecation,
+        },
+    )
+
+
 # ---------------------------------------------------------------------------
 # Schema retrieval helper (future NL — minimal stub)
 # ---------------------------------------------------------------------------
@@ -768,6 +957,10 @@ __all__ = [
     "SchemaTypeSummary",
     "VALID_CARDINALITIES",
     "classify_attr_range",
+    "delete_attribute",
+    "delete_attribute_pg",
+    "delete_type",
+    "delete_type_pg",
     "get_type_pg",
     "layer_from_scope",
     "list_attributes",
@@ -778,6 +971,8 @@ __all__ = [
     "schema_types_for_kg",
     "set_attribute_text_kind",
     "set_attribute_text_kind_pg",
+    "set_attr_markers",
+    "set_type_markers",
     "upsert_attribute",
     "upsert_attribute_pg",
     "upsert_type",

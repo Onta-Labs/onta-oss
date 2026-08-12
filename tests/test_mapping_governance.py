@@ -28,9 +28,8 @@ under these route tests:
   handed to ``mock_neptune.update``. The pre-registration runs through
   ``ontology_catalog`` on the GraphStore now and emits no SPARQL, so those
   assertions had gone silent; they are rewritten against the tenant ontology
-  CATALOG. One of them could NOT be ported — the ``coreSlot`` marker has no
-  property-graph equivalent and is dropped — see the strict xfail at the end of
-  this file.
+  CATALOG. ``SET_CORE_SLOT`` (and ``load_ontology_shape``) are GraphStore-native
+  as of ONTA-531 — the core-slot marker survival assertion is a real pass.
 """
 
 from __future__ import annotations
@@ -535,28 +534,6 @@ def test_csv_rows_legacy_mapping_enqueues_nothing(
     assert pending_shape_proposals.pending() == []
 
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG (surfaced by ONTA-527): the coreSlot MARKER is lost on the Neo4j "
-        "path. graph/ontology_commit.py::_commit_ontology_graph_store handles "
-        "UPSERT_TYPE / UPSERT_ATTRIBUTE / UPSERT_RELATIONSHIP / SET_SUBCLASS and "
-        "drops everything else into an else-branch that only logs "
-        "'ontology_store_op_skipped' — SET_CORE_SLOT lands there, so the "
-        "<attr_uri> <onto/coreSlot> \"true\" triple ontology_queries.mark_core_slot "
-        "used to write is never written in any form (the property-graph catalog "
-        "has no core-slot field on OntoAttr at all). The read half is gone too: "
-        "load_ontology_shape returns an EMPTY OntologyShape whenever a GraphStore "
-        "is configured. Product-visible, not cosmetic — a core slot is the "
-        "declared-enrichment-target marker (ADR 0003 §3): api/routes/explore.py "
-        "reads _CORE_SLOT_PRED for its is_core chips and enrichment uses "
-        "'instances with empty core slots' as its work queue, so both now see "
-        "nothing on every KG. This test asserts the marker survives the "
-        "tenant-layer pre-registration the route performs; it is the one "
-        "assertion from test_csv_rows_low_confidence_promotion_lands_tenant_"
-        "layer_and_pends_proposal that could NOT be ported to the catalog."
-    ),
-    strict=True,
-)
 def test_core_slot_marker_survives_the_tenant_layer_write(
     live_client, auth_headers, mock_neptune, mock_schema_resolver,
 ):
