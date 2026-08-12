@@ -198,3 +198,148 @@ def test_related_name_defers_is_equals_to_equality_filter():
     assert got is not None
     assert got["params"]["prop_key"] == "author"
     assert got["params"]["prop_value"] == "Herbert"
+
+
+def test_literal_values_cypher_strips_typed_suffix_for_equality():
+    """Equality template must normalize legacy ``lexical^^xsd`` like compare."""
+    from infona_client.graph.rdfs_helpers import LITERAL_VALUES_CYPHER
+
+    cypher = LITERAL_VALUES_CYPHER
+    assert "^^" in cypher
+    assert "split(toString(a.literal_value), '^^')" in cypher
+    assert "split(toString(e[$prop_key]), '^^')" in cypher
+    assert "toFloat(" in cypher
+
+
+def test_memory_literal_eq_helper_strips_legacy():
+    """Unit-level: normalize both sides before equality (store + query)."""
+    eq = MemoryGraphStore._literal_eq
+    legacy = "12.99^^http://www.w3.org/2001/XMLSchema#float"
+    assert eq(legacy, "12.99")
+    assert eq(legacy, 12.99)
+    assert eq(12.99, "12.99")
+    assert eq(12.99, 12.99)
+    assert eq("Herbert", "Herbert")
+    assert not eq(legacy, "9.99")
+    assert not eq("Herbert", "Asimov")
+    assert eq(
+        "Classic^^http://www.w3.org/2001/XMLSchema#string",
+        "Classic",
+    )
+
+
+@pytest.mark.asyncio
+async def test_memory_literal_values_eq_matches_legacy_typed_literals():
+    """price equals 12.99 / string equals when store still has ^^ suffixes."""
+    store = MemoryGraphStore()
+    scope = GraphScope.for_instance("demo-tenant", "bookstore")
+    session = store.session(scope)
+
+    match_id = f"{IRI_BASE}/entities/Book/match"
+    miss_id = f"{IRI_BASE}/entities/Book/miss"
+    string_id = f"{IRI_BASE}/entities/Book/stringy"
+
+    for eid, title, price in (
+        (match_id, "Match Book", 12.99),
+        (miss_id, "Miss Book", 9.99),
+        (string_id, "String Book", 1.0),
+    ):
+        await assert_fact(
+            session, AssertionFact(subject_id=eid, kind="type", value="Book")
+        )
+        await assert_fact(
+            session,
+            AssertionFact(
+                subject_id=eid, kind="literal", property_leaf="title", value=title
+            ),
+        )
+        await assert_fact(
+            session,
+            AssertionFact(
+                subject_id=eid, kind="literal", property_leaf="price", value=price
+            ),
+        )
+    await assert_fact(
+        session,
+        AssertionFact(
+            subject_id=string_id,
+            kind="literal",
+            property_leaf="genre",
+            value="Classic Fiction",
+        ),
+    )
+
+    # Simulate legacy SPARQL-era values still sitting in Assertion + Entity cache
+    # (assert_fact normalizes on write; older graphs never went through that).
+    legacy_price = "12.99^^http://www.w3.org/2001/XMLSchema#float"
+    legacy_genre = "Classic Fiction^^http://www.w3.org/2001/XMLSchema#string"
+    for (_t, _k, _aid), a in store._assertions.items():
+        if a.subject_id == match_id and a.literal_value == 12.99:
+            a.literal_value = legacy_price
+        if a.subject_id == string_id and a.literal_value == "Classic Fiction":
+            a.literal_value = legacy_genre
+    match_ent = store._entities[("demo-tenant", "bookstore", match_id)]
+    match_ent.props["price"] = legacy_price
+    string_ent = store._entities[("demo-tenant", "bookstore", string_id)]
+    string_ent.props["genre"] = legacy_genre
+
+    price_rows = await session.execute_template(
+        "literal_values",
+        {
+            "type_names": ["Book"],
+            "prop_key": "price",
+            "prop_value": "12.99",
+            "limit": 25,
+        },
+    )
+    price_ids = {r.get("id") for r in price_rows}
+    assert match_id in price_ids
+    assert miss_id not in price_ids
+
+    # Native number query value also matches legacy store form.
+    price_rows_num = await session.execute_template(
+        "literal_values",
+        {
+            "type_names": ["Book"],
+            "prop_key": "price",
+            "prop_value": 12.99,
+            "limit": 25,
+        },
+    )
+    assert match_id in {r.get("id") for r in price_rows_num}
+
+    genre_rows = await session.execute_template(
+        "literal_values",
+        {
+            "type_names": ["Book"],
+            "prop_key": "genre",
+            "prop_value": "Classic Fiction",
+            "limit": 25,
+        },
+    )
+    assert {r.get("id") for r in genre_rows} == {string_id}
+
+
+@pytest.mark.asyncio
+async def test_memory_literal_values_eq_entity_cache_only_legacy():
+    """Secondary path: Entity prop cache holds legacy ^^, no Assertion match."""
+    store = MemoryGraphStore()
+    scope = GraphScope.for_instance("demo-tenant", "bookstore")
+    session = store.session(scope)
+    eid = f"{IRI_BASE}/entities/Book/cache_only"
+    await assert_fact(session, AssertionFact(subject_id=eid, kind="type", value="Book"))
+    # Type assertion only — plant legacy price solely on Entity props.
+    ent = store._entities[("demo-tenant", "bookstore", eid)]
+    ent.props["price"] = "15.49^^http://www.w3.org/2001/XMLSchema#float"
+
+    rows = await session.execute_template(
+        "literal_values",
+        {
+            "type_names": ["Book"],
+            "prop_key": "price",
+            "prop_value": "15.49",
+            "limit": 25,
+        },
+    )
+    assert len(rows) == 1
+    assert rows[0].get("id") == eid
