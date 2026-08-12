@@ -1427,6 +1427,8 @@ class NLQueryPipeline:
                     continue
 
                 # Alias leaf rewrite for property keys (old name → new name).
+                # Rewrite-only when a non-empty map was fetched; empty map is a
+                # no-op and costs nothing beyond the (flag-gated) fetch.
                 if alias_map:
                     cypher_raw = self._rewrite_cypher_alias_leaves(cypher_raw, alias_map)
 
@@ -1761,7 +1763,13 @@ class NLQueryPipeline:
                     token_usage=token_ledger.to_list(),
                 )
 
-            except CrossTenantCypherError:
+            except (CrossTenantQueryError, CrossTenantCypherError):
+                # ONTA-424 / ONTA-530: foreign-graph / cross-tenant is a security
+                # event, not a syntax slip. Never fold into last_error (which
+                # surfaces in the degraded answer and is fed back to the model),
+                # never retry. Propagate to api/routes/ask.py which returns the
+                # generic "internal error" NLResult with no query / no foreign
+                # graph URI in the body.
                 raise
             except EmptyLLMResponse as e:
                 last_error = str(e)
@@ -1806,6 +1814,11 @@ class NLQueryPipeline:
     @staticmethod
     def _rewrite_cypher_alias_leaves(cypher: str, alias_map: dict[str, str]) -> str:
         """Rewrite aliased attribute leaf names inside Cypher property access.
+
+        **Rewrite-only when a map is present.** An empty / missing map is a
+        no-op (callers already gate on ``if alias_map:``); there is no ontology
+        lookup, no registration, and no param mutation here — only textual leaf
+        renames on the Cypher string the model (or fixture) produced.
 
         ``alias_map`` is old_uri → new_uri (from ``fetch_alias_map``). We rewrite
         only the leaf segment of ``attrs/<leaf>`` so ``e.phone_num`` and

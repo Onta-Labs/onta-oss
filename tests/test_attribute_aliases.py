@@ -7,14 +7,14 @@ default path (feature OFF / zero aliases => zero behavior change).
 
 All mocked — no live Neptune, no LLM, no network.
 
-**ONTA-527 note.** ``graph/aliases.py`` is still SPARQL-only: every function
-below builds a query string and hands it to a ``NeptuneClient``, and there is no
-GraphStore equivalent, so on the shipped Neo4j backend none of it can run. The
-builder/parser tests keep their value (chain flattening, the cycle guard, the
-prefix-overlap rule in the rewriter are backend-independent logic that a port
-must preserve) and are left as they are; the pipeline-wiring block at the bottom
-was rewritten onto the Cypher path, where it documents that alias resolution
-never happens at query time any more.
+**ONTA-527 / ONTA-530 note.** ``graph/aliases.py`` writers remain SPARQL-only
+(no GraphStore register/retire yet — see ``test_ontology_commit`` xfails). The
+builder/parser tests keep their value (chain flattening, cycle guard,
+prefix-overlap rule). The pipeline-wiring block at the bottom runs on the
+Cypher path: when ``INFONA_ALIASES_ENABLED`` and a non-empty alias map are
+present, ``_ask_cypher`` rewrite-only renames leaf tokens in the generated
+Cypher string (``_rewrite_cypher_alias_leaves``); empty map / flag off ⇒ zero
+behavior change.
 """
 
 from __future__ import annotations
@@ -237,15 +237,11 @@ async def test_backfill_zero_triples_no_updates(mock_neptune):
 # ---------------------------------------------------------------------------
 # NL pipeline wiring (gated by INFONA_ALIASES_ENABLED)
 #
-# Ported by ONTA-527. These three cases used to stub an LLM into returning
-# SPARQL, hand it to `pipeline.ask`, and read the alias rewrite back out of the
-# executed query string. Production is Neo4j-only: `ask` dispatches to
-# `_ask_cypher` (neo4j_ask_enabled() is unconditionally True) and the SPARQL
-# branch — the ONLY place `_fetch_alias_map` and `_fix_common_sparql_issues`'s
-# alias pass are wired — never runs. So they are re-expressed on the Cypher
-# path: the two that assert the feature costs nothing when it is off or empty
-# still pass, and the one that asserts the feature WORKS is a strict xfail,
-# because it does not.
+# ONTA-530: `_ask_cypher` fetches the alias map when the flag is on and, when
+# the map is non-empty, rewrite-only renames old attribute leaves in the
+# Cypher text (`_rewrite_cypher_alias_leaves`). Flag off / empty map still
+# cost nothing. The positive case asserts map fetch + leaf rewrite on the
+# Cypher path (no longer SPARQL `_fix_common_sparql_issues`).
 # ---------------------------------------------------------------------------
 
 
@@ -357,24 +353,14 @@ async def test_pipeline_enabled_zero_aliases_unchanged(monkeypatch):
     assert on.answer == off.answer
 
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG (ONTA-527 port gap): attribute aliases are inert on Neo4j. "
-        "nlp/pipeline.py resolves them in exactly one place — the SPARQL branch "
-        "of ask() fetches _fetch_alias_map and _fix_common_sparql_issues rewrites "
-        "the query text with graph/aliases.rewrite_query_attrs — and that branch "
-        "is unreachable now that neo4j_ask_enabled() is unconditionally True. "
-        "_ask_cypher never consults an alias map and confine_generated_cypher has "
-        "no alias step, so after a rename a question phrased with the old "
-        "attribute silently stops answering (ADR 0002 §7's whole point). The "
-        "write half is gone too: commit_ontology's GraphStore branch drops "
-        "REGISTER_ALIAS/RENAME_ATTRIBUTE, so no alias can be recorded to resolve."
-    ),
-    strict=True,
-)
 @pytest.mark.asyncio
 async def test_pipeline_enabled_resolves_aliases_on_the_cypher_path(monkeypatch):
-    """Flag on + one alias registered: /ask must resolve it before executing."""
+    """Flag on + one alias registered: /ask rewrite-only renames leaves in Cypher.
+
+    When the map is present, `_rewrite_cypher_alias_leaves` replaces old attr
+    leaves in the generated Cypher text before confine/execute. Empty map is a
+    no-op (covered by ``test_pipeline_enabled_zero_aliases_unchanged``).
+    """
     monkeypatch.setenv("INFONA_ALIASES_ENABLED", "1")
     store = await _seeded_store()
     neptune = _recording_neptune()
