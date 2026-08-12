@@ -6,6 +6,8 @@ user says a domain synonym or CamelCase head-noun plural, producing silent 0.
 
 from __future__ import annotations
 
+import pytest
+
 from infona_client.nlp.cypher_generate import (
     TEMPLATE_COUNT_BY_TYPE,
     match_type_name,
@@ -257,3 +259,173 @@ def test_count_fixture_refuses_are_at_scope():
         onto,
         type_names=["Widget"],
     ) is None
+
+
+
+def test_total_number_of_stays_count_not_aggregate():
+    from infona_client.nlp.cypher_generate import try_deterministic_cypher
+
+    onto = "Type: Widget\n  - unit_cost: float (literal)\n"
+    p = try_deterministic_cypher(
+        "total number of widgets", onto, type_names=["Widget"]
+    )
+    assert p is not None
+    assert p["template"] == "entities_of_type_count"
+
+
+def test_forbidden_has_assertion_detector():
+    from infona_client.nlp.pipeline import _cypher_uses_forbidden_shapes
+
+    bad = "MATCH (e)-[:HAS_ASSERTION]->(a) RETURN sum(a.literal_value)"
+    assert _cypher_uses_forbidden_shapes(bad)
+    good = (
+        "MATCH (e:Entity)-[:INSTANCE_OF]->(c:Class) "
+        "OPTIONAL MATCH (a:Assertion {subject_id:e.id})-[:PREDICATE]->(p:Property) "
+        "RETURN sum(toFloat(a.literal_value))"
+    )
+    assert _cypher_uses_forbidden_shapes(good) is None
+
+def test_aggregate_sum_avg_on_synthetic_type():
+    """SUM/AVG use allowlisted literal_aggregate — never HAS_ASSERTION."""
+    from infona_client.nlp.cypher_generate import try_deterministic_cypher
+
+    onto = (
+        "Type: Widget\n"
+        "  - unit_cost: float (literal, key=unit_cost)\n"
+        "  - qty: integer (literal, key=qty)\n"
+    )
+    types = ["Widget"]
+    total = try_deterministic_cypher(
+        "total unit_cost of widgets", onto, type_names=types
+    )
+    assert total is not None
+    assert total["template"] == "literal_aggregate"
+    assert "HAS_ASSERTION" not in total["cypher"]
+    assert total["params"]["prop_key"] == "unit_cost"
+    assert total["params"]["agg_op"] == "sum"
+    assert total["params"]["type_names"] == ["Widget"]
+
+    # amount absent → remap to first numeric candidate present (unit_cost)
+    remapped = try_deterministic_cypher(
+        "total amount of widgets", onto, type_names=types
+    )
+    assert remapped is not None
+    assert remapped["params"]["prop_key"] == "unit_cost"
+
+    avg = try_deterministic_cypher(
+        "average amount of widgets",
+        "Type: Widget\n  - amount: integer (literal, key=amount)\n",
+        type_names=types,
+    )
+    assert avg is not None
+    assert avg["template"] == "literal_aggregate"
+    assert avg["params"]["agg_op"] == "avg"
+    assert avg["params"]["prop_key"] == "amount"
+
+import pytest
+
+
+@pytest.mark.asyncio
+async def test_literal_aggregate_e2e_memory():
+    """SUM over seeded literals returns non-zero without HAS_ASSERTION."""
+    from infona_client.graph.iri import IRI_BASE
+    from infona_client.graph.memory_store import MemoryGraphStore
+    from infona_client.graph.ontology_catalog import upsert_type_pg
+    from infona_client.graph.rdf_model import AssertionFact, assert_fact
+    from infona_client.graph.scope import GraphScope
+    from infona_client.nlp.cypher_generate import try_deterministic_cypher
+
+    store = MemoryGraphStore()
+    cat = store.session(
+        GraphScope.for_catalog(layer="tenant", tenant_id="demo-tenant")
+    )
+    await upsert_type_pg(cat, name="Widget", description="w")
+    scope = GraphScope.for_instance("demo-tenant", "agg-demo")
+    session = store.session(scope)
+    for i, cost in enumerate((10.0, 20.0, 30.0), start=1):
+        eid = f"{IRI_BASE}/entities/Widget/w{i}"
+        await session.write_merge_entity(
+            id=eid, primary_type="Widget", name=f"W{i}", source="test"
+        )
+        await assert_fact(
+            session,
+            AssertionFact(subject_id=eid, kind="type", value="Widget"),
+            dual_write_cache=True,
+        )
+        await assert_fact(
+            session,
+            AssertionFact(
+                subject_id=eid,
+                kind="literal",
+                property_leaf="unit_cost",
+                value=cost,
+            ),
+            dual_write_cache=True,
+        )
+
+    payload = try_deterministic_cypher(
+        "total unit_cost of widgets",
+        "Type: Widget\n  - unit_cost: float (literal)\n",
+        type_names=["Widget"],
+    )
+    assert payload and payload["template"] == "literal_aggregate"
+    rows = await session.execute_template(
+        payload["template"], payload["params"]
+    )
+    assert rows, rows
+    row0 = rows[0]
+    val = row0.get("value") if hasattr(row0, "get") else row0.data.get("value")
+    assert val == 60.0, val
+
+
+@pytest.mark.asyncio
+async def test_literal_aggregate_duplicates_sum():
+    """Duplicate values must sum per entity (100+100+100=300), not DISTINCT values."""
+    from infona_client.graph.iri import IRI_BASE
+    from infona_client.graph.memory_store import MemoryGraphStore
+    from infona_client.graph.ontology_catalog import upsert_type_pg
+    from infona_client.graph.rdf_model import AssertionFact, assert_fact
+    from infona_client.graph.scope import GraphScope
+    from infona_client.nlp.cypher_generate import try_deterministic_cypher
+    from infona_client.graph.rdfs_helpers import LITERAL_AGGREGATE_CYPHER
+
+    assert "collect(DISTINCT num)" not in LITERAL_AGGREGATE_CYPHER
+
+    store = MemoryGraphStore()
+    cat = store.session(
+        GraphScope.for_catalog(layer="tenant", tenant_id="demo-tenant")
+    )
+    await upsert_type_pg(cat, name="Widget", description="w")
+    scope = GraphScope.for_instance("demo-tenant", "agg-dup")
+    session = store.session(scope)
+    for i in range(1, 4):
+        eid = f"{IRI_BASE}/entities/Widget/d{i}"
+        await session.write_merge_entity(
+            id=eid, primary_type="Widget", name=f"D{i}", source="test"
+        )
+        await assert_fact(
+            session,
+            AssertionFact(subject_id=eid, kind="type", value="Widget"),
+            dual_write_cache=True,
+        )
+        await assert_fact(
+            session,
+            AssertionFact(
+                subject_id=eid,
+                kind="literal",
+                property_leaf="unit_cost",
+                value=100.0,
+            ),
+            dual_write_cache=True,
+        )
+
+    payload = try_deterministic_cypher(
+        "total unit_cost of widgets",
+        "Type: Widget\n  - unit_cost: float (literal)\n",
+        type_names=["Widget"],
+    )
+    rows = await session.execute_template(
+        payload["template"], payload["params"]
+    )
+    val = rows[0].get("value") if hasattr(rows[0], "get") else rows[0].data.get("value")
+    assert val == 300.0, val

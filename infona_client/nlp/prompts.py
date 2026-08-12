@@ -219,6 +219,10 @@ rels (e.g. `HAS_GENRE`) — only valid when kept consistent with Assertions.
 
 FORBIDDEN relationship / property shapes (they do not exist in this graph):
 - NEVER invent `HAS_ASSERTION`, `predicate_key`, or `Assertion.prop_key`.
+- For SUM/AVG/MIN/MAX over a number attribute, ALWAYS use:
+  `OPTIONAL MATCH (a:Assertion {tenant_id:$tenant_id, kg:$kg, subject_id:e.id})-[:PREDICATE]->(p:Property {tenant_id:$tenant_id, kg:$kg}) WHERE p.name = $prop`
+  then `toFloat(coalesce(a.literal_value, e[p.name]))`. Do NOT walk HAS_ASSERTION.
+
 - Correct datatype read pattern:
   `(a:Assertion {tenant_id:$tenant_id, kg:$kg, subject_id:e.id})-[:PREDICATE]->(p:Property)`
   with `a.literal_value` (or denorm `e[p.name]` / `e.price`).
