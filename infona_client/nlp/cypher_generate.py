@@ -29,12 +29,16 @@ from typing import Any, Mapping, Sequence
 from infona_client.graph.rdfs_helpers import (
     ENTITIES_OF_TYPE_COUNT_CYPHER,
     ENTITIES_OF_TYPE_CYPHER,
+    LITERAL_COMPARE_CYPHER,
     LITERAL_VALUES_CYPHER,
     RELATED_ENTITIES_CYPHER,
+    RELATED_ENTITY_NAME_FILTER_CYPHER,
     TEMPLATE_ENTITIES_OF_TYPE,
     TEMPLATE_ENTITIES_OF_TYPE_COUNT,
+    TEMPLATE_LITERAL_COMPARE,
     TEMPLATE_LITERAL_VALUES,
     TEMPLATE_RELATED_ENTITIES,
+    TEMPLATE_RELATED_ENTITY_NAME_FILTER,
     type_names_with_subclasses,
 )
 from infona_client.graph.store import GraphRecord
@@ -258,6 +262,56 @@ _FILTER_RE = re.compile(
     r"[\"']?(?P<value>.+?)[\"']?"
     r"$"
 )
+
+# "which books cost less than 15" / "books with price under 15 dollars"
+_NUMERIC_FILTER_RE = re.compile(
+    r"(?ix)^"
+    r"(?:(?:list|show(?:\s+me)?|find|get|which|what)\s+)?"
+    r"(?P<label>.+?)\s+"
+    r"(?:"
+    r"(?:cost|priced?|costs?)\s+(?P<cost_op>less\s+than|under|below|more\s+than|over|above|at\s+least|at\s+most|exactly)\s+"
+    r"(?:\$|USD\s*)?(?P<cost_num>\d+(?:\.\d+)?)\s*(?:dollars?|usd|\$)?"
+    r"|"
+    r"(?:with|having|where)\s+(?P<prop>[A-Za-z_][A-Za-z0-9_]*)\s+"
+    r"(?P<cmp><=|>=|<|>|=|==|less\s+than|under|below|more\s+than|over|above|at\s+least|at\s+most|equals?)\s+"
+    r"(?:\$|USD\s*)?(?P<num>\d+(?:\.\d+)?)\s*(?:dollars?|usd|\$)?"
+    r")"
+    r"(?:\s+.*)?$"
+)
+
+# "list books with genre Classic Fiction" / "books that have genre Romance"
+_REL_NAME_FILTER_RE = re.compile(
+    r"(?ix)^"
+    r"(?:(?:list|show(?:\s+me)?|find|get|which|what)\s+)?"
+    r"(?P<label>.+?)\s+"
+    r"(?:with|having|that\s+have|have)\s+"
+    r"(?P<rel>genre|author|publisher|category)\s+"
+    r"[\"']?(?P<value>.+?)[\"']?"
+    r"$"
+)
+
+_CMP_OP_MAP = {
+    "<": "lt",
+    "less than": "lt",
+    "under": "lt",
+    "below": "lt",
+    ">": "gt",
+    "more than": "gt",
+    "over": "gt",
+    "above": "gt",
+    "<=": "le",
+    "at most": "le",
+    ">=": "ge",
+    "at least": "ge",
+    "=": "eq",
+    "==": "eq",
+    "equals": "eq",
+    "equal": "eq",
+    "exactly": "eq",
+}
+
+# Natural-language cost/price props for "cost less than N" phrases.
+_COST_PROP_CANDIDATES = ("price", "cost", "amount")
 
 # "authors of books" / "list organizations related to people"
 _HOP_OF_RE = re.compile(
@@ -552,6 +606,139 @@ def try_filter_query(
     )
 
 
+def _resolve_cost_prop(ontology_summary: str) -> str:
+    """Pick price/cost prop key present in the ontology text, default price."""
+    text = ontology_summary or ""
+    for cand in _COST_PROP_CANDIDATES:
+        if re.search(rf"(?i)\b{re.escape(cand)}\b", text):
+            return cand
+    return "price"
+
+
+def try_numeric_filter_query(
+    question: str,
+    ontology_summary: str = "",
+    *,
+    type_names: list[str] | None = None,
+) -> dict[str, Any] | None:
+    """Filter entities of a type by numeric inequality (price/cost/rating/…)."""
+    q = _TRAILING_PUNCT_RE.sub("", (question or "").strip())
+    if not q:
+        return None
+    q, _order_prop, _order_dir = _strip_order_by_suffix(q)
+    q, limit = _strip_limit_suffix(q)
+    m = _NUMERIC_FILTER_RE.match(q)
+    if not m:
+        return None
+    label = (m.group("label") or "").strip()
+    # Drop trailing "list titles and prices" noise after the threshold phrase.
+    label = re.sub(
+        r"(?i)\s+(?:list|show|return|with)\s+(?:their\s+)?titles?.*$",
+        "",
+        label,
+    ).strip()
+    matched = resolve_type_name(label, type_names, ontology_summary)
+    if matched is None:
+        return None
+
+    if m.group("cost_num") is not None:
+        prop_key = _resolve_cost_prop(ontology_summary)
+        op_raw = (m.group("cost_op") or "less than").strip().lower()
+        threshold = float(m.group("cost_num"))
+    else:
+        prop = (m.group("prop") or "").strip()
+        if not _SAFE_PROP_RE.match(prop):
+            return None
+        prop_key = prop
+        op_raw = (m.group("cmp") or "<").strip().lower()
+        threshold = float(m.group("num"))
+
+    op = _CMP_OP_MAP.get(op_raw)
+    if op is None:
+        return None
+
+    expanded = type_names_with_subclasses(
+        matched, ontology_summary=ontology_summary, include_subclasses=True
+    )
+    return _fixture(
+        cypher=LITERAL_COMPARE_CYPHER,
+        params={
+            "type_names": expanded,
+            "prop_key": prop_key,
+            "op": op,
+            "threshold": threshold,
+            "limit": limit if limit is not None else DEFAULT_LIST_LIMIT,
+        },
+        explanation=(
+            f"Find {matched} entities where {prop_key} {op_raw} {threshold} "
+            f"via literal_compare."
+        ),
+        template=TEMPLATE_LITERAL_COMPARE,
+    )
+
+
+def try_related_name_filter_query(
+    question: str,
+    ontology_summary: str = "",
+    *,
+    type_names: list[str] | None = None,
+) -> dict[str, Any] | None:
+    """Filter subjects by a related entity's display name (genre/author/…)."""
+    q = _TRAILING_PUNCT_RE.sub("", (question or "").strip())
+    if not q:
+        return None
+    q, _order_prop, _order_dir = _strip_order_by_suffix(q)
+    q, limit = _strip_limit_suffix(q)
+    m = _REL_NAME_FILTER_RE.match(q)
+    if not m:
+        return None
+    label = (m.group("label") or "").strip()
+    rel = (m.group("rel") or "").strip().lower()
+    value = _TRAILING_PUNCT_RE.sub("", (m.group("value") or "").strip())
+    value, lim_from_value = _strip_limit_suffix(value)
+    if lim_from_value is not None:
+        limit = lim_from_value
+    if not value or not _SAFE_PROP_RE.match(rel):
+        return None
+    matched = resolve_type_name(label, type_names, ontology_summary)
+    if matched is None:
+        return None
+
+    # Map natural words onto common relationship leaves used by inferred ingest.
+    rel_map = {
+        "genre": "has_genre",
+        "author": "has_author",
+        "publisher": "has_publisher",
+        "category": "has_genre",
+    }
+    rel_attr = rel_map.get(rel, rel)
+    # Prefer schema keys when present (has_genre vs genre).
+    if ontology_summary:
+        if re.search(rf"(?i)\bhas_{re.escape(rel)}\b", ontology_summary):
+            rel_attr = f"has_{rel}"
+        elif re.search(rf"(?i)\b{re.escape(rel)}\b.*relationship", ontology_summary):
+            # keep has_* default when both literal+rel exist
+            pass
+
+    expanded = type_names_with_subclasses(
+        matched, ontology_summary=ontology_summary, include_subclasses=True
+    )
+    return _fixture(
+        cypher=RELATED_ENTITY_NAME_FILTER_CYPHER,
+        params={
+            "type_names": expanded,
+            "rel_attr": rel_attr,
+            "target_name": value,
+            "limit": limit if limit is not None else DEFAULT_LIST_LIMIT,
+        },
+        explanation=(
+            f"Find {matched} entities related via {rel_attr} to "
+            f"{value!r} via related_entity_name_filter."
+        ),
+        template=TEMPLATE_RELATED_ENTITY_NAME_FILTER,
+    )
+
+
 def try_hop_query(
     question: str,
     ontology_summary: str = "",
@@ -638,6 +825,8 @@ def try_deterministic_cypher(
     """Try hermetic fixtures in priority order; return first match or None."""
     for fn in (
         try_stub_count_query,
+        try_numeric_filter_query,  # before equality so "price under 15" wins
+        try_related_name_filter_query,  # before equality so "with genre X" wins
         try_filter_query,  # before list so "list X where …" wins
         try_hop_query,  # before list so "authors of books" wins
         try_list_query,
@@ -776,7 +965,11 @@ __all__ = [
     "FILTER_PROP_EQ_CYPHER",
     "HOP_OUT_CYPHER",
     "LIST_BY_TYPE_CYPHER",
+    "LITERAL_COMPARE_CYPHER",
     "MAX_LIST_LIMIT",
+    "RELATED_ENTITY_NAME_FILTER_CYPHER",
+    "TEMPLATE_LITERAL_COMPARE",
+    "TEMPLATE_RELATED_ENTITY_NAME_FILTER",
     "TEMPLATE_COUNT_BY_TYPE",
     "TEMPLATE_COUNT_TOTAL",
     "TEMPLATE_FILTER_PROP_EQ",
@@ -794,5 +987,7 @@ __all__ = [
     "try_filter_query",
     "try_hop_query",
     "try_list_query",
+    "try_numeric_filter_query",
+    "try_related_name_filter_query",
     "try_stub_count_query",
 ]
