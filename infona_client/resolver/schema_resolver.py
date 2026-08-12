@@ -53,15 +53,14 @@ from infona_client.graph.text_markers import (
 )
 from infona_client.graph.parser import parse_sparql_results
 from infona_client.graph.kg_writer import build_graph_delta, insert_facts
-from infona_client.graph.store import resolve_optional_graph_store
+from infona_client.graph.store import graph_backend, resolve_optional_graph_store
 from infona_client.pipeline.envelope import derive_fact_id
 from infona_client.graph.provenance import (
     build_attribute_provenance_companions,
     build_provenance_triples,
     build_truth_verdict_companion,
-    provenance_graph_uri,
 )
-from infona_client.graph.queries import BATCH_PREDICATE, batched_insert_triples, delete_batch_query, insert_triples, tenant_graph_uri
+from infona_client.graph.queries import BATCH_PREDICATE, delete_batch_query, tenant_graph_uri
 from infona_client.resolver.attribute_resolver import (
     AttributeSchema,
     _normalize_attr_name,
@@ -2160,12 +2159,23 @@ class SchemaResolver:
                 exc_info=True,
             )
             instance_graph = target_instance_graph  # ONTA-268: call-local, not self
-            try:
-                sparql = delete_batch_query(instance_graph, batch_id)
-                await self._neptune.update(sparql)
-                logger.info("batch_rollback_complete", batch_id=batch_id)
-            except Exception:
-                logger.error("batch_rollback_failed", batch_id=batch_id, exc_info=True)
+            # Best-effort SPARQL batch delete is Neptune-only. On Neo4j/GraphStore
+            # there is no SPARQL endpoint — attempting update() raises ConnectError
+            # that muddies logs and can mask the original ingest failure. Skip and
+            # re-raise the original exception unchanged.
+            if graph_backend() == "neo4j":
+                logger.info(
+                    "batch_rollback_skipped_neo4j",
+                    batch_id=batch_id,
+                    reason="SPARQL delete_batch unavailable on GraphStore",
+                )
+            else:
+                try:
+                    sparql = delete_batch_query(instance_graph, batch_id)
+                    await self._neptune.update(sparql)
+                    logger.info("batch_rollback_complete", batch_id=batch_id)
+                except Exception:
+                    logger.error("batch_rollback_failed", batch_id=batch_id, exc_info=True)
             raise
 
     async def _resolve_and_insert(
@@ -2981,11 +2991,10 @@ class SchemaResolver:
         :meth:`ingest_mapped_records`). When set, the ``batch_id`` is DERIVED from
         it (replay-stable, mirroring :meth:`ingest`) and an A6 :class:`GraphDelta`
         keyed to it is emitted on ``result.graph_delta`` — the SAME run the A1
-        Source Bundle carries, so discovery lineage no longer diverges. To project
-        that delta the run's instance triples are collected and flushed in ONE
-        batched write (the same ``batched_insert_triples`` primitive the per-entity
-        path uses). ``None`` (the CSV route) keeps the fresh-uuid4 batch_id, the
-        byte-for-byte per-entity insert, and no delta — unchanged.
+        Source Bundle carries, so discovery lineage no longer diverges. Instance
+        + relationship triples always flush through the shared ``insert_facts``
+        write (dual-routes Neptune SPARQL / GraphStore Neo4j). ``None`` (the CSV
+        route) keeps the fresh-uuid4 batch_id and no delta — unchanged.
 
         ``key_join`` (ONTA-250): when set, each row is matched to an EXISTING
         entity by an exact key attribute and its attributes are merged ONTO that
@@ -3015,15 +3024,14 @@ class SchemaResolver:
         # a preserved-run_id replay reuses the same batch token (idempotent
         # BATCH_PREDICATE triple), mirroring the LLM-extract `ingest` path; the CSV
         # route (run_id=None) keeps a fresh uuid4 per call — unchanged.
-        # ``collected_entity_triples`` accumulates the run's instance triples ONLY
-        # when a run_id is threaded, so the A6 Graph Delta can be projected over
-        # them below; run_id=None leaves it None → the per-entity insert path.
+        # Instance triples always accumulate for ONE shared insert_facts flush
+        # (Neo4j-safe; dual-routes). When run_id is threaded the same collector
+        # also feeds the A6 Graph Delta projection below.
         batch_id = (
             derive_fact_id(run_id=run_id, stage="A6-batch") if run_id else str(uuid4())
         )
-        collected_entity_triples: list[tuple[str, str, str]] | None = (
-            [] if run_id is not None else None
-        )
+        collected_entity_triples: list[tuple[str, str, str]] = []
+        collected_provenance_triples: list[tuple[str, str, str]] = []
         result = IngestResult(
             entities_extracted=len(entities),
             chunks_processed=1,
@@ -3117,22 +3125,26 @@ class SchemaResolver:
                 await self._resolve_and_insert_entity(
                     entity, resolved_type, entity_uri, is_duplicate,
                     graph_uri, existing_types, existing_attrs, source, result, batch_id,
-                    # ONTA-372: collect the instance triples for the A6 delta ONLY
-                    # when a run_id is threaded; None → unchanged per-entity insert.
+                    # Always collect — flush via shared insert_facts below (Neo4j-
+                    # safe dual-route). Also feeds A6 Graph Delta when run_id set.
                     _collect_triples=collected_entity_triples,
+                    _collect_provenance=collected_provenance_triples,
                     instance_graph=instance_graph,  # ONTA-268: call-local target
                 )
 
-            # ONTA-372: when collecting (run_id threaded), the per-entity method
-            # appended rather than inserted — flush the run's instance triples in
-            # ONE batched write via the SAME primitive the per-entity path uses, so
-            # the written facts are byte-identical (only the batch_id keying
-            # differs). Ordering matches the per-entity path: entities land before
-            # the text markers + relationships below. The triple COUNT was already
-            # tallied inside `_resolve_and_insert_entity`, so do NOT re-increment.
-            if collected_entity_triples:
-                for sparql in batched_insert_triples(instance_graph, collected_entity_triples):
-                    await self._neptune.update(sparql)
+            # Flush collected instance (+ companion provenance) triples through
+            # the SAME shared write path as the extract / enrichment rails. On
+            # Neo4j, SPARQL batched_insert is unavailable — insert_facts dual-
+            # routes to GraphStore. The triple COUNT was already tallied inside
+            # `_resolve_and_insert_entity`, so do NOT re-increment.
+            if collected_entity_triples or collected_provenance_triples:
+                await insert_facts(
+                    self._neptune,
+                    instance_graph,
+                    collected_entity_triples,
+                    provenance_triples=collected_provenance_triples or None,
+                    store=resolve_optional_graph_store(),
+                )
 
             # ONTA-177: persist the schema pass's free-text verdicts (the
             # mapping's per-column text_kind, decided ONCE at schema-inference
@@ -3191,8 +3203,15 @@ class SchemaResolver:
                                 name=canonical_pred, datatype=target_type,
                             )
 
-            for sparql in batched_insert_triples(graph_uri, rel_triples):
-                await self._neptune.update(sparql)
+            # Same shared write path as entity facts (insert_facts). Mirrors the
+            # extract-path fix (#330): SPARQL batched_insert 500s on Neo4j.
+            if rel_triples:
+                await insert_facts(
+                    self._neptune,
+                    instance_graph,
+                    rel_triples,
+                    store=resolve_optional_graph_store(),
+                )
             result.triples_inserted += len(rel_triples)
 
             result.entities_resolved = len(entity_uri_map)
@@ -3238,12 +3257,20 @@ class SchemaResolver:
                 exc_info=True,
             )
             # instance_graph resolved once at method top (ONTA-268 call-local).
-            try:
-                sparql = delete_batch_query(instance_graph, batch_id)
-                await self._neptune.update(sparql)
-                logger.info("csv_batch_rollback_complete", batch_id=batch_id)
-            except Exception:
-                logger.error("csv_batch_rollback_failed", batch_id=batch_id, exc_info=True)
+            # Best-effort SPARQL batch delete is Neptune-only (see ingest path).
+            if graph_backend() == "neo4j":
+                logger.info(
+                    "csv_batch_rollback_skipped_neo4j",
+                    batch_id=batch_id,
+                    reason="SPARQL delete_batch unavailable on GraphStore",
+                )
+            else:
+                try:
+                    sparql = delete_batch_query(instance_graph, batch_id)
+                    await self._neptune.update(sparql)
+                    logger.info("csv_batch_rollback_complete", batch_id=batch_id)
+                except Exception:
+                    logger.error("csv_batch_rollback_failed", batch_id=batch_id, exc_info=True)
             raise
 
     async def _extract(
@@ -4935,8 +4962,17 @@ class SchemaResolver:
             if _collect_provenance is not None:
                 _collect_provenance.extend(prov_triples)
             else:
-                for sparql in batched_insert_triples(provenance_graph_uri(instance_graph), prov_triples):
-                    await self._neptune.update(sparql)
+                # Legacy path (no collector): shared write dual-routes SPARQL /
+                # GraphStore. On Neo4j, RDF companion provenance is a Wave-1 no-op
+                # inside insert_facts store path; Assertion provenance rides the
+                # instance write when enabled.
+                await insert_facts(
+                    self._neptune,
+                    instance_graph,
+                    [],
+                    provenance_triples=prov_triples,
+                    store=resolve_optional_graph_store(),
+                )
 
         # Per-attribute DISPLAY provenance companions (ONTA-245 F1), gated by
         # INFONA_DISCOVERY_ATTR_PROVENANCE (default off). The SAME
@@ -4982,13 +5018,19 @@ class SchemaResolver:
                 _collect_triples.extend(triples_to_insert)
                 result.triples_inserted += len(triples_to_insert)
             else:
-                # Legacy path: insert per-entity (used when called without collector)
+                # Legacy path: insert per-entity via shared write (dual-routes
+                # Neptune SPARQL / GraphStore Neo4j). Callers without a collector
+                # (direct unit tests / older entry points) still stay Neo4j-safe.
                 instance_graph = (
                     instance_graph if instance_graph is not None
                     else getattr(self, "_instance_graph", graph_uri)
                 )
-                for sparql in batched_insert_triples(instance_graph, triples_to_insert):
-                    await self._neptune.update(sparql)
+                await insert_facts(
+                    self._neptune,
+                    instance_graph,
+                    triples_to_insert,
+                    store=resolve_optional_graph_store(),
+                )
                 result.triples_inserted += len(triples_to_insert)
 
     # --- ONTA-177: free-text candidacy (semantic instance index) ------------

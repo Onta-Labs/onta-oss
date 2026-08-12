@@ -124,6 +124,111 @@ def test_schema_resolver_source_wires_store_kwarg():
     src = inspect.getsource(sr)
     assert "resolve_optional_graph_store" in src
     assert "store=resolve_optional_graph_store()" in src
+    # Residual instance/rel/provenance writes must not hand-roll SPARQL INSERT
+    # via batched_insert_triples + _neptune.update (Neo4j 500s on SPARQL HTTP).
+    assert "batched_insert_triples" not in src
+
+
+def test_ingest_mapped_uses_insert_facts_not_sparql(memory_store, monkeypatch):
+    """CSV mapped path flushes via insert_facts(store=) when GraphStore is live.
+
+    Regression for residual schema_resolver SPARQL writes: with
+    INFONA_GRAPH_BACKEND=neo4j, generic /ingest CSV and /ingest/csv/rows must
+    not call NeptuneClient.update for instance/rel triples (ConnectError 500).
+    Ontology commits are out of scope here — attrs are pre-registered.
+    """
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neo4j")
+    import tempfile
+    from pathlib import Path
+    from unittest.mock import AsyncMock
+
+    import infona_client.resolver.schema_resolver as sr
+    from infona_client.graph.client import NeptuneClient
+    from infona_client.resolver.attribute_resolver import AttributeSchema
+    from infona_client.resolver.models import (
+        ColumnMapping,
+        ColumnRole,
+        CSVSchemaMapping,
+    )
+    from infona_client.resolver.schema_resolver import SchemaResolver
+    from infona_client.resolver.verdict_cache import JsonVerdictCache
+
+    captured: list[dict] = []
+    real_insert = insert_facts
+
+    async def spy(neptune, instance_graph, instance_triples=None, **kwargs):
+        captured.append(
+            {
+                "store": kwargs.get("store"),
+                "n_triples": len(instance_triples or []),
+                "graph": instance_graph,
+            }
+        )
+        return await real_insert(neptune, instance_graph, instance_triples, **kwargs)
+
+    monkeypatch.setattr(sr, "insert_facts", spy)
+
+    mock_neptune = AsyncMock(spec=NeptuneClient)
+    mock_neptune.batch_exists.return_value = set()
+    mock_neptune.update.return_value = None
+
+    cache = JsonVerdictCache.__new__(JsonVerdictCache)
+    cache._path = Path(tempfile.mkdtemp()) / "verdicts.json"
+    cache._cache = {}
+    resolver = SchemaResolver(mock_neptune, "fake-key", cache)
+    resolver._er_enabled = False
+
+    graph = _graph(tenant="demo-tenant", kg="bookstore")
+    mapping = CSVSchemaMapping(
+        entity_type="Book",
+        columns=[
+            ColumnMapping(
+                column_name="title",
+                role=ColumnRole.TYPE_ID,
+                datatype="string",
+                attribute_name="title",
+            ),
+            ColumnMapping(
+                column_name="price",
+                role=ColumnRole.ATTRIBUTE,
+                datatype="float",
+                attribute_name="price",
+            ),
+        ],
+    )
+    rows = [
+        {"title": "Gatsby", "price": "10.5"},
+        {"title": "Mockingbird", "price": "12.0"},
+    ]
+    # Pre-register type + attrs so the path does not _commit_ontology (SPARQL).
+    existing_types = {"Book": ""}
+    existing_attrs = {
+        "Book": {
+            "title": AttributeSchema(name="title", datatype="string"),
+            "price": AttributeSchema(name="price", datatype="float"),
+        },
+    }
+
+    async def run():
+        return await resolver._ingest_mapped(
+            mapping,
+            rows,
+            graph,
+            existing_types,
+            existing_attrs,
+            source="test.csv",
+            instance_graph=graph,
+        )
+
+    result = asyncio.run(run())
+    assert result.entities_resolved == 2
+    assert result.triples_inserted > 0
+    assert captured, "insert_facts must be used for the mapped write flush"
+    assert all(c["store"] is memory_store for c in captured)
+    # Instance writes must not hit SPARQL HTTP when GraphStore is the backend.
+    mock_neptune.update.assert_not_called()
+    # Facts land in MemoryGraphStore (dual-route success).
+    assert memory_store.entity_count(tenant_id="demo-tenant", kg="bookstore") >= 2
 
 
 # ---------------------------------------------------------------------------
