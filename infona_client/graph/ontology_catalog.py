@@ -97,6 +97,9 @@ class OntoAttrRecord:
     cardinality: str = "1:1"
     description: str = ""
     prop_key: str | None = None
+    #: Free-text candidacy marker (ONTA-177 / ONTA-533). ``"free_text"`` /
+    #: ``"not_text"`` when decided; ``None`` when candidacy was never adjudicated.
+    text_kind: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -252,6 +255,10 @@ def _record_from_attr_row(
     kind = row.get("kind") or "literal"
     if kind not in ("literal", "relationship"):
         kind = "literal"
+    raw_tk = row.get("text_kind")
+    text_kind = str(raw_tk).strip() if raw_tk else None
+    if text_kind == "":
+        text_kind = None
     return OntoAttrRecord(
         name=str(row["name"]),
         domain=str(row["domain"]),
@@ -264,6 +271,7 @@ def _record_from_attr_row(
         cardinality=str(row.get("cardinality") or "1:1"),
         description=str(row.get("description") or ""),
         prop_key=row.get("prop_key"),
+        text_kind=text_kind,
     )
 
 
@@ -448,6 +456,86 @@ async def upsert_attribute_pg(
         cardinality=card,
         description=description or "",
         prop_key=prop_key,
+    )
+
+
+async def set_attribute_text_kind_pg(
+    session: "GraphSession",
+    type_name: str,
+    attr_name: str,
+    text_kind: str = "",
+) -> OntoAttrRecord:
+    """Idempotently set (or clear) an attribute's free-text candidacy marker.
+
+    Mirrors the SPARQL-era :func:`upsert_attribute_text_kind`: empty
+    ``text_kind`` clears any existing marker (candidacy becomes undecided).
+    MERGEs a stub ``:OntoAttr`` when the attribute has not been declared yet so
+    reconciler-side heuristics can still land a durable verdict before a full
+    schema pass (ONTA-533).
+
+    Reserved Entity property keys (``name``, ``id``, …) are allowed here: the
+    marker is catalog metadata OF an attribute leaf, not an Entity property
+    write (B2 only gates real schema declarations / dual-written props).
+    """
+    domain = _validate_type_leaf(type_name)
+    # Validate shape only — do NOT reject reserved Entity keys (see docstring).
+    leaf = require_valid_type_name(attr_name, "attribute name")
+    layer = layer_from_scope(session.scope)
+    kind_val = (text_kind or "").strip()
+    rows = await session.execute_template(
+        "onto_attr_set_text_kind",
+        {
+            "layer": layer,
+            "domain": domain,
+            "name": leaf,
+            "text_kind": kind_val,
+            "domain_label_token": _label_token_for(domain),
+        },
+    )
+    if rows:
+        return _record_from_attr_row(rows[0].to_dict(), default_layer=layer)
+    return OntoAttrRecord(
+        name=leaf,
+        domain=domain,
+        layer=layer,
+        tenant_id=session.scope.tenant_id,
+        kg=session.scope.kg,
+        kind="literal",
+        datatype="string",
+        text_kind=kind_val or None,
+    )
+
+
+async def set_attribute_text_kind(
+    neptune: Any = None,
+    graph_uri: str | None = None,
+    type_name: str = "",
+    attr_name: str = "",
+    text_kind: str = "",
+    *,
+    store: Optional["GraphStore"] = None,
+    session: Optional["GraphSession"] = None,
+    layer: LayerName | str = "tenant",
+    tenant_id: str | None = None,
+    privileged: bool = False,
+) -> OntoAttrRecord:
+    """Public dual-backend entry for textKind markers (ONTA-533)."""
+    if not type_name or not attr_name:
+        raise GraphScopeError(
+            "set_attribute_text_kind requires type_name and attr_name"
+        )
+    # Shape-only validation (no B2 reserved-key gate — see set_attribute_text_kind_pg).
+    require_valid_type_name(type_name, "type name")
+    require_valid_type_name(attr_name, "attribute name")
+    gs = resolve_catalog_session(
+        store=store,
+        session=session,
+        layer=layer,
+        tenant_id=tenant_id,
+        privileged=privileged,
+    )
+    return await set_attribute_text_kind_pg(
+        gs, type_name, attr_name, text_kind=text_kind
     )
 
 
@@ -688,6 +776,8 @@ __all__ = [
     "list_types_pg",
     "resolve_catalog_session",
     "schema_types_for_kg",
+    "set_attribute_text_kind",
+    "set_attribute_text_kind_pg",
     "upsert_attribute",
     "upsert_attribute_pg",
     "upsert_type",

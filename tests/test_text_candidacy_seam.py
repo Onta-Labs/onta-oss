@@ -27,10 +27,10 @@ ingest modality that runs a schema pass produces ``textKind`` markers:
   emits no SPARQL, so the verdicts are captured at the commit call
   (:func:`_text_kind_verdicts`) — the same decision, one layer up from the
   transport;
-* what that no longer proves is that the verdict is PERSISTED. It isn't:
-  ``SET_TEXT_KIND`` is dropped on the floor by the GraphStore commit path, so
-  ingest-time free-text marking is dead in production. See the strict xfail at
-  the end of this file.
+* ONTA-533 restored durability: ``SET_TEXT_KIND`` lands on
+  ``:OntoAttr.text_kind`` via the GraphStore catalog, and
+  ``test_committed_text_kind_verdict_is_applied`` asserts the marker is
+  readable back through ``get_free_text_map``.
 """
 
 from __future__ import annotations
@@ -502,29 +502,12 @@ class TestMappedPathSeam:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    reason=(
-        "LOST CAPABILITY (pre-dates ONTA-527, surfaced by it): every verdict "
-        "the seams above commit is discarded, so ingest-time free-text marking "
-        "does not work in production. "
-        "graph/ontology_commit.py::_commit_ontology_graph_store — the branch "
-        "taken whenever a process GraphStore exists, i.e. always — handles "
-        "UPSERT_TYPE / UPSERT_ATTRIBUTE / UPSERT_RELATIONSHIP / SET_SUBCLASS "
-        "and drops every other op into an `else` that logs "
-        "`ontology_store_op_skipped`, SET_TEXT_KIND included; it returns with "
-        "`applied` empty. graph/ontology_catalog.py has no text-kind concept "
-        "at all, and the only reader (text_markers.get_free_text_map) is "
-        "SPARQL. Same root cause as the strict xfail in "
-        "test_semantic_reconciler.py, reached from the ingest side instead of "
-        "the reconciler side. Not fixed here: it needs a text-kind port to the "
-        "catalog on both sides."
-    ),
-    strict=True,
-)
 @pytest.mark.asyncio
 async def test_committed_text_kind_verdict_is_applied(mock_neptune):
-    """``commit_ontology`` must actually APPLY a SET_TEXT_KIND mutation."""
+    """``commit_ontology`` must actually APPLY a SET_TEXT_KIND mutation (ONTA-533)."""
     from infona_client.graph.ontology_commit import commit_ontology
+    from infona_client.graph.ontology_queries import attr_uri
+    from infona_client.graph.text_markers import get_free_text_map, reset_for_tests
     from infona_client.models.ontology import OntologyMutation
 
     result = await commit_ontology(
@@ -539,3 +522,7 @@ async def test_committed_text_kind_verdict_is_applied(mock_neptune):
         message="ONTA-177 candidacy verdict",
     )
     assert [m.op for m in result.applied] == [OntologyOpKind.SET_TEXT_KIND]
+    # Durable on the catalog path — readable back via the shared marker helper.
+    reset_for_tests()
+    marker_map = await get_free_text_map(mock_neptune, "test-tenant")
+    assert marker_map.get(attr_uri("Ticket", "body")) is True

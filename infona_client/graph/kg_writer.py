@@ -567,17 +567,13 @@ async def _insert_facts_store(
                 exc_info=True,
             )
     # Secondary indexes still key off graph URI + triple-shaped payloads when
-    # available (best-effort).
-    #
-    # GAP (pre-dates ONTA-527, made visible by it): the SEMANTIC index write
-    # hook (`_index_semantic`, ONTA-181/421) is NOT called here. It rebuilds
-    # each touched entity's docs from a re-read of the store, and that re-read
-    # is SPARQL — so the hook has been dead in production since the Neo4j
-    # cutover, not merely since this deletion. Freshness now depends on the
-    # claim-based reconciler (`semantic/reconciler.py`) alone until the hook is
-    # ported to GraphStore.
+    # available (best-effort). Spatio-temporal is datatype-driven (needs only
+    # the write's triples); semantic rebuilds each touched entity from a
+    # GraphStore re-read (ONTA-533 — was SPARQL and therefore dead since the
+    # Neo4j cutover).
     if instance_triples:
         await _index_spatiotemporal(instance_graph, instance_triples)
+        await _index_semantic(None, instance_graph, instance_triples)
     if run_id is not None:
         return build_graph_delta(instance_graph, instance_triples, run_id=run_id)
     return None
@@ -632,7 +628,7 @@ async def _index_semantic(
 
     The FRESHNESS half of the ONTA-173 consistency model (the claim-based
     reconciler in ``semantic/reconciler.py`` is the correctness half): chunks
-    of marked free-text attributes land in the same request that wrote Neptune,
+    of marked free-text attributes land in the same request that wrote the KG,
     with ``embedding=NULL`` — the store-side generated tsvector makes them
     lexically searchable instantly; vector recall follows within one embed-fill
     sweep. Kept HERE in the single insertion primitive (like the
@@ -643,15 +639,16 @@ async def _index_semantic(
     control: indexing implies embedding spend and index growth). Marker-driven:
     only predicates the tenant's textKind map (``graph/text_markers.py``) marks
     ``free_text`` are extracted — free text has no distinguishing datatype, so
-    unlike the spatio-temporal hook this one needs the ``neptune`` handle to
-    consult the (TTL-cached) marker map.
+    unlike the spatio-temporal hook this one consults the (TTL-cached) marker
+    map. ``neptune`` is vestigial (ONTA-527 / ONTA-533): markers and the
+    completeness re-read both go through GraphStore.
 
     ONE exception, marker-INDEPENDENT (ONTA-421): every named entity also gets
     an identity doc, so a write that carries only ``rdfs:label`` / ``name`` /
     ``title`` now touches the index where it previously touched nothing. That is
     the cost side of the fix: a KG with no marked attribute at all used to pay
-    zero Neptune re-reads per write and now pays one bounded, VALUES-scoped
-    SELECT (still capped by ``INFONA_SEMANTIC_HOOK_MAX_ENTITIES``, still under
+    zero re-reads per write and now pays one bounded GraphStore assertion
+    re-read (still capped by ``INFONA_SEMANTIC_HOOK_MAX_ENTITIES``, still under
     the one timeout, still best-effort). ``INFONA_SEMANTIC_IDENTITY_INDEX=0``
     restores the old write-path behavior — but note it is not free to flip: the
     next reconcile of each KG then sees every identity doc as a ghost and
@@ -661,13 +658,13 @@ async def _index_semantic(
     Completeness contract (the ONTA-173 partial-doc fix): the write's triples
     only tell the hook WHICH (entity, marked attr) docs were touched — the docs
     themselves are rebuilt from a re-read of the touched entities' FULL current
-    triples in Neptune (the write has already been committed by the time the
-    hook runs, so the re-read includes it). Upsert is replace-per-doc and the
-    reconciler builds docs from the full KG, so indexing only the write's
-    triples would (a) wipe the previously indexed tail of a multi-valued attr
-    that just got one value appended, and (b) feed the intra-entity cross-attr
-    dedup a different input than the reconciler sees, making mirrored attrs
-    flip-flop between hook and reconcile runs.
+    Assertion SoT in GraphStore (the write has already been committed by the
+    time the hook runs, so the re-read includes it). Upsert is replace-per-doc
+    and the reconciler builds docs from the full KG, so indexing only the
+    write's triples would (a) wipe the previously indexed tail of a multi-valued
+    attr that just got one value appended, and (b) feed the intra-entity
+    cross-attr dedup a different input than the reconciler sees, making mirrored
+    attrs flip-flop between hook and reconcile runs.
 
     Empty-doc contract: a marked attr on a touched entity whose RE-READ
     canonicalized doc came out empty (or was deduped away because it mirrors
@@ -679,8 +676,8 @@ async def _index_semantic(
     whole body (marker read + entity re-read + upsert + deletes + schedule
     ensure) runs under one ``asyncio.wait_for`` so a hung index backend can't
     block the KG write, and ANY failure is logged, never raised — the KG write
-    must NEVER fail on an index hiccup (Neptune is already the source of truth
-    at this point).
+    must NEVER fail on an index hiccup (the primary store is already the source
+    of truth at this point).
     """
     scope = parse_kg_graph_uri(instance_graph)
     if scope is None:
@@ -732,7 +729,7 @@ async def _index_semantic_inner(
     # name-only write must be picked up here too; before, such a write indexed
     # nothing and the entity stayed permanently unfindable by name). Only the
     # touched entities are re-read, so a write carrying neither a marked value
-    # nor a name still costs zero extra Neptune reads.
+    # nor a name still costs zero extra store reads.
     touched = indexable_doc_keys(instance_triples, marked)
     if touched:
         entity_uris = sorted({entity_uri for entity_uri, _ in touched})
@@ -750,7 +747,7 @@ async def _index_semantic_inner(
             entity_uris = entity_uris[:cap]
 
         # Completeness re-read (see _index_semantic's docstring): rebuild the
-        # touched entities' docs from their FULL current triples in Neptune —
+        # touched entities' docs from their FULL current Assertion SoT —
         # NEVER from the write's own (possibly partial) triples. On failure we
         # SKIP indexing for this write (the reconciler repairs on its cadence);
         # degrading to write-local partial docs would reintroduce the exact
@@ -807,20 +804,51 @@ async def _index_semantic_inner(
 async def _fetch_touched_entity_triples(
     neptune, instance_graph: str, entity_uris: list[str]
 ) -> list[Triple]:
-    """Fetch the full current ``?e ?p ?o`` triples of the given entities.
+    """Fetch the full current ``(s, p, o)`` triples of the given entities.
 
-    One VALUES-scoped SELECT over the touched entity URIs against the instance
-    graph (the same VALUES batching style as ``batch_entity_exists_query`` and
-    the reconciler's scan). ALL predicates are fetched — marked attrs plus
-    ``rdf:type`` / label predicates for the extractor's denormalized display
-    fields; the extractor itself filters to the marked set, exactly as it does
-    for the reconciler's scan, so the two can never disagree on matching.
+    **GraphStore path (ONTA-533):** re-read Assertion SoT via
+    ``session.read_assertions_for_subject`` for each touched entity. This is
+    the production path after the Neo4j cutover — SPARQL is no longer available.
+
+    ALL predicates are fetched — marked attrs plus ``rdf:type`` / label
+    predicates for the extractor's denormalized display fields; the extractor
+    itself filters to the marked set, exactly as it does for the reconciler's
+    scan, so the two can never disagree on matching.
 
     Ordered like the reconciler's scan (``ORDER BY ?e ?p ?o``, re-sorted
     client-side to be safe) so the extractor's first-attr-wins intra-entity
     dedup picks the SAME winner the reconciler's full scan picks — otherwise
     mirrored attrs flip-flop between hook writes and reconcile runs.
     """
+    from infona_client.semantic.reconciler import _assertion_row_to_semantic_triples
+
+    triples: list[Triple] = []
+    try:
+        session = _resolve_graph_session(instance_graph=instance_graph)
+        reader = getattr(session, "read_assertions_for_subject", None)
+        if callable(reader):
+            for uri in entity_uris:
+                rows = await reader(uri)
+                for row in rows:
+                    if not isinstance(row, dict):
+                        to_dict = getattr(row, "to_dict", None)
+                        if callable(to_dict):
+                            row = to_dict()
+                        elif hasattr(row, "keys"):
+                            row = dict(row)
+                        else:
+                            continue
+                    if not isinstance(row, dict):
+                        continue
+                    triples.extend(_assertion_row_to_semantic_triples(row))
+            triples.sort()
+            return triples
+    except Exception:
+        # Fall through to SPARQL only when a live client was supplied (hermetic
+        # FakeNeptune tests that never installed a read_assertions path).
+        if neptune is None or not hasattr(neptune, "query"):
+            raise
+
     from infona_client.graph.parser import parse_sparql_results
 
     values = " ".join(f"<{u}>" for u in entity_uris)
@@ -831,7 +859,6 @@ async def _fetch_touched_entity_triples(
         f"}} ORDER BY ?e ?p ?o"
     )
     _, rows = parse_sparql_results(await neptune.query(sparql))
-    triples: list[Triple] = []
     for row in rows:
         e, p = row.get("e", ""), row.get("p", "")
         if e and p:
