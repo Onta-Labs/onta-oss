@@ -127,33 +127,95 @@ def _ttl_s() -> float:
     return float(os.environ.get("INFONA_TEXT_MARKER_TTL_S", "60"))
 
 
+async def marker_map_from_catalog(tenant_id: str) -> dict[str, bool] | None:
+    """Public alias used by the reconciler (raises on store errors)."""
+    return await _marker_map_from_catalog(tenant_id)
+
+
+async def _marker_map_from_catalog(tenant_id: str) -> dict[str, bool] | None:
+    """Load decided textKind markers from the GraphStore ontology catalog.
+
+    Returns ``None`` when no process GraphStore is configured (caller may fall
+    back to SPARQL). An empty dict means "catalog is reachable and has no
+    decided markers" — distinct from a fetch failure, which raises.
+    """
+    from infona_client.graph.ontology_queries import attr_uri
+    from infona_client.graph.store import GraphConfigError, get_optional_graph_store
+
+    store = get_optional_graph_store()
+    if store is None:
+        try:
+            from infona_client.graph.store import get_graph_store
+
+            store = get_graph_store()
+        except GraphConfigError:
+            return None
+    from infona_client.graph.ontology_catalog import list_attributes
+
+    attrs = await list_attributes(tenant_id=tenant_id, store=store)
+    marker_map: dict[str, bool] = {}
+    for a in attrs:
+        if not a.text_kind:
+            continue
+        try:
+            uri = attr_uri(a.domain, a.name)
+        except Exception:  # noqa: BLE001 — skip bad leaves, never fail the map
+            continue
+        marker_map[uri] = a.text_kind == TEXT_KIND_FREE_TEXT
+    return marker_map
+
+
+async def _marker_map_from_sparql(neptune, tenant_id: str) -> dict[str, bool]:
+    """SPARQL-era marker fetch (tests / vestigial client). Raises on failure."""
+    from infona_client.graph.parser import parse_sparql_results
+
+    raw = await neptune.query(text_kind_map_query(tenant_graph_uri(tenant_id)))
+    _, bindings = parse_sparql_results(raw)
+    return {
+        row["attr"]: row.get("kind") == TEXT_KIND_FREE_TEXT
+        for row in bindings
+        if row.get("attr")
+    }
+
+
 async def get_free_text_map(neptune, tenant_id: str) -> dict[str, bool]:
     """Return ``{attribute predicate URI -> is_free_text}`` for one tenant.
 
-    Reads every ``<attr> <onto/textKind> ?kind`` marker in the tenant's base
-    (ontology) graph; ``True`` exactly when the kind is ``"free_text"``. A
-    predicate absent from the map carries NO verdict (candidacy was never
-    decided — e.g. the attribute predates ONTA-177 or arrived via a writer the
-    schema pass never saw; ONTA-181's reconciler-side heuristic covers those).
+    Reads decided free-text candidacy markers. **Primary source (ONTA-533):**
+    the GraphStore ontology catalog (``:OntoAttr.text_kind``). SPARQL
+    ``<attr> <onto/textKind> ?kind`` remains a secondary source so hermetic
+    FakeNeptune tests that seed markers only on the SPARQL stub keep working.
 
-    TTL-cached (~60s) per tenant. Best-effort on the fetch: a Neptune failure
-    logs a warning and returns ``{}`` WITHOUT caching it, so the next call
-    retries instead of pinning an empty map for a full TTL.
+    ``True`` exactly when the kind is ``"free_text"``. A predicate absent from
+    the map carries NO verdict (candidacy was never decided — e.g. the attribute
+    predates ONTA-177 or arrived via a writer the schema pass never saw;
+    ONTA-181's reconciler-side heuristic covers those). Presence with
+    ``False`` means durable decided-no (``"not_text"``).
+
+    TTL-cached (~60s) per tenant. Best-effort on the fetch: a failure logs a
+    warning and returns ``{}`` WITHOUT caching it, so the next call retries
+    instead of pinning an empty map for a full TTL.
     """
     now = time.monotonic()
     hit = _cache.get(tenant_id)
     if hit is not None and now - hit[0] < _ttl_s():
         return hit[1]
+    marker_map: dict[str, bool] = {}
     try:
-        from infona_client.graph.parser import parse_sparql_results
-
-        raw = await neptune.query(text_kind_map_query(tenant_graph_uri(tenant_id)))
-        _, bindings = parse_sparql_results(raw)
-        marker_map = {
-            row["attr"]: row.get("kind") == TEXT_KIND_FREE_TEXT
-            for row in bindings
-            if row.get("attr")
-        }
+        catalog = await _marker_map_from_catalog(tenant_id)
+        if catalog is not None:
+            marker_map.update(catalog)
+        # Merge SPARQL so FakeNeptune-seeded markers remain visible even when a
+        # process GraphStore is installed (conftest always is). Catalog wins on
+        # conflict — that is the production write path.
+        if neptune is not None and hasattr(neptune, "query"):
+            try:
+                sparql_map = await _marker_map_from_sparql(neptune, tenant_id)
+                for uri, is_ft in sparql_map.items():
+                    marker_map.setdefault(uri, is_ft)
+            except Exception:  # noqa: BLE001 — SPARQL is secondary
+                if not marker_map:
+                    raise
     except Exception:  # noqa: BLE001 — a marker-map hiccup must never fail the caller
         logger.warning("text_marker_map_fetch_failed", tenant_id=tenant_id, exc_info=True)
         return {}
