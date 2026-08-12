@@ -24,21 +24,33 @@ Full table: [docs/BOUNDARY.md](docs/BOUNDARY.md).
 
 ## Quickstart (~10 minutes)
 
-### 1. Start Neo4j
+**Prerequisites:** Docker (for Neo4j) and an LLM API key (OpenRouter recommended). Without both, stop after install — the API will start degraded and graph routes will fail.
+
+### 1. Install
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+cp .env.example .env
+# Set OPENROUTER_API_KEY=sk-or-... in .env (or Cerebras / Anthropic — see Model Configuration)
+```
+
+> Import path: `infona_client`. Graph IRIs: `https://graph.infona.ai/`.  
+> CLI: build from this repo (`npm ci && npm run build -w packages/cli`) until a release ships the `export` command; published `@infona-ai/cli` may still use the legacy `onta` bin name.
+
+### 2. Start Neo4j
 
 ```bash
 docker compose up -d
 # Neo4j only (default). Legacy Fuseki: docker compose --profile legacy-sparql up -d
-```
 
-```bash
 export NEO4J_URI=bolt://localhost:7687
 export NEO4J_USER=neo4j
 export NEO4J_PASSWORD=infona-dev-password
 export INFONA_GRAPH_BACKEND=neo4j   # default; explicit is fine
 ```
 
-Bootstrap constraints (idempotent):
+Bootstrap constraints (idempotent; needs the venv from step 1):
 
 ```bash
 python - <<'PY'
@@ -55,44 +67,24 @@ PY
 
 Details: [docs/neo4j-local.md](docs/neo4j-local.md).
 
-### 2. Install
-
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-```
-
-> Import path: `infona_client`. Graph IRIs: `https://graph.infona.ai/`.  
-> CLI / MCP: `infona` and `infona-mcp` (`@infona-ai/cli`, `@infona-ai/mcp`). Config: `~/.infona`.
-
-### 3. Configure
-
-```bash
-cp .env.example .env
-# OPENROUTER_API_KEY=sk-or-...   # (or Cerebras / Anthropic — see Model Configuration)
-```
-
-### 4. Start the API
+### 3. Start the API
 
 ```bash
 source .env && uvicorn infona_client.api.app:create_app --factory --port 8000
 ```
 
-No API key required for local open-access (`INFONA_API_KEYS` empty → tenant `default`).
+No API key required for local open-access (`INFONA_API_KEYS` empty → tenant `default`). Pass `--tenant default` (or `INFONA_TENANT=default`) on the CLI if your config still defaults to another tenant.
 
-### 5. Ingest, ask, export
+### 4. Ingest, ask, export
 
 ```bash
-# CLI (Node 20+)
-npm install -g @infona-ai/cli   # or: npm ci && npm run build -w packages/cli
-
-infona --local ingest examples/bookstore.csv --kg bookstore
-infona --local ask "How many books are there?" --kg bookstore
-infona --local ask "List all books by J.R.R. Tolkien" --kg bookstore
+# Prefer workspace CLI until export is on a published release:
+node packages/cli/dist/cli.js --local --tenant default ingest examples/bookstore.csv --kg bookstore
+node packages/cli/dist/cli.js --local --tenant default ask "How many books are there?" --kg bookstore
 
 # Get data back out (F10)
-infona --local export --kg bookstore -f json -o bookstore.json
-infona --local export --kg bookstore -f csv --type Book -o books.csv
+node packages/cli/dist/cli.js --local --tenant default export --kg bookstore -f json -o bookstore.json
+node packages/cli/dist/cli.js --local --tenant default export --kg bookstore -f csv --type Book -o books.csv
 ```
 
 HTTP:
@@ -171,12 +163,14 @@ Local models (Ollama / vLLM) via OpenAI-compatible endpoints are possible if you
 
 ## Architecture
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) and [docs/BOUNDARY.md](docs/BOUNDARY.md).
+**Current product path:** FastAPI + **Neo4j GraphStore (Cypher)**. Edition lines: [docs/BOUNDARY.md](docs/BOUNDARY.md). Local Neo4j: [docs/neo4j-local.md](docs/neo4j-local.md).
+
+[ARCHITECTURE.md](ARCHITECTURE.md) is a **historical SPARQL/Neptune-era** write-up — useful for background, not the production default. Prefer BOUNDARY + code under `infona_client/graph/` for current behavior.
 
 - **Backend:** FastAPI + Neo4j GraphStore (Cypher)
 - **Ingestion:** LLM schema inference → deterministic mapping
 - **Query:** ontology + few-shot bank → Cypher → answer
-- **Legacy SPARQL / Fuseki:** still in-tree for older paths; not the default
+- **Legacy SPARQL / Fuseki:** still in-tree; not the default
 
 ## License
 

@@ -26,6 +26,7 @@ from infona_client.api.routes.knowledge_graphs import list_type_counts
 from infona_client.auth.api_keys import TenantContext, get_tenant
 from infona_client.graph.client import NeptuneClient
 from infona_client.graph.queries import is_valid_kg_name, require_valid_type_name
+from infona_client.research.types import _csv_safe
 
 router = APIRouter(prefix="/graphs/{tenant}/kgs")
 
@@ -33,6 +34,9 @@ router = APIRouter(prefix="/graphs/{tenant}/kgs")
 _PAGE = 200
 # Hard ceiling across all types for a single export request.
 _MAX_ROWS = 50_000
+# Default budget: Explorer N+1 detail fetches make full-graph dumps slow;
+# callers raise ``limit`` (up to _MAX_ROWS) or pass ``type`` for a slice.
+_DEFAULT_ROWS = 5_000
 
 
 class ExportTypeBlock(BaseModel):
@@ -89,6 +93,11 @@ async def _export_type_rows(
         if not page_rows:
             break
         rows.extend(page_rows)
+        # Enforce budget even if the page endpoint overshoots ``limit``.
+        if len(rows) > max_rows:
+            rows = rows[:max_rows]
+            truncated = True
+            break
         cursor = page.get("next_cursor")
         if not cursor:
             break
@@ -122,15 +131,14 @@ def _rows_to_csv(blocks: list[ExportTypeBlock]) -> str:
     for b in blocks:
         for r in b.rows:
             out = {k: "" for k in col_set}
-            out["type"] = b.type
+            out["type"] = _csv_safe(b.type)
             for k, v in r.items():
-                if k in out:
-                    if isinstance(v, (list, dict)):
-                        out[k] = str(v)
-                    elif v is None:
-                        out[k] = ""
-                    else:
-                        out[k] = v
+                if k not in out:
+                    continue
+                if v is None:
+                    out[k] = ""
+                else:
+                    out[k] = _csv_safe(v)
             w.writerow(out)
     return buf.getvalue()
 
@@ -142,16 +150,19 @@ async def export_kg(
         "json",
         description="json (structured) or csv (flat table with a type column)",
     ),
-    type: str | None = Query(
+    type_name: str | None = Query(
         None,
         alias="type",
         description="Optional single type name. Omit to export every type with instances.",
     ),
     limit: int = Query(
-        _MAX_ROWS,
+        _DEFAULT_ROWS,
         ge=1,
         le=_MAX_ROWS,
-        description=f"Max total rows across all types (hard cap {_MAX_ROWS}).",
+        description=(
+            f"Max total rows across all types (default {_DEFAULT_ROWS}, "
+            f"hard cap {_MAX_ROWS}). Raise for full dumps; use type= to slice."
+        ),
     ),
     tenant: TenantContext = Depends(get_tenant),
     client: NeptuneClient = Depends(get_neptune_client),
@@ -160,9 +171,9 @@ async def export_kg(
     if not is_valid_kg_name(kg_name):
         raise HTTPException(status_code=422, detail=f"Invalid kg name: {kg_name!r}")
 
-    if type:
-        require_valid_type_name(type)
-        type_names = [type]
+    if type_name:
+        require_valid_type_name(type_name)
+        type_names = [type_name]
     else:
         counts = await list_type_counts(
             kg_name=kg_name, tenant=tenant, client=client
@@ -189,7 +200,7 @@ async def export_kg(
 
     row_count = sum(len(b.rows) for b in blocks)
     truncated = any(b.truncated for b in blocks) or (
-        type is None and remaining <= 0 and len(type_names) > len(blocks)
+        type_name is None and remaining <= 0 and len(type_names) > len(blocks)
     )
     note = None
     if truncated:

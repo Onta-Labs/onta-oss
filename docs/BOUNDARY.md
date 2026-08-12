@@ -15,8 +15,8 @@ Short answer for OSS users. The long engineering map lives in the monorepo
 | **Clean, dedupe-at-write, conflict policy** | |
 | **Export** JSON / CSV | `GET …/kgs/{kg}/export` · `infona export` |
 | **Plugin seams** | Auth, enrichment adapters, fetchers — you wire them |
-| **Free / official data sources** | NPPES, ClinicalTrials.gov, GeoNames, Open Food Facts, … |
-| **Bring-your-own-key** registry entries | Dormant until *your* key is in the env |
+| **Free / no-key data sources** | NPPES, ClinicalTrials.gov, Open Food Facts, … |
+| **Bring-your-own-key** registry entries | Dormant until *your* key is in the env (e.g. FRED, GeoNames free username) |
 
 ## Bring your own retrieval (important)
 
