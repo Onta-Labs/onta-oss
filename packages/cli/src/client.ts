@@ -748,12 +748,16 @@ export class Client {
       // attribute names (enrichment sources, joins) are never broken by a
       // model renaming a column.
       const T = opts.typeName;
+      // First column is type_id / entity key. Use the CSV header as the
+      // attribute leaf — never force attribute_name "name": on Neo4j that
+      // collides with reserved Entity.name (model B2) and 500s at ontology
+      // commit. Entity display name still comes from the type_id value.
       mappingToPost = {
         entity_type: T,
         columns: headers.map((h, i) => ({
           column_name: h,
           role: i === 0 ? "type_id" : "attribute",
-          attribute_name: i === 0 ? "name" : h,
+          attribute_name: h,
           entity: T,
         })),
         entities: [
