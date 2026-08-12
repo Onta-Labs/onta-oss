@@ -268,10 +268,6 @@ async def _ask(client, sparql: str, *, kg: bool = True, ontology: str = ONTOLOGY
         patch.object(
             pipeline, "_try_llm_cypher", new_callable=AsyncMock, return_value=canned
         ),
-        patch(
-            "infona_client.nlp.pipeline.try_deterministic_cypher",
-            return_value=None,
-        ),
         patch.object(
             pipeline, "_execute_confined_cypher", new_callable=AsyncMock,
             side_effect=fake_exec,

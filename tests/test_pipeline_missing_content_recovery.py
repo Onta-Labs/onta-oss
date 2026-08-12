@@ -331,9 +331,6 @@ def _ask_ctx(p: NLQueryPipeline, gen):
     return (
         patch.object(pipeline_mod, "get_embedding_service", return_value=None),
         patch.object(p, "_fetch_ontology", new=AsyncMock(return_value=FULL_ONTOLOGY)),
-        patch.object(
-            pipeline_mod, "try_deterministic_cypher", return_value=None
-        ),
         patch.object(p, "_generate_sparql", new=gen),
         patch.object(p, "_generate_cypher_via_openrouter", new=gen),
         patch.object(p, "_generate_cypher_via_cerebras", new=gen),

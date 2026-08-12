@@ -370,6 +370,13 @@ def _pipeline(store, neptune):
     pipe = NLQueryPipeline(neptune, anthropic_key="", graph_store=store)
     pipe._openrouter_key = ""
     pipe._fetch_ontology = AsyncMock(return_value=GUEST_ONTOLOGY)  # type: ignore[method-assign]
+    # /ask is always LLM; use template helpers as canned generation offline.
+    from infona_client.nlp.cypher_generate import try_deterministic_cypher
+
+    async def fake_llm(question, ontology, **kw):
+        return try_deterministic_cypher(question, ontology)
+
+    pipe._try_llm_cypher = fake_llm  # type: ignore[method-assign]
     return pipe
 
 

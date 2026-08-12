@@ -309,9 +309,6 @@ async def test_ask_collects_sparql_gen_token_usage(monkeypatch):
 
     monkeypatch.setattr(p, "_fetch_ontology", fake_fetch_ontology)
     monkeypatch.setattr(p, "_try_llm_cypher", fake_cypher)
-    monkeypatch.setattr(
-        pipeline_mod, "try_deterministic_cypher", lambda *a, **k: None
-    )
     monkeypatch.setattr(p, "_execute_confined_cypher", fake_exec)
     monkeypatch.setattr(p, "_rephrase_via_openrouter", fake_rephrase)
     monkeypatch.setattr(pipeline_mod, "get_embedding_service", lambda: None)
@@ -386,9 +383,6 @@ async def test_ask_retry_stage_on_second_attempt(monkeypatch):
 
     monkeypatch.setattr(p, "_fetch_ontology", fake_fetch_ontology)
     monkeypatch.setattr(p, "_try_llm_cypher", fake_cypher)
-    monkeypatch.setattr(
-        pipeline_mod, "try_deterministic_cypher", lambda *a, **k: None
-    )
     monkeypatch.setattr(p, "_execute_confined_cypher", fake_exec)
     monkeypatch.setattr(p, "_rephrase_via_openrouter", AsyncMock(return_value=""))
     monkeypatch.setattr(pipeline_mod, "get_embedding_service", lambda: None)

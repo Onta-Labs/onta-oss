@@ -1,20 +1,18 @@
-"""NL→Cypher generators (E6 quality beyond the count stub).
+"""NL→Cypher generators (templates + LLM helpers).
 
 Provides:
 
 1. **Deterministic fixtures** (hermetic, no LLM) for common NL shapes.
    Fixtures compose **ADR 0013 semantic helper templates**
    (``entities_of_type``, ``literal_values``, ``related_entities``, …) — they
-   do **not** translate SPARQL strings to Cypher.
+   do **not** translate SPARQL strings to Cypher. These are for **unit tests**
+   of template builders and non-ask helpers (e.g. ``select_entity_uris``);
+   production user-facing ``/ask`` NL→Cypher is **always LLM** via
+   ``NLQueryPipeline._try_llm_cypher`` (fixtures must not short-circuit that path).
 2. Helpers to turn GraphStore records into the binding shape the answer
    formatter already understands (answer-set quality; not SPARQL match).
 3. Ontology text formatting from :func:`ontology_catalog.schema_types_for_kg`
    summaries (when a store is present).
-
-When ``INFONA_GRAPH_BACKEND=neo4j``, the pipeline tries fixtures first, then
-falls back to the LLM Cypher prompt path if API keys exist. Fixtures prefer
-allowlisted semantic templates so Memory and Neo4j both execute without
-free-form Cypher. Neptune SPARQL remains the default when backend != neo4j.
 
 Answer quality is measured by the golden-query suite (expected answer sets),
 not by query-text equivalence with SPARQL — see
@@ -1906,7 +1904,13 @@ def try_deterministic_cypher(
     *,
     type_names: list[str] | None = None,
 ) -> dict[str, Any] | None:
-    """Try hermetic fixtures in priority order; return first match or None."""
+    """Try hermetic fixtures in priority order; return first match or None.
+
+    **Not used on the production ``/ask`` path** — user-facing NL→Cypher is
+    always LLM. Call this from unit tests of template builders, or from
+    non-ask helpers (e.g. internal URI selection) that intentionally prefer
+    deterministic shapes.
+    """
     for fn in (
         try_aggregate_query,  # before count: "total amount of grants" ≠ bare count
         try_stub_count_query,
