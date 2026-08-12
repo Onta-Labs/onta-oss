@@ -1,30 +1,23 @@
-"""ONTA-397 — workspace ontology reads through LayerStack (ported by ONTA-527).
+"""ONTA-397 — workspace ontology reads through LayerStack (ported by ONTA-527,
+layered catalog merge restored by ONTA-535).
 
-**The behaviour change this file ran into head-on.** Layered reads (Tenant >
-Enhanced > Public shadowing) were a SPARQL ``LayerStack`` concern: the routes
-called :func:`~infona_client.graph.global_ontology.fetch_ontology` over one
-named graph per visible layer and merged the results. That path went out with
-the SPARQL backend. ``GET /ontology``, ``/ontology/types`` and
-``/ontology/schema`` now return the TENANT layer only, from
-:mod:`infona_client.graph.ontology_catalog`
-(``api/routes/ontology.py::_workspace_ontology_store``).
+Layered reads (Tenant > Enhanced > Public shadowing) used to be a SPARQL
+``LayerStack`` concern via :func:`~infona_client.graph.global_ontology.fetch_ontology`.
+That SPARQL path went out with the SPARQL backend (ONTA-527). ONTA-535 ports
+the route-side merge onto the GraphStore ontology catalog
+(``api/routes/ontology.py::_workspace_ontology_store``): every visible layer is
+read and first-visible-layer-wins shadowing is applied.
 
-So the file splits three ways:
+The file splits three ways:
 
 * **Unit tests of ``fetch_ontology`` (unchanged, still green).** The layered
-  reader module still exists and still merges/shadows correctly over a SPARQL
-  fake. Worth knowing while reading them: NO product route calls it any more —
-  the only remaining caller of ``global_ontology`` is the operator's
-  ``fetch_global_ontology``. They pin a reader that is currently unwired.
-* **Route tests that survive** — the tenant-layer write path and cross-tenant
-  isolation — are re-pointed at the catalog. Isolation is asserted harder than
-  before: a peer workspace's type is seeded and asserted absent, rather than a
-  ``FROM`` clause being inspected.
-* **Route tests for Public / Enhanced visibility and shadowing** are strict
-  xfails. The catalog HAS the layers (``GraphScope.for_catalog(layer=…)``,
-  writable privileged, readable) — what is missing is the route-side merge, so
-  each xfailed test is now written against the CATALOG and reads as the
-  acceptance criterion for that port.
+  SPARQL reader module still merges/shadows correctly over a SPARQL fake. The
+  only remaining production caller of ``global_ontology`` is the operator's
+  ``fetch_global_ontology``; workspace routes use the catalog merge.
+* **Route tests for tenant write path + cross-tenant isolation** — catalog.
+* **Route tests for Public / Enhanced visibility and shadowing** — catalog
+  merge (ONTA-535). The ask()/SPARQL-widening cases stay xfail: NL generates
+  Cypher and no longer FROM-widens SPARQL.
 
 All mocked — no live Neptune, no live Neo4j, no LLM, no network.
 """
@@ -483,11 +476,8 @@ def test_cross_tenant_route_isolation(store):
 def test_get_type_enhanced_404_when_not_entitled(store):
     """A non-entitled workspace must not reach an Enhanced-only type.
 
-    NOTE: this now passes VACUOUSLY — no caller reaches Enhanced by any input,
-    entitled or not (see the xfail below). Kept because the direction it guards
-    (non-entitled must never see Enhanced) has to survive the catalog-layer
-    port, and a test that only passes when the feature is broken is worth
-    keeping green rather than deleting.
+    ONTA-535: real entitlement gate — Enhanced is only in the LayerStack when
+    entitled, so a non-entitled read 404s on an Enhanced-only type.
     """
     _declare(store, "VipGuest", layer="enhanced", description="premium guest",
              attrs=["tier"])
@@ -497,33 +487,14 @@ def test_get_type_enhanced_404_when_not_entitled(store):
 
 
 # ---------------------------------------------------------------------------
-# Ontology routes — layered reads: the capability that did NOT survive
+# Ontology routes — layered catalog reads (ONTA-535)
 # ---------------------------------------------------------------------------
 #
-# api/routes/ontology.py::_workspace_ontology deletes its client argument and
-# delegates to _workspace_ontology_store, which calls ontology_catalog's
-# list_types/list_attributes with layer="tenant" and nothing else. There is no
-# read of the public / enhanced catalog scopes and no shadowing merge, so every
-# case below fails on a payload that carries only the tenant layer. The layers
-# themselves EXIST in the catalog (seeded here through the ordinary privileged
-# write path), which is why these are ports rather than deletions: they are the
-# acceptance criteria for the missing merge.
-
-_LAYERED_READ_GONE = (
-    "LOST CAPABILITY (ONTA-527): layered ontology reads (Tenant > Enhanced > "
-    "Public shadowing) are gone from the ontology routes. They were a SPARQL "
-    "LayerStack concern — graph/global_ontology.py::fetch_ontology over "
-    "graph/entitlement.py::layer_stack_for_tenant, one named graph per visible "
-    "layer — and api/routes/ontology.py::_workspace_ontology now discards its "
-    "NeptuneClient and returns _workspace_ontology_store, which reads "
-    "ontology_catalog with layer='tenant' only. The public/enhanced CATALOG "
-    "scopes exist and are readable (GraphScope.for_catalog(layer=…)); what is "
-    "missing is the route-side merge + shadowing. "
-)
+# api/routes/ontology.py::_workspace_ontology_store merges every visible
+# catalog layer (Tenant > Enhanced when entitled > Public) with first-wins
+# shadowing. Layers are seeded here through the ordinary privileged write path.
 
 
-@pytest.mark.xfail(reason=_LAYERED_READ_GONE + "Here: an empty workspace no "
-                   "longer sees a Public type at all.", strict=True)
 def test_list_types_empty_tenant_sees_public(store):
     _declare(store, "Hotel", layer="public", description="A lodging place",
              attrs=["stars"])
@@ -533,14 +504,6 @@ def test_list_types_empty_tenant_sees_public(store):
     assert [t["name"] for t in r.json()] == ["Hotel"]
 
 
-@pytest.mark.xfail(reason=_LAYERED_READ_GONE + "Here: shadowing is a MERGE — "
-                   "a colliding name collapses to the tenant's ONE entry while "
-                   "the lower layers' other types still surface. Only the "
-                   "second half can fail today (a tenant-only read trivially "
-                   "reports one Hotel, which is why asserting the collapse "
-                   "alone would XPASS and prove nothing); the Public-only "
-                   "Motel is the discriminating half.",
-                   strict=True)
 def test_list_types_shadowing_one_hotel(store):
     _declare(store, "Hotel", layer="public", description="public-hotel",
              attrs=["stars"])
@@ -563,8 +526,6 @@ def test_list_types_shadowing_one_hotel(store):
     assert attr_names == {"roomCount"}
 
 
-@pytest.mark.xfail(reason=_LAYERED_READ_GONE + "Here: type DETAIL for a "
-                   "Public-only type 404s.", strict=True)
 def test_get_type_public_detail(store):
     _declare(store, "Hotel", layer="public", description="A lodging place",
              attrs=["stars"])
@@ -577,9 +538,6 @@ def test_get_type_public_detail(store):
     assert any(a["name"] == "stars" for a in body["attributes"])
 
 
-@pytest.mark.xfail(reason=_LAYERED_READ_GONE + "Here: an ENTITLED workspace "
-                   "cannot reach an Enhanced type either, so entitlement now "
-                   "buys nothing on this route.", strict=True)
 def test_get_type_enhanced_ok_when_entitled(store):
     _declare(store, "VipGuest", layer="enhanced", description="premium guest",
              attrs=["tier"])
@@ -589,12 +547,6 @@ def test_get_type_enhanced_ok_when_entitled(store):
     assert r.json()["name"] == "VipGuest"
 
 
-@pytest.mark.xfail(reason=_LAYERED_READ_GONE + "Here: the full workspace "
-                   "payload. Its `layers` array is ALSO empty — "
-                   "_workspace_ontology_store returns layers=[] — so the "
-                   "viewer's per-layer status strip (available / type_count) "
-                   "has no data at all, not even for the tenant layer it does "
-                   "read.", strict=True)
 def test_workspace_ontology_route_returns_workspace_model(store):
     _declare(store, "Hotel", layer="public", description="A lodging place",
              attrs=["stars"])
@@ -609,12 +561,7 @@ def test_workspace_ontology_route_returns_workspace_model(store):
 
 
 def test_workspace_ontology_route_shape_and_tenant_layer(store):
-    """What the workspace route DOES still guarantee, pinned so it can't slip.
-
-    The envelope (tenant_id / entitled / layers / types) is unchanged, tenant
-    types come back with layer="tenant", and their attributes and relationships
-    are split correctly.
-    """
+    """Envelope + tenant-layer types; layers strip is populated (ONTA-535)."""
     _declare(store, "Hotel", layer="tenant", tenant_id=TENANT_A,
              description="tenant-hotel", attrs=["roomCount"])
     client = _ontology_app(tenant_id=TENANT_A, entitled=False)
@@ -624,6 +571,10 @@ def test_workspace_ontology_route_shape_and_tenant_layer(store):
     assert body["tenant_id"] == TENANT_A
     assert body["entitled"] is False
     assert set(body) >= {"tenant_id", "entitled", "layers", "types"}
+    layer_names = {L["layer"] for L in body["layers"]}
+    assert "tenant" in layer_names
+    assert "public" in layer_names
+    assert "enhanced" not in layer_names  # non-entitled
     hotel = next(t for t in body["types"] if t["name"] == "Hotel")
     assert hotel["layer"] == "tenant"
     assert hotel["description"] == "tenant-hotel"

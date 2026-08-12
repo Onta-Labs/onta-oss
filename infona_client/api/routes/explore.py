@@ -1983,12 +1983,19 @@ async def _records_from_explore_store(
     process store under that backend), list + detail come from
     :mod:`infona_client.graph.explore_store`. Same response shape as the
     SPARQL path so Explorer clients need no branch.
+
+    **ONTA-535:** public properties already exclude internal/housekeeping keys
+    (via :func:`~infona_client.graph.explore_store._public_properties`).
+    Ontology-declared attributes always become columns (COG-112), even when
+    empty on the current page — joined from the tenant catalog, same as the
+    SPARQL branch's ``attr_def`` query.
     """
     from infona_client.graph.explore_store import (
         get_entity_detail as pg_entity_detail,
         list_entities_by_type as pg_list_entities,
         resolve_explore_session,
     )
+    from infona_client.graph.facts import is_internal_property_key
 
     if resolve_explore_session(tenant_id=tenant_id, kg_name=kg_name) is None:
         return None
@@ -2003,13 +2010,48 @@ async def _records_from_explore_store(
     if page is None:
         return None
 
-    _EMPTY = {"columns": ["name"], "rows": [], "total": 0, "next_cursor": None}
+    # Ontology-declared attributes are always columns (COG-112 / ONTA-535).
+    # Exempt from the observed-column budget so a declared-but-empty enriched
+    # attr stays visible in the Explorer table.
+    declared_display: list[str] = []
+    declared_set: set[str] = set()
+    try:
+        from infona_client.graph.ontology_catalog import list_attributes as cat_list_attrs
+
+        for a in await cat_list_attrs(
+            layer="tenant",
+            tenant_id=tenant_id,
+            type_name=type_name,
+        ):
+            label = (a.name or "").strip()
+            if not label or label == "name":
+                continue
+            if is_internal_property_key(label):
+                continue
+            if label not in declared_set:
+                declared_set.add(label)
+                declared_display.append(label)
+        declared_display.sort()
+    except Exception:
+        # Catalog is best-effort: page-observed columns still work without it.
+        declared_display = []
+        declared_set = set()
+
+    _EMPTY = {
+        "columns": ["name"] + declared_display,
+        "rows": [],
+        "total": 0,
+        "next_cursor": None,
+    }
     if not page.entities:
         return {**_EMPTY, "total": page.total}
 
+    # Column budget for observed-but-undeclared extras only (mirrors SPARQL path).
+    _MAX_EXTRA_COLS = 24
+
     # Collect per-entity properties for table columns (page-sized, ≤ 200).
-    col_set: set[str] = set()
-    col_display: list[str] = []
+    col_set: set[str] = set(declared_set)
+    col_display: list[str] = list(declared_display)
     rows_out: list[dict] = []
     for ent in page.entities:
         detail = await pg_entity_detail(
@@ -2030,7 +2072,16 @@ async def _records_from_explore_store(
             if k == "name":
                 continue
             display = str(k)
+            # Defence in depth: entity detail already strips internals, but a
+            # drifted store path must not re-introduce them as columns.
+            if is_internal_property_key(display):
+                continue
             if display not in col_set:
+                # Declared attrs are unlimited; extras cap at _MAX_EXTRA_COLS.
+                if display not in declared_set:
+                    extras = len(col_set) - len(declared_set)
+                    if extras >= _MAX_EXTRA_COLS:
+                        continue
                 col_set.add(display)
                 col_display.append(display)
             if isinstance(v, (list, tuple)):
@@ -2045,6 +2096,8 @@ async def _records_from_explore_store(
                 leaf = str(getattr(rel, "attr", None) or getattr(rel, "rel_type", "") or "")
                 if not leaf:
                     continue
+                if is_internal_property_key(leaf):
+                    continue
                 friendly = leaf[4:] if leaf.startswith("has_") else leaf
                 label = (
                     getattr(rel, "other_name", None)
@@ -2054,9 +2107,13 @@ async def _records_from_explore_store(
                 if not label:
                     continue
                 for col in dict.fromkeys((leaf, friendly)):
-                    if not col:
+                    if not col or is_internal_property_key(col):
                         continue
                     if col not in col_set:
+                        if col not in declared_set:
+                            extras = len(col_set) - len(declared_set)
+                            if extras >= _MAX_EXTRA_COLS:
+                                continue
                         col_set.add(col)
                         col_display.append(col)
                     prev = str(row.get(col) or "")
@@ -2074,8 +2131,10 @@ async def _records_from_explore_store(
         for c in col_display:
             row.setdefault(c, "")
 
-    col_display.sort()
-    columns = ["name"] + col_display
+    # Declared first (stable alpha), then observed extras (alpha) — matches
+    # the SPARQL branch's "declared always shown" contract.
+    extras = sorted(c for c in col_display if c not in declared_set)
+    columns = ["name"] + list(declared_display) + extras
     return {
         "columns": columns,
         "rows": rows_out,

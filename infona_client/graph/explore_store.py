@@ -281,16 +281,28 @@ def _summary_from_row(row: Mapping[str, Any]) -> EntitySummary:
 
 
 def _public_properties(props: Mapping[str, Any] | None) -> dict[str, Any]:
-    """Strip reserved / system Entity keys from a properties map."""
+    """Strip reserved / system / internal Entity keys from a properties map.
+
+    Reserved keys (``id``, ``name``, ``source``, …) are structural Entity
+    fields, not ontology attributes. Internal keys (``ingested_at``,
+    ``batch_id``, ``blockKey``, ``erSignal_*``, …) are housekeeping that
+    :func:`~infona_client.graph.facts.is_internal_property_key` classifies —
+    the same filter the grep path uses (ONTA-535 / ONTA-527). Without it the
+    Explorer entity panel and records table render ingest bookkeeping as
+    data columns.
+    """
     if not props:
         return {}
     out: dict[str, Any] = {}
     for k, v in props.items():
-        if k in _SYSTEM_PROP_KEYS:
+        key = str(k)
+        if key in _SYSTEM_PROP_KEYS:
+            continue
+        if is_internal_property_key(key):
             continue
         if v is None:
             continue
-        out[str(k)] = v
+        out[key] = v
     return out
 
 

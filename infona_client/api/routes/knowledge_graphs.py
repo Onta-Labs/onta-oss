@@ -1055,7 +1055,89 @@ async def get_type_usage(
     datatypes, parent type) with per-KG instance numbers (entity count,
     attribute usage, sample entities) so the caller doesn't have to make
     three round-trips and re-join the results client-side.
+
+    **GraphStore / Neo4j (ONTA-535):** inventory via
+    :func:`infona_client.graph.explore_store.type_summary` + sample entities
+    from :func:`~infona_client.graph.explore_store.list_entities_by_type`.
+    System/internal keys are already filtered by the summary path (same
+    ``is_internal_property_key`` authority as grep/records); ``include_system``
+    is a SPARQL-branch opt-in and is ignored on the store path (internals
+    never surface as domain columns).
     """
+    from infona_client.graph.explore_store import (
+        list_entities_by_type as pg_list_entities,
+        resolve_explore_session,
+        type_summary as pg_type_summary,
+    )
+    from infona_client.graph.queries import require_valid_type_name
+    from infona_client.graph.store import GraphConfigError
+
+    require_valid_type_name(type_name)
+
+    # GraphStore path (ONTA-535) — same TypeUsage shape as the SPARQL branch.
+    # When a store is configured, None means unknown type → 404 (do not fall
+    # through to SPARQL mocks that no production engine answers).
+    if resolve_explore_session(tenant_id=tenant.tenant_id, kg_name=kg_name) is not None:
+        try:
+            pg_row = await pg_type_summary(
+                tenant_id=tenant.tenant_id,
+                kg_name=kg_name,
+                type_name=type_name,
+            )
+        except GraphConfigError:
+            pg_row = None
+        if pg_row is None:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"Type '{type_name}' not found in tenant ontology "
+                    f"or KG '{kg_name}'"
+                ),
+            )
+        del include_system  # store path never surfaces internal keys
+        samples: list[EntitySample] = []
+        try:
+            page = await pg_list_entities(
+                tenant_id=tenant.tenant_id,
+                kg_name=kg_name,
+                type_name=type_name,
+                limit=3,
+            )
+            if page is not None:
+                for ent in page.entities:
+                    samples.append(
+                        EntitySample(
+                            uri=ent.id,
+                            label=ent.name or ent.id.rstrip("/").split("/")[-1],
+                        )
+                    )
+        except Exception:
+            samples = []
+        return TypeUsage(
+            name=pg_row.name,
+            description=pg_row.description or "",
+            parent_type=pg_row.parent_type,
+            entity_count=pg_row.entity_count,
+            attributes=[
+                AttributeUsage(
+                    name=a.name,
+                    datatype=a.datatype or "string",
+                    count=a.count,
+                )
+                for a in pg_row.attributes
+            ],
+            relationships=[
+                RelationshipUsage(
+                    name=r.name,
+                    target_type=r.target_type,
+                    count=r.count,
+                )
+                for r in pg_row.relationships
+            ],
+            samples=samples,
+        )
+
+    # Legacy SPARQL path (no process GraphStore configured).
     tenant_graph = tenant_graph_uri(tenant.tenant_id)
     kg_graph = kg_graph_uri(tenant.tenant_id, kg_name)
     t_uri = type_uri(type_name)

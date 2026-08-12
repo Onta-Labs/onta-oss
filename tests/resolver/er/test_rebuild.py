@@ -209,7 +209,15 @@ async def test_rebuild_type_merges_and_reports() -> None:
     # The "other" John was never a merge loser — untouched, still its own node.
     other = await _detail(OTHER_URI)
     assert other is not None
-    assert other.properties.get("erSignal_email") == "jsmith99@yahoo.com"
+    assert other.name == "John Smith"
+    # ONTA-535: public entity detail filters ER housekeeping via
+    # ``is_internal_property_key`` (``erSignal_*``, ``blockKey``, …). Product
+    # is correct — assert they stay out of public properties rather than
+    # expecting the index signal to surface.
+    assert "erSignal_email" not in (other.properties or {})
+    assert not any(
+        str(k).startswith("erSignal_") for k in (other.properties or {})
+    )
 
 
 @pytest.mark.asyncio
