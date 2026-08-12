@@ -1217,6 +1217,38 @@ class NLQueryPipeline:
         except Exception:
             pass
 
+        # Ontology-subgraph grounding (planning layer) — structured prompt
+        # context only. Never short-circuits the LLM (always-LLM product rule).
+        grounding_text = ""
+        try:
+            from infona_client.nlp.ontology_subgraph_match import (
+                format_grounding_for_prompt,
+                ground_ask_plan,
+            )
+
+            names_for_ground = type_names or None
+            if not names_for_ground and ontology:
+                from infona_client.nlp.cypher_generate import (
+                    extract_type_names_from_ontology,
+                )
+
+                names_for_ground = extract_type_names_from_ontology(ontology) or None
+            grounded = ground_ask_plan(
+                question,
+                ontology,
+                type_names=names_for_ground,
+            )
+            grounding_text = format_grounding_for_prompt(grounded)
+            if grounded is not None:
+                timing["grounding_confidence"] = grounded.confidence
+                if grounded.template:
+                    timing["grounding_template"] = grounded.template
+                if grounded.path is not None:
+                    timing["grounding_path"] = grounded.path.describe()
+        except Exception:
+            logger.debug("ontology_subgraph_grounding_failed", exc_info=True)
+            grounding_text = ""
+
         max_attempts = 3
         last_error = ""
         cypher = ""
@@ -1267,6 +1299,30 @@ class NLQueryPipeline:
                                 timing["ontology_escalated_to_full_attempt"] = (
                                     attempt
                                 )
+                                # Re-ground after ontology escalation.
+                                try:
+                                    from infona_client.nlp.ontology_subgraph_match import (
+                                        format_grounding_for_prompt,
+                                        ground_ask_plan,
+                                    )
+                                    from infona_client.nlp.cypher_generate import (
+                                        extract_type_names_from_ontology,
+                                    )
+
+                                    names_esc = (
+                                        extract_type_names_from_ontology(ontology)
+                                        or None
+                                    )
+                                    grounded_esc = ground_ask_plan(
+                                        question,
+                                        ontology,
+                                        type_names=names_esc,
+                                    )
+                                    grounding_text = format_grounding_for_prompt(
+                                        grounded_esc
+                                    )
+                                except Exception:
+                                    pass
                         except Exception:
                             logger.debug(
                                 "ontology_escalation_fetch_failed", exc_info=True
@@ -1296,6 +1352,7 @@ class NLQueryPipeline:
                     kg_name=kg_name,
                     examples_text=examples_text,
                     error_feedback=error_feedback,
+                    grounding_text=grounding_text,
                     **gen_recovery,
                 )
 
@@ -1827,6 +1884,7 @@ class NLQueryPipeline:
         kg_name: str,
         examples_text: str = "",
         error_feedback: str = "",
+        grounding_text: str = "",
         max_completion_tokens: int | None = None,
         prefer_fallback: bool = False,
     ) -> dict | None:
@@ -1835,6 +1893,10 @@ class NLQueryPipeline:
         Returns ``None`` without API keys. Re-raises :class:`EmptyLLMResponse`
         so the retry loop can apply length-truncation recovery (ONTA-530);
         other generator failures log and return ``None``.
+
+        ``grounding_text`` is optional structured ontology-subgraph context
+        (from :func:`~infona_client.nlp.ontology_subgraph_match.ground_ask_plan`)
+        injected into the prompt — never a fixture short-circuit.
         """
         if not (
             self._openrouter_key
@@ -1857,6 +1919,7 @@ class NLQueryPipeline:
             kg_name=kg_name,
             examples_text=examples_text,
             error_feedback=error_feedback,
+            grounding_text=grounding_text,
         )
         try:
             if prefer_fallback:
