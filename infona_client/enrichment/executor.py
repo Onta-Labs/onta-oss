@@ -2417,6 +2417,13 @@ class EnrichmentExecutor:
             # shared insert_facts the caller issues; write them before the edge is
             # arbitrated so the target node exists.
             companion_triples.extend(node_triples)
+            # ONTA-536: prefer source_url so Assertion identity / fold matches the
+            # companion citation insert (same source_discriminator → one Assertion).
+            _src = (
+                getattr(r.verdict, "source_url", None)
+                or getattr(r.verdict, "source", "")
+                or ""
+            )
             await write_with_conflict_resolution(
                 self._neptune,
                 graph_uri,
@@ -2426,7 +2433,7 @@ class EnrichmentExecutor:
                 value=term,
                 authority=self._verdict_authority(r.verdict),
                 confidence=float(r.verdict.confidence),
-                source=getattr(r.verdict, "source", "") or "",
+                source=_src,
                 observed_at=self._verdict_as_of(r.verdict),
                 run_id=run_id,
                 reason="enrichment refresh (supersede stale value)",
@@ -2437,6 +2444,11 @@ class EnrichmentExecutor:
                 # housekeeping passes (Neptune query + re-embed + stats) into 1.
                 refresh=False,
             )
+            # ONTA-536: re-include the primary value triple so the caller's
+            # companion insert_facts batch has a domain Fact for
+            # fold_attr_citations_onto_facts (Assertion.source_url / verified_at).
+            # Idempotent re-write — same s/p/o already landed above.
+            companion_triples.append((r.entity_uri, predicate, term))
             # Per-attribute DISPLAY provenance companions (source_url / provenance /
             # verified_at) for the value we just wrote — same citations as the
             # non-refresh path, collected for one shared insert.
