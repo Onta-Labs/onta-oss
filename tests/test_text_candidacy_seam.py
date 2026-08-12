@@ -14,6 +14,23 @@ ingest modality that runs a schema pass produces ``textKind`` markers:
   gets NEITHER: its ``_resolve_and_insert`` call leaves
   ``decide_text_candidacy`` off, keeping the route LLM-free; a
   reconciler-side default heuristic covers it later (ONTA-181).
+
+**Ported by ONTA-527.** Two mechanical changes and one honest subtraction:
+
+* the ingest calls now take a per-KG ``instance_graph``. ``GRAPH`` here is the
+  tenant ONTOLOGY graph (where schema/marker writes belong) and used to double
+  as the instance target; the property-graph writer cannot derive a
+  ``(tenant, kg)`` scope from a tenant URI and fails closed, so the two are
+  spelled separately;
+* a marker verdict was asserted as the ``textKind`` SPARQL the seam emitted
+  (``mock_neptune.update``). The seam commits an ``OntologyMutation`` now and
+  emits no SPARQL, so the verdicts are captured at the commit call
+  (:func:`_text_kind_verdicts`) — the same decision, one layer up from the
+  transport;
+* what that no longer proves is that the verdict is PERSISTED. It isn't:
+  ``SET_TEXT_KIND`` is dropped on the floor by the GraphStore commit path, so
+  ingest-time free-text marking is dead in production. See the strict xfail at
+  the end of this file.
 """
 
 from __future__ import annotations
@@ -24,9 +41,11 @@ import pytest
 
 import infona_client.graph.text_markers as tm
 from infona_client.graph.ontology_queries import (
+    TEXT_KIND_FREE_TEXT,
     TEXT_KIND_NOT_TEXT,
-    attr_uri,
 )
+from infona_client.graph.queries import kg_graph_uri
+from infona_client.models.ontology import OntologyOpKind
 from infona_client.resolver.models import (
     ColumnMapping,
     ColumnRole,
@@ -42,8 +61,13 @@ from infona_client.resolver.schema_resolver import (
     SchemaResolver,
 )
 
-GRAPH = "https://graph.infona.ai/graphs/test-tenant"
 TENANT = "test-tenant"
+KG = "tickets"
+#: Tenant ONTOLOGY graph — the target of schema + marker writes.
+GRAPH = f"https://graph.infona.ai/graphs/{TENANT}"
+#: Per-KG INSTANCE graph — the target of the fact write (ONTA-527: the
+#: property-graph writer needs a (tenant, kg) scope and rejects a tenant URI).
+INSTANCE_GRAPH = kg_graph_uri(TENANT, KG)
 
 
 @pytest.fixture(autouse=True)
@@ -73,8 +97,25 @@ def _resolver(mock_neptune) -> SchemaResolver:
     return resolver
 
 
-def _updates(mock_neptune) -> list[str]:
-    return [c.args[0] for c in mock_neptune.update.await_args_list]
+def _text_kind_verdicts(resolver) -> dict[tuple[str, str], str]:
+    """Record every ``SET_TEXT_KIND`` verdict the seam COMMITS.
+
+    Returns a live ``{(type, attr): kind}`` view — the ported replacement for
+    scraping ``textKind`` out of the SPARQL the seam used to emit (see the
+    module docstring). The real ``_commit_ontology`` still runs, so the ingest
+    under test is unchanged.
+    """
+    seen: dict[tuple[str, str], str] = {}
+    real = resolver._commit_ontology
+
+    async def recording(graph_uri, mutations, **kwargs):
+        for mut in mutations:
+            if mut.op is OntologyOpKind.SET_TEXT_KIND:
+                seen[(mut.type_name, mut.slot_name)] = mut.text_kind
+        return await real(graph_uri, mutations, **kwargs)
+
+    resolver._commit_ontology = recording
+    return seen
 
 
 def _ticket_entities(n: int = 4) -> list[ExtractedEntity]:
@@ -101,6 +142,7 @@ async def _run_extract_path(resolver, entities, decide=True) -> IngestResult:
         extraction, GRAPH, {"Ticket": ""}, {"Ticket": {}},
         "", result, {}, {}, "batch-1",
         decide_text_candidacy=decide,
+        instance_graph=INSTANCE_GRAPH,
     )
 
 
@@ -108,6 +150,7 @@ class TestExtractPathSeam:
     @pytest.mark.asyncio
     async def test_auto_tier_marks_long_prose_without_llm(self, mock_neptune):
         resolver = _resolver(mock_neptune)
+        verdicts = _text_kind_verdicts(resolver)
         adjudications: list[dict] = []
 
         async def record_adjudication(candidates):
@@ -118,9 +161,7 @@ class TestExtractPathSeam:
         result = await _run_extract_path(resolver, _ticket_entities())
 
         assert result.free_text_attributes == ["Ticket.body"]
-        marker_updates = [u for u in _updates(mock_neptune) if "textKind" in u]
-        assert len(marker_updates) == 1
-        assert attr_uri("Ticket", "body") in marker_updates[0]
+        assert verdicts == {("Ticket", "body"): TEXT_KIND_FREE_TEXT}
         # body was AUTO (unambiguous long prose); only the borderline
         # attributes went to adjudication — and NAMES only reach that layer.
         assert len(adjudications) == 1
@@ -129,6 +170,7 @@ class TestExtractPathSeam:
     @pytest.mark.asyncio
     async def test_ambiguous_band_follows_adjudication_verdict(self, mock_neptune):
         resolver = _resolver(mock_neptune)
+        verdicts = _text_kind_verdicts(resolver)
 
         async def adjudicate(candidates):
             # The REASON layer judges by name: subject = prose-ish, marked;
@@ -139,17 +181,15 @@ class TestExtractPathSeam:
         result = await _run_extract_path(resolver, _ticket_entities())
 
         assert sorted(result.free_text_attributes) == ["Ticket.body", "Ticket.subject"]
-        marker_updates = [u for u in _updates(mock_neptune) if "textKind" in u]
-        assert any(attr_uri("Ticket", "subject") in u for u in marker_updates)
-        # The LLM's decided NO is PERSISTED as the durable not_text marker
+        # The LLM's decided NO is written as the durable not_text verdict
         # (ONTA-173) — not left absent (absent = never-decided would be
-        # re-sampled by the reconciler forever).
-        declined = [
-            u for u in marker_updates if attr_uri("Ticket", "site_address") in u
-        ]
-        assert len(declined) == 1 and f'"{TEXT_KIND_NOT_TEXT}"' in declined[0]
-        # Non-candidates (code is CODE-shaped) get NO marker of either polarity.
-        assert not any(attr_uri("Ticket", "code") in u for u in marker_updates)
+        # re-sampled by the reconciler forever). Non-candidates (code is
+        # CODE-shaped) get NO verdict of either polarity.
+        assert verdicts == {
+            ("Ticket", "body"): TEXT_KIND_FREE_TEXT,
+            ("Ticket", "subject"): TEXT_KIND_FREE_TEXT,
+            ("Ticket", "site_address"): TEXT_KIND_NOT_TEXT,
+        }
 
     @pytest.mark.asyncio
     async def test_undecided_candidates_get_no_marker(self, mock_neptune):
@@ -157,6 +197,7 @@ class TestExtractPathSeam:
         stays UNDECIDED: no free_text marker, no not_text marker — only a
         genuine adjudication may persist a decided-no (ONTA-173)."""
         resolver = _resolver(mock_neptune)
+        verdicts = _text_kind_verdicts(resolver)
 
         async def adjudicate(candidates):
             return {("Ticket", "subject")}, set()  # site_address unadjudicated
@@ -164,8 +205,8 @@ class TestExtractPathSeam:
         resolver._adjudicate_free_text = adjudicate
         await _run_extract_path(resolver, _ticket_entities())
 
-        marker_updates = [u for u in _updates(mock_neptune) if "textKind" in u]
-        assert not any(attr_uri("Ticket", "site_address") in u for u in marker_updates)
+        assert ("Ticket", "site_address") not in verdicts
+        assert ("Ticket", "subject") in verdicts  # the adjudicated one did land
 
     @pytest.mark.asyncio
     async def test_marker_writes_invalidate_tenant_marker_cache(self, mock_neptune):
@@ -213,6 +254,7 @@ class TestExtractPathSeam:
         candidacy, no adjudication LLM call (the route's "no LLM" contract).
         Those attributes stay undecided for ONTA-181's reconciler heuristic."""
         resolver = _resolver(mock_neptune)
+        verdicts = _text_kind_verdicts(resolver)
 
         async def must_not_run(candidates):
             raise AssertionError("adjudication must not run when candidacy is off")
@@ -221,7 +263,7 @@ class TestExtractPathSeam:
         result = await _run_extract_path(resolver, _ticket_entities(), decide=False)
 
         assert result.free_text_attributes == []
-        assert not any("textKind" in u for u in _updates(mock_neptune))
+        assert verdicts == {}
 
     @pytest.mark.asyncio
     async def test_marking_is_best_effort_never_fails_ingest(self, mock_neptune):
@@ -331,14 +373,13 @@ class TestMappedPathSeam:
     @pytest.mark.asyncio
     async def test_schema_time_verdict_is_applied_at_apply_time(self, mock_neptune):
         resolver = _resolver(mock_neptune)
+        verdicts = _text_kind_verdicts(resolver)
         result = await resolver._ingest_mapped(
             _listing_mapping(), _LISTING_ROWS, GRAPH, {"Listing": ""}, {"Listing": {}}, "",
+            instance_graph=INSTANCE_GRAPH,
         )
         assert result.free_text_attributes == ["Listing.remarks"]
-        marker_updates = [u for u in _updates(mock_neptune) if "textKind" in u]
-        assert len(marker_updates) == 1
-        assert attr_uri("Listing", "remarks") in marker_updates[0]
-        assert not any(attr_uri("Listing", "address") in u for u in marker_updates)
+        assert verdicts == {("Listing", "remarks"): TEXT_KIND_FREE_TEXT}
 
     @pytest.mark.asyncio
     async def test_mapping_not_text_verdict_persists_durable_marker(self, mock_neptune):
@@ -347,15 +388,14 @@ class TestMappedPathSeam:
         the durable marker at apply time (ONTA-173) — and does NOT count as a
         free-text attribute in the result."""
         resolver = _resolver(mock_neptune)
+        verdicts = _text_kind_verdicts(resolver)
         result = await resolver._ingest_mapped(
             _listing_mapping(remarks_kind=TEXT_KIND_NOT_TEXT), _LISTING_ROWS,
             GRAPH, {"Listing": ""}, {"Listing": {}}, "",
+            instance_graph=INSTANCE_GRAPH,
         )
         assert result.free_text_attributes == []
-        marker_updates = [u for u in _updates(mock_neptune) if "textKind" in u]
-        assert len(marker_updates) == 1
-        assert attr_uri("Listing", "remarks") in marker_updates[0]
-        assert f'"{TEXT_KIND_NOT_TEXT}"' in marker_updates[0]
+        assert verdicts == {("Listing", "remarks"): TEXT_KIND_NOT_TEXT}
 
     @pytest.mark.asyncio
     async def test_mapping_marker_writes_invalidate_tenant_marker_cache(
@@ -367,25 +407,34 @@ class TestMappedPathSeam:
         tm._cache[TENANT] = (999999.0, {})
         await resolver._ingest_mapped(
             _listing_mapping(), _LISTING_ROWS, GRAPH, {"Listing": ""}, {"Listing": {}}, "",
+            instance_graph=INSTANCE_GRAPH,
         )
         assert TENANT not in tm._cache
 
     @pytest.mark.asyncio
-    async def test_reingest_reemits_the_same_idempotent_upsert(self, mock_neptune):
-        """Re-ingesting the same mapping re-issues the identical single-valued
-        DELETE/INSERT upsert — idempotent under re-ingest by construction."""
+    async def test_reingest_reemits_the_same_idempotent_verdict(self, mock_neptune):
+        """Re-ingesting the same mapping re-emits the identical verdict —
+        idempotent under re-ingest by construction.
+
+        Ported by ONTA-527: the old form compared the two runs' ``textKind``
+        SPARQL and asserted the single-valued ``DELETE``/``INSERT`` upsert
+        shape. That string is gone with the SPARQL path; idempotency now rides
+        on the mutation itself (``SET_TEXT_KIND`` is an upsert op), so the two
+        runs' emitted verdicts are compared instead.
+        """
         resolver = _resolver(mock_neptune)
+        verdicts = _text_kind_verdicts(resolver)
         await resolver._ingest_mapped(
             _listing_mapping(), _LISTING_ROWS, GRAPH, {"Listing": ""}, {"Listing": {}}, "",
+            instance_graph=INSTANCE_GRAPH,
         )
-        first = [u for u in _updates(mock_neptune) if "textKind" in u]
-        mock_neptune.update.reset_mock()
+        first = dict(verdicts)
+        verdicts.clear()
         await resolver._ingest_mapped(
             _listing_mapping(), _LISTING_ROWS, GRAPH, {"Listing": ""}, {"Listing": {}}, "",
+            instance_graph=INSTANCE_GRAPH,
         )
-        second = [u for u in _updates(mock_neptune) if "textKind" in u]
-        assert first == second
-        assert "DELETE" in first[0] and "INSERT" in first[0]
+        assert first == verdicts == {("Listing", "remarks"): TEXT_KIND_FREE_TEXT}
 
     @pytest.mark.asyncio
     async def test_legacy_mapping_without_verdicts_writes_no_markers(self, mock_neptune):
@@ -393,6 +442,7 @@ class TestMappedPathSeam:
         candidacy stays UNDECIDED (no marker, no LLM) — the decided-once
         contract; ONTA-181's reconciler heuristic covers these later."""
         resolver = _resolver(mock_neptune)
+        verdicts = _text_kind_verdicts(resolver)
 
         async def must_not_run(candidates):
             raise AssertionError("mapped path must never re-adjudicate")
@@ -401,9 +451,10 @@ class TestMappedPathSeam:
         result = await resolver._ingest_mapped(
             _listing_mapping(remarks_kind=None), _LISTING_ROWS,
             GRAPH, {"Listing": ""}, {"Listing": {}}, "",
+            instance_graph=INSTANCE_GRAPH,
         )
         assert result.free_text_attributes == []
-        assert not any("textKind" in u for u in _updates(mock_neptune))
+        assert verdicts == {}
 
     @pytest.mark.asyncio
     async def test_marker_lands_on_resolved_type_and_owner_entity(self, mock_neptune):
@@ -411,6 +462,7 @@ class TestMappedPathSeam:
         OWNING entity's declared type and lands on the RESOLVED ontology type
         (the type matcher may map the declared name onto an existing type)."""
         resolver = _resolver(mock_neptune)
+        verdicts = _text_kind_verdicts(resolver)
 
         async def resolve_to_client(entity, *args, **kwargs):
             return "Client" if entity.type_name == "Customer" else entity.type_name
@@ -437,10 +489,53 @@ class TestMappedPathSeam:
         rows = [{"email": "a@x.com", "notes": "prefers morning calls", "order_id": "O1"}]
         result = await resolver._ingest_mapped(
             mapping, rows, GRAPH, {"Order": ""}, {"Order": {}}, "",
+            instance_graph=INSTANCE_GRAPH,
         )
         # Resolved type (Client, not Customer) + normalized attribute name —
-        # the same attr URI the instance triples use.
+        # the same type + leaf the instance facts are written under.
         assert result.free_text_attributes == ["Client.customer_notes"]
-        marker_updates = [u for u in _updates(mock_neptune) if "textKind" in u]
-        assert len(marker_updates) == 1
-        assert attr_uri("Client", "customer_notes") in marker_updates[0]
+        assert verdicts == {("Client", "customer_notes"): TEXT_KIND_FREE_TEXT}
+
+
+# ---------------------------------------------------------------------------
+# The verdict is decided — and then dropped (ONTA-527 finding).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.xfail(
+    reason=(
+        "LOST CAPABILITY (pre-dates ONTA-527, surfaced by it): every verdict "
+        "the seams above commit is discarded, so ingest-time free-text marking "
+        "does not work in production. "
+        "graph/ontology_commit.py::_commit_ontology_graph_store — the branch "
+        "taken whenever a process GraphStore exists, i.e. always — handles "
+        "UPSERT_TYPE / UPSERT_ATTRIBUTE / UPSERT_RELATIONSHIP / SET_SUBCLASS "
+        "and drops every other op into an `else` that logs "
+        "`ontology_store_op_skipped`, SET_TEXT_KIND included; it returns with "
+        "`applied` empty. graph/ontology_catalog.py has no text-kind concept "
+        "at all, and the only reader (text_markers.get_free_text_map) is "
+        "SPARQL. Same root cause as the strict xfail in "
+        "test_semantic_reconciler.py, reached from the ingest side instead of "
+        "the reconciler side. Not fixed here: it needs a text-kind port to the "
+        "catalog on both sides."
+    ),
+    strict=True,
+)
+@pytest.mark.asyncio
+async def test_committed_text_kind_verdict_is_applied(mock_neptune):
+    """``commit_ontology`` must actually APPLY a SET_TEXT_KIND mutation."""
+    from infona_client.graph.ontology_commit import commit_ontology
+    from infona_client.models.ontology import OntologyMutation
+
+    result = await commit_ontology(
+        mock_neptune,
+        GRAPH,
+        [OntologyMutation(
+            op=OntologyOpKind.SET_TEXT_KIND,
+            type_name="Ticket",
+            slot_name="body",
+            text_kind=TEXT_KIND_FREE_TEXT,
+        )],
+        message="ONTA-177 candidacy verdict",
+    )
+    assert [m.op for m in result.applied] == [OntologyOpKind.SET_TEXT_KIND]

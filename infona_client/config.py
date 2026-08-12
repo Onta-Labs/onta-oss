@@ -4,9 +4,6 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     neptune_endpoint: str = "http://localhost:8182"
-    # Production default is Neo4j (GraphStore / Cypher). "neptune" and "fuseki"
-    # remain as legacy SPARQL-only backends for older deploys — not for new work.
-    graph_backend: str = "neo4j"
     api_keys: str = '{}'  # empty = open access, no auth required
     anthropic_api_key: str = ""
     openrouter_api_key: str = ""

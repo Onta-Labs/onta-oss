@@ -12,9 +12,22 @@ Flags are computed inside ``recompute_kg_stats``'s existing whole-KG scan (two
 extra datatype aggregates), materialized as boolean triples on the type URI in
 the stats graph, and surfaced by both ``/type-counts`` and the per-type
 ``/summary``.
+
+**Ported by ONTA-527.** The accumulator rules and the ``recompute_kg_stats``
+scan below are unchanged and still pass, but note what they now prove: they
+exercise a SPARQL PRODUCER that no live consumer reads. ``GET
+/kgs/{kg}/type-counts`` — the Explorer rail — takes its GraphStore branch in
+production and hardcodes ``spatially_indexed=False, temporally_indexed=False``
+for every type, whatever the stats graph says; the per-type ``/summary``
+endpoint does still read the markers, but it is SPARQL end to end (no
+GraphStore branch at all), so it cannot serve production either. The two
+``/type-counts`` tests are ported to the store-backed route; the one that
+asserts a type is actually MARKED is a strict xfail pinning that lost
+capability (see its reason).
 """
 from __future__ import annotations
 
+import asyncio
 import os
 from unittest.mock import AsyncMock
 
@@ -34,6 +47,10 @@ from infona_client.api.routes.explore import (
     recompute_kg_stats,
 )
 from infona_client.graph.client import NeptuneClient
+from infona_client.graph.kg_writer import insert_facts
+from infona_client.graph.memory_store import MemoryGraphStore
+from infona_client.graph.queries import kg_graph_uri
+from infona_client.graph.store import configure_graph_store
 from infona_client.spatiotemporal.extract import GEO_WKT
 
 TENANT = "test-tenant"
@@ -63,6 +80,29 @@ def client(mock_neptune):
 @pytest.fixture
 def auth_headers():
     return {"X-API-Key": "test-key"}
+
+
+@pytest.fixture
+def seeded_store():
+    """A KG holding one geometry-bearing Venue and two plain Models.
+
+    ``/type-counts`` reads instance data from the GraphStore now, so the rows
+    the route returns have to be written rather than mocked into a SPARQL
+    response.
+    """
+    store = MemoryGraphStore()
+    configure_graph_store(store)
+    graph = kg_graph_uri(TENANT, KG)
+    triples = [
+        ("e:venue-1", RDF_TYPE, TYPES + "Venue"),
+        ("e:venue-1", TYPES + "Venue/attrs/location", f"POINT(1 2)^^{GEO_WKT}"),
+        ("e:model-1", RDF_TYPE, TYPES + "Model"),
+        ("e:model-2", RDF_TYPE, TYPES + "Model"),
+    ]
+    asyncio.get_event_loop_policy().new_event_loop().run_until_complete(
+        insert_facts(None, graph, triples, store=store)
+    )
+    return store
 
 
 def _rows(*binding_dicts):
@@ -204,21 +244,30 @@ async def test_recompute_materializes_type_flags(mock_neptune):
 # ---------------------------------------------------------------------------
 
 
-def test_type_counts_include_index_flags(client, mock_neptune, auth_headers):
-    def route(sparql, *a, **k):
-        if "GROUP BY ?type ORDER BY DESC(?cnt)" in sparql:
-            return _rows(
-                {"type": TYPES + "Venue", "cnt": "3"},
-                {"type": TYPES + "Model", "cnt": "5"},
-            )
-        if "spatiallyIndexed" in sparql:
-            return _rows(
-                {"type": TYPES + "Venue", "sp": "true"},
-            )
-        return _empty()
+@pytest.mark.xfail(
+    reason=(
+        "LOST CAPABILITY (pre-dates ONTA-527, surfaced by it): the per-type "
+        "spatio-temporal markers never reach the Explorer rail on Neo4j. "
+        "api/routes/knowledge_graphs.py::list_type_counts takes its GraphStore "
+        "branch first (graph.explore_store.type_counts returns rows, so the "
+        "SPARQL tail is unreachable in production) and constructs every "
+        "TypeCount with spatially_indexed=False, temporally_indexed=False "
+        "hardcoded — _read_type_index_flags is never called. The producer side "
+        "still works (the _IndexFlagAccumulator + recompute_kg_stats tests "
+        "above pass), but the flags are materialized into a stats GRAPH that "
+        "only a SPARQL read can see, and there is no property-graph store for "
+        "them. So a KG full of geometry renders as 'not spatially indexed' in "
+        "the Explorer. Not fixed here: it needs a stats/flags port to the "
+        "GraphStore, not a test change."
+    ),
+    strict=True,
+)
+def test_type_counts_include_index_flags(seeded_store, client, auth_headers):
+    """A geometry-bearing type is reported as spatially indexed.
 
-    mock_neptune.query.side_effect = route
-
+    The Venue seeded here carries a ``geo:wktLiteral`` — the one signal that
+    puts an entity in the spatio-temporal index — and the Models carry none.
+    """
     resp = client.get(f"/graphs/{TENANT}/kgs/{KG}/type-counts", headers=auth_headers)
     assert resp.status_code == 200
     by_name = {t["name"]: t for t in resp.json()}
@@ -228,25 +277,29 @@ def test_type_counts_include_index_flags(client, mock_neptune, auth_headers):
     assert by_name["Model"]["temporally_indexed"] is False
 
 
-def test_type_counts_survive_flag_read_failure(client, mock_neptune, auth_headers):
-    """The markers decorate the list; a stats-graph hiccup must not 500 the
-    endpoint that powers the Explorer rail."""
+def test_type_counts_returns_flagged_rows_without_touching_neptune(
+    seeded_store, client, mock_neptune, auth_headers
+):
+    """The endpoint that powers the Explorer rail answers from the store alone.
 
-    def route(sparql, *a, **k):
-        if "GROUP BY ?type ORDER BY DESC(?cnt)" in sparql:
-            return _rows({"type": TYPES + "Venue", "cnt": "3"})
-        if "spatiallyIndexed" in sparql:
-            raise RuntimeError("stats graph unavailable")
-        return _empty()
-
-    mock_neptune.query.side_effect = route
-
+    This is the port of ``test_type_counts_survive_flag_read_failure``, which
+    made the stats-graph flag read raise and asserted the route still answered
+    200 with the flags defaulted off. That read no longer happens at all on the
+    GraphStore branch, so the failure mode it guarded is unreachable; what
+    survives — and is still worth pinning — is that the route returns
+    well-formed, correctly-counted rows with the flags defaulted off and
+    without issuing a single SPARQL query (``mock_neptune`` is left unstubbed
+    on purpose: any call would return an AsyncMock and blow up the parse).
+    """
     resp = client.get(f"/graphs/{TENANT}/kgs/{KG}/type-counts", headers=auth_headers)
     assert resp.status_code == 200
-    assert resp.json()[0] == {
-        "name": "Venue", "entity_count": 3,
-        "spatially_indexed": False, "temporally_indexed": False,
-    }
+    assert resp.json() == [
+        {"name": "Model", "entity_count": 2,
+         "spatially_indexed": False, "temporally_indexed": False},
+        {"name": "Venue", "entity_count": 1,
+         "spatially_indexed": False, "temporally_indexed": False},
+    ]
+    mock_neptune.query.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

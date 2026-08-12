@@ -15,6 +15,16 @@ for a dense chunk but succeeds once the chunk is small enough, and assert:
 
 Harness mirrors tests/test_multityping_retail.py: a bare AsyncMock Neptune with
 ``_extract`` / ``_fetch_ontology`` patched, no network.
+
+ONTA-527 port: nothing here ever read SPARQL — the subject is chunking and
+record conservation. Two harness facts changed with the Neo4j cutover and are
+threaded through every ingest below: instance data needs a per-KG graph URI
+(``KG_GRAPH``; the tenant-level URI resolves to no write scope), and an
+extracted attribute may not be called ``name`` — that is a RESERVED Entity
+property key (``graph/facts.py`` RESERVED_ENTITY_PROPERTY_KEYS), so declaring
+it raises out of the ontology catalog and aborts the whole ingest. The fixtures
+use ``model_name``; the reserved-key abort itself is pinned by the strict xfail
+in tests/test_resolver_constrained_extraction.py.
 """
 
 from __future__ import annotations
@@ -24,6 +34,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from infona_client.graph.explore_store import MAX_PAGE_LIMIT, list_entities_by_type
 from infona_client.resolver import chunker
 from infona_client.resolver.schema_resolver import SchemaResolver
 from infona_client.resolver.models import (
@@ -32,6 +43,11 @@ from infona_client.resolver.models import (
     ExtractionResult,
 )
 from infona_client.resolver.verdict_cache import JsonVerdictCache
+
+TENANT = "test-tenant"
+KG = "chunks"
+#: Instance data needs a per-KG graph URI; the tenant graph alone has no scope.
+KG_GRAPH = f"https://graph.infona.ai/graphs/{TENANT}/kg/{KG}"
 
 
 @pytest.fixture
@@ -70,7 +86,7 @@ def _entity_for(record: dict) -> ExtractedEntity:
     return ExtractedEntity(
         type_name="Model",
         id=str(record["id"]),
-        attributes=[ExtractedAttribute(name="name", value=record["name"], datatype="string")],
+        attributes=[ExtractedAttribute(name="model_name", value=record["name"], datatype="string")],
     )
 
 
@@ -115,13 +131,21 @@ async def test_dense_chunk_recovers_by_splitting_no_records_lost(
 
     with patch.object(resolver, "_extract", side_effect=fake_extract):
         with patch.object(resolver, "_fetch_ontology", return_value=({}, {})):
-            result = await resolver.ingest(content, "test-tenant", content_type="json")
+            result = await resolver.ingest(
+                content, TENANT, content_type="json", instance_graph=KG_GRAPH,
+            )
 
     # No record lost: all 50 records produced an entity.
     assert result.rows_in == 50
     assert result.rows_dropped == 0
     assert result.entities_extracted == 50
     assert result.entities_resolved == 50
+    # …and conservation is checked in the GRAPH, not just in the counters: all
+    # 50 recovered records are Model nodes in the KG.
+    page = await list_entities_by_type(
+        tenant_id=TENANT, kg=KG, type_name="Model", limit=MAX_PAGE_LIMIT
+    )
+    assert page.total == 50
 
     # Splitting actually occurred: at least one chunk was attempted at full size
     # (25) and then re-attempted at a smaller size (the halves).
@@ -148,7 +172,9 @@ async def test_single_chunk_json_recovers_by_splitting(
 
     with patch.object(resolver, "_extract", side_effect=fake_extract):
         with patch.object(resolver, "_fetch_ontology", return_value=({}, {})):
-            result = await resolver.ingest(content, "test-tenant", content_type="json")
+            result = await resolver.ingest(
+                content, TENANT, content_type="json", instance_graph=KG_GRAPH,
+            )
 
     assert result.rows_in == 11
     assert result.rows_dropped == 0
@@ -175,7 +201,9 @@ async def test_unrecoverable_chunk_is_accounted_not_silently_dropped(mock_neptun
 
     with patch.object(resolver, "_extract", side_effect=fake_extract):
         with patch.object(resolver, "_fetch_ontology", return_value=({}, {})):
-            result = await resolver.ingest(content, "test-tenant", content_type="json")
+            result = await resolver.ingest(
+                content, TENANT, content_type="json", instance_graph=KG_GRAPH,
+            )
 
     # Every record is accounted for as a drop — nothing landed, nothing hidden.
     assert result.rows_in == 50
@@ -198,7 +226,9 @@ async def test_healthy_chunks_do_not_split(mock_neptune, mock_cache, pin_batch_2
 
     with patch.object(resolver, "_extract", side_effect=fake_extract):
         with patch.object(resolver, "_fetch_ontology", return_value=({}, {})):
-            result = await resolver.ingest(content, "test-tenant", content_type="json")
+            result = await resolver.ingest(
+                content, TENANT, content_type="json", instance_graph=KG_GRAPH,
+            )
 
     assert result.rows_in == 50
     assert result.rows_dropped == 0
@@ -222,7 +252,7 @@ def _padded_entity_for(record: dict, tokens_per_record: int) -> ExtractedEntity:
         type_name="Model",
         id=str(record["id"]),
         attributes=[
-            ExtractedAttribute(name="name", value=record["name"], datatype="string"),
+            ExtractedAttribute(name="model_name", value=record["name"], datatype="string"),
             ExtractedAttribute(name="blob", value="x" * approx_chars, datatype="string"),
         ],
     )
@@ -293,7 +323,9 @@ async def test_token_budget_batching_avoids_truncation_first_try(
 
     with patch.object(resolver, "_extract", side_effect=fake_extract):
         with patch.object(resolver, "_fetch_ontology", return_value=({}, {})):
-            result = await resolver.ingest(content, "test-tenant", content_type="json")
+            result = await resolver.ingest(
+                content, TENANT, content_type="json", instance_graph=KG_GRAPH,
+            )
 
     # Every record landed, none dropped — the dense case succeeded on first extract.
     assert result.rows_in == 50
@@ -410,7 +442,9 @@ async def test_dense_five_record_page_no_length_truncation_first_try(
 
     with patch.object(resolver, "_extract", side_effect=adaptive_extract):
         with patch.object(resolver, "_fetch_ontology", return_value=({}, {})):
-            result = await resolver.ingest(content, "test-tenant", content_type="json")
+            result = await resolver.ingest(
+                content, TENANT, content_type="json", instance_graph=KG_GRAPH,
+            )
 
     # All 5 records land — equal-or-better yield vs the truncated baseline.
     assert result.rows_in == 5

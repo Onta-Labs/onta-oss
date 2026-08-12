@@ -229,10 +229,26 @@ def resolver(mock_neptune):
     return resolver
 
 
+TENANT = "test-tenant"
+GRAPH_URI = f"https://graph.infona.ai/graphs/{TENANT}"
+
+
+async def _ontology_types() -> dict[str, object]:
+    """The tenant ontology's types by name (ONTA-527: where the port put them).
+
+    ``_synthesize_ancestors`` used to be observed through the SPARQL it handed
+    ``neptune.update``; on Neo4j it commits through ``ontology_catalog``, so the
+    synthesized ancestors + their subclass edges are read back from there.
+    """
+    from infona_client.graph import ontology_catalog as oc
+
+    return {t.name: t for t in await oc.list_types(tenant_id=TENANT)}
+
+
 @pytest.mark.asyncio
 async def test_a3_synthesize_ancestors_inserts_missing_parents(resolver, mock_neptune):
     """A3 — _synthesize_ancestors inserts Guest and Person when only HotelGuest exists."""
-    graph_uri = "https://graph.infona.ai/graphs/test-tenant"
+    graph_uri = GRAPH_URI
 
     # Ontology starts with only HotelGuest registered.
     existing_types: dict[str, str] = {"HotelGuest": ""}
@@ -250,20 +266,21 @@ async def test_a3_synthesize_ancestors_inserts_missing_parents(resolver, mock_ne
     # Guest must now be registered in the resolver's memory
     assert "Guest" in existing_types, "Guest should have been synthesized into existing_types"
 
-    # insert_type should have been called for Guest
-    update_calls_sparql = [c.args[0] for c in mock_neptune.update.call_args_list]
-    assert any("Guest" in sparql for sparql in update_calls_sparql), (
-        "Neptune.update should have been called with an INSERT for Guest"
+    # …and declared in the ontology itself.
+    assert "Guest" in await _ontology_types(), (
+        "the missing Guest ancestor must be written to the ontology, not just "
+        "recorded in the resolver's in-memory map"
     )
     # Guest should appear in types_created
     assert "Guest" in result.types_created
+    mock_neptune.update.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_a3_synthesize_ancestors_full_chain(resolver, mock_neptune):
     """A3 — synthesizing HotelGuest -> Guest with Guest -> Person already in parent_of
     closes the full chain: both Guest AND Person are synthesized when missing."""
-    graph_uri = "https://graph.infona.ai/graphs/test-tenant"
+    graph_uri = GRAPH_URI
 
     existing_types: dict[str, str] = {"HotelGuest": ""}
     existing_attrs: dict = {"HotelGuest": {}}
@@ -280,20 +297,21 @@ async def test_a3_synthesize_ancestors_full_chain(resolver, mock_neptune):
     assert "Guest" in existing_types
     assert "Person" in existing_types
 
-    update_calls_sparql = [c.args[0] for c in mock_neptune.update.call_args_list]
-    # At minimum Neptune was called with INSERTs touching Guest and Person
-    types_inserted = [s for s in update_calls_sparql if "INSERT" in s]
-    assert any("Guest" in s for s in types_inserted)
-    assert any("Person" in s for s in types_inserted)
+    types = await _ontology_types()
+    # Both were declared, and the chain is CLOSED: Guest ⊂ Person.
+    assert {"Guest", "Person"} <= set(types)
+    assert types["Guest"].parent_type == "Person"
+    assert types["Person"].parent_type is None
 
     assert "Guest" in result.types_created
     assert "Person" in result.types_created
+    mock_neptune.update.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_a3_synthesize_idempotent(resolver, mock_neptune):
     """A3 — synthesize is a no-op for ancestors that already exist in existing_types."""
-    graph_uri = "https://graph.infona.ai/graphs/test-tenant"
+    graph_uri = GRAPH_URI
 
     # Both ancestors already present
     existing_types = {"HotelGuest": "", "Guest": "", "Person": ""}
@@ -307,6 +325,9 @@ async def test_a3_synthesize_idempotent(resolver, mock_neptune):
 
     # No new types should have been created
     assert result.types_created == []
+    # …and nothing was written: the ontology is still empty (existing_types is
+    # the resolver's in-memory view, seeded above, not a prior write).
+    assert await _ontology_types() == {}
     # Neptune.update should NOT have been called at all (nothing to insert)
     assert mock_neptune.update.call_count == 0
 

@@ -398,35 +398,56 @@ def env_neo4j_configured() -> bool:
     )
 
 
+GRAPH_BACKEND_ENV = "INFONA_GRAPH_BACKEND"
+NEO4J_BACKEND = "neo4j"
+
+
 def graph_backend() -> str:
-    """Active instance backend: ``neo4j`` (default) or legacy ``neptune``/``fuseki``.
+    """Return the active instance backend — always ``neo4j`` (ONTA-527).
 
-    Same switch as :func:`infona_client.graph.kg_writer.graph_backend` — kept
-    here so write rails can resolve an optional store without importing
-    ``kg_writer`` (avoids circular imports at rail module load).
+    This is the **one** backend switch in the codebase
+    (:func:`infona_client.graph.kg_writer.graph_backend` re-exports it), and it
+    no longer selects anything: Neo4j is the only graph backend. Amazon Neptune
+    was decommissioned 2026-08-11 and the SPARQL execution path it fed is gone,
+    so a leftover ``INFONA_GRAPH_BACKEND=neptune`` in a deploy's environment
+    must not quietly route instance reads/writes at a store that does not
+    exist. It raises instead.
+
+    Raises:
+        GraphConfigError: when the env var is set to anything but ``neo4j``.
     """
-    return (os.environ.get("INFONA_GRAPH_BACKEND") or "neo4j").strip().lower()
+    raw = (os.environ.get(GRAPH_BACKEND_ENV) or NEO4J_BACKEND).strip().lower()
+    if raw != NEO4J_BACKEND:
+        raise GraphConfigError(
+            f"{GRAPH_BACKEND_ENV}={raw!r} is not a supported graph backend. "
+            f"Neo4j is the only one ({NEO4J_BACKEND}); the legacy SPARQL "
+            "backends (neptune / fuseki) were removed with the Neo4j cutover "
+            f"(ONTA-527). Unset {GRAPH_BACKEND_ENV} or set it to "
+            f"'{NEO4J_BACKEND}'. Tests that want an in-process store should "
+            "call configure_graph_store(MemoryGraphStore()) instead of "
+            "selecting a backend."
+        )
+    return NEO4J_BACKEND
 
 
-def get_optional_graph_store() -> GraphStore | None:
-    """Return the process GraphStore when the neo4j backend is active, else None.
+def get_optional_graph_store() -> GraphStore:
+    """Return the process GraphStore, failing closed when none is configured.
 
-    **Neo4j default (no env / ``neo4j``):** delegates to :func:`get_graph_store`
-    (process singleton from :func:`configure_graph_store`, or BYOK Neo4j from
-    env). Raises :class:`GraphConfigError` if neither is configured — fail
-    closed rather than silently falling back to SPARQL.
+    Delegates to :func:`get_graph_store` (process singleton from
+    :func:`configure_graph_store`, or BYOK Neo4j from env) after validating the
+    backend env. Raises :class:`GraphConfigError` when the env names a legacy
+    backend or when no store is configured — there is no SPARQL path left to
+    fall back to.
 
-    **Legacy non-neo4j (``neptune`` / ``fuseki``):** returns ``None`` so callers
-    keep the SPARQL path (legacy only; not the production default).
-
-    Write rails (ingest, enrichment, normalization, ER) call this once per
-    write batch and pass the result as ``store=`` into
-    :func:`infona_client.graph.kg_writer.insert_facts` /
-    ``delete_facts`` / ``rewrite_subject``. Prefer the alias
+    The ``optional`` in the name is historical: it used to return ``None`` to
+    mean "use SPARQL instead". It never returns ``None`` now. Write rails
+    (ingest, enrichment, normalization, ER) call this once per write batch and
+    pass the result as ``store=`` into
+    :func:`infona_client.graph.kg_writer.insert_facts` / ``delete_facts`` /
+    ``rewrite_subject``. Prefer the alias
     :func:`resolve_optional_graph_store` at those call sites.
     """
-    if graph_backend() != "neo4j":
-        return None
+    graph_backend()  # raises GraphConfigError on a legacy backend value
     return get_graph_store()
 
 
@@ -437,6 +458,8 @@ resolve_optional_graph_store = get_optional_graph_store
 # Re-export scope symbols that callers commonly need from one place.
 __all__ = [
     "GLOBAL_TENANT_ID",
+    "GRAPH_BACKEND_ENV",
+    "NEO4J_BACKEND",
     "GraphConfigError",
     "GraphQueryError",
     "GraphRecord",

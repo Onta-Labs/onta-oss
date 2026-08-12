@@ -5,6 +5,16 @@ A) INGESTION — resolver stamps the leaf type, synthesizes ancestor chain,
    and ER merges cross-file records by email via chain-walk config lookup.
 B) QUERYING — subclass-closure rewrite makes a Person query cover
    LoyaltyCustomer instances.
+
+ONTA-527 port (part A only; part B is pure string rewriting and unchanged): the
+ingestion tests used to grep the SPARQL handed to ``neptune.update`` for a leaf
+type URI / an ``entities/LoyaltyCustomer/`` segment / a ``subClassOf``. On the
+Neo4j path those facts live in the KG and the tenant ``ontology_catalog``, so
+they are read back from there and ``neptune.update`` must never be called.
+Ingest gets a per-KG ``instance_graph`` (the tenant-level URI has no write
+scope), and the fixtures use ``full_name`` instead of ``name`` — ``name`` is a
+RESERVED Entity property key (graph/facts.py) that the catalog refuses to
+declare.
 """
 
 from __future__ import annotations
@@ -27,10 +37,12 @@ from infona_client.resolver.er.types import (
     config_for_with_hierarchy,
     primary_type,
 )
+from infona_client.graph import ontology_catalog as oc
+from infona_client.graph.explore_store import get_entity_detail, list_entities_by_type
 from infona_client.graph.ontology_queries import (
+    entity_uri,
     rewrite_type_predicate_to_closure,
     with_subclass_closure,
-    type_uri,
 )
 
 
@@ -38,7 +50,11 @@ from infona_client.graph.ontology_queries import (
 # Shared constants
 # ---------------------------------------------------------------------------
 
-GRAPH = "https://graph.infona.ai/graphs/test-tenant"
+TENANT = "test-tenant"
+KG = "retail"
+GRAPH = f"https://graph.infona.ai/graphs/{TENANT}"
+#: Instance data needs a per-KG graph URI; the tenant graph alone has no scope.
+KG_GRAPH = f"{GRAPH}/kg/{KG}"
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 
 # Retail hierarchy under test
@@ -78,7 +94,7 @@ def _loyalty_customer(entity_id: str, email: str, name: str) -> ExtractedEntity:
         parent_type="Customer",
         attributes=[
             ExtractedAttribute(name="email", value=email, datatype="string"),
-            ExtractedAttribute(name="name", value=name, datatype="string"),
+            ExtractedAttribute(name="full_name", value=name, datatype="string"),
             ExtractedAttribute(name="loyalty_tier", value="Gold", datatype="string"),
         ],
     )
@@ -110,17 +126,27 @@ class TestIngestionLeafTypeStamped:
             with patch.object(
                 resolver, "_fetch_ontology", return_value=(existing_types, existing_attrs)
             ):
-                result = await resolver.ingest("loyalty data", "test-tenant")
+                result = await resolver.ingest(
+                    "loyalty data", TENANT, instance_graph=KG_GRAPH
+                )
 
         # LoyaltyCustomer should be created as a type
         assert "LoyaltyCustomer" in result.types_created
 
-        # The rdf:type triple must use the LoyaltyCustomer URI (the leaf), not Customer
-        all_updates = " ".join(str(c) for c in mock_neptune.update.call_args_list)
-        leaf_type_uri = type_uri("LoyaltyCustomer")
-        assert leaf_type_uri in all_updates, (
-            f"Expected rdf:type triple for {leaf_type_uri} to appear in Neptune updates"
+        # The asserted type is the LEAF: the node's primary type is
+        # LoyaltyCustomer, and it is NOT stamped as a bare Customer.
+        detail = await get_entity_detail(
+            tenant_id=TENANT, kg=KG,
+            entity_id=entity_uri("LoyaltyCustomer", "alice@retail.com"),
         )
+        assert detail is not None
+        assert detail.primary_type == "LoyaltyCustomer"
+        assert "LoyaltyCustomer" in detail.labels
+        customers = await list_entities_by_type(
+            tenant_id=TENANT, kg=KG, type_name="Customer"
+        )
+        assert customers.total == 0, "the ancestor type must not be asserted directly"
+        mock_neptune.update.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_entity_uri_uses_leaf_type(self, mock_neptune, mock_cache):
@@ -139,11 +165,22 @@ class TestIngestionLeafTypeStamped:
             with patch.object(
                 resolver, "_fetch_ontology", return_value=(existing_types, existing_attrs)
             ):
-                await resolver.ingest("loyalty data", "test-tenant")
+                await resolver.ingest(
+                    "loyalty data", TENANT, instance_graph=KG_GRAPH
+                )
 
-        all_updates = " ".join(str(c) for c in mock_neptune.update.call_args_list)
-        # URI segment must reflect the leaf type
-        assert "entities/LoyaltyCustomer/" in all_updates
+        # The minted URI is under the leaf type — entities/LoyaltyCustomer/…,
+        # from the one shared entity_uri() minter.
+        page = await list_entities_by_type(
+            tenant_id=TENANT, kg=KG, type_name="LoyaltyCustomer"
+        )
+        assert [e.id for e in page.entities] == [
+            entity_uri("LoyaltyCustomer", "bob@retail.com")
+        ]
+        assert page.entities[0].id.startswith(
+            "https://graph.infona.ai/entities/LoyaltyCustomer/"
+        )
+        mock_neptune.update.assert_not_called()
 
 
 class TestAncestorSynthesis:
@@ -166,13 +203,14 @@ class TestAncestorSynthesis:
             with patch.object(
                 resolver, "_fetch_ontology", return_value=(existing_types, existing_attrs)
             ):
-                await resolver.ingest("loyalty data", "test-tenant")
+                await resolver.ingest(
+                    "loyalty data", TENANT, instance_graph=KG_GRAPH
+                )
 
-        all_updates = " ".join(str(c) for c in mock_neptune.update.call_args_list)
-        assert "subClassOf" in all_updates, "Expected rdfs:subClassOf triple to be inserted"
-        # The subClassOf should link LoyaltyCustomer -> Customer
-        assert "LoyaltyCustomer" in all_updates
-        assert "Customer" in all_updates
+        types = {t.name: t for t in await oc.list_types(tenant_id=TENANT)}
+        # The subclass edge links LoyaltyCustomer -> Customer.
+        assert types["LoyaltyCustomer"].parent_type == "Customer"
+        mock_neptune.update.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_ancestor_chain_pure_function(self):
@@ -244,7 +282,7 @@ class TestERViaChainWalk:
             id="dave@retail.com",
             attributes=[
                 ExtractedAttribute(name="email", value="dave@retail.com", datatype="string"),
-                ExtractedAttribute(name="name", value="Dave Retail", datatype="string"),
+                ExtractedAttribute(name="full_name", value="Dave Retail", datatype="string"),
                 ExtractedAttribute(name="loyalty_tier", value="Silver", datatype="string"),
             ],
         )
@@ -254,7 +292,7 @@ class TestERViaChainWalk:
             id="dave@retail.com",
             attributes=[
                 ExtractedAttribute(name="email", value="dave@retail.com", datatype="string"),
-                ExtractedAttribute(name="name", value="David Retail", datatype="string"),
+                ExtractedAttribute(name="full_name", value="David Retail", datatype="string"),
                 ExtractedAttribute(name="crm_id", value="CRM-99", datatype="string"),
             ],
         )
@@ -293,18 +331,30 @@ class TestERViaChainWalk:
                 with patch.object(
                     resolver, "_fetch_parent_map", return_value=dict(PARENT_OF)
                 ):
-                    result = await resolver.ingest("dual source retail data", "test-tenant")
+                    result = await resolver.ingest(
+                        "dual source retail data", TENANT, instance_graph=KG_GRAPH
+                    )
 
         # Both entities extracted; after ER the second should merge onto the first.
         assert result.entities_extracted == 2
 
-        # Verify that the canonical URI appears in update calls
-        all_updates = " ".join(str(c) for c in mock_neptune.update.call_args_list)
-        assert canonical_uri in all_updates, (
-            "The canonical URI should appear in update calls, proving the merge occurred. "
-            "If ER were flat (no chain-walk), LoyaltyCustomer would have no config "
-            "and two distinct URIs would be minted instead."
+        # Both records landed on the ONE canonical node the blocker offered —
+        # the merge, read back from the KG rather than grepped out of SPARQL.
+        # If ER were flat (no chain-walk), LoyaltyCustomer would have no config
+        # and two distinct URIs would be minted instead.
+        merged = await get_entity_detail(
+            tenant_id=TENANT, kg=KG, entity_id=canonical_uri
         )
+        assert merged is not None, (
+            "no node at the canonical URI: the ER merge did not happen"
+        )
+        # The CRM record's own attribute is on that shared node.
+        assert merged.properties.get("crm_id") == "CRM-99"
+        page = await list_entities_by_type(
+            tenant_id=TENANT, kg=KG, type_name="LoyaltyCustomer"
+        )
+        assert [e.id for e in page.entities] == [canonical_uri]
+        mock_neptune.update.assert_not_called()
 
 
 class TestPrimaryType:

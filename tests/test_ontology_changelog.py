@@ -3,13 +3,23 @@
 Covers:
 - full ChangeRecord delta serialize/parse (entry describes change without live graph)
 - query builder: companion graph scoping, since/subject/action, pagination, same-ms order
-- append-only property of commit_ontology writers (uuid entry nodes; no DELETE on changelog)
+- append-only property of commit_ontology writers (one entry per commit, none removed)
 - governance thin entries remain parseable (no delta required)
+
+**Ported by ONTA-527.** The writer section used to capture the SPARQL strings
+``commit_ontology`` sent (``_WriteCaptureNeptune``) and assert on the ``INSERT
+DATA { GRAPH <…/changelog> … }`` text — one INSERT per commit, a fresh
+``gov/log/<uuid>`` subject in each, the delta JSON inside the body. Production
+is Neo4j-only and ``commit_ontology`` takes its GraphStore branch, which emits
+no changelog write at all, so those assertions were about a string nobody
+builds any more. They are re-expressed as what they were proxies for — *after N
+commits the workspace changelog holds N entries describing them* — read back
+through the shipped reader, and marked ``strict=True`` xfail while the write and
+read halves are both still SPARQL-only.
 """
 
 from __future__ import annotations
 
-import re
 from unittest.mock import AsyncMock
 
 import pytest
@@ -286,138 +296,129 @@ async def test_fetch_returns_empty_on_neptune_error():
 
 
 # ---------------------------------------------------------------------------
-# Append-only property of commit_ontology writers
+# Append-only property of commit_ontology writers (ported — see module docstring)
 # ---------------------------------------------------------------------------
 
 
-class _WriteCaptureNeptune:
-    """Records SPARQL updates; answers fingerprint/revision SELECTs as empty."""
+class _DecommissionedSparql:
+    """The SPARQL endpoint production no longer has.
 
-    def __init__(self) -> None:
-        self.updates: list[str] = []
-
-    async def update(self, sparql: str) -> None:
-        self.updates.append(sparql)
+    Amazon Neptune was decommissioned 2026-08-11; the routes that still take a
+    ``NeptuneClient`` dependency hold a client whose every call fails. Using it
+    here keeps these tests honest: nothing may pass because a hand-rolled triple
+    store answered a query that cannot run in production.
+    """
 
     async def query(self, sparql: str) -> dict:
-        return {"head": {"vars": []}, "results": {"bindings": []}}
+        raise RuntimeError("Neptune is decommissioned (ONTA-527)")
+
+    async def update(self, sparql: str) -> None:
+        raise RuntimeError("Neptune is decommissioned (ONTA-527)")
 
 
-def _changelog_inserts(updates: list[str], graph_uri: str) -> list[str]:
-    cl = changelog_graph_uri_for(graph_uri)
-    return [
-        u for u in updates
-        if f"GRAPH <{cl}>" in u and "INSERT" in u.upper()
-    ]
+CHANGELOG_GAP = (
+    "BUG (ONTA-527 port gap): the workspace ontology changelog does not exist "
+    "on Neo4j. graph/ontology_commit.py::_commit_ontology_graph_store — the "
+    "branch commit_ontology takes whenever a GraphStore is configured, i.e. "
+    "always in production — applies catalog writes and returns; it never calls "
+    "_emit_changelog or _bump_revision, so no entry and no revision counter is "
+    "written for any schema change. The read half is unported too: "
+    "fetch_ontology_changelog builds ontology_changelog_query and runs it via "
+    "neptune.query, with no GraphStore path, so GET /ontology/changelog answers "
+    "[] for every workspace no matter what was committed."
+)
 
 
-def _entry_uris_from_inserts(inserts: list[str]) -> list[str]:
-    """One entry uuid per INSERT (each triple line reuses the same subject)."""
-    uris: list[str] = []
-    for u in inserts:
-        found = re.findall(rf"<{re.escape(GOV_NS)}log/([0-9a-fA-F-]+)>", u)
-        # Dedup within one INSERT — every triple shares the entry subject.
-        uris.extend(dict.fromkeys(found))
-    return uris
-
-
+@pytest.mark.xfail(reason=CHANGELOG_GAP, strict=True)
 @pytest.mark.asyncio
-async def test_commit_emits_full_delta_and_target_graph_uri():
-    n = _WriteCaptureNeptune()
+async def test_commit_records_an_entry_carrying_the_full_delta():
     g = "https://graph.infona.ai/graphs/acme"
     await commit_ontology(
-        n,
+        None,
         g,
         [
             OntologyMutation(op=OntologyOpKind.UPSERT_TYPE, type_name="Person"),
             OntologyMutation(
-                op=OntologyOpKind.REGISTER_ALIAS,
-                type_name="Guest",
-                alias_from="phone_num",
-                alias_to="phone",
+                op=OntologyOpKind.UPSERT_ATTRIBUTE,
+                type_name="Person",
+                slot_name="full_name",
+                datatype="string",
             ),
         ],
         actor="alice",
         message="seed",
     )
-    inserts = _changelog_inserts(n.updates, g)
-    assert len(inserts) == 1
-    body = inserts[0]
-    # Target graph URI on gov:subject
-    assert f"<{GOV_SUBJECT}> <{g}>" in body
-    # Full delta fields for rename
-    assert "from_name" in body
-    assert "phone_num" in body
-    assert "to_name" in body
-    assert '"kind":"add_type"' in body or '"kind": "add_type"' in body or "add_type" in body
-    # Actor + message + versions present
-    assert "alice" in body
-    assert "seed" in body
-    assert "versionBefore" in body or "versionBefore>" in body
-    # uuid entry node under gov/log/
-    assert re.search(rf"<{re.escape(GOV_NS)}log/[0-9a-fA-F-]+>", body)
+    entries = await fetch_ontology_changelog(_DecommissionedSparql(), g)
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry.action == "commit_ontology"
+    assert entry.subject == g
+    assert entry.actor == "alice"
+    assert entry.message == "seed"
+    # The delta describes the change without consulting the live ontology.
+    assert [c.kind for c in entry.changes] == [
+        ChangeKind.ADD_TYPE,
+        ChangeKind.ADD_ATTRIBUTE,
+    ]
+    assert entry.changes[1].slot_name == "full_name"
 
 
+@pytest.mark.xfail(reason=CHANGELOG_GAP, strict=True)
 @pytest.mark.asyncio
-async def test_append_only_n_commits_n_distinct_uuid_entries():
-    """N commits → N distinct entry URIs; no DELETE against the changelog graph."""
-    n = _WriteCaptureNeptune()
+async def test_append_only_n_commits_n_distinct_entries():
+    """N commits → N entries, all distinct; earlier ones are never rewritten."""
     g = "https://graph.infona.ai/graphs/t-append"
     for i in range(5):
         await commit_ontology(
-            n,
+            None,
             g,
             [OntologyMutation(op=OntologyOpKind.UPSERT_TYPE, type_name=f"T{i}")],
         )
-    inserts = _changelog_inserts(n.updates, g)
-    assert len(inserts) == 5
-    uris = _entry_uris_from_inserts(inserts)
-    assert len(uris) == 5
-    assert len(set(uris)) == 5  # all distinct (uuid nodes)
-
-    cl = changelog_graph_uri_for(g)
-    deletes = [
-        u for u in n.updates
-        if cl in u and ("DELETE" in u.upper() or "DROP" in u.upper() or "CLEAR" in u.upper())
-    ]
-    assert deletes == [], f"changelog must be append-only; found {deletes!r}"
+    entries = await fetch_ontology_changelog(_DecommissionedSparql(), g, limit=50)
+    assert len(entries) == 5
+    assert len({e.entry_uri for e in entries}) == 5
 
 
+@pytest.mark.xfail(reason=CHANGELOG_GAP, strict=True)
 @pytest.mark.asyncio
-async def test_same_ms_commits_still_distinct_entry_nodes(monkeypatch):
-    """Two commits forced to the same timestamp still mint distinct uuid nodes."""
-    from infona_client.graph import ontology_commit as oc
+async def test_same_ms_commits_still_yield_distinct_entries(monkeypatch):
+    """Two commits forced to the same timestamp stay two entries.
 
-    fixed = "2026-07-28T00:00:00Z"
+    Entry identity is a uuid node, never the timestamp — the property that
+    keeps a burst of same-millisecond schema writes from collapsing into one.
+    """
+    from datetime import datetime, timezone
+
+    from infona_client.graph import ontology_commit as oc_mod
 
     class _FixedDT:
         @staticmethod
         def now(tz=None):
-            from datetime import datetime, timezone
-
             return datetime(2026, 7, 28, 0, 0, 0, tzinfo=timezone.utc)
 
-    monkeypatch.setattr(oc, "datetime", _FixedDT)
+    monkeypatch.setattr(oc_mod, "datetime", _FixedDT)
 
-    n = _WriteCaptureNeptune()
     g = "https://graph.infona.ai/graphs/t-samems"
     await commit_ontology(
-        n, g, [OntologyMutation(op=OntologyOpKind.UPSERT_TYPE, type_name="A")]
+        None, g, [OntologyMutation(op=OntologyOpKind.UPSERT_TYPE, type_name="A")]
     )
     await commit_ontology(
-        n, g, [OntologyMutation(op=OntologyOpKind.UPSERT_TYPE, type_name="B")]
+        None, g, [OntologyMutation(op=OntologyOpKind.UPSERT_TYPE, type_name="B")]
     )
-    inserts = _changelog_inserts(n.updates, g)
-    assert len(inserts) == 2
-    # Both carry the same timestamp literal.
-    assert all(fixed in u for u in inserts)
-    uris = _entry_uris_from_inserts(inserts)
-    assert len(set(uris)) == 2
+    entries = await fetch_ontology_changelog(_DecommissionedSparql(), g)
+    assert len(entries) == 2
+    assert len({e.entry_uri for e in entries}) == 2
+    assert {e.timestamp for e in entries} == {"2026-07-28T00:00:00Z"}
 
 
 @pytest.mark.asyncio
-async def test_empty_commit_writes_no_changelog():
-    n = _WriteCaptureNeptune()
+async def test_empty_commit_writes_no_changelog_entry():
+    """A no-op commit must not manufacture history.
+
+    This holds vacuously today (the GraphStore branch writes no entries at all —
+    see the xfails above); it stays here so the property is still pinned once
+    the changelog is ported.
+    """
     g = "https://graph.infona.ai/graphs/t-empty"
-    await commit_ontology(n, g, [])
-    assert _changelog_inserts(n.updates, g) == []
+    await commit_ontology(None, g, [])
+    assert await fetch_ontology_changelog(_DecommissionedSparql(), g) == []

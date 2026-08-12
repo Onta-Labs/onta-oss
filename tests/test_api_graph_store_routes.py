@@ -1,11 +1,14 @@
-"""Hermetic dual-backend coverage for major API routes (E9).
+"""Hermetic GraphStore coverage for major API routes.
 
-When ``INFONA_GRAPH_BACKEND=neo4j`` (with an injected ``MemoryGraphStore``):
-explore records / entity detail / type-counts, grep, and ontology list+upsert
-use GraphStore paths. Default Neptune backend still calls SPARQL (mocked).
+With an injected ``MemoryGraphStore``: explore records / entity detail /
+type-counts, grep, and ontology list+upsert run on GraphStore; raw triples are
+410; value history reads Assertion provenance.
 
-Raw triples → 410 on neo4j; value history → Assertion provenance on neo4j
-(not 501). Neptune paths unchanged.
+This file was `test_api_dual_backend_routes.py` when there were two backends to
+choose between. ONTA-527 removed the choice, so the "legacy neptune still uses
+SPARQL" half is gone and what remains is the assertion that these routes reach
+the store and never a SPARQL client — the mocked ``NeptuneClient`` stays only as
+a tripwire (`assert_not_called`).
 """
 
 from __future__ import annotations
@@ -155,20 +158,6 @@ def test_type_counts_neo4j_store_path(client, mock_neptune, store, monkeypatch):
     mock_neptune.query.assert_not_called()
 
 
-def test_explore_records_legacy_neptune_uses_sparql(client, mock_neptune, monkeypatch):
-    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
-    mock_neptune.query.return_value = {
-        "head": {"vars": []},
-        "results": {"bindings": []},
-    }
-    res = client.get(
-        f"/graphs/{TENANT}/explore/kgs/{KG}/types/Person/records",
-        headers=AUTH,
-    )
-    assert res.status_code == 200, res.text
-    assert mock_neptune.query.await_count >= 1
-
-
 # ---------------------------------------------------------------------------
 # Grep
 # ---------------------------------------------------------------------------
@@ -189,21 +178,6 @@ def test_grep_neo4j_property_scan(client, mock_neptune, store, monkeypatch):
     assert body["count"] >= 1
     assert any("alice@example" in m["value"] for m in body["matches"])
     mock_neptune.query.assert_not_called()
-
-
-def test_grep_legacy_neptune_uses_sparql(client, mock_neptune, monkeypatch):
-    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
-    mock_neptune.query.return_value = {
-        "head": {"vars": ["s", "p", "o"]},
-        "results": {"bindings": []},
-    }
-    res = client.post(
-        f"/graphs/{TENANT}/grep",
-        headers=AUTH,
-        json={"q": "hello", "kg_name": KG},
-    )
-    assert res.status_code == 200, res.text
-    mock_neptune.query.assert_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -237,17 +211,6 @@ def test_ontology_list_and_create_neo4j(client, mock_neptune, store, monkeypatch
     mock_neptune.query.assert_not_called()
 
 
-def test_ontology_list_legacy_neptune_uses_sparql(client, mock_neptune, monkeypatch):
-    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
-    mock_neptune.query.return_value = {
-        "head": {"vars": []},
-        "results": {"bindings": []},
-    }
-    res = client.get(f"/graphs/{TENANT}/ontology/types", headers=AUTH)
-    assert res.status_code == 200, res.text
-    mock_neptune.query.assert_awaited()
-
-
 # ---------------------------------------------------------------------------
 # Triples + history gates
 # ---------------------------------------------------------------------------
@@ -274,25 +237,6 @@ def test_triples_410_on_neo4j(client, mock_neptune, monkeypatch):
 
     get = client.get(f"/graphs/{TENANT}/triples", headers=AUTH)
     assert get.status_code == 410
-
-
-def test_triples_still_work_on_legacy_neptune(client, mock_neptune, monkeypatch):
-    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
-    res = client.post(
-        f"/graphs/{TENANT}/triples",
-        headers=AUTH,
-        json={
-            "triples": [
-                {
-                    "subject": "https://example.com/s",
-                    "predicate": "https://example.com/p",
-                    "object": "o",
-                }
-            ]
-        },
-    )
-    assert res.status_code == 200, res.text
-    mock_neptune.update.assert_awaited_once()
 
 
 def test_history_assertion_provenance_on_neo4j(
@@ -349,17 +293,3 @@ def test_history_assertion_provenance_on_neo4j(
     mock_neptune.query.assert_not_called()
 
 
-def test_history_still_works_on_legacy_neptune(client, mock_neptune, monkeypatch):
-    """Legacy Neptune path still hits SPARQL companion history."""
-    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
-    mock_neptune.query.return_value = {
-        "head": {"vars": []},
-        "results": {"bindings": []},
-    }
-    res = client.get(
-        f"/graphs/{TENANT}/history",
-        headers=AUTH,
-        params={"kg_name": KG},
-    )
-    assert res.status_code == 200, res.text
-    mock_neptune.query.assert_awaited()

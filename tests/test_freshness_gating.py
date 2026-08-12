@@ -1,11 +1,26 @@
-"""ONTA-247 — freshness stamp typed xsd:dateTime + generic recency filter.
+"""ONTA-247 — freshness stamp + generic recency filter.
 
 MECHANISM tests on INVENTED types/attrs across ≥2 unrelated domains (Widget/sku,
 Gadget/weight_kg, Sprocket/diameter_mm) — no persona token appears. Proves:
-  * an enriched value's `<attr>_verified_at` lands as a TYPED xsd:dateTime literal;
+  * an enriched value's per-attribute freshness stamp lands as a real, dated,
+    order-comparable timestamp on the entity's citation record;
   * a generic NOW()-relative "last N days" FILTER (the pattern the NL prompt now
     teaches) selects fresh rows and excludes stale ones on a REAL SPARQL engine;
   * discovery (not only enrichment) stamps the per-fact typed stamp.
+
+**Ported by ONTA-527** (first test only). It used to assert that the emitted
+SPARQL carried ``"…"^^<xsd:dateTime>`` for the ``attr_meta/<T>/<attr>/verified_at``
+companion. Enrichment writes through ``GraphStore`` now: ``insert_facts`` folds
+attr_meta companions onto Assertion provenance / an ``:AttrCitation`` node
+(ADR 0013, ``graph/pg_ops.py``), and ``parse_attr_meta_citations`` STRIPS the
+``^^<datatype>`` tail — the property graph has no RDF datatype slot for a
+citation field, so the stamp is stored as an ISO-8601 string. The capability the
+datatype existed for survives in that representation and is what is pinned here
+instead: the stamp is a real tz-aware instant, and it ORDERS correctly under the
+plain string comparison ``neo4j_store``'s "changed since" query
+(``a.verified_at > $since``) uses. The remaining assertions — the stamp lands per
+attribute and never on the attribute namespace — are unchanged, because they are
+about where the fact goes, not how it is serialized.
 """
 
 from __future__ import annotations
@@ -25,6 +40,7 @@ from infona_client.graph.provenance import (
     attr_provenance_companion_uri,
     build_attribute_provenance_companions,
 )
+from infona_client.graph.store import get_graph_store
 
 from tests._enrichment_prov_helpers import (
     DOMAINS,
@@ -36,18 +52,41 @@ from tests._enrichment_prov_helpers import (
     query_router,
 )
 
+# A stale stamp from a previous era, used to prove the fresh one still ORDERS
+# after it under the plain string comparison the store's recency query uses.
+STALE_STAMP = "2020-01-01T00:00:00+00:00"
+
+
+def _citation(store, entity_uri: str, attr: str) -> dict | None:
+    """The ``:AttrCitation`` row enrichment wrote for one (entity, attribute)."""
+    for row in store.snapshot_citations():
+        if row["entity_id"] == entity_uri and row["attr"] == attr:
+            return row
+    return None
+
+
+def _entity_props(store, entity_uri: str) -> dict:
+    for row in store.snapshot_entities():
+        if row["id"] == entity_uri:
+            return row["props"]
+    return {}
+
 
 @pytest.mark.parametrize("type_name,attr,label,value,src", DOMAINS)
-def test_verified_at_is_typed_datetime_literal(type_name, attr, label, value, src, monkeypatch):
-    """An enriched value's `<attr>_verified_at` stamp is written as a TYPED
-    xsd:dateTime literal (not a plain string), so SPARQL date arithmetic can filter
-    it. Two unrelated invented domains."""
+def test_verified_at_is_a_dated_order_comparable_stamp(
+    type_name, attr, label, value, src, monkeypatch
+):
+    """An enriched value's per-attribute freshness stamp is recorded as a real
+    tz-aware instant that sorts after an older stamp — so a "verified in the last
+    N days" window still discriminates — and never lands on the attribute
+    namespace. Two unrelated invented domains."""
     import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
     async def run():
-        rows = [{"uri": f"https://graph.infona.ai/entities/{type_name}/e1", "label": label, "vals": ""}]
+        entity = f"https://graph.infona.ai/entities/{type_name}/e1"
+        rows = [{"uri": entity, "label": label, "vals": ""}]
         neptune = AsyncMock()
         neptune.query.side_effect = query_router(entities_query_response(rows))
         neptune.update.return_value = None
@@ -59,12 +98,26 @@ def test_verified_at_is_typed_datetime_literal(type_name, attr, label, value, sr
         await executor._jobs.create(job)
         await executor.run(job, "test-tenant")
 
+        store = get_graph_store()
+        citation = _citation(store, entity, attr)
+        assert citation is not None, "the enriched fact carries no freshness stamp"
+        stamp = citation["verified_at"]
+        # A real instant, not a formatted blob: parseable AND timezone-aware.
+        parsed = datetime.fromisoformat(stamp)
+        assert parsed.tzinfo is not None, stamp
+        # ... and ordered correctly by the STRING comparison the store's recency
+        # query runs (`a.verified_at > $since`), which is what the xsd:dateTime
+        # annotation used to buy on the SPARQL path.
+        assert STALE_STAMP < stamp
+        assert datetime.fromisoformat(STALE_STAMP) < parsed
+
+        # The stamp is metadata OF the attribute — never an attribute of its own
+        # (ONTA-262). It is not an entity property and it never reaches SPARQL.
+        assert f"{attr}_verified_at" not in _entity_props(store, entity)
+        assert "verified_at" not in _entity_props(store, entity)
         writes = all_updates(neptune)
-        assert attr_provenance_companion_uri(type_name, attr, "verified_at") in writes
-        # The companion is metadata (attr_meta namespace), never an attribute
-        # predicate (ONTA-262).
+        assert attr_provenance_companion_uri(type_name, attr, "verified_at") not in writes
         assert _attr_uri(type_name, f"{attr}_verified_at") not in writes
-        assert XSD_DATETIME in writes, "verified_at must be a typed xsd:dateTime literal"
 
     asyncio.run(run())
 

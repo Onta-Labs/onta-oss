@@ -1,78 +1,162 @@
 """Route test for the value-history read endpoint (ONTA-236).
 
-GET /graphs/{tenant}/history?kg_name=…&since=… returns dated old→new value
-transitions from the companion history graph — the queryable surface a
-"which values changed this week, old → new, with a date" question reaches.
+GET /graphs/{tenant}/history?kg_name=…&since=… returns dated value entries for
+a KG — the queryable surface a "which values changed this week, with a date"
+question reaches.
+
+**Ported by ONTA-527.** These cases used to stub ``neptune.query`` with a
+companion-``…/history``-graph SELECT result and then assert on the SPARQL TEXT
+the route emitted (``history_graph_uri(...) in sent``, ``FILTER(?changedAt > …)``
+in sent). The route reads Assertion provenance through
+``graph/history.py::fetch_store_assertion_history`` now and emits no SPARQL, so
+those assertions tested a builder that no longer runs. They are replaced by
+assertions on OBSERVABLE behaviour over a seeded store: the scoping check seeds
+a SIBLING KG and asserts its rows are absent (stronger than "the query text
+named the right graph"), and the ``since`` check seeds a pre- and a post-cutoff
+row and asserts only the later one comes back.
+
+One capability did NOT survive: ``old_value`` is EMPTY on every row, because the
+temporal ``old → new`` ValueHistory port to the property graph is deferred (see
+``rdfs_helpers.assertion_to_history_row``). That is xfailed, not softened.
 """
 
-from infona_client.graph.history import history_graph_uri
-from infona_client.graph.queries import kg_graph_uri
+import asyncio
 
-SUBJ = "https://graph.infona.ai/entities/Widget/w1"
-PRED = "https://graph.infona.ai/types/Widget/attrs/weight_kg"
+import pytest
+
+from infona_client.graph.facts import Fact
+from infona_client.graph.iri import IRI_BASE
+from infona_client.graph.kg_writer import insert_facts
+from infona_client.graph.ontology_queries import entity_uri
+from infona_client.graph.store import get_optional_graph_store
+
+TENANT = "test-tenant"
+KG = "widgets"
+SIBLING_KG = "gadgets"
+GRAPH = f"{IRI_BASE}/graphs/{TENANT}/kg/{KG}"
+SIBLING_GRAPH = f"{IRI_BASE}/graphs/{TENANT}/kg/{SIBLING_KG}"
+
+SUBJ = entity_uri("Widget", "w1")
+OTHER_SUBJ = entity_uri("Widget", "w2")
+SIBLING_SUBJ = entity_uri("Gadget", "g1")
+
+LAST_WEEK = "2026-07-01T00:00:00+00:00"
+THIS_WEEK = "2026-07-07T00:00:00+00:00"
 
 
-def _history_response(rows):
-    return {
-        "head": {"vars": ["s", "p", "oldValue", "newValue", "changedAt"]},
-        "results": {
-            "bindings": [
-                {
-                    "s": {"value": s},
-                    "p": {"value": p},
-                    "oldValue": {"value": ov},
-                    "newValue": {"value": nv},
-                    "changedAt": {"value": at},
-                }
-                for s, p, ov, nv, at in rows
-            ]
-        },
-    }
+def _seed(graph: str, facts: list[Fact]) -> None:
+    """Write ``facts`` into ``graph`` through the shared write path."""
+    store = get_optional_graph_store()
+    asyncio.run(insert_facts(None, graph, facts=facts, store=store))
 
 
+def _widget(subject: str, weight: str, *, verified_at: str) -> list[Fact]:
+    return [
+        Fact(subject_id=subject, kind="type", key="Widget"),
+        Fact(
+            subject_id=subject,
+            kind="literal",
+            key="weight_kg",
+            value=weight,
+            verified_at=verified_at,
+        ),
+    ]
+
+
+def _get(client, auth_headers, **params):
+    return client.get(
+        f"/graphs/{TENANT}/history",
+        params={"kg_name": KG, **params},
+        headers=auth_headers,
+    )
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "LOST CAPABILITY (ONTA-527): the companion `…/history` graph that held "
+        "old→new version nodes was Neptune-only and went out with the SPARQL "
+        "backend. GET /history now reads current Assertion provenance via "
+        "graph/history.py::fetch_store_assertion_history, and "
+        "rdfs_helpers.assertion_to_history_row hardcodes old_value='' — the "
+        "property-graph ValueHistory port is deferred. new_value/changed_at "
+        "still work (see test_history_route_returns_dated_current_values)."
+    ),
+)
 def test_history_route_returns_changes(client, auth_headers, mock_neptune):
-    mock_neptune.query.return_value = _history_response(
-        [(SUBJ, PRED, "10.0", "12.5", "2026-07-07T00:00:00+00:00")]
-    )
-    resp = client.get(
-        "/graphs/test-tenant/history",
-        params={"kg_name": "widgets"},
-        headers=auth_headers,
-    )
-    assert resp.status_code == 200
+    """The old→new transition the endpoint was built to answer."""
+    _seed(GRAPH, _widget(SUBJ, "12.5", verified_at=THIS_WEEK))
+    resp = _get(client, auth_headers, subject=SUBJ)
+    assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["kg_name"] == "widgets"
-    assert body["count"] == 1
-    change = body["changes"][0]
+    assert body["kg_name"] == KG
+    change = next(c for c in body["changes"] if c["new_value"] == "12.5")
     assert change["old_value"] == "10.0"
-    assert change["new_value"] == "12.5"
-    assert change["changed_at"] == "2026-07-07T00:00:00+00:00"
+    assert change["changed_at"] == THIS_WEEK
+    mock_neptune.query.assert_not_called()
 
 
-def test_history_route_scopes_to_kg_history_graph(client, auth_headers, mock_neptune):
-    """The route must read the companion HISTORY graph of the named KG's data
-    graph — not the tenant graph, not the data graph itself."""
-    mock_neptune.query.return_value = _history_response([])
-    client.get(
-        "/graphs/test-tenant/history",
-        params={"kg_name": "widgets"},
-        headers=auth_headers,
+def test_history_route_returns_dated_current_values(client, auth_headers, mock_neptune):
+    """The half that DID survive the port: a dated entry per current value."""
+    _seed(GRAPH, _widget(SUBJ, "12.5", verified_at=THIS_WEEK))
+    resp = _get(client, auth_headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["kg_name"] == KG
+    assert body["count"] >= 1
+    change = next(c for c in body["changes"] if c["new_value"] == "12.5")
+    assert change["subject"] == SUBJ
+    assert "weight_kg" in change["predicate"]
+    assert change["changed_at"] == THIS_WEEK
+    mock_neptune.query.assert_not_called()
+
+
+def test_history_route_scopes_to_the_named_kg(client, auth_headers, mock_neptune):
+    """A sibling KG in the SAME workspace holds a row; it must not leak.
+
+    This is the assertion the old ``history_graph_uri(...) in sent`` string
+    check stood in for, made against data instead of query text.
+    """
+    _seed(GRAPH, _widget(SUBJ, "12.5", verified_at=THIS_WEEK))
+    _seed(
+        SIBLING_GRAPH,
+        [
+            Fact(subject_id=SIBLING_SUBJ, kind="type", key="Gadget"),
+            Fact(
+                subject_id=SIBLING_SUBJ,
+                kind="literal",
+                key="weight_kg",
+                value="99.9",
+                verified_at=THIS_WEEK,
+            ),
+        ],
     )
-    sent = mock_neptune.query.await_args.args[0]
-    expected = history_graph_uri(kg_graph_uri("test-tenant", "widgets"))
-    assert expected in sent
+    resp = _get(client, auth_headers)
+    assert resp.status_code == 200, resp.text
+    subjects = {c["subject"] for c in resp.json()["changes"]}
+    assert SUBJ in subjects
+    assert SIBLING_SUBJ not in subjects
+    mock_neptune.query.assert_not_called()
 
 
 def test_history_route_passes_since_cutoff(client, auth_headers, mock_neptune):
-    mock_neptune.query.return_value = _history_response([])
+    """`since` returns only entries STRICTLY AFTER the cutoff."""
+    _seed(GRAPH, _widget(SUBJ, "12.5", verified_at=THIS_WEEK))
+    _seed(GRAPH, _widget(OTHER_SUBJ, "8.0", verified_at=LAST_WEEK))
+
     cutoff = "2026-07-06T00:00:00+00:00"
-    client.get(
-        "/graphs/test-tenant/history",
-        params={"kg_name": "widgets", "since": cutoff},
-        headers=auth_headers,
-    )
-    sent = mock_neptune.query.await_args.args[0]
-    assert f'FILTER(?changedAt > "{cutoff}"' in sent
+    resp = _get(client, auth_headers, since=cutoff)
+    assert resp.status_code == 200, resp.text
+    changes = resp.json()["changes"]
+    values = {c["new_value"] for c in changes}
+    assert "12.5" in values
+    assert "8.0" not in values
+    assert all(c["changed_at"] > cutoff for c in changes if c["changed_at"])
+
+    # Without the cutoff both are visible, so the filter above is not vacuous.
+    both = {c["new_value"] for c in _get(client, auth_headers).json()["changes"]}
+    assert {"12.5", "8.0"} <= both
+    mock_neptune.query.assert_not_called()
 
 
 def test_history_route_requires_kg_name(client, auth_headers, mock_neptune):
@@ -112,19 +196,21 @@ def test_history_route_rejects_injection_predicate(client, auth_headers, mock_ne
 
 
 def test_history_route_accepts_valid_iri_subject(client, auth_headers, mock_neptune):
-    """A well-formed absolute IRI subject is accepted (no false positive) and is
-    scoped to the CALLER's tenant graph — never another tenant's."""
-    mock_neptune.query.return_value = _history_response([])
-    resp = client.get(
-        "/graphs/test-tenant/history",
-        params={"kg_name": "widgets", "subject": SUBJ},
-        headers=auth_headers,
-    )
-    assert resp.status_code == 200
-    sent = mock_neptune.query.await_args.args[0]
-    assert f"<{SUBJ}>" in sent
-    # The FROM graph is the caller's tenant, not the payload's.
-    assert history_graph_uri(kg_graph_uri("test-tenant", "widgets")) in sent
+    """A well-formed absolute IRI subject is accepted (no false positive) and
+    narrows the read to THAT subject, inside the caller's own workspace.
+
+    Ported from a SPARQL-text assertion (``<SUBJ>`` and the history graph both
+    appear in ``sent``) to the behaviour it stood for: the named subject's rows
+    come back and a peer subject in the same KG does not.
+    """
+    _seed(GRAPH, _widget(SUBJ, "12.5", verified_at=THIS_WEEK))
+    _seed(GRAPH, _widget(OTHER_SUBJ, "8.0", verified_at=THIS_WEEK))
+
+    resp = _get(client, auth_headers, subject=SUBJ)
+    assert resp.status_code == 200, resp.text
+    subjects = {c["subject"] for c in resp.json()["changes"]}
+    assert subjects == {SUBJ}
+    mock_neptune.query.assert_not_called()
 
 
 def test_history_route_neo4j_uses_assertion_store(

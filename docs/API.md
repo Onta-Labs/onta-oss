@@ -221,16 +221,17 @@ has to name a full IRI inside the calling workspace, for example
 default graph as the union of every named graph, so a query with no dataset
 clause would read every workspace.
 
-**Neo4j:** when `INFONA_GRAPH_BACKEND=neo4j`, this route returns **410 Gone**
-(no SPARQL façade). Use `/ask`, `/agent`, explore, or typed write routes instead.
-Unchanged on Neptune (default).
+**Removed (ONTA-527):** this route returns **410 Gone** unconditionally. Infona
+stores a property graph (Neo4j), not RDF, and there is no SPARQL façade over it.
+Use `/ask`, `/agent`, explore, or the typed write routes instead. The paragraph
+above describes the confinement rule that applied while it executed.
 
 **Request body:** `SPARQLQuery`
 
 **200:** Successful Response
 **400:** No dataset clause, unparseable SPARQL, or `SERVICE`
 **403:** A graph outside this workspace
-**410:** Gone — raw SPARQL unavailable under neo4j backend
+**410:** Gone — raw SPARQL was removed with the Neptune backend
 **422:** Validation Error
 **503:** The SPARQL parser used to confine the query is not installed
 
@@ -245,14 +246,15 @@ cannot be confined to one workspace by inspecting its text: `DROP ALL` and
 graph-less removals act on everything while naming no graph. Use `/triples`,
 `/kgs` or the ingest routes for workspace-scoped writes.
 
-**Neo4j:** when `INFONA_GRAPH_BACKEND=neo4j`, this route returns **410 Gone**.
-Unchanged on Neptune (default).
+**Removed (ONTA-527):** this route returns **410 Gone** unconditionally. The
+operator check still runs first, so a non-operator gets 403. Use `/kgs` or the
+ingest routes for workspace-scoped writes.
 
 **Request body:** `SPARQLUpdate`
 
 **200:** Successful Response
 **403:** Not an operator
-**410:** Gone — raw SPARQL Update unavailable under neo4j backend
+**410:** Gone — raw SPARQL Update was removed with the Neptune backend
 **422:** Validation Error
 
 ---

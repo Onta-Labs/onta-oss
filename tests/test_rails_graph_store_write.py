@@ -48,13 +48,21 @@ def memory_store(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_get_optional_graph_store_legacy_neptune_none(monkeypatch):
-    """Legacy SPARQL backend returns None (no GraphStore required)."""
+def test_get_optional_graph_store_rejects_legacy_backend(monkeypatch):
+    """ONTA-527: a legacy backend value raises; it never yields None.
+
+    None used to mean "the caller should use SPARQL". Every such caller is
+    gone, so returning None would now read as "no store needed" and the write
+    would silently go nowhere.
+    """
     monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
     reset_graph_store_for_tests()
-    assert graph_backend() == "neptune"
-    assert get_optional_graph_store() is None
-    assert resolve_optional_graph_store() is None
+    with pytest.raises(GraphConfigError):
+        graph_backend()
+    with pytest.raises(GraphConfigError):
+        get_optional_graph_store()
+    with pytest.raises(GraphConfigError):
+        resolve_optional_graph_store()
 
 
 def test_get_optional_graph_store_neo4j_returns_configured(memory_store, monkeypatch):
@@ -487,26 +495,32 @@ def test_er_rebuild_source_wires_store_kwarg():
 # ---------------------------------------------------------------------------
 
 
-def test_insert_facts_legacy_neptune_ignores_missing_store(monkeypatch):
-    """With legacy neptune backend, insert_facts does not call get_graph_store."""
-    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neptune")
+def test_insert_facts_without_a_store_raises_instead_of_writing_sparql(monkeypatch):
+    """ONTA-527: no SPARQL fallback — the write fails closed and touches nothing.
+
+    Replaces test_insert_facts_legacy_neptune_ignores_missing_store, which
+    asserted that a `neptune` backend let insert_facts skip the GraphStore and
+    emit SPARQL updates instead.
+    """
+    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
     reset_graph_store_for_tests()
     neptune = AsyncMock()
     neptune.update = AsyncMock()
 
     async def run():
         sid = entity_uri("Person", "x")
-        await insert_facts(
-            neptune,
-            _graph(),
-            [
-                (
-                    sid,
-                    "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-                    f"{IRI_BASE}/types/Person",
-                ),
-            ],
-        )
+        with pytest.raises(GraphConfigError):
+            await insert_facts(
+                neptune,
+                _graph(),
+                [
+                    (
+                        sid,
+                        "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+                        f"{IRI_BASE}/types/Person",
+                    ),
+                ],
+            )
 
     asyncio.run(run())
-    assert neptune.update.await_count >= 1
+    assert neptune.update.await_count == 0
