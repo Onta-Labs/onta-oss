@@ -260,15 +260,13 @@ def _capture_text_kind_verdicts(monkeypatch) -> dict[tuple[str, str], str]:
     """Record every ``SET_TEXT_KIND`` the candidacy pass COMMITS, as
     ``{(type, attr): kind}``.
 
-    Ported by ONTA-527. The candidacy verdicts used to be observable as the
-    SPARQL ``textKind`` upsert :class:`FakeNeptune` parsed back into
+    Ported by ONTA-527 / ONTA-533. The candidacy verdicts used to be observable
+    as the SPARQL ``textKind`` upsert :class:`FakeNeptune` parsed back into
     ``markers``; ``_apply_default_candidacy`` goes through
     ``ontology_commit.commit_ontology`` now, which takes its GraphStore branch
-    and emits no SPARQL. The MUTATION is what the reconciler decides and is
-    still live — what is dead is the persistence behind it (see the strict
-    xfail below), so the verdicts are captured at the commit call instead of at
-    the wire. The real ``commit_ontology`` is still invoked, so nothing about
-    the run changes.
+    and persists ``SET_TEXT_KIND`` onto ``:OntoAttr.text_kind``. Verdicts are
+    still captured at the commit call for hermetic assertions; the real
+    ``commit_ontology`` is still invoked.
     """
     import infona_client.graph.ontology_commit as oc
     from infona_client.models.ontology import OntologyOpKind
@@ -510,11 +508,10 @@ def test_reconcile_default_candidacy_heuristic(monkeypatch):
     and each verdict is committed as a ``SET_TEXT_KIND`` ontology mutation so
     every consumer can see it.
 
-    Ported by ONTA-527: the verdicts are read off the commit seam rather than
-    off the SPARQL the commit used to emit (see
-    :func:`_capture_text_kind_verdicts`). Whether the committed verdict then
-    SURVIVES — and whether the freshly-marked attr is indexed in the same run,
-    which needs the marker to be readable back — is the strict xfail below.
+    Ported by ONTA-527 / ONTA-533: the verdicts are read off the commit seam
+    (see :func:`_capture_text_kind_verdicts`). Durability + same-run indexing
+    of the freshly-marked attr is covered by
+    ``test_heuristic_verdict_is_durable_and_indexed_in_the_same_run``.
     """
     entities = {
         _entity(i): {
@@ -540,31 +537,9 @@ def test_reconcile_default_candidacy_heuristic(monkeypatch):
     asyncio.run(run())
 
 
-@pytest.mark.xfail(
-    reason=(
-        "LOST CAPABILITY (pre-dates ONTA-527, surfaced by it): a textKind "
-        "candidacy verdict is not durable on the property-graph path, so the "
-        "ONTA-177 hand-off never completes. "
-        "graph/ontology_commit.py::_commit_ontology_graph_store handles "
-        "UPSERT_TYPE / UPSERT_ATTRIBUTE / UPSERT_RELATIONSHIP / SET_SUBCLASS "
-        "and drops everything else into an `else` that logs "
-        "`ontology_store_op_skipped` — SET_TEXT_KIND included — and that "
-        "branch is taken whenever a process GraphStore exists (always, in "
-        "production). Nothing in graph/ontology_catalog.py represents a text "
-        "kind at all, in either direction: the only reader is the SPARQL "
-        "text_kind_map_query behind rec._fetch_marker_map / "
-        "text_markers.get_free_text_map. So the reconciler decides a verdict "
-        "(the test above still passes), commits it into a void, and re-samples "
-        "the same attribute on every future run — and because `marked` stays "
-        "empty, no free-text attribute is ever scanned or chunked by the "
-        "reconciler either. Not fixed here: it needs a text-kind port to the "
-        "catalog on BOTH sides, not a test change."
-    ),
-    strict=True,
-)
 def test_heuristic_verdict_is_durable_and_indexed_in_the_same_run():
     """A committed verdict must be visible to the reconciler's OWN next marker
-    read, and the freshly-marked attr indexed in the same run."""
+    read, and the freshly-marked attr indexed in the same run (ONTA-533)."""
     entities = {
         _entity(i): {
             RDF_TYPE: [DOC_TYPE],
@@ -633,12 +608,12 @@ def test_reconcile_skips_attributes_that_already_carry_a_verdict(monkeypatch):
     """A decided verdict (either way) is NOT re-sampled — absence means
     undecided, presence means decided.
 
-    Ported by ONTA-527. This used to run the reconciler TWICE and prove run 2
-    left run 1's verdict alone, which only works if the verdict round-trips
-    through the ontology graph — the half that is dead (see the strict xfail
-    above). What is under test here is the reconciler's rule, so the decided
-    state is seeded into the marker map directly: an attribute PRESENT in the
-    map (with either polarity) is skipped, an absent one is classified.
+    Ported by ONTA-527. What is under test here is the reconciler's rule
+    (decided attributes are not re-sampled), so the decided state is seeded
+    into the marker map directly: an attribute PRESENT in the map (with either
+    polarity) is skipped, an absent one is classified. Round-trip durability
+    is covered separately by
+    ``test_heuristic_verdict_is_durable_and_indexed_in_the_same_run``.
     """
     entities = {
         _entity(1): {RDF_TYPE: [DOC_TYPE], SKU_PRED: ["SKU-1", "SKU-2", "SKU-3"]}
@@ -664,11 +639,15 @@ def test_reconcile_skips_attributes_that_already_carry_a_verdict(monkeypatch):
     asyncio.run(run())
 
 
-def test_reconcile_aborts_on_marker_fetch_failure_without_ghost_deleting():
-    """A Neptune hiccup during the marker fetch must ABORT the run (the runner
-    retries next cadence) — acting on an empty map would ghost-delete the whole
-    KG's index. This is why the reconciler does NOT use the best-effort
-    get_free_text_map."""
+def test_reconcile_aborts_on_marker_fetch_failure_without_ghost_deleting(monkeypatch):
+    """A marker-fetch hiccup must ABORT the run (the runner retries next
+    cadence) — acting on an empty map would ghost-delete the whole KG's index.
+    This is why the reconciler does NOT use the best-effort get_free_text_map.
+
+    ONTA-533 dual-source: both the GraphStore catalog reader AND the SPARQL
+    fallback must fail before we abort (a catalog that is reachable and empty
+    is a legitimate "no markers" answer on the Neo4j product path).
+    """
     neptune = _kg(_doc_entities(1), {("Doc", "description"): "free_text"})
     index = InMemorySemanticIndex()
 
@@ -676,10 +655,14 @@ def test_reconcile_aborts_on_marker_fetch_failure_without_ghost_deleting():
         await rec.reconcile_kg(neptune, TENANT, KG, index=index)
         assert len(await index.fetch_pending(limit=100)) == 1
 
-        async def boom(_sparql):
+        async def boom_sparql(_sparql):
             raise RuntimeError("neptune down")
 
-        neptune.query = boom  # type: ignore[assignment]
+        async def boom_catalog(_tenant_id):
+            raise RuntimeError("catalog down")
+
+        neptune.query = boom_sparql  # type: ignore[assignment]
+        monkeypatch.setattr(tm, "marker_map_from_catalog", boom_catalog)
         with pytest.raises(RuntimeError):
             await rec.reconcile_kg(neptune, TENANT, KG, index=index)
         assert len(await index.fetch_pending(limit=100)) == 1  # rows intact
@@ -884,6 +867,165 @@ def test_reconcile_truncated_scan_skips_ghost_deletion(monkeypatch):
             e["event"] == "semantic_reconcile_ghosts_skipped_scan_truncated"
             for e in logs
         )
+
+    asyncio.run(run())
+
+
+def test_scan_triples_store_hard_cap_marks_truncated_and_skips_ghosts(monkeypatch):
+    """ONTA-533 BLOCKER: Memory/Neo4j clamp history at 10000; requesting a
+    larger logical limit must NOT treat a full hard-cap page as complete.
+
+    Pre-fix: ``limit = page_size * max_pages`` (2e6) + ``truncated =
+    len(rows) > limit`` was always False because the store never returns more
+    than 10000 — ghost-delete then wiped healthy docs past the silent cutoff.
+
+    With N > hard-cap assertions for a scan property: ``truncated=True`` and
+    reconcile performs zero ghost deletes (fail closed).
+    """
+    from infona_client.graph.assertion_model import (
+        make_assertion_id,
+        property_uri,
+        type_membership_property_id,
+    )
+    from infona_client.graph.memory_store import MemoryGraphStore
+    from infona_client.graph.store import configure_graph_store, get_graph_store
+
+    # Tiny hard cap so the test stays O(N) with N just above the ceiling.
+    hard_cap = 5
+    monkeypatch.setattr(rec, "_ASSERTION_HISTORY_HARD_CAP", hard_cap)
+
+    store = MemoryGraphStore()
+    configure_graph_store(store)
+    assert get_graph_store() is store
+
+    desc_prop = property_uri("description")
+    type_prop = type_membership_property_id()
+    n_assertions = hard_cap + 3  # strictly above the hard cap
+    for i in range(1, n_assertions + 1):
+        subj = _entity(i)
+        store._upsert_assertion(
+            TENANT,
+            KG,
+            assertion_id=make_assertion_id(
+                subj, type_prop, object_key=DOC_TYPE
+            ),
+            subject_id=subj,
+            property_id=type_prop,
+            object_class_id=DOC_TYPE,
+        )
+        text = f"{PROSE} Session {i}."
+        store._upsert_assertion(
+            TENANT,
+            KG,
+            assertion_id=make_assertion_id(
+                subj, desc_prop, object_key=text
+            ),
+            subject_id=subj,
+            property_id=desc_prop,
+            literal_value=text,
+        )
+
+    # Unit: the store scan itself reports truncated when N > hard cap.
+    async def unit():
+        triples, truncated = await rec._scan_triples_store(
+            TENANT, KG, [DESC_PRED, RDF_TYPE]
+        )
+        assert truncated is True
+        # Predicate-scoped: at most hard_cap description rows land.
+        desc_rows = [t for t in triples if t[1] == desc_prop or "description" in t[1]]
+        assert len(desc_rows) == hard_cap
+        assert len(desc_rows) < n_assertions
+
+    asyncio.run(unit())
+
+    # Integration: ghost deletion must not fire against a partial expected set.
+    # Seed a healthy index doc for an entity past the hard-cap window — pre-fix
+    # that doc would be "absent from expected" and ghost-deleted.
+    index = InMemorySemanticIndex()
+    past_cap_entity = hard_cap + 1
+    # SPARQL client is a no-op stub: GraphStore is preferred and has the data.
+    neptune = FakeNeptune({}, {("Doc", "description"): "free_text"})
+
+    async def integrate():
+        await index.upsert_chunks(
+            [_chunk(past_cap_entity, f"{PROSE} Session {past_cap_entity}.")]
+        )
+        # Also seed a genuine ghost (entity 999 never written to the store).
+        await index.upsert_chunks([_chunk(999, "stale merged-away doc")])
+        with structlog.testing.capture_logs() as logs:
+            counters = await rec.reconcile_kg(
+                neptune, TENANT, KG, index=index
+            )
+        assert counters["ghosts_deleted"] == 0
+        docs = await index.list_docs(TENANT, kg_name=KG)
+        surviving = {e for e, *_rest in docs}
+        assert _entity(past_cap_entity) in surviving
+        assert _entity(999) in surviving  # even genuine ghosts survive truncation
+        assert any(e["event"] == "semantic_scan_truncated" for e in logs)
+        assert any(
+            e["event"] == "semantic_reconcile_ghosts_skipped_scan_truncated"
+            for e in logs
+        )
+
+    asyncio.run(integrate())
+
+
+def test_scan_triples_prefers_graph_store_over_sparql(monkeypatch):
+    """When the process GraphStore has assertions, the scan must use them —
+    not a vestigial SPARQL client that may return empty/wrong results."""
+    from infona_client.graph.assertion_model import (
+        make_assertion_id,
+        property_uri,
+        type_membership_property_id,
+    )
+    from infona_client.graph.memory_store import MemoryGraphStore
+    from infona_client.graph.queries import kg_graph_uri
+    from infona_client.graph.store import configure_graph_store
+
+    store = MemoryGraphStore()
+    configure_graph_store(store)
+    desc_prop = property_uri("description")
+    type_prop = type_membership_property_id()
+    text = f"{PROSE} From the store."
+    subj = _entity(1)
+    store._upsert_assertion(
+        TENANT,
+        KG,
+        assertion_id=make_assertion_id(subj, type_prop, object_key=DOC_TYPE),
+        subject_id=subj,
+        property_id=type_prop,
+        object_class_id=DOC_TYPE,
+    )
+    store._upsert_assertion(
+        TENANT,
+        KG,
+        assertion_id=make_assertion_id(subj, desc_prop, object_key=text),
+        subject_id=subj,
+        property_id=desc_prop,
+        literal_value=text,
+    )
+
+    # SPARQL client has DIFFERENT (wrong) data — if SPARQL won, the scan
+    # would return the wrong prose.
+    neptune = _kg(
+        {
+            subj: {
+                RDF_TYPE: [DOC_TYPE],
+                DESC_PRED: [f"{PROSE} From SPARQL only."],
+            }
+        }
+    )
+
+    async def run():
+        triples, truncated = await rec._scan_triples(
+            neptune,
+            kg_graph_uri(TENANT, KG),
+            [DESC_PRED, RDF_TYPE],
+        )
+        assert truncated is False
+        texts = {o for _, _, o in triples}
+        assert text in texts
+        assert "From SPARQL only." not in " ".join(texts)
 
     asyncio.run(run())
 

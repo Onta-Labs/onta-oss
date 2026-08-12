@@ -50,6 +50,7 @@ from infona_client.graph.schema_bootstrap import (
     ENTITY_TYPE_REL_COVERAGE_CYPHER,
     ONTO_ATTR_LIST_CYPHER,
     ONTO_ATTR_RANGE_TYPE_CYPHER,
+    ONTO_ATTR_SET_TEXT_KIND_CYPHER,
     ONTO_ATTR_UPSERT_CYPHER,
     ONTO_SUBCLASS_CLEAR_CYPHER,
     ONTO_SUBCLASS_SET_CYPHER,
@@ -103,6 +104,7 @@ _ONTO_TYPE_LIST_NORM = _norm_cypher(ONTO_TYPE_LIST_CYPHER)
 _ONTO_TYPE_GET_NORM = _norm_cypher(ONTO_TYPE_GET_CYPHER)
 _ONTO_ATTR_UPSERT_NORM = _norm_cypher(ONTO_ATTR_UPSERT_CYPHER)
 _ONTO_ATTR_RANGE_NORM = _norm_cypher(ONTO_ATTR_RANGE_TYPE_CYPHER)
+_ONTO_ATTR_SET_TEXT_KIND_NORM = _norm_cypher(ONTO_ATTR_SET_TEXT_KIND_CYPHER)
 _ONTO_ATTR_LIST_NORM = _norm_cypher(ONTO_ATTR_LIST_CYPHER)
 _ENTITY_COUNT_BY_TYPE_NORM = _norm_cypher(ENTITY_COUNT_BY_PRIMARY_TYPE_CYPHER)
 
@@ -283,6 +285,7 @@ class _OntoAttrRow:
     cardinality: str = "1:1"
     description: str = ""
     prop_key: str | None = None
+    text_kind: str | None = None
 
     def as_record(self) -> GraphRecord:
         return GraphRecord(
@@ -298,6 +301,7 @@ class _OntoAttrRow:
                 "layer": self.layer,
                 "tenant_id": self.tenant_id,
                 "kg": self.kg,
+                "text_kind": self.text_kind,
             }
         )
 
@@ -1819,6 +1823,50 @@ class MemoryGraphStore:
                 existing.description = description
             if prop_key is not None:
                 existing.prop_key = prop_key
+            # text_kind is NOT touched by a general attribute upsert — only
+            # set_text_kind / the dedicated template owns that field (ONTA-533).
+            row = existing
+        return [row.as_record()]
+
+    def _set_onto_attr_text_kind(
+        self,
+        tenant_id: str,
+        kg: str,
+        layer: str,
+        domain: str,
+        name: str,
+        text_kind: str,
+        domain_label_token: str | None,
+    ) -> list[GraphRecord]:
+        """SET_TEXT_KIND: durable free-text candidacy on :OntoAttr (ONTA-533)."""
+        dkey = (tenant_id, kg, layer, domain)
+        if dkey not in self._onto_types:
+            self._onto_types[dkey] = _OntoTypeRow(
+                tenant_id=tenant_id,
+                kg=kg,
+                layer=layer,
+                name=domain,
+                label_token=domain_label_token,
+            )
+        akey = (tenant_id, kg, layer, domain, name)
+        kind_val = (text_kind or "").strip() or None
+        existing = self._onto_attrs.get(akey)
+        if existing is None:
+            row = _OntoAttrRow(
+                tenant_id=tenant_id,
+                kg=kg,
+                layer=layer,
+                domain=domain,
+                name=name,
+                kind="literal",
+                datatype="string",
+                cardinality="1:1",
+                description="",
+                text_kind=kind_val,
+            )
+            self._onto_attrs[akey] = row
+        else:
+            existing.text_kind = kind_val
             row = existing
         return [row.as_record()]
 
@@ -3105,6 +3153,19 @@ class MemoryGraphStore:
                 str(params["name"]),
                 str(params["range_type"]),
                 params.get("range_label_token"),
+            )
+
+        if norm == _ONTO_ATTR_SET_TEXT_KIND_NORM:
+            if not writing:
+                raise GraphQueryError("onto_attr_set_text_kind requires execute_write")
+            return self._set_onto_attr_text_kind(
+                tenant_id,
+                kg,
+                str(params["layer"]),
+                str(params["domain"]),
+                str(params["name"]),
+                str(params.get("text_kind") or ""),
+                params.get("domain_label_token"),
             )
 
         if norm == _ONTO_ATTR_LIST_NORM:
