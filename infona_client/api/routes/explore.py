@@ -1336,18 +1336,27 @@ async def backfill_kg_summary(
 
 
 async def drop_kg_stats(client: NeptuneClient, tenant_id: str, kg_name: str) -> None:
-    """Drop a KG's precomputed stats graph and evict its in-memory summaries.
+    """Drop a KG's precomputed stats and evict its in-memory summaries.
 
     Called when a KG is deleted. The stats graph URI is derived from the KG
     name, so without this a KG later recreated under the same name would serve
     the deleted graph's stale counts until the next recompute lands.
+
+    Backend-aware (ONTA-532): the SPARQL named-graph DROP only runs when the
+    Neo4j registry is inactive. Neo4j has no per-KG stats/drift named graphs —
+    the durable dashboard-summary row + the in-process ``_summary_cache`` are
+    what carry those counts, and those are always cleared below. Calling this
+    from the Neo4j delete path must not emit SPARQL.
     """
-    stats = _stats_graph_uri(tenant_id, kg_name)
-    hist = _drift_history_graph_uri(tenant_id, kg_name)
-    # Drop the drift-history graph too (COG-57): its URI is derived from the KG
-    # name, so a KG recreated under the same name would otherwise inherit the
-    # deleted KG's distribution. Matches the stats-graph cleanup rationale above.
-    await client.update(f"DROP SILENT GRAPH <{stats}> ; DROP SILENT GRAPH <{hist}>")
+    from infona_client.graph.kg_registry import neo4j_kg_registry_active
+
+    if not neo4j_kg_registry_active():
+        stats = _stats_graph_uri(tenant_id, kg_name)
+        hist = _drift_history_graph_uri(tenant_id, kg_name)
+        # Drop the drift-history graph too (COG-57): its URI is derived from the KG
+        # name, so a KG recreated under the same name would otherwise inherit the
+        # deleted KG's distribution. Matches the stats-graph cleanup rationale above.
+        await client.update(f"DROP SILENT GRAPH <{stats}> ; DROP SILENT GRAPH <{hist}>")
     for key in [k for k in _summary_cache if k[0] == tenant_id and k[1] == kg_name]:
         _summary_cache.pop(key, None)
     # Drop the materialized dashboard-summary row too — its key is derived from
