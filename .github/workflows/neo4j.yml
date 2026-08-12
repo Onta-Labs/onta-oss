@@ -1,17 +1,16 @@
-# Neo4j branch CI — side-by-side with production Neptune (default backend).
+# Neo4j GraphStore CI — hermetic golden / isolation / graph_store suites, plus
+# optional live Neo4j service when the driver + container are healthy.
 #
-# Always runs hermetic GraphStore / golden / isolation suites on PRs and
-# pushes to the neo4j branch. Optionally starts a Neo4j service container
-# and runs @pytest.mark.neo4j when the driver + service are healthy.
-#
-# Does NOT run on main. Does not remove or replace Neptune CI (test.yml).
+# Product tip is Neo4j-only (ADR 0012/0013). Runs on **main** (default branch)
+# and the historical **neo4j** branch until the latter is retired. Companion
+# workflow test.yml still runs the full hermetic pytest matrix on main.
 name: Neo4j GraphStore
 
 on:
   push:
-    branches: [neo4j]
+    branches: [main, neo4j]
   pull_request:
-    branches: [neo4j]
+    branches: [main, neo4j]
   workflow_dispatch:
 
 jobs:
@@ -103,7 +102,7 @@ jobs:
           NEO4J_URI: bolt://localhost:7687
           NEO4J_USER: neo4j
           NEO4J_PASSWORD: infona-dev-password
-          # Live path only — production default remains neptune.
+          # Live path: production default is Neo4j (ADR 0012/0013).
           INFONA_GRAPH_BACKEND: neo4j
           INFONA_API_KEYS: '{"test-key": "test-tenant"}'
           INFONA_NEPTUNE_ENDPOINT: "http://fake-neptune:8182"
