@@ -11,7 +11,28 @@ npx -y -p @infona-ai/cli infona
 # or: npm install -g @infona-ai/cli && infona
 ```
 
-That's it. The first run opens your browser to sign in, saves a key to `~/.infona/config.json` (frozen config path name), and drops you into the interactive shell:
+**First run with no config** opens an interactive **connect wizard** (not a silent
+cloud login and not a silent force-local):
+
+```text
+  Connect Infona
+    1) Local open-access  (http://localhost:8000, tenant default)
+    2) Browser sign-in    (hosted Infona cloud)
+    3) API key            (paste key + optional URL)
+```
+
+- **Local** probes the API, writes `~/.infona/config.json`, and **never** opens a browser for open-access.
+- **Browser** is for hosted cloud only.
+- **API key** is for CI/headless or self-hosted with auth.
+
+Re-run any time: `infona init` (confirms before overwriting saved credentials).
+Non-interactive local: `infona init --local` (probes `localhost:8000`, writes
+open-access config, **no readline** — safe for scripts). Re-writing the same
+local open-access config is idempotent; overwriting a *different* saved
+connection (e.g. cloud API key) requires a TTY confirm, or `--force` when
+non-interactive: `infona init --local --force`.
+
+Then the interactive shell:
 
 ```text
   /ingest <file>      Ingest a CSV/JSON/text file
@@ -30,17 +51,27 @@ That's it. The first run opens your browser to sign in, saves a key to `~/.infon
 
 Bare lines (no leading `/`) auto-route to `/ask`. Full walkthrough at [infona.ai/docs/quickstart](https://infona.ai/docs/quickstart).
 
-## Self-hosted mode
+## Self-hosted / OSS repo mode
 
-Pointing the CLI at your own backend skips the browser sign-in:
+From the **infona-oss** checkout, after Neo4j + the API are up:
 
 ```bash
-infona --local                          # defaults to http://localhost:8000
-infona --no-login                       # uses INFONA_API_URL env var
+./scripts/oss_setup.sh     # health probe → write local config → best-effort CLI link
+infona                     # bare; uses ~/.infona/config.json (no --local needed)
+```
+
+One-off flags (do **not** rewrite config):
+
+```bash
+infona --local                          # http://localhost:8000, tenant default
+infona --no-login                       # assume open-access at INFONA_API_URL
 INFONA_API_URL=http://my-host:8000 infona
 ```
 
-When self-hosted, the prompt shows the host suffix: `infona@localhost:8000 (kg) ▸`. Bare `infona` still triggers the hosted-version login flow.
+**Precedence:** flags (one-off) > env (`INFONA_API_URL` / `INFONA_API_KEY`) >
+`~/.infona/config.json` > connect wizard when empty.
+
+When self-hosted, the prompt shows the host suffix: `infona@localhost:8000 (kg) ▸`.
 
 ## Auto-enrichment
 
@@ -186,11 +217,20 @@ infona clear --kg my-data --yes
 
 Prefer `INFONA_*` for new configs:
 
-- `INFONA_API_KEY` — required for headless / CI use; interactive `infona login` writes one to `~/.infona/config.json` automatically.
-- `INFONA_API_URL` — default `https://api.infona.ai` (legacy hosts `api.infona.ai` / `api.infona.ai` still work).
-- `INFONA_TENANT` — default `demo-tenant`. The login flow sets this to your workspace id.
+- `INFONA_API_KEY` — required for headless / CI use; `infona init` (API key path) or `infona login` writes one to `~/.infona/config.json`.
+- `INFONA_API_URL` — default `https://api.infona.ai`. OSS setup / local wizard sets `http://localhost:8000`.
+- `INFONA_TENANT` — default `demo-tenant` on cloud, `default` on localhost open-access.
 
-Older env-var prefixes (`ONTA_*`, `INFONA_*`, `INFONA_*`) are still accepted for back-compat, so existing configs keep working unchanged.
+### Config file
+
+`~/.infona/config.json` (mode `600`). Example after `./scripts/oss_setup.sh` or `infona init --local`:
+
+```json
+{
+  "apiUrl": "http://localhost:8000",
+  "tenant": "default"
+}
+```
 
 > PDF ingest is not supported on any surface (CLI, API, MCP). Extract text or tables first; CSV is the best-supported path.
 
