@@ -760,27 +760,6 @@ async def test_generate_sparql_derives_kg_name_from_the_graph_uri(
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    reason=(
-        "PRODUCT BUG (ONTA-527 regression): DELETE /graphs/{t}/kgs/{kg} evicts "
-        "NOTHING on the Neo4j path. api/routes/knowledge_graphs.py::delete_kg "
-        "opens with `if neo4j_kg_registry_active():` — true whenever the "
-        "backend is neo4j, i.e. always — deletes the registry row plus the "
-        "instance nodes, and RETURNS from inside that branch. Every cache/"
-        "derived-index eviction sits BELOW it and is skipped: "
-        "NLQueryPipeline.invalidate_cache (the _ontology_cache + "
-        "_active_types_cache sweeps this test asserts), "
-        "kg_status.invalidate_kg_status (ONTA-453 — a stale 'this KG holds "
-        "data' verdict lets a question be answered out of the base graph for "
-        "the rest of the TTL), explore.drop_kg_stats, and "
-        "semantic.reconciler.remove_reconcile_schedule. So a deleted KG's "
-        "schema keeps competing for retrieval slots and a KG recreated under "
-        "the same name inherits the dead one's cached scope — exactly what "
-        "ONTA-417 half B fixed. The fix is to hoist the eviction block above "
-        "the early return (or fall through to it), not to change this test."
-    ),
-    strict=True,
-)
 def test_delete_kg_evicts_ontology_and_active_type_caches(client, mock_neptune, auth_headers):
     """A deleted KG's schema must stop competing for semantic-retrieval slots,
     and a KG recreated under the same name must not inherit the dead one's

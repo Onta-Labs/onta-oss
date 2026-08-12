@@ -6,20 +6,12 @@ unless delete busts them. Regression test for that bug (seen while recording the
 live ER demo: a re-ingested `demo-live` showed the prior run's post-resolution
 count instead of the fresh fragmented count).
 
-**Ported by ONTA-527, and it found a regression.** ``delete_kg`` used to run a
-long best-effort cleanup: ``DROP SILENT GRAPH`` for the stats + drift graphs,
-``drop_kg_stats`` (which evicts ``explore._summary_cache`` and the durable stats
-row), the example-bank purge, the spatio-temporal / semantic index clears, the
-NL-planning cache eviction, ``invalidate_kg_status`` and the reconcile-schedule
-removal. The property-graph branch
-(``api/routes/knowledge_graphs.py::delete_kg``, the ``neo4j_kg_registry_active()``
-early-return) does THREE things — drop the registry row, DETACH DELETE the
-instance nodes, delete the durable stats row — and then ``return``s before all of
-the above. Only the durable-stats half survives, so the tests below split into
-what still holds (row deleted) and what silently does not (every cache).
-
-The cache evictions are pinned as strict xfails rather than deleted: each names
-a stale-read that is now reachable in production.
+**Fixed by ONTA-532.** ONTA-527 ported these tests and found that the Neo4j
+branch of ``delete_kg`` early-returned after registry / DETACH / durable-stats
+and skipped every derived-state eviction (``drop_kg_stats`` / summary cache,
+example bank, spatiotemporal + semantic clears, NL cache, ``invalidate_kg_status``,
+reconcile schedule). ONTA-532 hoists that shared cleanup so both backends run it;
+the strict xfails below are now live assertions.
 
 One thing this file cannot check hermetically: the instance-node purge runs via
 ``store._run(...)``, which ``MemoryGraphStore`` does not implement, so the branch
@@ -85,20 +77,6 @@ def test_delete_kg_drops_the_registration_and_the_durable_stats_row(
     mock_neptune.update.assert_not_called()
 
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG (introduced by the Neo4j cutover, surfaced by ONTA-527): "
-        "api/routes/knowledge_graphs.py::delete_kg returns from its "
-        "neo4j_kg_registry_active() branch without calling "
-        "explore.drop_kg_stats, so the in-process _summary_cache entries for "
-        "the deleted KG survive their full 30-minute TTL. A KG recreated under "
-        "the same name (the live-demo flow this test was written for) serves "
-        "the DELETED graph's per-type counts from that cache. The durable "
-        "stats row is deleted directly on the same branch, which is why only "
-        "the cache half fails."
-    ),
-    strict=True,
-)
 def test_delete_kg_busts_the_summary_cache(client, auth_headers):
     _register_kg_with_stats()
     cache_key = (TENANT, KG, "Person")
@@ -112,23 +90,6 @@ def test_delete_kg_busts_the_summary_cache(client, auth_headers):
     assert cache_key not in _summary_cache
 
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG (ONTA-453 regression, introduced by the Neo4j cutover): "
-        "api/routes/knowledge_graphs.py::delete_kg's neo4j branch never calls "
-        "graph/kg_status.py::invalidate_kg_status, so the POSITIVE "
-        "'this KG holds data' verdict stays cached for KG_STATUS_CACHE_TTL "
-        "(60s) after the KG is deleted. kg_data_status short-circuits on that "
-        "verdict, so a question asked in the minute after a delete sails past "
-        "the missing-KG guard and is answered out of the tenant base graph plus "
-        "the global layers — the confidently-wrong answer that guard exists to "
-        "stop. Every other eviction on the old delete path went the same way "
-        "(example bank, spatio-temporal + semantic index clears, NL ontology "
-        "cache, reconcile schedule); this one is pinned because it changes an "
-        "ANSWER, not just a number."
-    ),
-    strict=True,
-)
 def test_delete_kg_busts_the_kg_status_verdict_cache(client, auth_headers):
     from infona_client.graph import kg_status
 
@@ -144,50 +105,27 @@ def test_delete_kg_busts_the_kg_status_verdict_cache(client, auth_headers):
     assert (TENANT, KG) not in kg_status._kg_ok_cache
 
 
-@pytest.mark.xfail(
-    reason=(
-        "Same root cause as test_delete_kg_busts_the_summary_cache (delete_kg's "
-        "neo4j branch skips explore.drop_kg_stats), pinned end-to-end because "
-        "this is the shape the bug was originally reported in: delete + "
-        "re-create under the same name, then read the type summary. The read "
-        "half — explore.get_type_summary — is still un-ported SPARQL, so the "
-        "recomputed number comes from the mocked client here; the cache bust in "
-        "front of it is real code that runs before any query and is what fails."
-    ),
-    strict=True,
-)
 def test_recreated_kg_reports_fresh_count_not_stale_cache(
     client, mock_neptune, auth_headers
 ):
     """End-to-end: delete + recreate under the same name → endpoint shows the
     NEW contents, never the deleted KG's cached count.
 
-    This is the exact live-demo scenario: a prior run left Person cached at the
-    post-ER count (43); deleting and re-ingesting the same 3 CSVs must surface
-    the fresh, pre-ER count (162) through the real summary endpoint.
+    Live-demo shape (ONTA-532): a prior run left Person cached at a post-ER
+    count (43); deleting and re-ingesting under the same name must surface the
+    fresh count through the real summary endpoint, not the deleted graph's
+    cached 43. Neo4j path uses GraphStore (P-A1a), so we re-seed instances via
+    insert_facts rather than a SPARQL mock.
     """
-    from infona_client.api.routes.explore import RDF_TYPE
+    from infona_client.graph.iri import IRI_BASE
+    from infona_client.graph.kg_writer import insert_facts
+    from infona_client.graph.ontology_queries import entity_uri
+    from infona_client.graph.queries import kg_graph_uri
+    from infona_client.graph.store import get_graph_store
 
-    def _summary_query_router(person_count: int):
-        def route(sparql, *args, **kwargs):
-            if "entityCount" in sparql or "forType" in sparql:
-                return {"head": {"vars": []}, "results": {"bindings": []}}
-            if "?e ?p ?o" in sparql:
-                return {
-                    "head": {"vars": ["p", "cnt", "sample", "rel"]},
-                    "results": {
-                        "bindings": [
-                            {
-                                "p": {"value": RDF_TYPE},
-                                "cnt": {"value": str(person_count)},
-                                "rel": {"value": "0"},
-                            },
-                        ]
-                    },
-                }
-            return {"head": {"vars": []}, "results": {"bindings": []}}
-
-        return route
+    RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+    PERSON_TYPE = f"{IRI_BASE}/types/Person"
+    FRESH_COUNT = 5  # post-recreate; deliberately != stale 43
 
     _register_kg_with_stats()
     summary_url = f"/graphs/{TENANT}/explore/kgs/{KG}/types/Person/summary"
@@ -203,9 +141,15 @@ def test_recreated_kg_reports_fresh_count_not_stale_cache(
     )
     assert cache_key not in _summary_cache
 
-    # ...then re-ingest the same name: the new KG has 162 Person rows (no ER
-    # yet) and no materialized stats, so the endpoint live-scans to 162.
-    mock_neptune.query.side_effect = _summary_query_router(162)
+    # ...then re-register under the same name and seed FRESH_COUNT Person rows.
+    _run(upsert_registered_kg(TENANT, KG, description="live demo recreated"))
+    graph = kg_graph_uri(TENANT, KG)
+    triples = [
+        (entity_uri("Person", f"p{i}"), RDF_TYPE, PERSON_TYPE)
+        for i in range(FRESH_COUNT)
+    ]
+    _run(insert_facts(None, graph, triples, store=get_graph_store()))
+
     resp = client.get(summary_url, headers=auth_headers)
     assert resp.status_code == 200
-    assert resp.json()["entity_count"] == 162  # fresh, not the stale 43
+    assert resp.json()["entity_count"] == FRESH_COUNT  # fresh, not the stale 43

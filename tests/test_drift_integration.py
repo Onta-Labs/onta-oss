@@ -626,11 +626,40 @@ async def test_drift_history_persist_failure_does_not_break_recompute(mock_neptu
 
 @pytest.mark.asyncio
 async def test_drop_kg_stats_drops_drift_history_graph(mock_neptune):
-    """Dropping a KG also drops its drift-history graph (URI derived from KG name)."""
+    """``drop_kg_stats`` clears derived stats state without SPARQL under Neo4j.
+
+    Pre-ONTA-532 this pinned ``DROP SILENT GRAPH`` on the drift-history named
+    graph (URI derived from the KG name). Production is Neo4j-only (ONTA-527):
+    there are no per-KG stats/drift named graphs, so ``drop_kg_stats`` skips the
+    SPARQL DROP when the Neo4j registry is active and only clears the durable
+    dashboard-summary row + the in-process ``_summary_cache``. A KG recreated
+    under the same name must not inherit either.
+    """
+    import time
+
+    from infona_client.graph.kg_registry import neo4j_kg_registry_active
+    from infona_client.graph.kg_stats_store import (
+        KgStats,
+        get_kg_stats_store,
+        reset_kg_stats_store,
+    )
+
+    assert neo4j_kg_registry_active(), "hermetic suite runs the Neo4j path"
+
+    reset_kg_stats_store()
+    await get_kg_stats_store().upsert(
+        KgStats(tenant_id=TENANT, kg_name=KG, entity_count=10, edge_count=4)
+    )
+    cache_key = (TENANT, KG, "Person")
+    explore._summary_cache[cache_key] = (time.monotonic(), {"entity_count": 10})
+
     await explore.drop_kg_stats(mock_neptune, TENANT, KG)
-    dropped = " ".join(c.args[0] for c in mock_neptune.update.call_args_list if c.args)
-    assert HIST_GRAPH in dropped
-    assert "DROP SILENT GRAPH" in dropped
+
+    # No SPARQL DROP for stats or drift-history under Neo4j.
+    mock_neptune.update.assert_not_called()
+    # Durable row + in-process summary cache always clear.
+    assert await get_kg_stats_store().get(TENANT, KG) is None
+    assert cache_key not in explore._summary_cache
 
 
 def test_get_drift_history_reassembles_snapshots(client, mock_neptune, auth_headers):
