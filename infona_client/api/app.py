@@ -9,7 +9,7 @@ from slowapi.errors import RateLimitExceeded
 
 from infona_client.api.middleware import RequestLoggingMiddleware
 from infona_client.api.rate_limit import limiter
-from infona_client.api.routes import actions, agent, api_sources, ask, conversations, corrections, enrich, explore, functions, grep, health, history, ingest, jobs, knowledge_graphs, lambda_functions, normalize, ontology, operator, query, schedules, search, skills, tenants, triples, usage, workspace_invites
+from infona_client.api.routes import actions, agent, api_sources, ask, conversations, corrections, enrich, explore, export, functions, grep, health, history, ingest, jobs, knowledge_graphs, lambda_functions, normalize, ontology, operator, query, schedules, search, skills, tenants, triples, usage, workspace_invites
 from infona_client.config import settings
 from infona_client.graph.client import NeptuneClient
 from infona_client.graph.queries import InvalidGraphIdentifier
@@ -440,6 +440,7 @@ def create_app() -> FastAPI:
     app.include_router(ontology.router, tags=["ontology"])
     app.include_router(ingest.router, tags=["ingest"])
     app.include_router(knowledge_graphs.router, tags=["knowledge_graphs"])
+    app.include_router(export.router, tags=["export"])
     app.include_router(enrich.router, tags=["enrich"])
     app.include_router(jobs.router, tags=["jobs"])
     app.include_router(operator.router, tags=["operator"])
