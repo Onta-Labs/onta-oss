@@ -787,12 +787,39 @@ _WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]*")
 async def _list_types(ctx: AgentContext) -> list[str]:
     """The tenant's declared type names, for resolving the target type from text.
 
-    Reuses the SAME ontology query the ``/ontology/types`` route and the ontology
-    capability use (:func:`list_types_query`) — a bounded single round-trip read,
-    never an instance scan. Defensive: any read error degrades to ``[]`` so type
+    GraphStore / Neo4j (ONTA-534): reads the ontology catalog — the SAME
+    ``list_types`` the ``/ontology/types`` route uses. Production SPARQL HTTP
+    is retired and raises on ``query()``, so a SPARQL-only list swallowed that
+    error, returned ``[]``, and ``plan()`` bailed to "couldn't determine the
+    specifics" whenever the Explorer had no type selected (the 2026-08-13 Ask
+    Onta regression).
+
+    Residual SPARQL remains only when no process store is configured (hermetic
+    dual-arm unit tests). Defensive: any read error degrades to ``[]`` so type
     resolution falls back to the selected type rather than failing the plan.
     """
     try:
+        from infona_client.graph.store import GraphConfigError, get_optional_graph_store
+
+        try:
+            store = get_optional_graph_store()
+        except GraphConfigError:
+            store = None
+        if store is not None:
+            from infona_client.graph.ontology_catalog import list_types as cat_list_types
+
+            records = await cat_list_types(
+                store=store, tenant_id=ctx.tenant_id, layer="tenant"
+            )
+            seen: set[str] = set()
+            names: list[str] = []
+            for rec in records:
+                label = (getattr(rec, "name", None) or "").strip()
+                if label and label not in seen:
+                    seen.add(label)
+                    names.append(label)
+            return names
+
         onto_graph = tenant_graph_uri(ctx.tenant_id)
         _, rows = parse_sparql_results(
             await ctx.neptune.query(list_types_query(onto_graph))
@@ -800,8 +827,8 @@ async def _list_types(ctx: AgentContext) -> list[str]:
     except Exception:  # noqa: BLE001 — a type-list read must never break planning
         logger.warning("agent_enrich_list_types_failed", exc_info=True)
         return []
-    seen: set[str] = set()
-    names: list[str] = []
+    seen = set()
+    names = []
     for r in rows:
         label = (r.get("label") or "").strip()
         if label and label not in seen:
@@ -1942,6 +1969,14 @@ _ATTR_TRIGGER = re.compile(
     r"([A-Za-z_][\w-]*(?:\s+[A-Za-z_][\w-]*)?)",
     re.IGNORECASE,
 )
+# "enrich <type> with their lead sponsor and latest status" — the attributes
+# live AFTER "with [their/its/the]", not immediately after the verb (the verb
+# is followed by the TYPE). Without this, the fallback parser captured
+# "clinical trials" as the attribute and planned a bogus new leaf.
+_WITH_ATTRS = re.compile(
+    r"\bwith\s+(?:their|its|his|her|the|our)?\s+(.+)$",
+    re.IGNORECASE,
+)
 # Relationship scope: "<verb> <Value>" e.g. "speak Persian", "speaks French".
 # group(1) = verb, group(2) = value. Verb is lemmatized to its predicate leaf.
 _SCOPE_REL = re.compile(
@@ -1962,13 +1997,25 @@ def _parse_enrich_instruction(instruction: str) -> dict:
         → attributes=["company"]   (the "current" modifier is dropped)
       "enrich company for mentors who speak Persian"
         → attributes=["company"], scope={"predicate":"speaks","value":"Persian"}
+      "enrich clinical trials with their lead sponsor and latest status"
+        → attributes=["lead_sponsor", "latest_status"]
     """
     attributes: list[str] = []
-    m = _ATTR_TRIGGER.search(instruction)
-    if m:
-        norm = _normalize_attr(m.group(1))
-        if norm:
-            attributes = [norm]
+    with_m = _WITH_ATTRS.search(instruction or "")
+    if with_m:
+        # Prefer the "with [their] X and Y" clause — that's the attribute list
+        # in "enrich <type> with their <attrs>". Split on the same delimiters
+        # as multi-attribute extraction so "A and B" / "A, B" both work.
+        for frag in _split_attr_list(with_m.group(1)):
+            norm = _normalize_attr(frag)
+            if norm and norm.lower() not in {a.lower() for a in attributes}:
+                attributes.append(norm)
+    if not attributes:
+        m = _ATTR_TRIGGER.search(instruction)
+        if m:
+            norm = _normalize_attr(m.group(1))
+            if norm:
+                attributes = [norm]
 
     scope = None
     rel = _SCOPE_REL.search(instruction)
