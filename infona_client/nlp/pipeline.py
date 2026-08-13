@@ -1097,13 +1097,18 @@ class NLQueryPipeline:
             except Exception:
                 store = None
 
-        # ---- Ontology context (semantic → catalog → sparql fetch) ----
+        # ---- Ontology context (populated GraphStore → semantic → sparql) ----
+        # Planning truth is instance-populated schema for THIS KG (declared-empty
+        # edges demoted). Semantic retrieval selects which types matter when the
+        # catalog is large, and is the fallback text when GraphStore has no rows.
         ontology = ""
         type_names: list[str] = []
         ontology_source = "full"
         kg_active_types: set[str] | None = None
         kg_declared_names: list[str] | None = None
         full_ontology_loaded = False
+        semantic_text: str | None = None
+        semantic_type_names: list[str] | None = None
 
         embedding_svc = get_embedding_service()
         if embedding_svc:
@@ -1137,27 +1142,52 @@ class NLQueryPipeline:
                     active_types=active_types,
                 )
                 if semantic:
-                    ontology = semantic
-                    ontology_source = "semantic"
-                    timing["ontology_source"] = "semantic"
+                    from infona_client.nlp.cypher_generate import (
+                        extract_type_names_from_ontology,
+                    )
+
+                    semantic_text = semantic
+                    semantic_type_names = extract_type_names_from_ontology(semantic)
                     timing["ontology_scope"] = (
                         "kg" if active_types is not None else "tenant"
+                    )
+                    timing["semantic_type_count"] = float(
+                        len(semantic_type_names or [])
                     )
             except Exception:
                 pass
 
-        if not ontology and store is not None:
+        if store is not None:
             try:
                 ontology, type_names = await ontology_from_graph_store(
-                    store, tenant_id=tenant_id, kg=kg_name
+                    store,
+                    tenant_id=tenant_id,
+                    kg=kg_name,
+                    prefer_populated=True,
+                    # Scope to semantic top-K when available (anti-pollution);
+                    # full catalog when embeddings are cold.
+                    type_names=semantic_type_names,
                 )
                 if ontology:
-                    ontology_source = "graph_store_catalog"
-                    timing["ontology_source"] = "graph_store_catalog"
-                    full_ontology_loaded = True
+                    ontology_source = (
+                        "graph_store_populated"
+                        if semantic_type_names
+                        else "graph_store_catalog"
+                    )
+                    timing["ontology_source"] = ontology_source
+                    full_ontology_loaded = not bool(semantic_type_names)
             except Exception:
                 logger.debug("cypher_ask_catalog_ontology_failed", exc_info=True)
                 ontology = ""
+
+        # Semantic text is the fallback when GraphStore has no catalog rows
+        # (embeddings exist but catalog empty / cold). Prefer populated store
+        # when both are present so dead declared edges do not win.
+        if not ontology and semantic_text:
+            ontology = semantic_text
+            ontology_source = "semantic"
+            timing["ontology_source"] = "semantic"
+            type_names = list(semantic_type_names or [])
 
         if not ontology:
             try:
@@ -1175,8 +1205,13 @@ class NLQueryPipeline:
                 logger.debug("cypher_ask_ontology_fetch_failed", exc_info=True)
                 ontology = ""
 
-        if ontology_source == "full" or ontology_source == "graph_store_catalog":
-            full_ontology_loaded = True
+        if ontology_source in (
+            "full",
+            "graph_store_catalog",
+            "graph_store_populated",
+        ):
+            if ontology_source != "graph_store_populated" or not semantic_type_names:
+                full_ontology_loaded = True
         timing["ontology_fetch_ms"] = round((time.time() - t0) * 1000, 1)
 
         # Attribute-alias map (ADR 0002 §7) — leaf renames for Cypher property keys.
@@ -3272,7 +3307,10 @@ class NLQueryPipeline:
                 t_uri = _type_uri_for(t_layer, type_name)
                 lines.append(f"Type: {type_name} — URI: <{t_uri}>{empty_suffix}")
                 if info["attributes"]:
-                    annotated = []
+                    # Prefer populated attrs first; declared-empty trail them
+                    # (same planning preference as relationships / GraphStore path).
+                    populated_attrs: list[str] = []
+                    empty_attrs: list[str] = []
                     for attr_entry in sorted(info["attributes"]):
                         a_name = attr_entry.split(" (")[0]
                         if type_name in enum_values and a_name in enum_values[type_name]:
@@ -3281,7 +3319,9 @@ class NLQueryPipeline:
                             val_str = ", ".join(f'"{v}"' for v in vals[:10])
                             if len(vals) > 10:
                                 val_str += f", ... ({len(vals)} total)"
-                            annotated.append(f"{attr_entry} [values: {val_str}]")
+                            populated_attrs.append(
+                                f"{attr_entry} [values: {val_str}]"
+                            )
                         elif type_name in enum_counts and a_name in enum_counts[type_name]:
                             cnt = enum_counts[type_name][a_name]
                             if cnt == 0:
@@ -3295,24 +3335,32 @@ class NLQueryPipeline:
                                 # attribute is DECLARED in the ontology, so it
                                 # exists; annotate it as empty rather than deleting
                                 # it, so an existence claim stays stable.
-                                annotated.append(f"{attr_entry} [no instances]")
+                                empty_attrs.append(f"{attr_entry} [no instances]")
                             elif cnt > MAX_ENUM_CARDINALITY:
                                 # High-cardinality: just show the count
-                                annotated.append(f"{attr_entry} [{cnt} unique values]")
+                                populated_attrs.append(
+                                    f"{attr_entry} [{cnt} unique values]"
+                                )
                             else:
-                                annotated.append(attr_entry)
+                                populated_attrs.append(attr_entry)
                         else:
-                            annotated.append(attr_entry)
-                    lines.append(f"  Attributes: {', '.join(annotated)}")
+                            populated_attrs.append(attr_entry)
+                    lines.append(
+                        f"  Attributes: {', '.join(populated_attrs + empty_attrs)}"
+                    )
                 if info["relationships"]:
                     # Keep EVERY declared relationship; annotate confirmed-empty
                     # ones instead of hiding them (ONTA-248 determinism).
+                    # Prefer populated edges first so the LLM plans on live
+                    # leaves before declared-empty dead ends (persona 56a8c2).
                     annotated_rels = []
+                    empty_rel_lines = []
                     for r in sorted(info["relationships"]):
                         if (type_name, r.split(" →")[0].strip()) in empty_rels:
-                            annotated_rels.append(f"{r} [no instances]")
+                            empty_rel_lines.append(f"{r} [no instances]")
                         else:
                             annotated_rels.append(r)
+                    annotated_rels.extend(empty_rel_lines)
                     lines.append(f"  Relationships: {', '.join(annotated_rels)}")
                 if info["functions"]:
                     lines.append(f"  Functions: {', '.join(sorted(info['functions']))}")
