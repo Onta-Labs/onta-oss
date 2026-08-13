@@ -522,8 +522,11 @@ async def test_injected_402_halts_enrichment_run_with_manifest():
         {"uri": "https://graph.infona.ai/entities/Product/p2", "label": "Makita", "vals": ""},
         {"uri": "https://graph.infona.ai/entities/Product/p3", "label": "DeWalt", "vals": ""},
     ]
+    from tests._enrichment_prov_helpers import seed_enrich_entities
+
+    await seed_enrich_entities("Product", rows)
     neptune = AsyncMock()
-    neptune.query.return_value = _entities_query_response(rows)
+    neptune.query.side_effect = AssertionError("enrich must not SPARQL")
     neptune.update.return_value = None
 
     store = InMemoryJobStore()

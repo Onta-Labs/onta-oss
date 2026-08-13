@@ -13,16 +13,19 @@ from infona_client.enrichment.cache import EnrichmentCache
 from infona_client.enrichment.executor import (
     EnrichmentExecutor,
     _ProviderTally,
-    _build_select_query,
     _entity_iri_type,
     _infer_datatype_from_values,
+    _instance_pred_iris_for_leaf,
     _is_float,
     _is_int,
     _parse_vals,
-    _resolve_pred_iris_from_bindings,
-    _scope_block,
-    _scope_subselect,
+    _resolve_pred_iris_from_catalog,
     _values_match,
+)
+from tests._enrichment_prov_helpers import (
+    seed_declared_types,
+    seed_enrich_entities,
+    seed_strategy_triples,
 )
 from infona_client.enrichment.job_store import InMemoryJobStore
 from infona_client.enrichment.models import (
@@ -80,6 +83,40 @@ def _make_job(
         scope=scope,
         entity_uris=entity_uris,
     )
+
+
+async def _prep_neptune(rows, type_name="Product", extra_types=None):
+    """Seed GraphStore entities and return a SPARQL-retired Neptune mock."""
+    await seed_enrich_entities(type_name, rows)
+    if extra_types:
+        for tname, trows in extra_types:
+            await seed_enrich_entities(tname, trows)
+    neptune = AsyncMock()
+    neptune.query.side_effect = AssertionError("enrich must not SPARQL")
+    neptune.update.return_value = None
+    return neptune
+
+
+async def _seed_existing_range(type_name: str, attr_name: str, existing_range: str) -> None:
+    """Declare a catalog range so enrichment cannot SPARQL-read it."""
+    from infona_client.graph.ontology_catalog import upsert_attribute, upsert_type
+
+    await upsert_type(name=type_name, tenant_id="test-tenant")
+    if existing_range.endswith("#integer"):
+        dt = "integer"
+    elif existing_range.lower().endswith("#datetime"):
+        dt = "datetime"
+    elif "/types/" in existing_range:
+        dt = existing_range.rsplit("/", 1)[-1]
+    else:
+        dt = "string"
+    await upsert_attribute(
+        type_name=type_name,
+        attr_name=attr_name,
+        datatype=dt,
+        tenant_id="test-tenant",
+    )
+
 
 
 def _entities_query_response(rows: list[dict]) -> dict:
@@ -541,359 +578,26 @@ def test_values_match():
     assert not _values_match("", "Bosch")
 
 
-def test_build_select_query_includes_limit_and_attrs():
-    q = _build_select_query("https://g/x", "Product", ["manufacturer", "country"], 50)
-    assert "<https://graph.infona.ai/types/Product>" in q
-    assert "<https://graph.infona.ai/types/Product/attrs/manufacturer>" in q
-    assert "<https://graph.infona.ai/types/Product/attrs/country>" in q
-    assert "LIMIT 50" in q
-
 
 # ---------------------------------------------------------------------------
 # COG-112 scoped enrichment: SPARQL generation
 # ---------------------------------------------------------------------------
 
 
-def test_build_select_query_no_scope_is_unchanged():
-    """Neither scope nor entity_uris → no subset constraint; whole-type query."""
-    q = _build_select_query("https://g/x", "Mentor", ["bio"], None)
-    # Subclass-aware, reflexive type constraint (Fix B): matches Mentor AND any
-    # subtype, and still matches a directly-typed Mentor (zero subClassOf hops).
-    assert _MENTOR_TYPED in q
-    assert "?e a <https://graph.infona.ai/types/Mentor> ." not in q  # no bare `a`
-    # No subset machinery leaks in.
-    assert "FILTER EXISTS" not in q
-    assert "VALUES ?e" not in q
 
 
-def test_enrich_selection_is_subclass_aware():
-    """Fix B: the entity-type constraint is the reflexive subclass-closure path
-    ``a/rdfs:subClassOf*``, NOT a bare ``a``, so enriching a declared (often
-    instance-LESS) SUPERTYPE — e.g. ``Model``, whose real instances discovery
-    minted under LEAF types like ``SpeechToTextModel`` and connected up via
-    ``rdfs:subClassOf`` (insert_subtype) — reaches those leaf instances instead of
-    matching zero rows (the RCA e5 `sp-refresh-pricing` failure: "enrich all
-    Models" → total:0). ``*`` is zero-or-more, so a directly-typed entity still
-    matches (reflexive) — no regression for a leaf type. The traversal predicate
-    is the SAME ``rdfs:subClassOf`` IRI insert_subtype writes, so the edges align.
-    """
-    q = _build_select_query("https://g/x", "Model", ["pricing"], 100)
-    # Subclass-closure predicate on the type triple (not a bare `a`).
-    assert (
-        "?e <http://www.w3.org/1999/02/22-rdf-syntax-ns#type>/"
-        "<http://www.w3.org/2000/01/rdf-schema#subClassOf>* "
-        "<https://graph.infona.ai/types/Model> ." in q
-    )
-    assert "?e a <https://graph.infona.ai/types/Model> ." not in q
-    # Reflexive: the `*` (zero-or-more) means a directly-typed Model still matches.
-    assert "subClassOf>* <https://graph.infona.ai/types/Model>" in q
 
 
-def test_build_select_query_scope_matches_bound_predicate_path():
-    """A scope predicate is matched by a BOUND-predicate property-path alternation
-    INLINED in the WHERE (the COG-112 fix #4) — never wrapped in ``FILTER EXISTS``
-    (which Neptune evaluates once per type instance), never a variable predicate +
-    ``FILTER(?p IN (...))`` (which Neptune does NOT predicate-index) and never an
-    unbounded ``?e ?p ?sv`` scan — and the value is matched case-insensitively
-    against a literal OR any literal property of the (already-bounded) target node
-    (NOT pinned to the source type's attr namespace — COG-112 target-label fix).
-    The scoped subset is reduced first by a ``SELECT DISTINCT ?e`` sub-select,
-    then attributes are hydrated."""
-    scope = EnrichScope(predicate="haslevel", value="Manager")
-    # The resolved instance IRI(s) for the predicate (attr_uri + onto/<leaf>).
-    pred_iris = [
-        "https://graph.infona.ai/types/Mentor/attrs/haslevel",
-        "https://graph.infona.ai/onto/haslevel",
-    ]
-    q = _build_select_query(
-        "https://g/x", "Mentor", ["bio"], None, scope=scope, scope_pred_iris=pred_iris
-    )
-
-    # Typed to Mentor, but inside a bounded DISTINCT sub-select that the planner
-    # can reduce to the scoped subset BEFORE the attribute OPTIONALs run. The
-    # scope must NOT be wrapped in a FILTER EXISTS (the third COG-112 perf bug).
-    assert "FILTER EXISTS" not in q
-    assert "SELECT DISTINCT ?e WHERE {" in q
-    assert _MENTOR_TYPED in q  # subclass-aware, reflexive type constraint (Fix B)
-    # The predicate is matched by a BOUND property-path alternation INLINED next
-    # to ?e a <Type> — Neptune uses the POS index. The scope must NOT use a
-    # variable predicate (?e ?p ?sv + FILTER(?p IN ...)). (The attribute-value
-    # OPTIONAL legitimately uses a bounded FILTER(?p IN ...) for which attrs to
-    # GROUP_CONCAT — that is not the scope predicate, so we assert specifically on
-    # the scope's ?sv object var.)
-    assert (
-        "?e (<https://graph.infona.ai/types/Mentor/attrs/haslevel>|"
-        "<https://graph.infona.ai/onto/haslevel>) ?sv ." in q
-    )
-    assert "?e ?p ?sv" not in q
-    assert 'REPLACE(STR(?p)' not in q
-    # Literal-attribute arm: case-insensitive literal match (value lower-cased).
-    assert 'isLiteral(?sv) && LCASE(STR(?sv)) = "manager"' in q
-    # Relationship arm: ?sv (the target node) is already bounded by the predicate
-    # triple, so match ANY literal property on it (?sv ?slp ?stl) — NOT pinned to
-    # the SOURCE type's attr namespace. The target's display name lives under the
-    # TARGET type's namespace (e.g. …/types/Level/attrs/name), so binding the
-    # source type's attr predicate would match ZERO targets (the COG-112 bug).
-    assert "?sv ?slp ?stl ." in q
-    assert 'isLiteral(?stl) && LCASE(STR(?stl)) = "manager"' in q
-    # The relationship arm must NOT bind the TARGET-label predicate to ANY fixed
-    # IRI(s) — the bug was pinning it to the SOURCE type's attr namespace
-    # (…/types/Mentor/attrs/*) / rdfs:label, which matched the TARGET node under
-    # the wrong namespace → zero matches. The target-label predicate is now the
-    # free variable ?slp, never a `?sv <…> ?stl` bound predicate. (The OUTER
-    # query still references …/attrs/name etc. for ENTITY-label hydration — that
-    # is the ?fp OPTIONAL, unrelated to the scope arm — so we assert on the
-    # `?sv <pred>` shape rather than substring-absence in the whole query.)
-    assert "?sv <http://www.w3.org/2000/01/rdf-schema#label>" not in q
-    assert "?sv <https://graph.infona.ai/types/Mentor/attrs/name>" not in q
-    assert "?sv (<" not in q  # no property-path alternation pinned on the target
-    # IRI local-name fallback for the relationship target.
-    assert 'isIRI(?sv)' in q
 
 
-def test_build_select_query_scope_unresolved_predicate_matches_nothing():
-    """An unresolved scope predicate (no concrete IRIs) emits a fast
-    ``FILTER(false)`` rather than the old unbounded per-entity predicate scan
-    (COG-112 fix #3)."""
-    scope = EnrichScope(predicate="haslevel", value="Manager")
-    q = _build_select_query(
-        "https://g/x", "Mentor", ["bio"], None, scope=scope, scope_pred_iris=[]
-    )
-    assert "FILTER(false)" in q
-    # No predicate scan, no concrete-IRI EXISTS machinery.
-    assert "FILTER EXISTS" not in q
-    assert 'REPLACE(STR(?p)' not in q
 
 
-def test_build_select_query_scope_escapes_value():
-    """Quotes/backslashes in the scope value are escaped into the SPARQL literal."""
-    scope = EnrichScope(predicate="title", value='Sr "Eng"')
-    pred_iris = ["https://graph.infona.ai/types/Mentor/attrs/title"]
-    q = _build_select_query(
-        "https://g/x", "Mentor", ["bio"], None, scope=scope, scope_pred_iris=pred_iris
-    )
-    # The injected value is lower-cased AND quote-escaped.
-    assert 'sr \\"eng\\"' in q
 
 
-def test_build_select_query_scope_single_iri_no_alternation():
-    """A single resolved IRI is emitted as a bare bound predicate (no parens),
-    not an alternation — still POS-indexed, never a variable predicate."""
-    scope = EnrichScope(predicate="title", value="Director")
-    pred_iris = ["https://graph.infona.ai/types/Mentor/attrs/title"]
-    q = _build_select_query(
-        "https://g/x", "Mentor", ["bio"], None, scope=scope, scope_pred_iris=pred_iris
-    )
-    assert "?e <https://graph.infona.ai/types/Mentor/attrs/title> ?sv ." in q
-    assert "?e ?p ?sv" not in q
 
 
-def test_build_select_query_literal_attribute_scope_matches_rdfs_label():
-    """COG-112: a literal-attribute (name) scope's SELECT must ALSO carry an
-    ``rdfs:label`` arm so an entity whose displayed name lives only on
-    ``rdfs:label`` (not as an ``attrs/name`` literal) is still selected — without
-    regressing the bound-predicate attrs/<attr> literal arm."""
-    scope = EnrichScope(predicate="name", value="Jane Doe")
-    pred_iris = [
-        "https://graph.infona.ai/types/Mentor/attrs/name",
-        "https://graph.infona.ai/onto/name",
-    ]
-    q = _build_select_query(
-        "https://g/x", "Mentor", ["bio"], None, scope=scope, scope_pred_iris=pred_iris
-    )
-    # attrs/<attr> literal arm (bound predicate, case-insensitive).
-    assert (
-        "?e (<https://graph.infona.ai/types/Mentor/attrs/name>|"
-        "<https://graph.infona.ai/onto/name>) ?sv ." in q
-    )
-    assert 'isLiteral(?sv) && LCASE(STR(?sv)) = "jane doe"' in q
-    # Displayed-name arm: the entity's rdfs:label matched directly.
-    assert "?e <http://www.w3.org/2000/01/rdf-schema#label> ?lbl ." in q
-    assert 'isLiteral(?lbl) && LCASE(STR(?lbl)) = "jane doe"' in q
-    # No unbounded scan or EXISTS machinery snuck in.
-    assert "FILTER EXISTS" not in q
-    assert "?e ?p ?sv" not in q
 
 
-def test_build_select_query_entity_uris_uses_values_block():
-    """entity_uris → a VALUES ?e block; still constrained to the type."""
-    uris = [
-        "https://graph.infona.ai/entities/Mentor/m1",
-        "https://graph.infona.ai/entities/Mentor/m2",
-    ]
-    q = _build_select_query("https://g/x", "Mentor", ["bio"], None, entity_uris=uris)
-    assert _MENTOR_TYPED in q  # subclass-aware, reflexive type guard (Fix B)
-    assert "VALUES ?e {" in q
-    assert "<https://graph.infona.ai/entities/Mentor/m1>" in q
-    assert "<https://graph.infona.ai/entities/Mentor/m2>" in q
-    # No scope EXISTS machinery when using the explicit-URI primitive.
-    assert "FILTER EXISTS" not in q
-
-
-def test_build_select_query_entity_uris_wins_over_scope():
-    """If both are passed, entity_uris is used (the documented precedence)."""
-    uris = ["https://graph.infona.ai/entities/Mentor/m1"]
-    scope = EnrichScope(predicate="haslevel", value="Manager")
-    q = _build_select_query(
-        "https://g/x", "Mentor", ["bio"], None, scope=scope, entity_uris=uris
-    )
-    assert "VALUES ?e {" in q
-    assert "<https://graph.infona.ai/entities/Mentor/m1>" in q
-    # The scope constraint must NOT appear when entity_uris wins.
-    assert "FILTER EXISTS" not in q
-    assert "<https://graph.infona.ai/onto/haslevel>" not in q
-
-
-def test_scope_block_is_pure_helper():
-    """_scope_block builds INLINE join patterns (no FILTER EXISTS wrapper)
-    independent of the SELECT wrapper, using the concrete predicate IRI(s) it is
-    handed. The first pattern is the bound-predicate triple so the planner can
-    drive from it (COG-112 fix #4)."""
-    block = _scope_block(
-        "Mentor",
-        EnrichScope(predicate="haslevel", value="Manager"),
-        ["https://graph.infona.ai/onto/haslevel"],
-    )
-    # No EXISTS wrapper — the patterns are inlined directly into the WHERE.
-    assert "FILTER EXISTS" not in block
-    # The patterns are a top-level UNION (predicate-bound arms | rdfs:label arm).
-    assert block.lstrip().startswith("{")
-    # The FIRST triple is the selective bound-predicate triple (the predicate-bound
-    # branch leads, so the planner still drives from it — POS-indexed).
-    first_branch = block.split("} UNION {")[0]
-    assert first_branch.lstrip(" {\n").startswith(
-        "?e <https://graph.infona.ai/onto/haslevel> ?sv ."
-    )
-    # Predicate matched by a BOUND property path (single IRI → bare term) — no
-    # variable predicate, no scan.
-    assert "?e <https://graph.infona.ai/onto/haslevel> ?sv ." in block
-    assert "FILTER(?p IN (" not in block
-    assert "?e ?p ?sv" not in block
-    assert "REPLACE(STR(?p)" not in block
-
-
-def test_scope_block_multiple_iris_emit_alternation():
-    """Multiple resolved IRIs are matched as a property-path alternation
-    ``(<a>|<b>)`` with the predicate BOUND — POS-indexed, never a scan."""
-    block = _scope_block(
-        "Mentor",
-        EnrichScope(predicate="haslevel", value="Manager"),
-        [
-            "https://graph.infona.ai/types/Mentor/attrs/haslevel",
-            "https://graph.infona.ai/onto/haslevel",
-        ],
-    )
-    assert (
-        "?e (<https://graph.infona.ai/types/Mentor/attrs/haslevel>|"
-        "<https://graph.infona.ai/onto/haslevel>) ?sv ." in block
-    )
-    assert "FILTER(?p IN (" not in block
-    assert "?e ?p ?sv" not in block
-
-
-def test_scope_block_empty_pred_iris_matches_nothing():
-    """No concrete IRIs → FILTER(false) (fast matched-0), not an unbounded scan."""
-    block = _scope_block("Mentor", EnrichScope(predicate="haslevel", value="x"), [])
-    assert block.strip() == "FILTER(false)"
-
-
-def test_scope_block_literal_attribute_also_matches_rdfs_label():
-    """COG-112 literal-attribute bug: the value the user SEES in the Explorer is the
-    entity's ``rdfs:label`` (set at ingest), which may exist WITHOUT a matching
-    ``…/attrs/<attr>`` literal. A name/title scope must therefore ALSO match
-    ``rdfs:label`` directly — as an INDEPENDENT branch (not gated on the predicate
-    triple binding) — so the entity is selected even when it carries that name only
-    as ``rdfs:label``. Previously the literal arm matched the ``attrs/name`` triple
-    only, so such an entity matched 0."""
-    block = _scope_block(
-        "Mentor",
-        EnrichScope(predicate="name", value="Irina Igoshkina"),
-        [
-            "https://graph.infona.ai/types/Mentor/attrs/name",
-            "https://graph.infona.ai/onto/name",
-        ],
-    )
-    # The attrs/<attr> literal arm is preserved (case-insensitive, lower-cased).
-    assert 'isLiteral(?sv) && LCASE(STR(?sv)) = "irina igoshkina"' in block
-    # The displayed-name arm matches the entity's rdfs:label directly — a SEPARATE
-    # `?e <rdfs:label> ?lbl` triple, NOT a property on the predicate's object ?sv
-    # (so it binds even when `?e <attrs/name> ?sv` matches nothing).
-    assert "?e <http://www.w3.org/2000/01/rdf-schema#label> ?lbl ." in block
-    assert 'isLiteral(?lbl) && LCASE(STR(?lbl)) = "irina igoshkina"' in block
-    # The label arm is reached via a top-level UNION (its own branch), so it does
-    # not require the bound-predicate triple to have produced a binding.
-    assert "} UNION {" in block
-
-
-def test_scope_subselect_dedups_and_caps():
-    """The scoped subset is reduced by a bounded ``SELECT DISTINCT ?e`` sub-select
-    that (a) types + scopes ?e with the inline patterns, (b) DISTINCT-dedups so a
-    multi-arm UNION match can't multiply ?e rows, and (c) applies the LIMIT INSIDE
-    the sub-select so it caps the SELECTED entities — never a FILTER EXISTS
-    (COG-112 fix #4)."""
-    scope = EnrichScope(predicate="haslevel", value="Manager")
-    pred_iris = [
-        "https://graph.infona.ai/types/Mentor/attrs/haslevel",
-        "https://graph.infona.ai/onto/haslevel",
-    ]
-    sub = _scope_subselect("Mentor", scope, pred_iris, limit=50)
-    # De-dup: a DISTINCT sub-select on ?e.
-    assert "SELECT DISTINCT ?e WHERE {" in sub
-    # Typed inside the sub-select — subclass-aware, reflexive constraint (Fix B).
-    assert _MENTOR_TYPED in sub
-    # Inline bound-predicate scope triple — no EXISTS wrapper.
-    assert "FILTER EXISTS" not in sub
-    assert (
-        "?e (<https://graph.infona.ai/types/Mentor/attrs/haslevel>|"
-        "<https://graph.infona.ai/onto/haslevel>) ?sv ." in sub
-    )
-    # LIMIT is INSIDE the sub-select (caps the selected entities).
-    assert "LIMIT 50" in sub
-    # Without a limit, no LIMIT is emitted (count path reuses this).
-    sub_no_limit = _scope_subselect("Mentor", scope, pred_iris)
-    assert "SELECT DISTINCT ?e WHERE {" in sub_no_limit
-    assert "LIMIT" not in sub_no_limit
-
-
-def test_build_select_query_scope_limit_caps_inside_subselect():
-    """For a scoped SELECT the LIMIT lives INSIDE the DISTINCT sub-select (so it
-    caps the SELECTED entities before the attribute OPTIONALs hydrate them), not
-    as a top-level LIMIT on the GROUP BY (which would cap post-hydration rows)."""
-    scope = EnrichScope(predicate="haslevel", value="Manager")
-    pred_iris = ["https://graph.infona.ai/types/Mentor/attrs/haslevel"]
-    q = _build_select_query(
-        "https://g/x", "Mentor", ["bio"], 25, scope=scope, scope_pred_iris=pred_iris
-    )
-    # LIMIT appears within the sub-select, before the attribute OPTIONALs.
-    sub_end = q.index("OPTIONAL")
-    assert "LIMIT 25" in q[:sub_end]
-    # The GROUP BY tail must NOT carry a second top-level LIMIT. (Grouping is
-    # by ?e alone — label/name-ish vars are SAMPLE/COALESCE aggregates so an
-    # entity with several name-ish values can't fan out into duplicate rows.)
-    assert q.rstrip().endswith("GROUP BY ?e")
-
-
-def test_resolve_pred_iris_from_bindings_case_insensitive():
-    """A request predicate resolves (case-insensitively) against the type's
-    ontology-declared predicates to BOTH candidate instance IRIs; an unknown
-    predicate resolves to []."""
-    bindings = [
-        {"attr": "https://graph.infona.ai/types/Mentor/attrs/haslevel", "label": "haslevel"},
-        {"attr": "https://graph.infona.ai/types/Mentor/attrs/title", "label": "title"},
-    ]
-    # Mixed-case request matches the stored `haslevel` leaf/label.
-    iris = _resolve_pred_iris_from_bindings("Mentor", "hasLevel", bindings)
-    assert iris == [
-        "https://graph.infona.ai/types/Mentor/attrs/haslevel",
-        "https://graph.infona.ai/onto/haslevel",
-    ]
-    # Resolving by the declared label also works.
-    assert _resolve_pred_iris_from_bindings("Mentor", "TITLE", bindings) == [
-        "https://graph.infona.ai/types/Mentor/attrs/title",
-        "https://graph.infona.ai/onto/title",
-    ]
-    # Unknown predicate → no IRIs (caller treats as matched 0, no scan).
-    assert _resolve_pred_iris_from_bindings("Mentor", "nope", bindings) == []
 
 
 # ---------------------------------------------------------------------------
@@ -959,18 +663,6 @@ def test_enrich_request_rejects_injecting_entity_uri():
     assert ok.entity_uris == ["https://graph.infona.ai/entities/Mentor/m1"]
 
 
-def test_build_select_query_rejects_injecting_entity_uri_at_executor():
-    """Defense in depth: even if a bad URI reaches the builder (bypassing the
-    request model), it raises rather than emitting an injectable VALUES term."""
-    with pytest.raises(ValueError):
-        _build_select_query(
-            "https://g/x",
-            "Mentor",
-            ["bio"],
-            None,
-            entity_uris=["https://evil> } INSERT { ?s ?p ?o }"],
-        )
-
 
 # ---------------------------------------------------------------------------
 # Executor end-to-end
@@ -998,7 +690,7 @@ def test_executor_prefers_name_attribute_over_slug_label():
         # (prod regression: 15/18, the 3 relaxation-dependent items unfindable).
         rows = [
             {
-                "uri": "https://graph.infona.ai/entities/Item/Roma_tomatoes",
+                "uri": "https://graph.infona.ai/entities/Product/Roma_tomatoes",
                 "label": "Roma_tomatoes",          # rdfs:label = entity-id slug
                 "nameAttr": "Roma tomatoes",       # attrs/name = human name
                 "vals": "",
@@ -1007,15 +699,12 @@ def test_executor_prefers_name_attribute_over_slug_label():
             # name-ish fallback (title/headline are job titles/headlines on
             # many types, not names).
             {
-                "uri": "https://graph.infona.ai/entities/Person/p1",
+                "uri": "https://graph.infona.ai/entities/Product/p1",
                 "label": "Jane Smith",             # real human label
-                "nameAttr": "VP of Sales",         # attrs/title — not a name
-                "vals": "",
+                "vals": "https://graph.infona.ai/types/Product/attrs/title::VP of Sales",
             },
         ]
-        neptune = AsyncMock()
-        neptune.query.return_value = _entities_query_response(rows)
-        neptune.update.return_value = None
+        neptune = await _prep_neptune(rows)
 
         store = InMemoryJobStore()
         wikidata = FakeWikidata({
@@ -1057,9 +746,7 @@ def test_executor_end_to_end_filled_verified_conflict():
             },
         ]
 
-        neptune = AsyncMock()
-        neptune.query.return_value = _entities_query_response(rows)
-        neptune.update.return_value = None
+        neptune = await _prep_neptune(rows)
 
         store = InMemoryJobStore()
         cache = EnrichmentCache()
@@ -1106,13 +793,12 @@ def test_executor_end_to_end_filled_verified_conflict():
         )
         # The conflicting entity (p3) is untouched — its incumbent value is not
         # overwritten and the proposal is not written either.
-        assert "manufacturer" not in _props(
-            "https://graph.infona.ai/entities/Product/p3"
+        assert _props("https://graph.infona.ai/entities/Product/p3")["manufacturer"] == (
+            "Acme Tools"
         )
-        assert _stored_values("manufacturer") == {"Robert Bosch GmbH"}
-        # The verified entity (p2) keeps its value: nothing new was written for it.
-        assert "manufacturer" not in _props(
-            "https://graph.infona.ai/entities/Product/p2"
+        # The verified entity (p2) keeps its incumbent value.
+        assert _props("https://graph.infona.ai/entities/Product/p2")["manufacturer"] == (
+            "Bosch"
         )
         # None of this went out as SPARQL.
         writes = " ".join(
@@ -1128,9 +814,7 @@ def test_executor_overwrite_writes_triples():
         rows = [
             {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Bosch", "vals": ""},
         ]
-        neptune = AsyncMock()
-        neptune.query.return_value = _entities_query_response(rows)
-        neptune.update.return_value = None
+        neptune = await _prep_neptune(rows)
 
         store = InMemoryJobStore()
         cache = EnrichmentCache()
@@ -1164,8 +848,7 @@ def test_executor_cache_hit_increment():
             {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Bosch", "vals": ""},
             {"uri": "https://graph.infona.ai/entities/Product/p2", "label": "Bosch", "vals": ""},
         ]
-        neptune = AsyncMock()
-        neptune.query.return_value = _entities_query_response(rows)
+        neptune = await _prep_neptune(rows)
 
         store = InMemoryJobStore()
         cache = EnrichmentCache()
@@ -1194,8 +877,7 @@ def test_executor_no_match_when_no_verdict():
         rows = [
             {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Unknown", "vals": ""},
         ]
-        neptune = AsyncMock()
-        neptune.query.return_value = _entities_query_response(rows)
+        neptune = await _prep_neptune(rows)
         store = InMemoryJobStore()
         cache = EnrichmentCache()
         wikidata = FakeWikidata({})
@@ -1238,8 +920,7 @@ def test_executor_apply_routes_through_shared_writer(monkeypatch):
         rows = [
             {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Bosch", "vals": ""},
         ]
-        neptune = AsyncMock()
-        neptune.query.return_value = _entities_query_response(rows)
+        neptune = await _prep_neptune(rows)
         store = InMemoryJobStore()
         wikidata = FakeWikidata(
             {("Bosch", "manufacturer"): [Verdict(value="Robert Bosch GmbH", confidence=0.95, source="wikidata")]}
@@ -1268,8 +949,7 @@ def test_executor_stage_with_no_results_completes_applied():
         ]
 
         # No verdicts → no_match for every row → nothing staged.
-        neptune = AsyncMock()
-        neptune.query.return_value = _entities_query_response(rows)
+        neptune = await _prep_neptune(rows)
         store = InMemoryJobStore()
         empty_job = _make_job(policy=ConflictPolicy.stage)
         await store.create(empty_job)
@@ -1281,8 +961,7 @@ def test_executor_stage_with_no_results_completes_applied():
         assert done_empty.results == []
 
         # A confident verdict into an EMPTY field → conflict-free fill → APPLIED.
-        neptune2 = AsyncMock()
-        neptune2.query.return_value = _entities_query_response(rows)
+        neptune2 = await _prep_neptune(rows)
         neptune2.update.return_value = None
         store2 = InMemoryJobStore()
         fill_job = _make_job(attributes=["manufacturer"], policy=ConflictPolicy.stage)
@@ -1305,7 +984,7 @@ def test_executor_stage_with_no_results_completes_applied():
              "vals": f"{mfr_pred}::Acme Tools"},
         ]
         neptune3 = AsyncMock()
-        neptune3.query.return_value = _entities_query_response(rows3)
+        neptune3 = await _prep_neptune(rows3)
         neptune3.update.return_value = None
         store3 = InMemoryJobStore()
         conflict_job = _make_job(attributes=["manufacturer"], policy=ConflictPolicy.stage)
@@ -1337,9 +1016,7 @@ def test_executor_no_match_is_counted_and_excluded_from_results():
             {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "ZZZNOPE", "vals": ""},
             {"uri": "https://graph.infona.ai/entities/Product/p2", "label": "QQQNADA", "vals": ""},
         ]
-        neptune = AsyncMock()
-        neptune.query.return_value = _entities_query_response(rows)
-        neptune.update.return_value = None
+        neptune = await _prep_neptune(rows)
 
         store = InMemoryJobStore()
         cache = EnrichmentCache()
@@ -1367,9 +1044,11 @@ def test_executor_no_match_is_counted_and_excluded_from_results():
         # no_match rows carry no verdict → they are dropped from results entirely.
         assert final.results == []
         assert all(r.action != "no_match" for r in final.results)
-        # Nothing written anywhere for a stage policy that found nothing —
-        # neither into the graph store nor as SPARQL.
-        assert _graph_store().snapshot_entities() == []
+        # Nothing new written: seeded entities stay, no manufacturer fill.
+        assert all(
+            "manufacturer" not in (row.get("props") or {})
+            for row in _graph_store().snapshot_entities()
+        )
         neptune.update.assert_not_called()
 
     asyncio.run(run())
@@ -1421,9 +1100,7 @@ def test_executor_hung_adapter_does_not_strand_job(monkeypatch):
             {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Acme", "vals": ""},
             {"uri": "https://graph.infona.ai/entities/Product/p2", "label": "Globex", "vals": ""},
         ]
-        neptune = AsyncMock()
-        neptune.query.return_value = _entities_query_response(rows)
-        neptune.update.return_value = None
+        neptune = await _prep_neptune(rows)
 
         store = InMemoryJobStore()
         cache = EnrichmentCache()
@@ -1443,8 +1120,11 @@ def test_executor_hung_adapter_does_not_strand_job(monkeypatch):
         assert final.status == JobStatus.applied
         # The adapter was actually invoked (and timed out) for each entity.
         assert hang.calls == 2
-        # Nothing usable came back, so nothing was written.
-        assert _graph_store().snapshot_entities() == []
+        # Nothing usable came back, so nothing new was written.
+        assert all(
+            "manufacturer" not in (row.get("props") or {})
+            for row in _graph_store().snapshot_entities()
+        )
         neptune.update.assert_not_called()
 
     asyncio.run(run())
@@ -1459,9 +1139,7 @@ def test_executor_completes_with_fast_adapter_under_wait_for():
         rows = [
             {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Bosch", "vals": ""},
         ]
-        neptune = AsyncMock()
-        neptune.query.return_value = _entities_query_response(rows)
-        neptune.update.return_value = None
+        neptune = await _prep_neptune(rows)
 
         store = InMemoryJobStore()
         cache = EnrichmentCache()
@@ -1506,14 +1184,11 @@ class _NamedAdapter:
         return [Verdict(value=self._value, confidence=0.95, source=self.name)]
 
 
-def _single_product_neptune():
+async def _single_product_neptune():
     rows = [
         {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Bosch", "vals": ""},
     ]
-    neptune = AsyncMock()
-    neptune.query.return_value = _entities_query_response(rows)
-    neptune.update.return_value = None
-    return neptune
+    return await _prep_neptune(rows)
 
 
 def test_executor_sources_override_uses_named_chain():
@@ -1524,7 +1199,7 @@ def test_executor_sources_override_uses_named_chain():
     async def run():
         from infona_client.enrichment.sources.base import register_adapter
 
-        neptune = _single_product_neptune()
+        neptune = await _single_product_neptune()
         store = InMemoryJobStore()
         cache = EnrichmentCache()
         wikidata = FakeWikidata({})  # tier default would call this; it must NOT
@@ -1553,7 +1228,7 @@ def test_executor_sources_empty_falls_back_to_tier_chain():
     (wikidata), so omitting/clearing the override changes nothing."""
 
     async def run():
-        neptune = _single_product_neptune()
+        neptune = await _single_product_neptune()
         store = InMemoryJobStore()
         cache = EnrichmentCache()
         wikidata = FakeWikidata(
@@ -1585,7 +1260,7 @@ def test_executor_sources_unknown_provider_falls_back_to_tier_chain():
     the default (wikidata) adapter is still consulted."""
 
     async def run():
-        neptune = _single_product_neptune()
+        neptune = await _single_product_neptune()
         store = InMemoryJobStore()
         cache = EnrichmentCache()
         wikidata = FakeWikidata(
@@ -1622,7 +1297,7 @@ def test_executor_instructions_flow_into_lookup_context():
         from infona_client.enrichment.sources.base import register_adapter
 
         # With instructions.
-        neptune = _single_product_neptune()
+        neptune = await _single_product_neptune()
         store = InMemoryJobStore()
         cache = EnrichmentCache()
         executor = EnrichmentExecutor(neptune, store, cache, FakeWikidata({}))
@@ -1649,7 +1324,7 @@ def test_executor_instructions_flow_into_lookup_context():
         # Without instructions → context carries entity_type + tenant_id (no
         # instructions key). The call shape is unchanged aside from the always-on
         # entity_type + tenant_id contract.
-        neptune2 = _single_product_neptune()
+        neptune2 = await _single_product_neptune()
         store2 = InMemoryJobStore()
         executor2 = EnrichmentExecutor(
             neptune2, store2, EnrichmentCache(), FakeWikidata({})
@@ -1682,7 +1357,7 @@ def test_executor_instructions_vary_cache_key():
         register_adapter(adapter)
 
         async def run_job(instructions):
-            neptune = _single_product_neptune()
+            neptune = await _single_product_neptune()
             executor = EnrichmentExecutor(neptune, store, cache, FakeWikidata({}))
             job = _make_job(policy=ConflictPolicy.stage)
             job.id = f"job-{instructions or 'none'}"
@@ -1720,90 +1395,37 @@ def test_strategy_version_with_instructions_helper():
 
 
 # ---------------------------------------------------------------------------
-# COG-112 scoped enrichment: executor end-to-end
+# COG-112 scoped enrichment: GraphStore entity select
 # ---------------------------------------------------------------------------
 
 
-def _ontology_predicates_response(predicates: list[dict]) -> dict:
-    """Build a SPARQL response for the scope-predicate-resolution SELECT
-    (``?attr a rdf:Property ; rdfs:domain <type> ; rdfs:label ?label``).
-
-    predicates: list of {"attr": <onto attr URI>, "label": <display label>}.
-    """
-    bindings = []
-    for p in predicates:
-        bindings.append(
-            {
-                "attr": {"type": "uri", "value": p["attr"]},
-                "label": {"type": "literal", "value": p.get("label", "")},
-            }
-        )
-    return {"head": {"vars": ["attr", "label"]}, "results": {"bindings": bindings}}
-
-
-# Default ontology predicate declarations for the Mentor type used in the scope
-# tests: a `haslevel` relationship and `title` literal attribute, plus the
-# `name` display attribute. Keyed by ontology attr URI + its label.
-_MENTOR_ONTO_PREDS = [
-    {"attr": "https://graph.infona.ai/types/Mentor/attrs/haslevel", "label": "haslevel"},
-    {"attr": "https://graph.infona.ai/types/Mentor/attrs/title", "label": "title"},
-    {"attr": "https://graph.infona.ai/types/Mentor/attrs/name", "label": "name"},
-]
-
-
-def _capturing_neptune(scoped_rows: list[dict], onto_preds: list[dict] | None = None):
-    """An AsyncMock Neptune whose entity-SELECT returns ``scoped_rows`` and that
-    records the SELECT SPARQL it was asked.
-
-    Two queries run over the tenant ontology graph (no ``/kg/`` segment): the
-    scope-predicate resolution (``rdfs:domain`` + ``rdf:Property``) and the
-    strategy load (``onto/matchKey`` etc.). The resolution returns
-    ``onto_preds`` (default: the Mentor predicate set) so a scope predicate
-    resolves to a concrete IRI; the strategy load returns empty (no strategy)."""
-    neptune = AsyncMock()
-    captured: dict[str, str] = {}
-    preds = _MENTOR_ONTO_PREDS if onto_preds is None else onto_preds
-
-    async def query(sparql, *args, **kwargs):
-        # Tenant ontology graph (no /kg/ segment): either resolution or strategy.
-        if "/graphs/test-tenant>" in sparql and "/kg/" not in sparql:
-            # Scope-predicate resolution: domain + rdf:Property shape.
-            if "#domain>" in sparql and "#Property>" in sparql:
-                return _ontology_predicates_response(preds)
-            # Strategy load: empty so no strategy is applied.
-            return _strategy_query_response([])
-        captured["select"] = sparql
-        return _entities_query_response(scoped_rows)
-
-    neptune.query.side_effect = query
-    neptune.update.return_value = None
-    return neptune, captured
+HASLEVEL = "https://graph.infona.ai/types/Mentor/attrs/haslevel"
+TITLE = "https://graph.infona.ai/types/Mentor/attrs/title"
+NAME = "https://graph.infona.ai/types/Mentor/attrs/name"
 
 
 def test_executor_scope_relationship_selects_only_scoped_entities():
-    """Acceptance shape (COG-112): a scope on `haslevel`=Manager over Mentor must
-    (a) put the scope constraint into the entity-selection SPARQL and (b) only
-    enrich/count the entities the (mocked) Neptune returns for that scope — not
-    the whole type. progress.total reflects the scoped matched count."""
+    """A scope on haslevel=Manager only enriches matching Mentors."""
     async def run():
-        # Mocked Neptune returns ONLY the two Manager-level mentors for the
-        # scoped SELECT (as a real Neptune would, given the constraint).
-        scoped_rows = [
-            {"uri": "https://graph.infona.ai/entities/Mentor/m1", "label": "Ada", "vals": ""},
-            {"uri": "https://graph.infona.ai/entities/Mentor/m2", "label": "Grace", "vals": ""},
+        rows = [
+            {"uri": "https://graph.infona.ai/entities/Mentor/m1", "label": "Ada",
+             "vals": f"{HASLEVEL}::Manager"},
+            {"uri": "https://graph.infona.ai/entities/Mentor/m2", "label": "Grace",
+             "vals": f"{HASLEVEL}::Manager"},
+            {"uri": "https://graph.infona.ai/entities/Mentor/m3", "label": "Linus",
+             "vals": f"{HASLEVEL}::IC"},
         ]
-        neptune, captured = _capturing_neptune(scoped_rows)
-
+        neptune = await _prep_neptune(rows, type_name="Mentor")
         store = InMemoryJobStore()
         cache = EnrichmentCache()
         wikidata = FakeWikidata(
             {
                 ("Ada", "bio"): [Verdict(value="Ada bio", confidence=0.95, source="wikidata")],
                 ("Grace", "bio"): [Verdict(value="Grace bio", confidence=0.95, source="wikidata")],
+                ("Linus", "bio"): [Verdict(value="Linus bio", confidence=0.95, source="wikidata")],
             }
         )
         executor = EnrichmentExecutor(neptune, store, cache, wikidata)
-
         job = _make_job(
             type_name="Mentor",
             attributes=["bio"],
@@ -1811,82 +1433,37 @@ def test_executor_scope_relationship_selects_only_scoped_entities():
         )
         await store.create(job)
         await executor.run(job, "test-tenant")
-
-        # (a) The scope constraint is present in the entity-selection SPARQL,
-        # inlined in a bounded DISTINCT sub-select (NOT a FILTER EXISTS — the
-        # third COG-112 perf bug) and matched via a BOUND-predicate property path
-        # — no variable predicate + FILTER, no unbounded ?e ?p ?sv scan.
-        sel = captured["select"]
-        assert "FILTER EXISTS" not in sel
-        assert "SELECT DISTINCT ?e WHERE {" in sel
-        assert (
-            "?e (<https://graph.infona.ai/types/Mentor/attrs/haslevel>|"
-            "<https://graph.infona.ai/onto/haslevel>) ?sv ." in sel
-        )
-        assert "?e ?p ?sv" not in sel
-        assert "REPLACE(STR(?p)" not in sel
-        # Relationship arm matches ANY literal property of the bounded target node
-        # (?sv ?slp ?stl), NOT a label predicate pinned to the SOURCE type's attr
-        # namespace — the target's name lives under the TARGET type's namespace
-        # (e.g. …/types/Level/attrs/name), so pinning Mentor's would match 0.
-        assert "?sv ?slp ?stl ." in sel
-        assert 'isLiteral(?stl) && LCASE(STR(?stl)) = "manager"' in sel
-        # The target-label predicate is the free variable ?slp, never bound to the
-        # SOURCE type's attr namespace (the bug). (…/attrs/name still appears in
-        # the OUTER ?fp entity-label OPTIONAL — unrelated — so assert on shape.)
-        assert "?sv <https://graph.infona.ai/types/Mentor/attrs/name>" not in sel
-        assert "?sv (<" not in sel
-
-        # (b) Only the two scoped entities were processed (not all Mentors).
         final = await store.get(job.id)
         assert final is not None
-        assert final.progress.total == 2  # 2 entities × 1 attribute
+        assert final.progress.total == 2
         assert final.progress.processed == 2
         assert final.progress.filled == 2
-        # Each scoped entity was looked up exactly once for "bio".
         assert sorted(lbl for lbl, _ in wikidata.calls) == ["Ada", "Grace"]
 
     asyncio.run(run())
 
 
 def test_executor_scope_predicate_casing_matches_via_lcase():
-    """A mixed-case request predicate (`hasLevel`) selects entities stored under
-    a `haslevel` local-name: the generated SELECT LCASEs the predicate
-    local-name and compares to the lower-cased request value (#2)."""
+    """A mixed-case request predicate (`hasLevel`) matches stored `haslevel`."""
     async def run():
-        scoped_rows = [
-            {"uri": "https://graph.infona.ai/entities/Mentor/m1", "label": "Ada", "vals": ""},
+        rows = [
+            {"uri": "https://graph.infona.ai/entities/Mentor/m1", "label": "Ada",
+             "vals": f"{HASLEVEL}::Manager"},
         ]
-        neptune, captured = _capturing_neptune(scoped_rows)
+        neptune = await _prep_neptune(rows, type_name="Mentor")
         store = InMemoryJobStore()
         cache = EnrichmentCache()
         wikidata = FakeWikidata(
             {("Ada", "bio"): [Verdict(value="Ada bio", confidence=0.95, source="wikidata")]}
         )
         executor = EnrichmentExecutor(neptune, store, cache, wikidata)
-
         job = _make_job(
             type_name="Mentor",
             attributes=["bio"],
-            # Request uses mixed case; storage local-name is `haslevel`.
             scope=EnrichScope(predicate="hasLevel", value="Manager"),
         )
         await store.create(job)
         await executor.run(job, "test-tenant")
-
-        sel = captured["select"]
-        # The mixed-case `hasLevel` request resolves (case-insensitively) to the
-        # stored `haslevel` predicate's concrete IRI(s), matched as a bound
-        # property path; the mixed-case form never leaks verbatim and there is no
-        # variable-predicate scan.
-        assert (
-            "?e (<https://graph.infona.ai/types/Mentor/attrs/haslevel>|"
-            "<https://graph.infona.ai/onto/haslevel>) ?sv ." in sel
-        )
-        assert "?e ?p ?sv" not in sel
-        assert "hasLevel" not in sel
-        assert "REPLACE(STR(?p)" not in sel
-
         final = await store.get(job.id)
         assert final.progress.total == 1
         assert final.progress.processed == 1
@@ -1895,32 +1472,19 @@ def test_executor_scope_predicate_casing_matches_via_lcase():
 
 
 def test_executor_scope_relationship_not_in_ontology_attrs_still_matches():
-    """COG-112 root-cause fix: a RELATIONSHIP-style predicate (`haslevel`) that is
-    NOT declared as an ontology ATTRIBUTE (`rdf:Property ; rdfs:domain <Type> ;
-    rdfs:label`) — because relationships live under `…/onto/<pred>`, not the
-    attr namespace — must STILL resolve to candidate instance IRIs via the direct
-    build, so the SELECT carries the bound-predicate property path (NOT
-    FILTER(false)). Previously the ontology-only resolver returned [] for
-    relationships → FILTER(false) → matched 0 (the bug)."""
+    """A relationship leaf not declared as an attribute still scopes via props."""
     async def run():
-        scoped_rows = [
-            {"uri": "https://graph.infona.ai/entities/Mentor/m1", "label": "Ada", "vals": ""},
+        rows = [
+            {"uri": "https://graph.infona.ai/entities/Mentor/m1", "label": "Ada",
+             "vals": f"{HASLEVEL}::Manager"},
         ]
-        # Ontology declares only `title`/`name` as attributes — `haslevel`
-        # (the relationship) is absent from the attribute bindings, exactly like
-        # the live adp-mentors data.
-        onto_preds = [
-            {"attr": "https://graph.infona.ai/types/Mentor/attrs/title", "label": "title"},
-            {"attr": "https://graph.infona.ai/types/Mentor/attrs/name", "label": "name"},
-        ]
-        neptune, captured = _capturing_neptune(scoped_rows, onto_preds=onto_preds)
+        neptune = await _prep_neptune(rows, type_name="Mentor")
         store = InMemoryJobStore()
         cache = EnrichmentCache()
         wikidata = FakeWikidata(
             {("Ada", "bio"): [Verdict(value="Ada bio", confidence=0.95, source="wikidata")]}
         )
         executor = EnrichmentExecutor(neptune, store, cache, wikidata)
-
         job = _make_job(
             type_name="Mentor",
             attributes=["bio"],
@@ -1928,19 +1492,6 @@ def test_executor_scope_relationship_not_in_ontology_attrs_still_matches():
         )
         await store.create(job)
         await executor.run(job, "test-tenant")
-
-        sel = captured["select"]
-        # The direct build means `…/onto/haslevel` is ALWAYS a candidate, so the
-        # bound-predicate property path is emitted (NOT FILTER(false)).
-        assert "FILTER(false)" not in sel
-        assert (
-            "?e (<https://graph.infona.ai/types/Mentor/attrs/haslevel>|"
-            "<https://graph.infona.ai/onto/haslevel>) ?sv ." in sel
-        )
-        # No unbounded scan, no FILTER EXISTS machinery.
-        assert "FILTER EXISTS" not in sel
-        assert "REPLACE(STR(?p)" not in sel
-        # The scoped entity was actually processed (not matched-0).
         final = await store.get(job.id)
         assert final is not None
         assert final.progress.total == 1
@@ -1950,36 +1501,26 @@ def test_executor_scope_relationship_not_in_ontology_attrs_still_matches():
 
 
 def test_resolve_scope_predicate_iris_unions_direct_build_for_relationships():
-    """COG-112 root-cause unit test: `_resolve_scope_predicate_iris` returns the
-    UNION of the ontology-declared resolution and the direct build. When the
-    ontology query returns NO matching attribute (relationship case), the result
-    still INCLUDES `…/onto/<pred>` (and the attr IRI) from the direct build."""
+    """Catalog miss + direct build still yields …/onto/<pred> and the attr IRI."""
     async def run():
+        from infona_client.graph.ontology_catalog import upsert_attribute, upsert_type
+
+        await upsert_type(name="Mentor", tenant_id="test-tenant")
+        await upsert_attribute(
+            type_name="Mentor", attr_name="title", datatype="string",
+            tenant_id="test-tenant",
+        )
         neptune = AsyncMock()
-
-        async def query(sparql, *args, **kwargs):
-            # Ontology declares only `title` — `haslevel` is absent (relationship).
-            if "#domain>" in sparql and "#Property>" in sparql:
-                return _ontology_predicates_response(
-                    [{"attr": "https://graph.infona.ai/types/Mentor/attrs/title", "label": "title"}]
-                )
-            return _strategy_query_response([])
-
-        neptune.query.side_effect = query
+        neptune.query.side_effect = AssertionError("enrich must not SPARQL")
         executor = EnrichmentExecutor(
             neptune, InMemoryJobStore(), EnrichmentCache(), FakeWikidata({})
         )
-
         iris = await executor._resolve_scope_predicate_iris(
             "test-tenant", "Mentor", EnrichScope(predicate="haslevel", value="Manager")
         )
-        # The relationship is NOT in the ontology attribute bindings, but the
-        # direct build always yields the onto/<pred> candidate (the fix).
         assert "https://graph.infona.ai/onto/haslevel" in iris
         assert "https://graph.infona.ai/types/Mentor/attrs/haslevel" in iris
 
-        # An ATTRIBUTE declared in the ontology still resolves (and the union
-        # dedups: the ontology arm and the direct build agree on the same IRIs).
         attr_iris = await executor._resolve_scope_predicate_iris(
             "test-tenant", "Mentor", EnrichScope(predicate="TITLE", value="Senior")
         )
@@ -1991,20 +1532,22 @@ def test_resolve_scope_predicate_iris_unions_direct_build_for_relationships():
     asyncio.run(run())
 
 
-def test_executor_scope_literal_attribute_constraint_in_sparql():
-    """A scope on a literal attribute emits the literal-match arm in the SELECT."""
+def test_executor_scope_literal_attribute_matches_title():
+    """A scope on a literal title only selects matching entities."""
     async def run():
-        scoped_rows = [
-            {"uri": "https://graph.infona.ai/entities/Mentor/m1", "label": "Ada", "vals": ""},
+        rows = [
+            {"uri": "https://graph.infona.ai/entities/Mentor/m1", "label": "Ada",
+             "vals": f"{TITLE}::Director"},
+            {"uri": "https://graph.infona.ai/entities/Mentor/m2", "label": "Grace",
+             "vals": f"{TITLE}::IC"},
         ]
-        neptune, captured = _capturing_neptune(scoped_rows)
+        neptune = await _prep_neptune(rows, type_name="Mentor")
         store = InMemoryJobStore()
         cache = EnrichmentCache()
         wikidata = FakeWikidata(
             {("Ada", "bio"): [Verdict(value="Ada bio", confidence=0.95, source="wikidata")]}
         )
         executor = EnrichmentExecutor(neptune, store, cache, wikidata)
-
         job = _make_job(
             type_name="Mentor",
             attributes=["bio"],
@@ -2012,195 +1555,56 @@ def test_executor_scope_literal_attribute_constraint_in_sparql():
         )
         await store.create(job)
         await executor.run(job, "test-tenant")
-
-        sel = captured["select"]
-        assert 'isLiteral(?sv) && LCASE(STR(?sv)) = "director"' in sel
-        # Predicate matched by the concrete IRI(s) it resolved to, bound as a
-        # property-path alternation — no variable predicate, no scan.
-        assert (
-            "?e (<https://graph.infona.ai/types/Mentor/attrs/title>|"
-            "<https://graph.infona.ai/onto/title>) ?sv ." in sel
-        )
-        assert "?e ?p ?sv" not in sel
-        assert "REPLACE(STR(?p)" not in sel
-
         final = await store.get(job.id)
         assert final.progress.total == 1
         assert final.progress.processed == 1
+        assert wikidata.calls == [("Ada", "bio")]
 
     asyncio.run(run())
 
 
-def test_executor_scope_literal_name_value_matches_via_rdfs_label():
-    """COG-112 literal-attribute bug end-to-end: a scope on the `name` attribute by
-    the value the user SEES (the entity's displayed name, i.e. its `rdfs:label`)
-    must reach the SELECT with an `rdfs:label` arm so the entity is selected even
-    when it carries that name ONLY as `rdfs:label` and NOT as an `attrs/name`
-    literal. Mocked Neptune returns the matching mentor (as a real Neptune would
-    given the rdfs:label arm); the assertion is on the generated SPARQL + that the
-    entity was processed (not matched-0)."""
+def test_executor_scope_literal_name_value_matches_display_name():
+    """A name/label scope matches the entity display name."""
     async def run():
-        scoped_rows = [
-            {
-                "uri": "https://graph.infona.ai/entities/Mentor/m1",
-                "label": "Irina Igoshkina",
-                "vals": "",
-            },
+        rows = [
+            {"uri": "https://graph.infona.ai/entities/Mentor/m1", "label": "Ada Lovelace"},
+            {"uri": "https://graph.infona.ai/entities/Mentor/m2", "label": "Grace Hopper"},
         ]
-        neptune, captured = _capturing_neptune(scoped_rows)
+        neptune = await _prep_neptune(rows, type_name="Mentor")
         store = InMemoryJobStore()
         cache = EnrichmentCache()
         wikidata = FakeWikidata(
-            {
-                ("Irina Igoshkina", "bio"): [
-                    Verdict(value="Irina bio", confidence=0.95, source="wikidata")
-                ]
-            }
+            {("Ada Lovelace", "bio"): [Verdict(value="Ada bio", confidence=0.95, source="wikidata")]}
         )
         executor = EnrichmentExecutor(neptune, store, cache, wikidata)
-
         job = _make_job(
             type_name="Mentor",
             attributes=["bio"],
-            scope=EnrichScope(predicate="name", value="Irina Igoshkina"),
+            scope=EnrichScope(predicate="name", value="Ada Lovelace"),
         )
         await store.create(job)
         await executor.run(job, "test-tenant")
-
-        sel = captured["select"]
-        # attrs/<attr> literal arm (value lower-cased, case-insensitive).
-        assert 'isLiteral(?sv) && LCASE(STR(?sv)) = "irina igoshkina"' in sel
-        # Displayed-name arm: the entity's rdfs:label matched directly — this is the
-        # fix that lets a name carried ONLY on rdfs:label be selected.
-        assert "?e <http://www.w3.org/2000/01/rdf-schema#label> ?lbl ." in sel
-        assert 'isLiteral(?lbl) && LCASE(STR(?lbl)) = "irina igoshkina"' in sel
-        assert "FILTER(false)" not in sel
-        assert "FILTER EXISTS" not in sel
-
-        # The matched mentor was actually processed (not matched-0 — the bug).
         final = await store.get(job.id)
-        assert final is not None
         assert final.progress.total == 1
-        assert final.progress.processed == 1
-        assert [lbl for lbl, _ in wikidata.calls] == ["Irina Igoshkina"]
+        assert wikidata.calls == [("Ada Lovelace", "bio")]
 
     asyncio.run(run())
-
-
-def test_executor_scope_literal_attribute_value_emits_dedicated_attrs_arm():
-    """COG-112 literal-attribute fix: a scope on the `name` attribute by its VALUE
-    must emit a DEDICATED single-bound-predicate `attrs/<attr>` literal arm (the
-    namespace the resolver actually writes literal attribute values under —
-    `…/types/<Type>/attrs/<attr>`), so the match doesn't depend on the property-
-    path alternation that mixes the literal namespace with the zero-triple
-    `…/onto/<attr>` (the shape that silently bound nothing on Neptune)."""
-    async def run():
-        scoped_rows = [
-            {"uri": "https://graph.infona.ai/entities/Mentor/m1", "label": "Jane Doe", "vals": ""},
-        ]
-        neptune, captured = _capturing_neptune(scoped_rows)
-        store = InMemoryJobStore()
-        cache = EnrichmentCache()
-        wikidata = FakeWikidata(
-            {("Jane Doe", "bio"): [Verdict(value="bio", confidence=0.95, source="wikidata")]}
-        )
-        executor = EnrichmentExecutor(neptune, store, cache, wikidata)
-
-        job = _make_job(
-            type_name="Mentor",
-            attributes=["bio"],
-            scope=EnrichScope(predicate="name", value="Jane Doe"),
-        )
-        await store.create(job)
-        await executor.run(job, "test-tenant")
-
-        sel = captured["select"]
-        # Dedicated attrs/<attr> literal arm: a single BOUND predicate (no
-        # alternation), the value lower-cased + escaped (case-insensitive).
-        assert (
-            "?e <https://graph.infona.ai/types/Mentor/attrs/name> ?av .\n"
-            in sel
-        )
-        assert 'isLiteral(?av) && LCASE(STR(?av)) = "jane doe"' in sel
-        # PR #37's rdfs:label arm is kept (belt-and-suspenders).
-        assert "?e <http://www.w3.org/2000/01/rdf-schema#label> ?lbl ." in sel
-        # The original alternation arm is preserved too.
-        assert (
-            "?e (<https://graph.infona.ai/types/Mentor/attrs/name>|"
-            "<https://graph.infona.ai/onto/name>) ?sv ." in sel
-        )
-        assert "FILTER(false)" not in sel
-        assert "FILTER EXISTS" not in sel
-
-        final = await store.get(job.id)
-        assert final is not None
-        assert final.progress.total == 1
-        assert final.progress.processed == 1
-
-    asyncio.run(run())
-
-
-def test_scope_block_literal_attribute_matches_attrs_name_value():
-    """COG-112 literal-attribute fix, executed against a real SPARQL engine: a
-    literal scope `name="Jane Doe"` selects the entity whose `attrs/name` literal
-    is "Jane Doe" (case-insensitively), even though its `rdfs:label` is the opaque
-    entity-id slug (how resolver/schema_resolver.py actually stores the data).
-
-    Skipped when rdflib (not a project dependency) is unavailable; when present it
-    proves the generated SELECT really matches, not just that the SPARQL is shaped
-    right."""
-    rdflib = pytest.importorskip("rdflib")
-    from rdflib import Graph, Literal, RDF, URIRef
-    from rdflib.namespace import XSD
-
-    T = "https://graph.infona.ai/types/Mentor"
-    g = Graph()
-    # Entity whose name lives ONLY on attrs/name; rdfs:label is the id slug.
-    e1 = URIRef("https://graph.infona.ai/entities/Mentor/4akvVWgTcS")
-    g.add((e1, RDF.type, URIRef(T)))
-    g.add((e1, URIRef("http://www.w3.org/2000/01/rdf-schema#label"), Literal("4akvVWgTcS")))
-    g.add((e1, URIRef(f"{T}/attrs/name"), Literal("Jane Doe", datatype=XSD.string)))
-    # A different mentor — must NOT match.
-    e2 = URIRef("https://graph.infona.ai/entities/Mentor/xY9")
-    g.add((e2, RDF.type, URIRef(T)))
-    g.add((e2, URIRef(f"{T}/attrs/name"), Literal("John Smith")))
-
-    pred_iris = [f"{T}/attrs/name", "https://graph.infona.ai/onto/name"]
-
-    def _matches(value: str) -> list[str]:
-        q = _build_select_query(
-            "urn:g", "Mentor", ["bio"], 50,
-            scope=EnrichScope(predicate="name", value=value),
-            scope_pred_iris=pred_iris,
-        ).replace("FROM <urn:g> ", "")  # rdflib: query the default graph
-        return sorted(str(r[0]).rsplit("/", 1)[-1] for r in g.query(q))
-
-    # Exact + case-insensitive match selects ONLY the Jane Doe entity by its
-    # attrs/name literal — not the slug, not the other mentor.
-    assert _matches("Jane Doe") == ["4akvVWgTcS"]
-    assert _matches("jane doe") == ["4akvVWgTcS"]
-    assert _matches("JANE DOE") == ["4akvVWgTcS"]
-    assert _matches("John Smith") == ["xY9"]
-    # A value matching nothing selects nothing (and injection-y input is escaped,
-    # not executed — the query still parses and returns empty).
-    assert _matches('no\"such') == []
 
 
 def test_executor_entity_uris_subset_only_those_enriched():
-    """entity_uris restricts the run to exactly those URIs via a VALUES block."""
+    """entity_uris restricts the run to exactly those URIs."""
     async def run():
-        # Neptune returns only the requested subset for the VALUES query.
-        subset_rows = [
+        rows = [
             {"uri": "https://graph.infona.ai/entities/Mentor/m1", "label": "Ada", "vals": ""},
+            {"uri": "https://graph.infona.ai/entities/Mentor/m2", "label": "Grace", "vals": ""},
         ]
-        neptune, captured = _capturing_neptune(subset_rows)
+        neptune = await _prep_neptune(rows, type_name="Mentor")
         store = InMemoryJobStore()
         cache = EnrichmentCache()
         wikidata = FakeWikidata(
             {("Ada", "bio"): [Verdict(value="Ada bio", confidence=0.95, source="wikidata")]}
         )
         executor = EnrichmentExecutor(neptune, store, cache, wikidata)
-
         job = _make_job(
             type_name="Mentor",
             attributes=["bio"],
@@ -2208,12 +1612,6 @@ def test_executor_entity_uris_subset_only_those_enriched():
         )
         await store.create(job)
         await executor.run(job, "test-tenant")
-
-        sel = captured["select"]
-        assert "VALUES ?e {" in sel
-        assert "<https://graph.infona.ai/entities/Mentor/m1>" in sel
-        assert "FILTER EXISTS" not in sel
-
         final = await store.get(job.id)
         assert final.progress.total == 1
         assert final.progress.processed == 1
@@ -2223,26 +1621,20 @@ def test_executor_entity_uris_subset_only_those_enriched():
 
 
 def test_executor_no_scope_runs_whole_type():
-    """No scope/entity_uris → the SELECT has no subset constraint (unchanged)."""
+    """No scope/entity_uris → every entity of the type is selected."""
     async def run():
         rows = [
             {"uri": "https://graph.infona.ai/entities/Mentor/m1", "label": "Ada", "vals": ""},
             {"uri": "https://graph.infona.ai/entities/Mentor/m2", "label": "Grace", "vals": ""},
         ]
-        neptune, captured = _capturing_neptune(rows)
+        neptune = await _prep_neptune(rows, type_name="Mentor")
         store = InMemoryJobStore()
         cache = EnrichmentCache()
         wikidata = FakeWikidata({})
         executor = EnrichmentExecutor(neptune, store, cache, wikidata)
-
         job = _make_job(type_name="Mentor", attributes=["bio"])
         await store.create(job)
         await executor.run(job, "test-tenant")
-
-        sel = captured["select"]
-        assert "FILTER EXISTS" not in sel
-        assert "VALUES ?e" not in sel
-
         final = await store.get(job.id)
         assert final.progress.total == 2
 
@@ -2250,142 +1642,73 @@ def test_executor_no_scope_runs_whole_type():
 
 
 def test_count_entities_honors_scope_and_entity_uris():
-    """count_entities applies the same subset constraints (matched count) and,
-    for a scope, matches the resolved concrete predicate IRI(s) — not a scan."""
+    """count_entities uses the same GraphStore subset as the run select."""
     async def run():
-        neptune = AsyncMock()
-        captured: dict[str, str] = {}
-
-        async def query(sparql, *args, **kwargs):
-            # Scope-predicate resolution (tenant ontology graph): return the
-            # Mentor predicate declarations so `haslevel` resolves to an IRI.
-            if "#domain>" in sparql and "#Property>" in sparql:
-                return _ontology_predicates_response(_MENTOR_ONTO_PREDS)
-            captured["q"] = sparql
-            return _count_response(7)
-
-        neptune.query.side_effect = query
-        store = InMemoryJobStore()
-        cache = EnrichmentCache()
-        executor = EnrichmentExecutor(neptune, store, cache, FakeWikidata({}))
-
-        # Scope path.
+        rows = [
+            {"uri": "https://graph.infona.ai/entities/Mentor/m1", "label": "Ada",
+             "vals": f"{HASLEVEL}::Manager"},
+            {"uri": "https://graph.infona.ai/entities/Mentor/m2", "label": "Grace",
+             "vals": f"{HASLEVEL}::Manager"},
+            {"uri": "https://graph.infona.ai/entities/Mentor/m3", "label": "Linus",
+             "vals": f"{HASLEVEL}::IC"},
+        ]
+        neptune = await _prep_neptune(rows, type_name="Mentor")
+        executor = EnrichmentExecutor(
+            neptune, InMemoryJobStore(), EnrichmentCache(), FakeWikidata({})
+        )
         n = await executor.count_entities(
             "test-tenant", "kg", "Mentor",
             scope=EnrichScope(predicate="haslevel", value="Manager"),
         )
-        assert n == 7
-        # COUNT(DISTINCT ?e) over the SAME bounded DISTINCT sub-select the SELECT
-        # uses — inline bound-predicate scope patterns, never a FILTER EXISTS.
-        assert "FILTER EXISTS" not in captured["q"]
-        assert "COUNT(DISTINCT ?e)" in captured["q"]
-        assert "SELECT DISTINCT ?e WHERE {" in captured["q"]
-        assert (
-            "?e (<https://graph.infona.ai/types/Mentor/attrs/haslevel>|"
-            "<https://graph.infona.ai/onto/haslevel>) ?sv ." in captured["q"]
-        )
-        assert "FILTER(?p IN (" not in captured["q"]
-        assert "?e ?p ?sv" not in captured["q"]
-        assert "REPLACE(STR(?p)" not in captured["q"]
-        # The COUNT must NOT carry a LIMIT (it reflects the full scoped subset).
-        assert "LIMIT" not in captured["q"]
-
-        # entity_uris path (wins over scope).
-        await executor.count_entities(
+        assert n == 2
+        n = await executor.count_entities(
             "test-tenant", "kg", "Mentor",
             scope=EnrichScope(predicate="haslevel", value="Manager"),
             entity_uris=["https://graph.infona.ai/entities/Mentor/m1"],
         )
-        assert "VALUES ?e {" in captured["q"]
-        assert "FILTER EXISTS" not in captured["q"]
-
-        # No-subset path: whole-type count, no subset machinery — but the type
-        # constraint is subclass-aware (Fix B), so counting a supertype includes
-        # its leaf-typed instances (and reflexively its own directly-typed ones).
-        await executor.count_entities("test-tenant", "kg", "Mentor")
-        assert "FILTER EXISTS" not in captured["q"]
-        assert "VALUES ?e" not in captured["q"]
-        assert _MENTOR_TYPED in captured["q"]
-        assert "?e a <https://graph.infona.ai/types/Mentor> ." not in captured["q"]
+        assert n == 1
+        n = await executor.count_entities("test-tenant", "kg", "Mentor")
+        assert n == 3
 
     asyncio.run(run())
 
 
 def test_count_entities_relationship_not_in_ontology_attrs_still_counts():
-    """COG-112 root-cause fix: a RELATIONSHIP predicate absent from the ontology
-    attribute bindings (relationships live under `…/onto/<pred>`, not the attr
-    namespace) still resolves to candidate IRIs via the direct build, so
-    count_entities ISSUES the bounded COUNT (not a short-circuit to 0). Only a
-    truly empty resolution would short-circuit; a valid predicate never does."""
+    """A relationship leaf still counts via entity props (no SPARQL)."""
     async def run():
-        neptune = AsyncMock()
-        count_calls = {"n": 0}
-
-        async def query(sparql, *args, **kwargs):
-            if "#domain>" in sparql and "#Property>" in sparql:
-                # Type declares only `title` as an attribute — `haslevel`
-                # (the relationship) is absent, like the live adp-mentors data.
-                return _ontology_predicates_response(
-                    [
-                        {"attr": "https://graph.infona.ai/types/Mentor/attrs/title", "label": "title"},
-                    ]
-                )
-            count_calls["n"] += 1
-            # The COUNT must run over the bound-predicate property path that now
-            # includes …/onto/haslevel.
-            assert (
-                "?e (<https://graph.infona.ai/types/Mentor/attrs/haslevel>|"
-                "<https://graph.infona.ai/onto/haslevel>) ?sv ." in sparql
-            )
-            assert "FILTER(false)" not in sparql
-            return _count_response(7)
-
-        neptune.query.side_effect = query
-        store = InMemoryJobStore()
-        cache = EnrichmentCache()
-        executor = EnrichmentExecutor(neptune, store, cache, FakeWikidata({}))
-
+        rows = [
+            {"uri": "https://graph.infona.ai/entities/Mentor/m1", "label": "Ada",
+             "vals": f"{HASLEVEL}::Manager"},
+        ]
+        neptune = await _prep_neptune(rows, type_name="Mentor")
+        executor = EnrichmentExecutor(
+            neptune, InMemoryJobStore(), EnrichmentCache(), FakeWikidata({})
+        )
         n = await executor.count_entities(
             "test-tenant", "kg", "Mentor",
             scope=EnrichScope(predicate="haslevel", value="Manager"),
         )
-        assert n == 7
-        # The COUNT query WAS issued (the relationship now resolves, no short-circuit).
-        assert count_calls["n"] == 1
+        assert n == 1
 
     asyncio.run(run())
 
 
-def test_count_entities_scope_resolve_error_falls_back_to_direct_build():
-    """A Neptune error during the ontology arm of scope-predicate resolution does
-    NOT raise (create stays fast, never 500s) and does NOT collapse to matched 0:
-    it skips the ontology arm and still uses the direct build (which always yields
-    `…/onto/<pred>` and the attr IRI), so a relationship scope still resolves and
-    the bounded COUNT is issued even when the ontology read fails (COG-112)."""
+def test_count_entities_no_store_returns_zero_without_sparql():
+    """A store outage logs and returns 0 — it must not SPARQL."""
+    from infona_client.graph.store import reset_graph_store_for_tests
+
     async def run():
+        reset_graph_store_for_tests()
         neptune = AsyncMock()
-
-        async def query(sparql, *args, **kwargs):
-            if "#domain>" in sparql and "#Property>" in sparql:
-                raise RuntimeError("neptune timeout")
-            # The COUNT still runs over the direct-build bound-predicate path.
-            assert (
-                "?e (<https://graph.infona.ai/types/Mentor/attrs/haslevel>|"
-                "<https://graph.infona.ai/onto/haslevel>) ?sv ." in sparql
-            )
-            assert "FILTER(false)" not in sparql
-            return _count_response(5)
-
-        neptune.query.side_effect = query
-        store = InMemoryJobStore()
-        cache = EnrichmentCache()
-        executor = EnrichmentExecutor(neptune, store, cache, FakeWikidata({}))
-
+        neptune.query.side_effect = AssertionError("enrich must not SPARQL")
+        executor = EnrichmentExecutor(
+            neptune, InMemoryJobStore(), EnrichmentCache(), FakeWikidata({})
+        )
         n = await executor.count_entities(
             "test-tenant", "kg", "Mentor",
             scope=EnrichScope(predicate="haslevel", value="Manager"),
         )
-        assert n == 5
+        assert n == 0
 
     asyncio.run(run())
 
@@ -2401,7 +1724,7 @@ def test_apply_decisions_writes_accepted_only(monkeypatch):
     async def run():
         neptune = AsyncMock()
         # Declaration reads the attribute's existing range first; none exists yet.
-        neptune.query.return_value = _range_response()
+        neptune.query.side_effect = AssertionError("enrich must not SPARQL")
         store = InMemoryJobStore()
         cache = EnrichmentCache()
         wikidata = FakeWikidata({})
@@ -2453,9 +1776,7 @@ def test_executor_apply_schedules_stats_recompute(monkeypatch):
         rows = [
             {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Bosch", "vals": ""},
         ]
-        neptune = AsyncMock()
-        neptune.query.return_value = _entities_query_response(rows)
-        neptune.update.return_value = None
+        neptune = await _prep_neptune(rows)
 
         store = InMemoryJobStore()
         cache = EnrichmentCache()
@@ -2499,9 +1820,7 @@ def test_executor_no_apply_does_not_recompute(monkeypatch):
             {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Bosch",
              "vals": f"{mfr_pred}::Acme Tools"},  # existing value → verdict will conflict
         ]
-        neptune = AsyncMock()
-        neptune.query.return_value = _entities_query_response(rows)
-        neptune.update.return_value = None
+        neptune = await _prep_neptune(rows)
 
         store = InMemoryJobStore()
         cache = EnrichmentCache()
@@ -2540,7 +1859,7 @@ def test_apply_decisions_schedules_stats_recompute(monkeypatch):
     async def run():
         neptune = AsyncMock()
         # Declaration reads the attribute's existing range first; none exists yet.
-        neptune.query.return_value = _range_response()
+        neptune.query.side_effect = AssertionError("enrich must not SPARQL")
         store = InMemoryJobStore()
         cache = EnrichmentCache()
         wikidata = FakeWikidata({})
@@ -2624,9 +1943,7 @@ def test_executor_apply_declares_attribute_in_ontology(monkeypatch):
         rows = [
             {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Bosch", "vals": ""},
         ]
-        neptune = AsyncMock()
-        neptune.query.return_value = _entities_query_response(rows)
-        neptune.update.return_value = None
+        neptune = await _prep_neptune(rows)
 
         store = InMemoryJobStore()
         cache = EnrichmentCache()
@@ -2684,9 +2001,7 @@ def test_executor_stage_mode_does_not_declare(monkeypatch):
             {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Bosch",
              "vals": f"{company_pred}::Old Holdings"},  # existing → verdict conflicts
         ]
-        neptune = AsyncMock()
-        neptune.query.return_value = _entities_query_response(rows)
-        neptune.update.return_value = None
+        neptune = await _prep_neptune(rows)
 
         store = InMemoryJobStore()
         cache = EnrichmentCache()
@@ -2705,9 +2020,11 @@ def test_executor_stage_mode_does_not_declare(monkeypatch):
 
         final = await store.get(job.id)
         assert final.status == JobStatus.review
-        # The conflict is held, not written → nothing written, nothing declared.
+        # The conflict is held, not written → the incumbent stays, nothing declared.
         assert await _declared_attrs("Product") == {}
-        assert _graph_store().snapshot_entities() == []
+        assert _props("https://graph.infona.ai/entities/Product/p1")["company"] == (
+            "Old Holdings"
+        )
         neptune.update.assert_not_called()
 
     asyncio.run(run())
@@ -2724,9 +2041,7 @@ def test_executor_no_match_does_not_declare(monkeypatch):
         rows = [
             {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Unknown", "vals": ""},
         ]
-        neptune = AsyncMock()
-        neptune.query.return_value = _entities_query_response(rows)
-        neptune.update.return_value = None
+        neptune = await _prep_neptune(rows)
 
         store = InMemoryJobStore()
         cache = EnrichmentCache()
@@ -2753,7 +2068,7 @@ def test_apply_decisions_declares_accepted_attribute(monkeypatch):
         neptune = AsyncMock()
         neptune.update.return_value = None
         # Declaration reads the attribute's existing range first; none exists yet.
-        neptune.query.return_value = _range_response()
+        neptune.query.side_effect = AssertionError("enrich must not SPARQL")
         store = InMemoryJobStore()
         cache = EnrichmentCache()
         wikidata = FakeWikidata({})
@@ -2813,12 +2128,7 @@ def test_executor_apply_infers_integer_range_for_numeric_values(monkeypatch):
             {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Bosch", "vals": ""},
             {"uri": "https://graph.infona.ai/entities/Product/p2", "label": "Makita", "vals": ""},
         ]
-        neptune = AsyncMock()
-        # No existing range for 'humanness_score' → inference decides the range.
-        neptune.query.side_effect = _query_router(
-            _entities_query_response(rows), existing_range=None
-        )
-        neptune.update.return_value = None
+        neptune = await _prep_neptune(rows)
 
         store = InMemoryJobStore()
         cache = EnrichmentCache()
@@ -2858,11 +2168,8 @@ def test_executor_apply_does_not_downgrade_existing_richer_range(monkeypatch):
         rows = [
             {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Bosch", "vals": ""},
         ]
-        neptune = AsyncMock()
-        neptune.query.side_effect = _query_router(
-            _entities_query_response(rows), existing_range=existing_range
-        )
-        neptune.update.return_value = None
+        await _seed_existing_range("Product", "rating", existing_range)
+        neptune = await _prep_neptune(rows)
 
         store = InMemoryJobStore()
         cache = EnrichmentCache()
@@ -2974,11 +2281,7 @@ def test_executor_apply_infers_datetime_range_for_date_values(monkeypatch):
             {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Bosch", "vals": ""},
             {"uri": "https://graph.infona.ai/entities/Product/p2", "label": "Makita", "vals": ""},
         ]
-        neptune = AsyncMock()
-        neptune.query.side_effect = _query_router(
-            _entities_query_response(rows), existing_range=None
-        )
-        neptune.update.return_value = None
+        neptune = await _prep_neptune(rows)
 
         store = InMemoryJobStore()
         cache = EnrichmentCache()
@@ -3020,11 +2323,7 @@ def test_executor_apply_entity_iri_values_declare_relationship_and_write_iri(mon
             {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Drill", "vals": ""},
             {"uri": "https://graph.infona.ai/entities/Product/p2", "label": "Saw", "vals": ""},
         ]
-        neptune = AsyncMock()
-        neptune.query.side_effect = _query_router(
-            _entities_query_response(rows), existing_range=None
-        )
-        neptune.update.return_value = None
+        neptune = await _prep_neptune(rows)
 
         store = InMemoryJobStore()
         cache = EnrichmentCache()
@@ -3090,11 +2389,8 @@ def test_executor_apply_does_not_downgrade_datetime_or_relationship_range(monkey
         rows = [
             {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Bosch", "vals": ""},
         ]
-        neptune = AsyncMock()
-        neptune.query.side_effect = _query_router(
-            _entities_query_response(rows), existing_range=existing_range
-        )
-        neptune.update.return_value = None
+        await _seed_existing_range("Product", "founded", existing_range)
+        neptune = await _prep_neptune(rows)
 
         store = InMemoryJobStore()
         cache = EnrichmentCache()
@@ -3228,14 +2524,7 @@ def test_post_jobs_with_scope_threads_scope_without_blocking(
     scoped COUNT. The stored job persists the scope so the background executor
     resolves it and surfaces the matched count via progress.total."""
 
-    async def _query(sparql, *args, **kwargs):
-        # The executor's background run may issue queries once spawned; create
-        # itself must not. Return a harmless shape for any background query.
-        if "#domain>" in sparql and "#Property>" in sparql:
-            return _ontology_predicates_response(_MENTOR_ONTO_PREDS)
-        return _count_response(2)
-
-    mock_neptune.query.side_effect = _query
+    mock_neptune.query.side_effect = AssertionError("create must not SPARQL")
 
     response = client.post(
         "/graphs/test-tenant/enrich/jobs",
@@ -3584,9 +2873,7 @@ def test_executor_skips_unregistered_adapter(caplog):
                 "vals": "",
             },
         ]
-        neptune = AsyncMock()
-        neptune.query.return_value = _entities_query_response(rows)
-        neptune.update.return_value = None
+        neptune = await _prep_neptune(rows)
 
         store = InMemoryJobStore()
         cache = EnrichmentCache()
@@ -3630,31 +2917,12 @@ def test_executor_skips_unregistered_adapter(caplog):
 # ---------------------------------------------------------------------------
 
 
-def _strategy_query_response(rows: list[dict]) -> dict:
-    """Build a SPARQL response for the strategy SELECT.
-
-    rows: list of {"subj": uri, "p": uri, "o": value}
-    """
-    bindings = []
-    for r in rows:
-        b = {
-            "subj": {"type": "uri", "value": r["subj"]},
-            "p": {"type": "uri", "value": r["p"]},
-            "o": {"type": "literal", "value": r["o"]},
-        }
-        bindings.append(b)
-    return {
-        "head": {"vars": ["subj", "p", "o"]},
-        "results": {"bindings": bindings},
-    }
-
-
 def test_load_strategy_returns_empty_when_no_triples():
     from infona_client.enrichment.strategy import load_strategy
 
     async def run():
         neptune = AsyncMock()
-        neptune.query.return_value = _strategy_query_response([])
+        neptune.query.side_effect = AssertionError("enrich must not SPARQL")
         s = await load_strategy(neptune, "test-tenant", "LineItem")
         assert s.type_name == "LineItem"
         assert s.match_key is None
@@ -3666,6 +2934,7 @@ def test_load_strategy_returns_empty_when_no_triples():
 
 def test_load_strategy_parses_attribute_triples():
     from infona_client.enrichment.strategy import load_strategy
+    from infona_client.graph.ontology_catalog import upsert_attribute, upsert_type
 
     type_uri = "https://graph.infona.ai/types/LineItem"
     mpn_uri = "https://graph.infona.ai/types/LineItem/attrs/mpn"
@@ -3673,23 +2942,32 @@ def test_load_strategy_parses_attribute_triples():
     onto = "https://graph.infona.ai/onto"
 
     async def run():
-        neptune = AsyncMock()
-        neptune.query.return_value = _strategy_query_response(
+        await upsert_type(name="LineItem", tenant_id="test-tenant")
+        await upsert_attribute(
+            type_name="LineItem", attr_name="mpn", datatype="string",
+            tenant_id="test-tenant",
+        )
+        await upsert_attribute(
+            type_name="LineItem", attr_name="brand", datatype="string",
+            tenant_id="test-tenant",
+        )
+        await seed_strategy_triples(
             [
-                {"subj": type_uri, "p": f"{onto}/matchKey", "o": "description"},
-                {"subj": type_uri, "p": f"{onto}/lookupPriority", "o": "1"},
-                {"subj": mpn_uri, "p": f"{onto}/enrichmentSource", "o": "wikidata"},
-                {"subj": mpn_uri, "p": f"{onto}/enrichmentSource", "o": "web"},
-                {"subj": mpn_uri, "p": f"{onto}/confidenceMin", "o": "0.9"},
-                {"subj": mpn_uri, "p": f"{onto}/idPattern", "o": "^[A-Z0-9-]{6,20}$"},
-                {"subj": mpn_uri, "p": f"{onto}/conflictPolicy", "o": "stage"},
-                {"subj": brand_uri, "p": f"{onto}/canonicalizer", "o": "title-case"},
-                {"subj": brand_uri, "p": f"{onto}/alias", "o": "KN→K&N"},
-                {"subj": brand_uri, "p": f"{onto}/alias", "o": "Mfg→Manufacturing"},
-                # Malformed alias should be silently skipped.
-                {"subj": brand_uri, "p": f"{onto}/alias", "o": "bogus-no-arrow"},
+                (type_uri, f"{onto}/matchKey", "description"),
+                (type_uri, f"{onto}/lookupPriority", "1"),
+                (mpn_uri, f"{onto}/enrichmentSource", "wikidata"),
+                (mpn_uri, f"{onto}/enrichmentSource", "web"),
+                (mpn_uri, f"{onto}/confidenceMin", "0.9"),
+                (mpn_uri, f"{onto}/idPattern", "^[A-Z0-9-]{6,20}$"),
+                (mpn_uri, f"{onto}/conflictPolicy", "stage"),
+                (brand_uri, f"{onto}/canonicalizer", "title-case"),
+                (brand_uri, f"{onto}/alias", "KN→K&N"),
+                (brand_uri, f"{onto}/alias", "Mfg→Manufacturing"),
+                (brand_uri, f"{onto}/alias", "bogus-no-arrow"),
             ]
         )
+        neptune = AsyncMock()
+        neptune.query.side_effect = AssertionError("enrich must not SPARQL")
         s = await load_strategy(neptune, "test-tenant", "LineItem")
         assert s.match_key == "description"
         assert s.lookup_priority == 1
@@ -3716,6 +2994,8 @@ def test_aliases_resolve_conflicts_to_verified():
     brand_pred = brand_uri  # the predicate stored on the entity row
 
     async def run():
+        from infona_client.graph.ontology_catalog import upsert_attribute, upsert_type
+
         rows = [
             {
                 "uri": "https://graph.infona.ai/entities/Product/p1",
@@ -3723,21 +3003,13 @@ def test_aliases_resolve_conflicts_to_verified():
                 "vals": f"{brand_pred}::KN",
             },
         ]
-        neptune = AsyncMock()
-
-        async def query(sparql, *args, **kwargs):
-            # First call inside run() is the strategy load (tenant graph URI),
-            # subsequent calls are the entity SELECT.
-            if "FROM <https://graph.infona.ai/graphs/test-tenant>" in sparql and "alias" in sparql:
-                return _strategy_query_response(
-                    [
-                        {"subj": brand_uri, "p": f"{onto}/alias", "o": "KN→K&N"},
-                    ]
-                )
-            return _entities_query_response(rows)
-
-        neptune.query.side_effect = query
-        neptune.update.return_value = None
+        await upsert_type(name="Product", tenant_id="test-tenant")
+        await upsert_attribute(
+            type_name="Product", attr_name="brand", datatype="string",
+            tenant_id="test-tenant",
+        )
+        await seed_strategy_triples([(brand_uri, f"{onto}/alias", "KN→K&N")])
+        neptune = await _prep_neptune(rows)
 
         store = InMemoryJobStore()
         cache = EnrichmentCache()
@@ -4149,11 +3421,7 @@ def test_executor_apply_writes_typed_integer_literal(monkeypatch):
             {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Bosch", "vals": ""},
             {"uri": "https://graph.infona.ai/entities/Product/p2", "label": "Makita", "vals": ""},
         ]
-        neptune = AsyncMock()
-        neptune.query.side_effect = _query_router(
-            _entities_query_response(rows), existing_range=None
-        )
-        neptune.update.return_value = None
+        neptune = await _prep_neptune(rows)
 
         store = InMemoryJobStore()
         cache = EnrichmentCache()
@@ -4198,11 +3466,7 @@ def test_executor_apply_writes_comma_number_as_string_not_dropped(monkeypatch):
             {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Bosch", "vals": ""},
             {"uri": "https://graph.infona.ai/entities/Product/p2", "label": "Makita", "vals": ""},
         ]
-        neptune = AsyncMock()
-        neptune.query.side_effect = _query_router(
-            _entities_query_response(rows), existing_range=None
-        )
-        neptune.update.return_value = None
+        neptune = await _prep_neptune(rows)
 
         store = InMemoryJobStore()
         cache = EnrichmentCache()
@@ -4243,11 +3507,7 @@ def test_executor_apply_writes_typed_datetime_literal(monkeypatch):
         rows = [
             {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Bosch", "vals": ""},
         ]
-        neptune = AsyncMock()
-        neptune.query.side_effect = _query_router(
-            _entities_query_response(rows), existing_range=None
-        )
-        neptune.update.return_value = None
+        neptune = await _prep_neptune(rows)
 
         store = InMemoryJobStore()
         cache = EnrichmentCache()
@@ -4285,11 +3545,7 @@ def test_executor_apply_writes_entity_iri_object(monkeypatch):
         rows = [
             {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Drill", "vals": ""},
         ]
-        neptune = AsyncMock()
-        neptune.query.side_effect = _query_router(
-            _entities_query_response(rows), existing_range=None
-        )
-        neptune.update.return_value = None
+        neptune = await _prep_neptune(rows)
 
         store = InMemoryJobStore()
         cache = EnrichmentCache()
@@ -4350,13 +3606,10 @@ def test_executor_apply_skips_value_not_conforming_to_existing_range(monkeypatch
             {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Bad", "vals": ""},
             {"uri": "https://graph.infona.ai/entities/Product/p2", "label": "Good", "vals": ""},
         ]
-        neptune = AsyncMock()
-        # Existing range is xsd:integer for the 'rating' attribute.
-        neptune.query.side_effect = _query_router(
-            _entities_query_response(rows),
-            existing_range="http://www.w3.org/2001/XMLSchema#integer",
+        await _seed_existing_range(
+            "Product", "rating", "http://www.w3.org/2001/XMLSchema#integer"
         )
-        neptune.update.return_value = None
+        neptune = await _prep_neptune(rows)
 
         store = InMemoryJobStore()
         cache = EnrichmentCache()
@@ -4407,11 +3660,7 @@ def test_executor_apply_provenance_stays_plain_string(monkeypatch):
         rows = [
             {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Bosch", "vals": ""},
         ]
-        neptune = AsyncMock()
-        neptune.query.side_effect = _query_router(
-            _entities_query_response(rows), existing_range=None
-        )
-        neptune.update.return_value = None
+        neptune = await _prep_neptune(rows)
 
         store = InMemoryJobStore()
         cache = EnrichmentCache()
@@ -4533,7 +3782,7 @@ def test_apply_decisions_writes_typed_integer_literal(monkeypatch):
         neptune = AsyncMock()
         neptune.update.return_value = None
         # No existing range → inference types it integer from the value.
-        neptune.query.return_value = _range_response()
+        neptune.query.side_effect = AssertionError("enrich must not SPARQL")
         store = InMemoryJobStore()
         cache = EnrichmentCache()
         wikidata = FakeWikidata({})
@@ -4654,9 +3903,7 @@ def test_executor_records_provider_logs_end_to_end():
             {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Bosch", "vals": ""},
             {"uri": "https://graph.infona.ai/entities/Product/p2", "label": "Unknown Co", "vals": ""},
         ]
-        neptune = AsyncMock()
-        neptune.query.return_value = _entities_query_response(rows)
-        neptune.update.return_value = None
+        neptune = await _prep_neptune(rows)
 
         store = InMemoryJobStore()
         cache = EnrichmentCache()

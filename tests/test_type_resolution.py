@@ -1,13 +1,15 @@
 """Type-name resolution guard for enrichment.
 
-Root-cause fix for the silent no-op: the entity SELECT keys on
-``?e a <types/Name>`` case-sensitively, so a miscased/unknown type (e.g. a
-lowercase ``organization`` vs the declared ``Organization``) matched zero
-entities and the job finished "Completed" having enriched nothing.
+Root-cause fix for the silent no-op: entity select keys on the declared type
+name case-sensitively, so a miscased/unknown type (e.g. a lowercase
+``organization`` vs the declared ``Organization``) matched zero entities and
+the job finished "Completed" having enriched nothing.
 
 Covers the shared resolver, the executor safety net (which guards EVERY caller
 of ``run()`` — direct enrich, schedules, actions), and the enrich route's
 up-front 422 / auto-correction.
+
+ONTA-527: types come from the ontology catalog (GraphStore), not SPARQL rows.
 """
 
 import asyncio
@@ -29,29 +31,13 @@ from infona_client.enrichment.strategy import (
     unknown_type_message,
 )
 from infona_client.graph.client import NeptuneClient
+from infona_client.graph.store import reset_graph_store_for_tests
+from tests._enrichment_prov_helpers import seed_declared_types
 
 
-def _types_response(names):
-    """SPARQL result mirroring list_types_query: a ?type class URI + ?label."""
-    bindings = [
-        {
-            "type": {"type": "uri", "value": f"https://graph.infona.ai/types/{n}"},
-            "label": {"type": "literal", "value": n},
-        }
-        for n in names
-    ]
-    return {
-        "head": {"vars": ["type", "label", "comment", "parent"]},
-        "results": {"bindings": bindings},
-    }
-
-
-def _fake_neptune(query_return=None, query_side_effect=None):
+def _fake_neptune():
     n = AsyncMock(spec=NeptuneClient)
-    if query_side_effect is not None:
-        n.query.side_effect = query_side_effect
-    else:
-        n.query.return_value = query_return
+    n.query.side_effect = AssertionError("enrich type resolution must not SPARQL")
     n.update.return_value = None
     return n
 
@@ -61,8 +47,8 @@ def _fake_neptune(query_return=None, query_side_effect=None):
 
 def test_resolve_exact_match():
     async def run():
-        n = _fake_neptune(_types_response(["Organization", "Person"]))
-        canonical, known = await resolve_type_name(n, "t", "Organization")
+        await seed_declared_types(["Organization", "Person"], tenant_id="t")
+        canonical, known = await resolve_type_name(_fake_neptune(), "t", "Organization")
         assert canonical == "Organization"
         assert set(known) == {"Organization", "Person"}
 
@@ -71,8 +57,8 @@ def test_resolve_exact_match():
 
 def test_resolve_case_insensitive_autocorrect():
     async def run():
-        n = _fake_neptune(_types_response(["Organization", "Person"]))
-        canonical, _ = await resolve_type_name(n, "t", "organization")
+        await seed_declared_types(["Organization", "Person"], tenant_id="t")
+        canonical, _ = await resolve_type_name(_fake_neptune(), "t", "organization")
         assert canonical == "Organization"
 
     asyncio.run(run())
@@ -80,8 +66,8 @@ def test_resolve_case_insensitive_autocorrect():
 
 def test_resolve_unknown_type_returns_none_with_known():
     async def run():
-        n = _fake_neptune(_types_response(["Organization", "Person"]))
-        canonical, known = await resolve_type_name(n, "t", "Widget")
+        await seed_declared_types(["Organization", "Person"], tenant_id="t")
+        canonical, known = await resolve_type_name(_fake_neptune(), "t", "Widget")
         assert canonical is None
         assert known  # non-empty → the caller rejects rather than proceeds
 
@@ -90,8 +76,8 @@ def test_resolve_unknown_type_returns_none_with_known():
 
 def test_resolve_fails_open_on_read_error():
     async def run():
-        n = _fake_neptune(query_side_effect=RuntimeError("neptune down"))
-        canonical, known = await resolve_type_name(n, "t", "organization")
+        reset_graph_store_for_tests()
+        canonical, known = await resolve_type_name(_fake_neptune(), "t", "organization")
         assert canonical is None
         assert known == []  # empty → the caller proceeds unchanged
 
@@ -100,57 +86,32 @@ def test_resolve_fails_open_on_read_error():
 
 def test_resolve_fails_open_on_empty_ontology():
     async def run():
-        n = _fake_neptune(_types_response([]))
-        assert await resolve_type_name(n, "t", "organization") == (None, [])
+        assert await resolve_type_name(_fake_neptune(), "t", "organization") == (None, [])
 
     asyncio.run(run())
 
 
-def test_list_declared_types_ignores_non_type_rows():
-    # An entities-style response (no ?type binding) yields no declared types →
-    # fail-open. This is exactly what keeps the many blanket-AsyncMock executor
-    # tests green now that run() resolves the type first.
+def test_list_declared_types_empty_catalog_is_empty():
     async def run():
-        entities_resp = {
-            "head": {"vars": ["e", "label", "vals"]},
-            "results": {
-                "bindings": [
-                    {
-                        "e": {
-                            "type": "uri",
-                            "value": "https://graph.infona.ai/entities/Product/p1",
-                        },
-                        "label": {"type": "literal", "value": "Bosch"},
-                    }
-                ]
-            },
-        }
-        n = _fake_neptune(entities_resp)
-        assert await list_declared_types(n, "t") == []
+        assert await list_declared_types(_fake_neptune(), "t") == []
 
     asyncio.run(run())
 
 
 def test_resolve_trims_whitespace_and_stores_canonical():
-    # A padded input (e.g. a pasted "  organization  ") resolves to the clean
-    # declared name — the stored type must be the canonical `Organization`, not
-    # the padded string (which would itself select zero entities).
     async def run():
-        n = _fake_neptune(_types_response(["Organization"]))
-        canonical, _ = await resolve_type_name(n, "t", "  organization  ")
+        await seed_declared_types(["Organization"], tenant_id="t")
+        canonical, _ = await resolve_type_name(_fake_neptune(), "t", "  organization  ")
         assert canonical == "Organization"
 
     asyncio.run(run())
 
 
 def test_resolve_exact_match_wins_over_case_variant():
-    # Pathological ontology with both casings declared: an exact match must
-    # short-circuit to itself deterministically (never silently rewrite to the
-    # other casing).
     async def run():
-        n = _fake_neptune(_types_response(["Organization", "organization"]))
-        assert (await resolve_type_name(n, "t", "organization"))[0] == "organization"
-        assert (await resolve_type_name(n, "t", "Organization"))[0] == "Organization"
+        await seed_declared_types(["Organization", "organization"], tenant_id="t")
+        assert (await resolve_type_name(_fake_neptune(), "t", "organization"))[0] == "organization"
+        assert (await resolve_type_name(_fake_neptune(), "t", "Organization"))[0] == "Organization"
 
     asyncio.run(run())
 
@@ -180,11 +141,11 @@ def _make_job(type_name):
 
 def test_executor_fails_unknown_type_with_clear_error():
     async def run():
-        neptune = _fake_neptune(_types_response(["Organization", "Person"]))
+        await seed_declared_types(["Organization", "Person"])
         store = InMemoryJobStore()
         job = _make_job("Widget")
         await store.create(job)
-        executor = EnrichmentExecutor(neptune, store, EnrichmentCache(), AsyncMock())
+        executor = EnrichmentExecutor(_fake_neptune(), store, EnrichmentCache(), AsyncMock())
         await executor.run(job, "test-tenant")
         final = await store.get(job.id)
         assert final.status == JobStatus.failed
@@ -196,14 +157,11 @@ def test_executor_fails_unknown_type_with_clear_error():
 
 def test_executor_autocorrects_miscased_type():
     async def run():
-        # Blanket types response: list_types returns it (→ correct), then the
-        # later strategy/SELECT reads parse to nothing → an empty but NOT failed
-        # run. The point under test is that type_name was corrected in place.
-        neptune = _fake_neptune(_types_response(["Organization"]))
+        await seed_declared_types(["Organization"])
         store = InMemoryJobStore()
         job = _make_job("organization")
         await store.create(job)
-        executor = EnrichmentExecutor(neptune, store, EnrichmentCache(), AsyncMock())
+        executor = EnrichmentExecutor(_fake_neptune(), store, EnrichmentCache(), AsyncMock())
         await executor.run(job, "test-tenant")
         final = await store.get(job.id)
         assert final.type_name == "Organization"
@@ -214,13 +172,10 @@ def test_executor_autocorrects_miscased_type():
 
 def test_executor_fails_open_when_no_types_declared():
     async def run():
-        # Empty ontology read → known == [] → proceed unchanged (never a false
-        # fail when the type list genuinely can't be loaded).
-        neptune = _fake_neptune(_types_response([]))
         store = InMemoryJobStore()
         job = _make_job("whatever")
         await store.create(job)
-        executor = EnrichmentExecutor(neptune, store, EnrichmentCache(), AsyncMock())
+        executor = EnrichmentExecutor(_fake_neptune(), store, EnrichmentCache(), AsyncMock())
         await executor.run(job, "test-tenant")
         final = await store.get(job.id)
         assert final.status != JobStatus.failed
@@ -232,8 +187,8 @@ def test_executor_fails_open_when_no_types_declared():
 # ── enrich route (immediate feedback on the direct path) ──────────────────────
 
 
-def test_route_rejects_unknown_type_422(client, auth_headers, mock_neptune):
-    mock_neptune.query.return_value = _types_response(["Organization", "Person"])
+def test_route_rejects_unknown_type_422(client, auth_headers):
+    asyncio.run(seed_declared_types(["Organization", "Person"]))
     resp = client.post(
         "/graphs/test-tenant/enrich/jobs",
         headers=auth_headers,
@@ -248,8 +203,8 @@ def test_route_rejects_unknown_type_422(client, auth_headers, mock_neptune):
     assert "doesn't exist" in resp.json()["detail"]
 
 
-def test_route_autocorrects_miscased_type(client, auth_headers, mock_neptune):
-    mock_neptune.query.return_value = _types_response(["Organization"])
+def test_route_autocorrects_miscased_type(client, auth_headers):
+    asyncio.run(seed_declared_types(["Organization"]))
     resp = client.post(
         "/graphs/test-tenant/enrich/jobs",
         headers=auth_headers,
@@ -263,17 +218,14 @@ def test_route_autocorrects_miscased_type(client, auth_headers, mock_neptune):
     assert resp.status_code == 202
     data = resp.json()
     assert data["routing_note"] and "Organization" in data["routing_note"]
-    # The created job carries the canonical type, not the miscased input.
     got = client.get(
         f"/graphs/test-tenant/enrich/jobs/{data['job_id']}", headers=auth_headers
     )
     assert got.json()["type_name"] == "Organization"
 
 
-def test_route_proceeds_when_ontology_unavailable(client, auth_headers, mock_neptune):
-    # Empty type list (read failed / none declared) → fail-open, so a normal
-    # create still succeeds — no regression when the type list can't load.
-    mock_neptune.query.return_value = {"head": {"vars": []}, "results": {"bindings": []}}
+def test_route_proceeds_when_ontology_unavailable(client, auth_headers):
+    # Empty catalog → fail-open, so a normal create still succeeds.
     resp = client.post(
         "/graphs/test-tenant/enrich/jobs",
         headers=auth_headers,

@@ -1,11 +1,12 @@
 """The ONE hardened SPARQL string-literal escaper (ONTA-416).
 
-``graph/queries.sparql_string_literal`` replaced FOUR partial copies that had
-drifted apart: ``queries._escape_literal`` and ``enrichment.executor._esc_lit``
+``graph/queries.sparql_string_literal`` replaced the partial copies that had
+drifted apart: ``queries._escape_literal`` and (retired) ``enrichment.executor._esc_lit``
 covered ``\\n`` but not ``\\r``/``\\t``; ``explore._esc`` covered NEITHER; only
 ``ontology_queries._esc`` was fully hardened (ONTA-250). A needle/value carrying
 an interior CR therefore produced an UNTERMINATED literal and a store-side parse
-error surfacing as an opaque 500.
+error surfacing as an opaque 500. Enrichment no longer emits SPARQL (ONTA-527)
+so the executor wrapper is gone.
 
 These tests lock (a) the escaping itself and (b) that every caller still routes
 through the single definition, so the coverage cannot diverge again.
@@ -16,7 +17,6 @@ from __future__ import annotations
 import pytest
 
 from infona_client.api.routes import explore as explore_route
-from infona_client.enrichment import executor as enrichment_executor
 from infona_client.graph import ontology_queries
 from infona_client.graph.queries import _escape_literal, sparql_string_literal
 
@@ -62,7 +62,6 @@ def test_result_carries_no_raw_char_that_would_break_the_literal(raw):
         _escape_literal,
         ontology_queries._esc,
         explore_route._esc,
-        enrichment_executor._esc_lit,
     ],
 )
 def test_every_caller_delegates_to_the_one_definition(fn):
