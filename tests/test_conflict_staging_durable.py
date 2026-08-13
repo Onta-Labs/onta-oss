@@ -40,9 +40,8 @@ from infona_client.graph.store import get_graph_store
 from tests._enrichment_prov_helpers import (
     FakeWikidata,
     all_updates,
-    entities_query_response,
     make_job,
-    query_router,
+    seed_enrich_entities,
 )
 
 
@@ -81,8 +80,9 @@ def test_staged_conflict_carries_both_sources(monkeypatch):
                 f"{vat_pred}::{existing_stamp}"
             ),
         }]
+        await seed_enrich_entities("Widget", rows)
         neptune = AsyncMock()
-        neptune.query.side_effect = query_router(entities_query_response(rows))
+        neptune.query.side_effect = AssertionError("enrich must not SPARQL")
         neptune.update.return_value = None
         executor = EnrichmentExecutor(
             neptune, InMemoryJobStore(), EnrichmentCache(),
@@ -137,7 +137,7 @@ def test_conflict_survives_store_roundtrip_and_applies():
 
         # apply_decisions still resolves it: accept the proposal → value written.
         neptune = AsyncMock()
-        neptune.query.side_effect = query_router(entities_query_response([]))
+        neptune.query.side_effect = AssertionError("enrich must not SPARQL")
         neptune.update.return_value = None
         store = InMemoryJobStore()
         await store.create(restored)

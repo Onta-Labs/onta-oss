@@ -572,23 +572,20 @@ async def test_enrichment_executor_persists_live_stage_trace():
         async def lookup(self, entity_label, attribute, context):
             return list(self._mapping.get((entity_label, attribute), []))
 
-    sparql = {
-        "head": {"vars": ["e", "label", "nameAttr", "vals"]},
-        "results": {
-            "bindings": [
-                {
-                    "e": {
-                        "type": "uri",
-                        "value": "https://graph.infona.ai/entities/Product/p1",
-                    },
-                    "label": {"type": "literal", "value": "Widget"},
-                    "vals": {"type": "literal", "value": ""},
-                }
-            ]
-        },
-    }
+    from tests._enrichment_prov_helpers import seed_enrich_entities
+
+    await seed_enrich_entities(
+        "Product",
+        [{
+            "uri": "https://graph.infona.ai/entities/Product/p1",
+            "label": "Widget",
+            "vals": "",
+        }],
+        tenant_id="demo-tenant",
+        kg_name="products",
+    )
     neptune = AsyncMock()
-    neptune.query = AsyncMock(return_value=sparql)
+    neptune.query = AsyncMock(side_effect=AssertionError("enrich must not SPARQL"))
     neptune.update = AsyncMock(return_value=None)
 
     store = InMemoryJobStore()

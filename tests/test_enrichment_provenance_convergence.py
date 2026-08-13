@@ -46,9 +46,8 @@ from tests._enrichment_prov_helpers import (
     XSD_DATETIME,
     FakeWikidata,
     all_updates,
-    entities_query_response,
     make_job,
-    query_router,
+    seed_enrich_entities,
 )
 
 #: The per-KG instance graph `make_job`'s tenant/kg pair resolves to.
@@ -91,8 +90,12 @@ def test_enrichment_writes_per_attribute_source_url(type_name, attr, label, valu
     async def run():
         entity = f"https://graph.infona.ai/entities/{type_name}/e1"
         rows = [{"uri": entity, "label": label, "vals": ""}]
+        await seed_enrich_entities(
+            rows[0]["uri"].split("/entities/", 1)[1].split("/", 1)[0],
+            rows,
+        )
         neptune = AsyncMock()
-        neptune.query.side_effect = query_router(entities_query_response(rows))
+        neptune.query.side_effect = AssertionError("enrich must not SPARQL")
         neptune.update.return_value = None
         executor = EnrichmentExecutor(
             neptune, InMemoryJobStore(), EnrichmentCache(),
@@ -130,8 +133,12 @@ def test_two_attributes_carry_independent_sources(monkeypatch):
     async def run():
         entity = "https://graph.infona.ai/entities/Widget/e1"
         rows = [{"uri": entity, "label": "Alpha Widget", "vals": ""}]
+        await seed_enrich_entities(
+            rows[0]["uri"].split("/entities/", 1)[1].split("/", 1)[0],
+            rows,
+        )
         neptune = AsyncMock()
-        neptune.query.side_effect = query_router(entities_query_response(rows))
+        neptune.query.side_effect = AssertionError("enrich must not SPARQL")
         neptune.update.return_value = None
         executor = EnrichmentExecutor(
             neptune, InMemoryJobStore(), EnrichmentCache(),
@@ -170,8 +177,12 @@ def test_companions_dated_from_verdict_not_write_time(monkeypatch):
     async def run():
         entity = "https://graph.infona.ai/entities/Gadget/e1"
         rows = [{"uri": entity, "label": "Beta Gadget", "vals": ""}]
+        await seed_enrich_entities(
+            rows[0]["uri"].split("/entities/", 1)[1].split("/", 1)[0],
+            rows,
+        )
         neptune = AsyncMock()
-        neptune.query.side_effect = query_router(entities_query_response(rows))
+        neptune.query.side_effect = AssertionError("enrich must not SPARQL")
         neptune.update.return_value = None
         executor = EnrichmentExecutor(
             neptune, InMemoryJobStore(), EnrichmentCache(),
@@ -203,8 +214,12 @@ def test_canonical_provenance_graph_gets_confidence_and_source_date(monkeypatch)
     async def run():
         entity = "https://graph.infona.ai/entities/Widget/e1"
         rows = [{"uri": entity, "label": "Alpha Widget", "vals": ""}]
+        await seed_enrich_entities(
+            rows[0]["uri"].split("/entities/", 1)[1].split("/", 1)[0],
+            rows,
+        )
         neptune = AsyncMock()
-        neptune.query.side_effect = query_router(entities_query_response(rows))
+        neptune.query.side_effect = AssertionError("enrich must not SPARQL")
         neptune.update.return_value = None
         executor = EnrichmentExecutor(
             neptune, InMemoryJobStore(), EnrichmentCache(),
@@ -240,8 +255,12 @@ def test_refresh_folds_citation_onto_the_assertion(monkeypatch):
     async def run():
         entity = "https://graph.infona.ai/entities/Widget/e1"
         rows = [{"uri": entity, "label": "Alpha Widget", "vals": ""}]
+        await seed_enrich_entities(
+            rows[0]["uri"].split("/entities/", 1)[1].split("/", 1)[0],
+            rows,
+        )
         neptune = AsyncMock()
-        neptune.query.side_effect = query_router(entities_query_response(rows))
+        neptune.query.side_effect = AssertionError("enrich must not SPARQL")
         neptune.update.return_value = None
         executor = EnrichmentExecutor(
             neptune, InMemoryJobStore(), EnrichmentCache(),
@@ -287,8 +306,12 @@ def test_verified_row_advances_freshness_without_rewriting_value(policy, monkeyp
             "label": "Alpha Widget",
             "vals": f"{sku_pred}::WX-1000",  # already has this value
         }]
+        await seed_enrich_entities(
+            rows[0]["uri"].split("/entities/", 1)[1].split("/", 1)[0],
+            rows,
+        )
         neptune = AsyncMock()
-        neptune.query.side_effect = query_router(entities_query_response(rows))
+        neptune.query.side_effect = AssertionError("enrich must not SPARQL")
         neptune.update.return_value = None
         executor = EnrichmentExecutor(
             neptune, InMemoryJobStore(), EnrichmentCache(),
@@ -435,8 +458,12 @@ def test_scoped_refresh_processes_subset_without_discovery(monkeypatch):
             "label": "Beta Gadget",
             "vals": f"{wk_pred}::3.2",
         }]
+        await seed_enrich_entities(
+            rows[0]["uri"].split("/entities/", 1)[1].split("/", 1)[0],
+            rows,
+        )
         neptune = AsyncMock()
-        neptune.query.side_effect = query_router(entities_query_response(rows))
+        neptune.query.side_effect = AssertionError("enrich must not SPARQL")
         neptune.update.return_value = None
         executor = EnrichmentExecutor(
             neptune, InMemoryJobStore(), EnrichmentCache(),
