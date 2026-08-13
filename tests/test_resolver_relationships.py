@@ -536,11 +536,10 @@ class TestDomainModeling:
         assert types["HumannessIndex"].parent_type == "Score"
         assert types["Score"].parent_type is None
 
-        # --- Score (the synthesized ancestor) carries NO description; only a
-        #     minted SUBTYPE may. (The positive half — HumannessIndex carrying
-        #     `subtype_description` — is a Neo4j-port gap, pinned by the strict
-        #     xfails in tests/test_resolver_subtype_description.py.)
-        assert types["Score"].description == ""
+        # --- Score (synthesized ancestor) gets a catalog default description
+        #     (mandatory short description), not empty and not LLM subtype prose.
+        assert types["Score"].description.strip()
+        assert "Entity type" in types["Score"].description
 
         # --- relationships became object properties (entity→entity edges), not
         #     scalar attributes: has_score (Model→HumannessIndex) and provided_by
@@ -615,9 +614,10 @@ class TestDomainModeling:
         assert "Article" in result.types_created
         assert result.entities_resolved == 1
         assert await _entities_of("Article") == [entity_uri("Article", "a1")]
-        # The minted type carries NO description (subtype_description defaulted
-        # None → nothing to write).
-        assert (await _types())["Article"].description == ""
+        # Minted type gets mandatory catalog default description (not empty).
+        art = (await _types())["Article"]
+        assert art.description.strip()
+        assert "Entity type" in art.description
         mock_neptune.update.assert_not_called()
 
 

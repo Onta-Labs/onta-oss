@@ -190,13 +190,27 @@ ONTO_TYPE_UPSERT_CYPHER = """
 MERGE (t:OntoType {tenant_id: $tenant_id, kg: $kg, layer: $layer, name: $name})
 ON CREATE SET
   t.description = $description,
+  t.description_updated_at = $description_updated_at,
   t.label_token = $label_token,
   t.uri = $uri
 ON MATCH SET
-  t.description = CASE WHEN $description = '' THEN t.description ELSE $description END,
+  t.description = CASE
+    WHEN coalesce(t.description, '') = '' THEN $description
+    WHEN $description_provided AND $description <> coalesce(t.description, '')
+      THEN $description
+    ELSE t.description
+  END,
+  t.description_updated_at = CASE
+    WHEN coalesce(t.description, '') = '' THEN $description_updated_at
+    WHEN $description_provided AND $description <> coalesce(t.description, '')
+      THEN $description_updated_at
+    WHEN t.description_updated_at IS NULL THEN $description_updated_at
+    ELSE t.description_updated_at
+  END,
   t.label_token = coalesce($label_token, t.label_token),
   t.uri = coalesce($uri, t.uri)
 RETURN t.name AS name, t.layer AS layer, t.description AS description,
+       t.description_updated_at AS description_updated_at,
        t.label_token AS label_token, t.uri AS uri,
        t.tenant_id AS tenant_id, t.kg AS kg
 """.strip()
@@ -224,6 +238,7 @@ MATCH (t:OntoType {tenant_id: $tenant_id, kg: $kg})
 WHERE $layer IS NULL OR t.layer = $layer
 OPTIONAL MATCH (t)-[:SUBCLASS_OF]->(p:OntoType)
 RETURN t.name AS name, t.layer AS layer, coalesce(t.description, '') AS description,
+       t.description_updated_at AS description_updated_at,
        t.label_token AS label_token, t.uri AS uri,
        p.name AS parent_type, t.tenant_id AS tenant_id, t.kg AS kg,
        t.deprecated_at AS deprecated_at, t.superseded_by AS superseded_by
@@ -234,6 +249,7 @@ ONTO_TYPE_GET_CYPHER = """
 MATCH (t:OntoType {tenant_id: $tenant_id, kg: $kg, layer: $layer, name: $name})
 OPTIONAL MATCH (t)-[:SUBCLASS_OF]->(p:OntoType)
 RETURN t.name AS name, t.layer AS layer, coalesce(t.description, '') AS description,
+       t.description_updated_at AS description_updated_at,
        t.label_token AS label_token, t.uri AS uri,
        p.name AS parent_type, t.tenant_id AS tenant_id, t.kg AS kg,
        t.deprecated_at AS deprecated_at, t.superseded_by AS superseded_by
@@ -249,21 +265,40 @@ ON CREATE SET
   a.range_type = $range_type,
   a.cardinality = $cardinality,
   a.description = $description,
+  a.description_updated_at = $description_updated_at,
   a.prop_key = $prop_key
 ON MATCH SET
   a.kind = $kind,
   a.datatype = $datatype,
   a.range_type = $range_type,
   a.cardinality = coalesce($cardinality, a.cardinality),
-  a.description = CASE WHEN $description = '' THEN a.description ELSE $description END,
+  a.description = CASE
+    WHEN coalesce(a.description, '') = '' THEN $description
+    WHEN $description_provided AND $description <> coalesce(a.description, '')
+      THEN $description
+    ELSE a.description
+  END,
+  a.description_updated_at = CASE
+    WHEN coalesce(a.description, '') = '' THEN $description_updated_at
+    WHEN $description_provided AND $description <> coalesce(a.description, '')
+      THEN $description_updated_at
+    WHEN a.description_updated_at IS NULL THEN $description_updated_at
+    ELSE a.description_updated_at
+  END,
   a.prop_key = coalesce($prop_key, a.prop_key)
 WITH a
 MERGE (t:OntoType {tenant_id: $tenant_id, kg: $kg, layer: $layer, name: $domain})
-ON CREATE SET t.label_token = $domain_label_token
+ON CREATE SET
+  t.label_token = $domain_label_token,
+  t.description = coalesce($domain_description, t.description, ''),
+  t.description_updated_at = coalesce(
+    $domain_description_updated_at, t.description_updated_at
+  )
 MERGE (t)-[:DECLARES]->(a)
 RETURN a.name AS name, a.domain AS domain, a.kind AS kind,
        a.datatype AS datatype, a.range_type AS range_type,
        a.cardinality AS cardinality, coalesce(a.description, '') AS description,
+       a.description_updated_at AS description_updated_at,
        a.prop_key AS prop_key, a.layer AS layer,
        a.tenant_id AS tenant_id, a.kg AS kg,
        a.text_kind AS text_kind
@@ -315,6 +350,7 @@ WHERE ($domain IS NULL OR a.domain = $domain)
 RETURN a.name AS name, a.domain AS domain, a.kind AS kind,
        a.datatype AS datatype, a.range_type AS range_type,
        a.cardinality AS cardinality, coalesce(a.description, '') AS description,
+       a.description_updated_at AS description_updated_at,
        a.prop_key AS prop_key, a.layer AS layer,
        a.tenant_id AS tenant_id, a.kg AS kg,
        coalesce(a.core_slot, false) AS core_slot,
