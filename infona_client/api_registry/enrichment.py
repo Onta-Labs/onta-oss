@@ -40,7 +40,7 @@ from ..enrichment.sources.base import register_adapter
 from ..enrichment.tiers import register_chain_prefix_provider
 from .catalog import ApiSourceCatalog, get_api_source_catalog
 from .executor import RegistryApiSource
-from .ids import normalize_attribute_binding
+from .ids import has_id_format_guard, normalize_attribute_binding
 from .matching import (
     fillable_columns as _spec_fillable_columns,
     has_enrich_params as _has_enrich_params,
@@ -218,9 +218,14 @@ class RegistrySourceAdapter:
                 # Well-known id formats (NCT, …): reject placeholders / typos so
                 # we never call e.g. ClinicalTrials.gov with "NO-TRIAL-R053".
                 # Invalid → empty → same graceful no-op as a missing attr.
+                # If the entity_attributes map is empty (GraphStore bind-load
+                # missed the leaf) but the label itself is a well-formed id,
+                # accept it — ingest often keys the node by that identifier.
                 val = normalize_attribute_binding(
                     attr, str(attrs.get(attr, "") or ""),
                 )
+                if not val and has_id_format_guard(attr):
+                    val = normalize_attribute_binding(attr, label)
             else:
                 val = ""
             if val:
