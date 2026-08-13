@@ -1392,14 +1392,29 @@ async def refresh_after_write(
     # right after upserting markers; the TTL remains the cross-process backstop.
 
     # 2. Re-embed affected types (dedup, order-preserving).
+    # Prefer GraphStore catalog (Neo4j-only product path). Neptune SPARQL
+    # residual remains inside embed_types when catalog is empty.
     types = list(dict.fromkeys(t for t in affected_types if t))
     if types:
         try:
+            from infona_client.graph.store import get_optional_graph_store
             from infona_client.nlp.pipeline import get_embedding_service
 
             svc = get_embedding_service()
             if svc is not None:
-                await svc.embed_types(onto_graph, types, neptune)
+                gs = store
+                if gs is None:
+                    try:
+                        gs = get_optional_graph_store()
+                    except Exception:
+                        gs = None
+                await svc.embed_types(
+                    onto_graph,
+                    types,
+                    neptune,
+                    store=gs,
+                    tenant_id=tenant_id,
+                )
         except Exception:  # noqa: BLE001 — non-blocking, mirrors the ingest routes
             logger.warning("embed_types_failed", types=types, exc_info=True)
 

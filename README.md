@@ -191,10 +191,17 @@ Interactive docs: [http://localhost:8000/docs](http://localhost:8000/docs).
 ## Model configuration
 
 ```bash
-export OPENROUTER_API_KEY=sk-or-...
+export OPENROUTER_API_KEY=sk-or-...   # also accepted as INFONA_OPENROUTER_API_KEY
 export INFONA_QUERY_PROVIDER=openrouter
 export INFONA_QUERY_MODEL=google/gemini-2.5-flash
 ```
+
+With an OpenRouter key present, OSS **auto-embeds ontology types** as the catalog
+grows (write-path refresh) and on first `/ask` if the process index is empty.
+Indexes persist under `~/.infona/embeddings/` (override with
+`INFONA_EMBEDDINGS_DIR`) or optional S3 (`INFONA_EMBEDDINGS_S3_BUCKET`). That
+powers semantic type retrieval so large tenant ontologies do not always dump
+into the prompt.
 
 Local models (Ollama / vLLM) via OpenAI-compatible endpoints are possible if you point the query provider at them; document your own setup — the honest default for a first run is an OpenRouter key.
 
@@ -206,7 +213,7 @@ Local models (Ollama / vLLM) via OpenAI-compatible endpoints are possible if you
 
 - **Backend:** FastAPI + Neo4j GraphStore (Cypher)
 - **Ingestion:** LLM schema inference → deterministic mapping
-- **Query:** ontology + few-shot bank → Cypher → answer
+- **Query:** populated ontology (+ semantic type top‑K when embeddings exist) + few-shot bank → Cypher → answer
 - **SPARQL / Fuseki / Neptune:** removed as product backends (`graph_backend()`
   rejects them). Residual compose profile / scripts are quarantine-only
   archaeology — not a supported local path.
