@@ -569,20 +569,27 @@ async def test_ask_still_calls_llm_with_grounding_present(monkeypatch):
 
     async def fake_llm(question: str, ontology: str, **kw):
         llm_calls.append(question)
-        # Covered plan: filter intent "in east" must bind a dim filter so the
-        # constraint-coverage gate does not reject + retry (silent-total class).
+        # Covered + schema-valid plan: filter intent "in east" binds via the
+        # declared stored_in relationship (not an invented e.region leaf) so
+        # constraint-coverage and schema-predicate gates both accept.
         return {
             "cypher": (
                 "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->"
                 "(c:Class {tenant_id: $tenant_id, kg: $kg}) "
-                "WHERE c.name IN $type_names AND e.region = $prop_value "
+                "WHERE c.name IN $type_names "
+                "MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg})-[:SUBJECT]->(e) "
+                "MATCH (a)-[:OBJECT]->(t:Entity {tenant_id: $tenant_id, kg: $kg}) "
+                "MATCH (a)-[:PREDICATE]->(p:Property {tenant_id: $tenant_id, kg: $kg}) "
+                "WHERE p.name = $rel_attr AND toLower(coalesce(t.name, '')) = toLower($target_name) "
                 "RETURN count(DISTINCT e) AS n"
             ),
             "params": {
                 "type_names": ["Widget"],
-                "prop_value": "east",
+                "rel_attr": "stored_in",
+                "target_name": "east",
             },
-            "explanation": "count widgets filtered by region",
+            "template": "related_entity_name_filter",
+            "explanation": "count widgets related via stored_in to east",
             "functions_needed": [],
         }
 

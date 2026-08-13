@@ -1616,11 +1616,12 @@ class NLQueryPipeline:
                         token_usage=token_ledger.to_list(),
                     )
 
-                # Filter integrity + constraint coverage (silent unfiltered
-                # totals / filter-miss). Always-LLM still applies — we only
-                # regenerate, never fixture-short-circuit. Fixtures/stubs skip
-                # (template bodies are known-good for integrity; coverage still
-                # runs so measure-only aggregate under filter intent fails closed).
+                # Filter integrity + schema predicates + constraint coverage
+                # (silent unfiltered totals / invented hops / filter-miss).
+                # Always-LLM still applies — we only regenerate, never
+                # fixture-short-circuit. Fixtures/stubs skip integrity/schema
+                # (template bodies known-good); coverage still runs so
+                # measure-only aggregate under filter intent fails closed.
                 if not (gen.get("stub") or gen.get("fixture")):
                     from infona_client.nlp.cypher_filter_integrity import (
                         check_cypher_filter_integrity,
@@ -1630,6 +1631,11 @@ class NLQueryPipeline:
                         check_constraint_coverage,
                         coverage_feedback,
                         fail_closed_answer,
+                    )
+                    from infona_client.nlp.schema_valid_cypher import (
+                        check_schema_valid_cypher,
+                        fail_closed_schema_answer,
+                        schema_valid_feedback,
                     )
 
                     filt_reason = check_cypher_filter_integrity(
@@ -1681,6 +1687,60 @@ class NLQueryPipeline:
                             query_confidence=cov_fail.confidence,
                             query_confidence_reason=cov_fail.reason,
                             clarification_prompt=cov_fail.clarification_prompt,
+                        )
+
+                    # Schema-valid predicates: free-form must not invent
+                    # relationship types / attr leaves (HAS_OFFERED_IN vs
+                    # offered_in → OFFERED_IN). Runs after integrity so we
+                    # feed a single regenerate loop with corrective feedback.
+                    schema_res = check_schema_valid_cypher(
+                        cypher_raw,
+                        ontology or "",
+                        params=params,
+                        template=gen.get("template"),
+                    )
+                    timing.update(schema_res.to_timing())
+                    if not schema_res.ok:
+                        last_error = schema_valid_feedback(
+                            schema_res, previous_cypher=cypher_raw
+                        )
+                        cov_schema = check_constraint_coverage(
+                            question,
+                            cypher_raw,
+                            params=params,
+                            template=gen.get("template"),
+                            schema_reason=schema_res.reason,
+                        )
+                        timing.update(cov_schema.to_timing())
+                        if attempt < max_attempts - 1:
+                            last_was_enum_filter_mismatch = True
+                            timing["schema_valid_cypher_retry"] = 1.0
+                            logger.info(
+                                "schema_valid_cypher_retry",
+                                reason=(schema_res.reason or "")[:200],
+                                invented_rels=list(schema_res.invented_rel_types)[:8],
+                                invented_props=list(schema_res.invented_prop_keys)[:8],
+                                question=question,
+                                attempt=attempt,
+                            )
+                            continue
+                        timing.update(token_ledger.totals_for_timing())
+                        return NLResult(
+                            answer=fail_closed_schema_answer(schema_res),
+                            sparql=cypher_raw,
+                            explanation=explanation,
+                            ontology=ontology,
+                            timing={
+                                **timing,
+                                "total_ms": round((time.time() - t0) * 1000, 1),
+                                "attempts": attempt + 1,
+                                "schema_valid_cypher_reject": 1.0,
+                            },
+                            token_usage=token_ledger.to_list(),
+                            query_confidence=cov_schema.confidence,
+                            query_confidence_reason=cov_schema.reason
+                            or schema_res.reason,
+                            clarification_prompt=cov_schema.clarification_prompt,
                         )
 
                     cov = check_constraint_coverage(
