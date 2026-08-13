@@ -98,3 +98,23 @@ class NLResult(BaseModel):
             "total_tokens, provider. Empty when no LLM usage was recorded."
         ),
     )
+    # Query plan confidence (filter-miss / constraint coverage gate).
+    # high | medium | low; empty when the gate did not run (non-Cypher path).
+    query_confidence: str = Field(
+        default="",
+        description=(
+            "Plan confidence after constraint coverage: high | medium | low. "
+            "Empty when not assessed."
+        ),
+    )
+    query_confidence_reason: str = Field(
+        default="",
+        description="Short reason for query_confidence (debug / CLI -d).",
+    )
+    clarification_prompt: str = Field(
+        default="",
+        description=(
+            "When confidence is low / fail-closed, an optional clarification "
+            "question (which field a filter token should bind to)."
+        ),
+    )

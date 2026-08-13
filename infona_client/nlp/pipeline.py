@@ -1584,14 +1584,20 @@ class NLQueryPipeline:
                         token_usage=token_ledger.to_list(),
                     )
 
-                # Filter integrity: reject OPTIONAL MATCH value filters that do
-                # not constrain primary rows (silent unfiltered counts / zeros).
-                # Always-LLM still applies — we only regenerate, never fixture-
-                # short-circuit. Fixtures/stubs skip (template bodies are known-good).
+                # Filter integrity + constraint coverage (silent unfiltered
+                # totals / filter-miss). Always-LLM still applies — we only
+                # regenerate, never fixture-short-circuit. Fixtures/stubs skip
+                # (template bodies are known-good for integrity; coverage still
+                # runs so measure-only aggregate under filter intent fails closed).
                 if not (gen.get("stub") or gen.get("fixture")):
                     from infona_client.nlp.cypher_filter_integrity import (
                         check_cypher_filter_integrity,
                         filter_integrity_feedback,
+                    )
+                    from infona_client.nlp.query_constraint_coverage import (
+                        check_constraint_coverage,
+                        coverage_feedback,
+                        fail_closed_answer,
                     )
 
                     filt_reason = check_cypher_filter_integrity(
@@ -1604,6 +1610,14 @@ class NLQueryPipeline:
                         last_error = filter_integrity_feedback(
                             filt_reason, previous_cypher=cypher_raw
                         )
+                        cov_fail = check_constraint_coverage(
+                            question,
+                            cypher_raw,
+                            params=params,
+                            template=gen.get("template"),
+                            integrity_reason=filt_reason,
+                        )
+                        timing.update(cov_fail.to_timing())
                         if attempt < max_attempts - 1:
                             last_was_enum_filter_mismatch = True
                             timing["cypher_filter_integrity_retry"] = 1.0
@@ -1632,7 +1646,52 @@ class NLQueryPipeline:
                                 "cypher_filter_integrity_reject": 1.0,
                             },
                             token_usage=token_ledger.to_list(),
+                            query_confidence=cov_fail.confidence,
+                            query_confidence_reason=cov_fail.reason,
+                            clarification_prompt=cov_fail.clarification_prompt,
                         )
+
+                    cov = check_constraint_coverage(
+                        question,
+                        cypher_raw,
+                        params=params,
+                        template=gen.get("template"),
+                    )
+                    timing.update(cov.to_timing())
+                    if not cov.ok and cov.fail_closed:
+                        last_error = coverage_feedback(
+                            cov, previous_cypher=cypher_raw
+                        )
+                        if attempt < max_attempts - 1:
+                            last_was_enum_filter_mismatch = True
+                            timing["query_constraint_coverage_retry"] = 1.0
+                            logger.info(
+                                "query_constraint_coverage_retry",
+                                reason=(cov.reason or "")[:200],
+                                unbound=list(cov.unbound_tokens)[:8],
+                                question=question,
+                                attempt=attempt,
+                            )
+                            continue
+                        timing.update(token_ledger.totals_for_timing())
+                        return NLResult(
+                            answer=fail_closed_answer(cov),
+                            sparql=cypher_raw,
+                            explanation=explanation,
+                            ontology=ontology,
+                            timing={
+                                **timing,
+                                "total_ms": round((time.time() - t0) * 1000, 1),
+                                "attempts": attempt + 1,
+                                "query_constraint_coverage_reject": 1.0,
+                            },
+                            token_usage=token_ledger.to_list(),
+                            query_confidence=cov.confidence,
+                            query_confidence_reason=cov.reason,
+                            clarification_prompt=cov.clarification_prompt,
+                        )
+                    # Stash last good coverage for the success NLResult.
+                    last_gen["_coverage"] = cov
 
                 try:
                     cypher, forced_params = confine_generated_cypher(
@@ -1905,6 +1964,18 @@ class NLQueryPipeline:
                 timing["attempts"] = attempt + 1
                 timing["rows"] = len(bindings)
                 timing.update(token_ledger.totals_for_timing())
+                cov_ok = last_gen.get("_coverage")
+                q_conf = ""
+                q_conf_reason = ""
+                q_clarify = ""
+                if cov_ok is not None:
+                    try:
+                        timing.update(cov_ok.to_timing())
+                        q_conf = cov_ok.confidence
+                        q_conf_reason = cov_ok.reason or ""
+                        q_clarify = cov_ok.clarification_prompt or ""
+                    except Exception:
+                        pass
                 return NLResult(
                     answer=answer,
                     sparql=cypher,
@@ -1916,6 +1987,9 @@ class NLQueryPipeline:
                     citations=citations,
                     coverage_caveat=coverage_caveat,
                     token_usage=token_ledger.to_list(),
+                    query_confidence=q_conf,
+                    query_confidence_reason=q_conf_reason,
+                    clarification_prompt=q_clarify,
                 )
 
             except (CrossTenantQueryError, CrossTenantCypherError):
@@ -1954,6 +2028,11 @@ class NLQueryPipeline:
         timing["total_ms"] = round((time.time() - t0) * 1000, 1)
         timing["attempts"] = max_attempts
         timing.update(token_ledger.totals_for_timing())
+        # Surface last coverage assessment if the retry loop exhausted without
+        # a dedicated fail-closed return (e.g. execute errors after a covered plan).
+        _final_conf = str(timing.get("query_confidence") or "")
+        _final_reason = str(timing.get("query_confidence_reason") or "")
+        _final_clarify = str(timing.get("clarification_prompt") or "")
         return NLResult(
             answer=(
                 f"Could not answer after {max_attempts} attempts. "
@@ -1964,6 +2043,9 @@ class NLQueryPipeline:
             ontology=ontology,
             timing=timing,
             token_usage=token_ledger.to_list(),
+            query_confidence=_final_conf,
+            query_confidence_reason=_final_reason,
+            clarification_prompt=_final_clarify,
         )
 
     @staticmethod
