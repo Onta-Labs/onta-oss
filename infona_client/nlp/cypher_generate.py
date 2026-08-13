@@ -2104,9 +2104,11 @@ async def ontology_from_graph_store(
                 )
             ]
             # Also probe wanted names not in catalog (instance-only types).
+            seen_probe = set(probe_names)
             for n in force_set:
-                if n not in {p for p in probe_names}:
+                if n not in seen_probe:
                     probe_names.append(n)
+                    seen_probe.add(n)
 
             async def _one(name: str) -> tuple[str, Any]:
                 try:
