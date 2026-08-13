@@ -261,8 +261,11 @@ Key rules:
 when the question asks for entities.
 - Type filters: prefer `$type_names` lists (subclass-expanded) over a single \
 hardcoded leaf when hierarchy is relevant.
-- "[no instances]": a type marked empty in the schema is still valid — generate a \
-correct scoped query; zero rows is an honest answer.
+- "[no instances]": a type, attribute, or relationship marked empty in the schema \
+is still valid — generate a correct scoped query; zero rows is an honest answer. \
+Prefer UNMARKED (populated) attributes and relationships for planning when the \
+question does not require a specific declared-empty leaf. Instance-populated \
+leaves are listed first in each type block; declared-but-empty leaves trail them.
 - Only use type names and attribute keys that appear in the ontology schema.
 - Success is correct *answers*, not SPARQL look-alikes.
 
