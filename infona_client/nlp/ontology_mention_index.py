@@ -143,9 +143,9 @@ def current_embed_model() -> str:
 
 @dataclass
 class OntologyMentionEntry:
-    """One embeddable ontology node (entity type or relationship leaf)."""
+    """One embeddable ontology node (entity type, relationship, or attr leaf)."""
 
-    kind: str  # "type" | "rel"
+    kind: str  # "type" | "rel" | "attr"
     name: str
     embed_text: str
     embedding: np.ndarray | None = None
@@ -153,6 +153,7 @@ class OntologyMentionEntry:
     domain: str = ""
     range: str = ""
     description: str = ""
+    datatype: str = ""
 
 
 def format_type_embed_text(
@@ -192,6 +193,36 @@ def format_rel_embed_text(
     spaced = leaf.replace("_", " ")
     if spaced != leaf:
         parts.append(f"Also known as: {spaced}")
+    return "\n".join(parts)
+
+
+def format_attr_embed_text(
+    leaf: str,
+    *,
+    domain: str = "",
+    datatype: str = "",
+    description: str = "",
+) -> str:
+    """Minimum embed text for a datatype / literal attribute leaf.
+
+    Used for money-ish synonym resolve (``price`` ↔ ``unit_cost``) when the
+    mention index is fully embedded for the candidate set. Partial indexes
+    must not invent leaves — callers gate on :meth:`attrs_fully_embedded`.
+    """
+    parts = [f"Attribute: {leaf}"]
+    if domain:
+        parts.append(f"Domain type: {domain}")
+    if datatype:
+        parts.append(f"Datatype: {datatype}")
+    if description:
+        parts.append(f"Description: {description.strip()}")
+    spaced = leaf.replace("_", " ")
+    if spaced != leaf:
+        parts.append(f"Also known as: {spaced}")
+    # Space camelCase for embed models.
+    camel_spaced = _space_camel(leaf)
+    if camel_spaced.lower() != leaf.lower() and camel_spaced != spaced:
+        parts.append(f"Also known as: {camel_spaced}")
     return "\n".join(parts)
 
 
@@ -241,14 +272,15 @@ def _l2_normalize(vec: np.ndarray) -> np.ndarray:
 
 
 class OntologyMentionIndex:
-    """In-memory semantic index of ontology types + relationship leaves.
+    """In-memory semantic index of ontology types + relationship + attr leaves.
 
     Build incrementally as the ontology expands (ingest / A8 / type upsert).
     Ask-time resolve embeds the NL mention once and ranks catalog entries.
     """
 
     def __init__(self) -> None:
-        self._entries: dict[str, OntologyMentionEntry] = {}  # key: "type:Name" | "rel:leaf"
+        # key: "type:Name" | "rel:leaf" | "attr:leaf"
+        self._entries: dict[str, OntologyMentionEntry] = {}
         self._child_to_parent: dict[str, str] = {}
         self._activity: dict[str, int] = {}  # type name → instance count (-1 unknown)
 
@@ -261,6 +293,10 @@ class OntologyMentionIndex:
     @staticmethod
     def _rel_key(leaf: str) -> str:
         return f"rel:{leaf}"
+
+    @staticmethod
+    def _attr_key(leaf: str) -> str:
+        return f"attr:{leaf}"
 
     def clear(self) -> None:
         self._entries.clear()
@@ -339,11 +375,48 @@ class OntologyMentionIndex:
         self._entries[self._rel_key(leaf)] = entry
         return entry
 
+    def upsert_attr(
+        self,
+        leaf: str,
+        *,
+        domain: str = "",
+        datatype: str = "",
+        description: str = "",
+        embedding: Sequence[float] | np.ndarray | None = None,
+    ) -> OntologyMentionEntry:
+        """Register a datatype / literal attribute leaf for semantic resolve."""
+        text = format_attr_embed_text(
+            leaf, domain=domain, datatype=datatype, description=description
+        )
+        emb = (
+            _l2_normalize(np.asarray(embedding, dtype=np.float32))
+            if embedding is not None
+            else None
+        )
+        entry = OntologyMentionEntry(
+            kind="attr",
+            name=leaf,
+            embed_text=text,
+            embedding=emb,
+            domain=domain,
+            description=description,
+            datatype=datatype,
+        )
+        self._entries[self._attr_key(leaf)] = entry
+        return entry
+
+    def get_attr_entry(self, leaf: str) -> OntologyMentionEntry | None:
+        """Lookup an attr entry by leaf name (exact key)."""
+        return self._entries.get(self._attr_key(leaf))
+
     def type_names(self) -> list[str]:
         return sorted(e.name for e in self._entries.values() if e.kind == "type")
 
     def rel_names(self) -> list[str]:
         return sorted(e.name for e in self._entries.values() if e.kind == "rel")
+
+    def attr_names(self) -> list[str]:
+        return sorted(e.name for e in self._entries.values() if e.kind == "attr")
 
     def is_healthy(self) -> bool:
         """Coarse readiness: at least one type has an embedding.
@@ -392,6 +465,26 @@ class OntologyMentionIndex:
         for name in names:
             entry = self._entries.get(self._rel_key(name))
             if entry is None or entry.kind != "rel" or entry.embedding is None:
+                return False
+        return True
+
+    def attrs_fully_embedded(self, attr_names: Sequence[str] | None) -> bool:
+        """True iff every allowed attribute leaf candidate has an embedding.
+
+        Partial index safety (same class as types/rels): if any allowed
+        candidate lacks an embedding, semantic attr resolve must not run.
+        """
+        if attr_names is None:
+            attr_entries = [e for e in self._entries.values() if e.kind == "attr"]
+            return bool(attr_entries) and all(
+                e.embedding is not None for e in attr_entries
+            )
+        names = [str(n) for n in attr_names if n]
+        if not names:
+            return False
+        for name in names:
+            entry = self._entries.get(self._attr_key(name))
+            if entry is None or entry.kind != "attr" or entry.embedding is None:
                 return False
         return True
 
@@ -465,6 +558,31 @@ class OntologyMentionIndex:
             query_embedding=query_embedding,
             activity=None,
             name_filter=rel_names,
+            hierarchy=None,
+        )
+
+    def resolve_attr(
+        self,
+        mention: str,
+        *,
+        query_embedding: Sequence[float] | np.ndarray,
+        attr_names: Sequence[str] | None = None,
+    ) -> str | None:
+        """Rank datatype / literal attribute leaves for ``mention``.
+
+        Callers **must** gate on :meth:`attrs_fully_embedded` for
+        ``attr_names`` — partial indexes must not invent leaves.
+        """
+        if attr_names is not None and not self.attrs_fully_embedded(attr_names):
+            return None
+        if attr_names is None and not self.attrs_fully_embedded(None):
+            return None
+        return self._resolve_kind(
+            mention,
+            kind="attr",
+            query_embedding=query_embedding,
+            activity=None,
+            name_filter=attr_names,
             hierarchy=None,
         )
 
@@ -839,6 +957,7 @@ __all__ = [
     "ResolveContext",
     "current_embed_model",
     "embed_api_key_from_env",
+    "format_attr_embed_text",
     "format_rel_embed_text",
     "format_type_embed_text",
     "get_process_mention_index",

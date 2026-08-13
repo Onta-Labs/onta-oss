@@ -20,6 +20,25 @@ from infona_client.resolver.models import (
 logger = structlog.stdlib.get_logger("infona.resolver.validator")
 
 
+def _strip_numeric_wrappers(value: str) -> str:
+    """Strip currency symbols / thousands separators when clearly numeric money.
+
+    Used only on the integer/float coerce path so ``"$12.50"`` and ``"1,234"``
+    become storeable numbers when the column datatype is already numeric.
+    Does not invent a datatype — callers still declare float/integer via
+    schema inference / profiler.
+    """
+    try:
+        from infona_client.resolver.profiler import strip_money_wrappers
+
+        stripped = strip_money_wrappers(value)
+        if stripped is not None:
+            return stripped
+    except Exception:  # noqa: BLE001 — profiler optional in pure unit tests
+        pass
+    return value
+
+
 def coerce_value(value: str, target_datatype: str) -> str | None:
     """Try to coerce a value to the target datatype.
 
@@ -30,9 +49,11 @@ def coerce_value(value: str, target_datatype: str) -> str | None:
             case "string":
                 return str(value)
             case "integer":
-                return str(int(float(value)))
+                bare = _strip_numeric_wrappers(value)
+                return str(int(float(bare)))
             case "float":
-                return str(float(value))
+                bare = _strip_numeric_wrappers(value)
+                return str(float(bare))
             case "boolean":
                 lower = value.lower().strip()
                 if lower in ("true", "1", "yes", "on"):
@@ -94,9 +115,15 @@ def validate_value(value: str, datatype: str) -> bool:
         case "string":
             return True
         case "integer":
-            return bool(re.match(r"^-?\d+$", value.strip()))
+            if re.match(r"^-?\d+$", value.strip()):
+                return True
+            # Currency-wrapped integers still need coerce_value — not conforming.
+            return False
         case "float":
-            return bool(re.match(r"^-?\d+(\.\d+)?$", value.strip()))
+            if re.match(r"^-?\d+(\.\d+)?$", value.strip()):
+                return True
+            # "$12.50" is coercible but not already-conforming float lexical form.
+            return False
         case "boolean":
             return value.lower().strip() in ("true", "false")
         case "datetime":

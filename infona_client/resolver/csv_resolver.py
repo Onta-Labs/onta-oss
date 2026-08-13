@@ -2367,13 +2367,29 @@ def _datatype_from_profile(col: ColumnProfile | None) -> str:
     """Deterministic datatype from Pass A value-shape evidence. The v2 schema
     carries no datatype field — the profile already measured the values, so
     nothing is gained by asking the LLM to re-guess. Purely structural checks
-    (no column-name inspection)."""
+    (no column-name inspection).
+
+    Currency-wrapped values (``$12.50``) count as NUMBER via the profiler and
+    become ``float`` (or ``integer`` when every bare lexical form is integral).
+    Non-numeric free text stays string — we never invent money typing from
+    column names alone.
+    """
     if col is None:
         return "string"
     if col.value_shape == ValueShape.DATE:
         return "datetime"
     if col.value_shape == ValueShape.NUMBER:
-        return "integer" if col.examples and all(_is_int(e) for e in col.examples) else "float"
+        from infona_client.resolver.profiler import strip_money_wrappers
+
+        def _example_is_int(e: str) -> bool:
+            bare = strip_money_wrappers(e) or e
+            return _is_int(bare)
+
+        return (
+            "integer"
+            if col.examples and all(_example_is_int(e) for e in col.examples)
+            else "float"
+        )
     lowered = [e.lower() for e in col.examples]
     if lowered and all(e in ("true", "false") for e in lowered):
         return "boolean"
