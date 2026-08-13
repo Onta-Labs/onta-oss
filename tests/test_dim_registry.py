@@ -26,6 +26,8 @@ from infona_client.nlp.dim_registry import (
     get_cached_dim_registry,
     invalidate_dim_registry,
     normalize_dim_token,
+    planning_dim_binds,
+    planning_dim_context,
     planning_dim_grounding,
     refresh_dim_registry,
     reset_dim_registry_for_tests,
@@ -482,6 +484,33 @@ async def test_planning_dim_grounding_prompt_block():
         # Token binds should surface Fall / NorthFleet when present.
         assert "Fall" in text or REL_OFFERED_IN in text
         assert ATTR_OPERATOR_NAME in text or "NorthFleet" in text
+    finally:
+        await store.close()
+
+
+@pytest.mark.asyncio
+async def test_planning_dim_context_returns_structured_binds():
+    """planning_dim_context / planning_dim_binds expose unique DimBind list."""
+    store = MemoryGraphStore()
+    try:
+        await _seed_offering_and_asset(store)
+        # Quoted tokens avoid multi-word greed in extract_filter_tokens.
+        q = 'how many offerings for "Fall" operated by "NorthFleet"'
+        text, binds = await planning_dim_context(
+            store, tenant_id=TENANT, kg=KG, question=q
+        )
+        assert text
+        assert "Known low-cardinality dimensions" in text
+        assert isinstance(binds, list)
+        # Structured binds must also be available standalone.
+        binds2 = await planning_dim_binds(
+            store, tenant_id=TENANT, kg=KG, question=q
+        )
+        leaves = {b.dim.leaf for b in binds}
+        leaves2 = {b.dim.leaf for b in binds2}
+        assert leaves == leaves2
+        # At least one of the synthetic dims should uniquely bind.
+        assert leaves & {REL_OFFERED_IN, ATTR_OPERATOR_NAME}
     finally:
         await store.close()
 
