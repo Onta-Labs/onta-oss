@@ -569,17 +569,28 @@ async def test_ask_still_calls_llm_with_grounding_present(monkeypatch):
 
     async def fake_llm(question: str, ontology: str, **kw):
         llm_calls.append(question)
+        # Covered plan: filter intent "in east" must bind a dim filter so the
+        # constraint-coverage gate does not reject + retry (silent-total class).
         return {
             "cypher": (
-                "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
-                "RETURN count(*) AS n"
+                "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->"
+                "(c:Class {tenant_id: $tenant_id, kg: $kg}) "
+                "WHERE c.name IN $type_names AND e.region = $prop_value "
+                "RETURN count(DISTINCT e) AS n"
             ),
-            "params": {},
-            "explanation": "count",
+            "params": {
+                "type_names": ["Widget"],
+                "prop_value": "east",
+            },
+            "explanation": "count widgets filtered by region",
             "functions_needed": [],
         }
 
     pipe._try_llm_cypher = fake_llm  # type: ignore[method-assign]
+    pipe._execute_confined_cypher = AsyncMock(  # type: ignore[method-assign]
+        return_value=([{"n": 1}], "freeform:mock")
+    )
+    pipe._rephrase_via_openrouter = AsyncMock(return_value="")  # type: ignore[method-assign]
 
     det_calls: list = []
 
@@ -1085,14 +1096,25 @@ async def test_ask_cypher_never_skips_llm_with_multihop_grounding(monkeypatch):
 
     async def fake_llm(question: str, ontology: str, **kw):
         llm_calls.append({"q": question, "g": kw.get("grounding_text", "")})
+        # Dimension filter present so constraint-coverage does not reject +
+        # retry (filter-miss class). Execute is stubbed below.
         return {
-            "cypher": "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) RETURN count(*) AS n",
-            "params": {},
-            "explanation": "count",
+            "cypher": (
+                "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->"
+                "(c:Class {tenant_id: $tenant_id, kg: $kg}) "
+                "WHERE c.name IN $type_names AND e.name = $target_name "
+                "RETURN e.id AS id LIMIT 25"
+            ),
+            "params": {"type_names": ["Part"], "target_name": "East"},
+            "explanation": "list parts filtered by related name",
             "functions_needed": [],
         }
 
     pipe._try_llm_cypher = fake_llm  # type: ignore[method-assign]
+    pipe._execute_confined_cypher = AsyncMock(  # type: ignore[method-assign]
+        return_value=([{"id": "p1"}], "freeform:mock")
+    )
+    pipe._rephrase_via_openrouter = AsyncMock(return_value="")  # type: ignore[method-assign]
     monkeypatch.setattr(
         "infona_client.nlp.cypher_generate.try_deterministic_cypher",
         lambda *a, **k: None,
