@@ -75,6 +75,11 @@ def normalize_store_literal(value: Any) -> Any:
     On the property-graph path those must become **native** values so Cypher
     ``toFloat(e.price)`` and numeric filters work. Idempotent on already-clean
     numbers / plain strings.
+
+    Currency-wrapped numerics (``"$12.50"^^xsd:float`` after coerce, or a bare
+    ``"$12.50"`` already intended as float) strip wrappers so compare/agg see
+    real numbers — only when the value is **clearly** numeric money, not free
+    text.
     """
     if value is None or isinstance(value, bool):
         return value
@@ -86,18 +91,44 @@ def normalize_store_literal(value: Any) -> Any:
         return value
     lexical, dtype = strip_rdf_datatype_suffix(value)
     if dtype is None:
+        # Untyped string: do not silently coerce free text to numbers.
         return lexical
     d = dtype.lower()
     if "boolean" in d:
         return lexical.strip().lower() in ("true", "1")
+    bare = lexical.strip()
+    # Strip currency wrappers for numeric XSD types only.
+    if any(
+        tok in d
+        for tok in (
+            "integer",
+            "long",
+            "int",
+            "short",
+            "byte",
+            "nonnegativeinteger",
+            "positiveinteger",
+            "float",
+            "double",
+            "decimal",
+        )
+    ):
+        try:
+            from infona_client.resolver.profiler import strip_money_wrappers
+
+            stripped = strip_money_wrappers(bare)
+            if stripped is not None:
+                bare = stripped
+        except Exception:  # noqa: BLE001
+            pass
     if any(tok in d for tok in ("integer", "long", "int", "short", "byte", "nonnegativeinteger", "positiveinteger")):
         try:
-            return int(lexical.strip())
+            return int(float(bare)) if "." in bare else int(bare)
         except ValueError:
             return lexical
     if any(tok in d for tok in ("float", "double", "decimal")):
         try:
-            return float(lexical.strip())
+            return float(bare)
         except ValueError:
             return lexical
     # dateTime / date / string-like XSD: keep lexical, drop the suffix.
