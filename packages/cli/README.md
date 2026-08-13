@@ -2,7 +2,7 @@
 
 Node.js SDK and CLI for [Infona](https://infona.ai) — turn raw data into a queryable context graph (a knowledge graph you query in natural language).
 
-Package: **`@infona-ai/cli`**. Primary binary: **`infona`** (`infona` remains a compatibility alias). Env vars: prefer **`INFONA_*`** (`ONTA_*` / `INFONA_*` / `INFONA_*` still accepted).
+Package: **`@infona-ai/cli`**. Primary binary: **`infona`**. Compatibility alias: **`onta`** (same entrypoint). Env vars: **`INFONA_*` only** (no `ONTA_*` fallback).
 
 ## Quickstart
 
@@ -93,7 +93,7 @@ Use `/enrich watch <job_id>` for live progress, `/enrich jobs` to list recent jo
 npm install @infona-ai/cli        # or: npm install -g @infona-ai/cli
 ```
 
-Requires Node 20+. The global install exposes the `infona` command (`infona` remains a compatibility alias).
+Requires Node 20+. The global install exposes the `infona` command (and the `onta` compatibility alias).
 
 ## Browsing what got ingested
 
