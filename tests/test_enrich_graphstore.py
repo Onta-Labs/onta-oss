@@ -41,7 +41,8 @@ from infona_client.enrichment.models import (
     EnrichmentTier,
     JobStatus,
 )
-from infona_client.enrichment.strategy import list_declared_types
+from infona_client.enrichment.strategy import list_declared_types, load_strategy
+from tests._enrichment_prov_helpers import seed_strategy_triples
 from infona_client.graph.client import NeptuneClient
 from infona_client.graph.iri import IRI_BASE
 from infona_client.graph.kg_writer import insert_facts
@@ -156,6 +157,43 @@ def test_list_types_uses_catalog_when_store_configured():
             )
             names = await _list_types(ctx)
             assert TYPE_CT in names
+
+        asyncio.run(run())
+    finally:
+        asyncio.run(store.close())
+        reset_graph_store_for_tests()
+
+
+def test_load_strategy_reads_graphstore_triples_not_sparql():
+    store = _store()
+    try:
+
+        async def run():
+            await _seed_catalog(store, with_attrs=True)
+            await upsert_attribute(
+                store=store,
+                type_name=TYPE_CT,
+                attr_name=ATTR_SPONSOR,
+                datatype="string",
+                layer="tenant",
+                tenant_id=TENANT,
+            )
+            onto = f"{IRI_BASE}/onto"
+            type_uri = f"{IRI_BASE}/types/{TYPE_CT}"
+            attr_uri = f"{IRI_BASE}/types/{TYPE_CT}/attrs/{ATTR_SPONSOR}"
+            await seed_strategy_triples(
+                [
+                    (type_uri, f"{onto}/matchKey", "nct_id"),
+                    (attr_uri, f"{onto}/enrichmentSource", "api:clinicaltrials_gov"),
+                    (attr_uri, f"{onto}/confidenceMin", "0.8"),
+                ],
+                tenant_id=TENANT,
+            )
+            s = await load_strategy(_retired_client(), TENANT, TYPE_CT)
+            assert s.match_key == "nct_id"
+            assert ATTR_SPONSOR in s.attributes
+            assert s.attributes[ATTR_SPONSOR].sources == ["api:clinicaltrials_gov"]
+            assert s.attributes[ATTR_SPONSOR].confidence_min == 0.8
 
         asyncio.run(run())
     finally:

@@ -47,9 +47,8 @@ from tests._enrichment_prov_helpers import (
     XSD_DATETIME,
     FakeWikidata,
     all_updates,
-    entities_query_response,
     make_job,
-    query_router,
+    seed_enrich_entities,
 )
 
 # A stale stamp from a previous era, used to prove the fresh one still ORDERS
@@ -87,8 +86,9 @@ def test_verified_at_is_a_dated_order_comparable_stamp(
     async def run():
         entity = f"https://graph.infona.ai/entities/{type_name}/e1"
         rows = [{"uri": entity, "label": label, "vals": ""}]
+        await seed_enrich_entities(type_name, rows)
         neptune = AsyncMock()
-        neptune.query.side_effect = query_router(entities_query_response(rows))
+        neptune.query.side_effect = AssertionError("enrich must not SPARQL")
         neptune.update.return_value = None
         executor = EnrichmentExecutor(
             neptune, InMemoryJobStore(), EnrichmentCache(),

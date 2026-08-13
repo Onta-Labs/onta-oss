@@ -53,8 +53,6 @@ from infona_client.enrichment.tier_router import (
 from infona_client.enrichment.tier_router import (
     resolve_chain_cost as _resolve_chain_cost,
 )
-from infona_client.graph.ontology_queries import list_types_query
-from infona_client.graph.parser import parse_sparql_results
 from infona_client.graph.queries import kg_graph_uri, tenant_graph_uri
 from infona_client.normalization.inference import (
     list_type_schema,
@@ -787,50 +785,31 @@ _WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]*")
 async def _list_types(ctx: AgentContext) -> list[str]:
     """The tenant's declared type names, for resolving the target type from text.
 
-    GraphStore / Neo4j (ONTA-534): reads the ontology catalog — the SAME
-    ``list_types`` the ``/ontology/types`` route uses. Production SPARQL HTTP
-    is retired and raises on ``query()``, so a SPARQL-only list swallowed that
-    error, returned ``[]``, and ``plan()`` bailed to "couldn't determine the
-    specifics" whenever the Explorer had no type selected (the 2026-08-13 Ask
-    Onta regression).
-
-    Residual SPARQL remains only when no process store is configured (hermetic
-    dual-arm unit tests). Defensive: any read error degrades to ``[]`` so type
-    resolution falls back to the selected type rather than failing the plan.
+    GraphStore / Neo4j (ONTA-534 / ONTA-527): reads the ontology catalog — the
+    SAME ``list_types`` the ``/ontology/types`` route uses. Production SPARQL
+    HTTP is retired and used to raise on ``query()``, so a SPARQL-only list
+    swallowed that error, returned ``[]``, and ``plan()`` bailed to "couldn't
+    determine the specifics" whenever the Explorer had no type selected (the
+    2026-08-13 Ask Onta regression). Catalog only — no SPARQL else-arm.
     """
     try:
+        from infona_client.graph.ontology_catalog import list_types as cat_list_types
         from infona_client.graph.store import GraphConfigError, get_optional_graph_store
 
-        try:
-            store = get_optional_graph_store()
-        except GraphConfigError:
-            store = None
-        if store is not None:
-            from infona_client.graph.ontology_catalog import list_types as cat_list_types
-
-            records = await cat_list_types(
-                store=store, tenant_id=ctx.tenant_id, layer="tenant"
-            )
-            seen: set[str] = set()
-            names: list[str] = []
-            for rec in records:
-                label = (getattr(rec, "name", None) or "").strip()
-                if label and label not in seen:
-                    seen.add(label)
-                    names.append(label)
-            return names
-
-        onto_graph = tenant_graph_uri(ctx.tenant_id)
-        _, rows = parse_sparql_results(
-            await ctx.neptune.query(list_types_query(onto_graph))
+        store = get_optional_graph_store()
+        records = await cat_list_types(
+            store=store, tenant_id=ctx.tenant_id, layer="tenant"
         )
-    except Exception:  # noqa: BLE001 — a type-list read must never break planning
-        logger.warning("agent_enrich_list_types_failed", exc_info=True)
+    except GraphConfigError:
+        logger.error("agent_enrich_list_types_no_store", tenant_id=ctx.tenant_id)
         return []
-    seen = set()
-    names = []
-    for r in rows:
-        label = (r.get("label") or "").strip()
+    except Exception:  # noqa: BLE001 — a type-list read must never break planning
+        logger.exception("agent_enrich_list_types_failed")
+        return []
+    seen: set[str] = set()
+    names: list[str] = []
+    for rec in records:
+        label = (getattr(rec, "name", None) or "").strip()
         if label and label not in seen:
             seen.add(label)
             names.append(label)
