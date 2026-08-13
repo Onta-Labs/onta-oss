@@ -1974,7 +1974,7 @@ _ATTR_TRIGGER = re.compile(
 # is followed by the TYPE). Without this, the fallback parser captured
 # "clinical trials" as the attribute and planned a bogus new leaf.
 _WITH_ATTRS = re.compile(
-    r"\bwith\s+(?:their|its|his|her|the|our)?\s+(.+)$",
+    r"\bwith\s+(?:their|its|his|her|the|our)\s+(.+)$",
     re.IGNORECASE,
 )
 # Relationship scope: "<verb> <Value>" e.g. "speak Persian", "speaks French".

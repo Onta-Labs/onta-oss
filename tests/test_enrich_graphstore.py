@@ -237,8 +237,10 @@ def test_agent_http_cli_path_plans_without_selected_type(monkeypatch):
     asyncio.run(seed())
 
     app = create_app()
-    app.state.neptune_client = _retired_client()
+    # Lifespan overwrites state.neptune_client — inject AFTER TestClient
+    # (same as tests/conftest.py).
     client = TestClient(app)
+    app.state.neptune_client = _retired_client()
     r = client.post(
         f"/graphs/{http_tenant}/agent",
         json={
@@ -292,6 +294,45 @@ def test_executor_selects_entities_from_graphstore_without_sparql():
             assert final is not None
             assert final.status != JobStatus.failed, final.error
             assert final.progress.total == len(uris) * 1
+
+        asyncio.run(run())
+    finally:
+        asyncio.run(store.close())
+        reset_graph_store_for_tests()
+
+
+def test_executor_empty_type_completes_zero_not_failed():
+    """Store select returning [] (type exists, no instances) must complete
+    with total=0 — not fall through to SPARQL and fail the job."""
+    store = _store()
+    try:
+
+        async def run():
+            await _seed_catalog(store)
+            jobs = InMemoryJobStore()
+            job = EnrichJob(
+                id="job-empty",
+                tenant_id=TENANT,
+                kg_name=KG,
+                type_name=TYPE_CT,
+                attributes=[ATTR_SPONSOR],
+                tier=EnrichmentTier.lite,
+                status=JobStatus.queued,
+                created_at=datetime.now(timezone.utc),
+                conflict_policy=ConflictPolicy.skip,
+            )
+            await jobs.create(job)
+            adapter = AsyncMock()
+            adapter.name = "wikidata"
+            adapter.lookup = AsyncMock(return_value=[])
+            executor = EnrichmentExecutor(
+                _retired_client(), jobs, EnrichmentCache(), adapter
+            )
+            await executor.run(job, TENANT)
+            final = await jobs.get(job.id)
+            assert final is not None
+            assert final.status != JobStatus.failed, final.error
+            assert final.progress.total == 0
 
         asyncio.run(run())
     finally:
