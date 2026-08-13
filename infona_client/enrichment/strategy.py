@@ -195,12 +195,42 @@ async def list_declared_types(client: NeptuneClient, tenant_id: str) -> list[str
     URI in the ontology graph (e.g. ``Organization`` from
     ``…/types/Organization``).
 
-    A single bounded ontology read — the SAME query :func:`load_strategy` and the
-    ``/ontology/types`` route use, never an instance scan (COG-112 safe). Keys on
-    the class URI (not ``rdfs:label``) because that local part is exactly what
-    :func:`_type_uri` / the entity SELECT match on. Returns ``[]`` on any read
-    error so callers fail open (an unavailable ontology must never block a job).
+    GraphStore / Neo4j (ONTA-534): a real :class:`NeptuneClient` cannot SPARQL
+    (``SparqlClientRetired``). Use the ontology catalog — the SAME
+    ``list_types`` the ``/ontology/types`` route uses. Duck-typed test doubles
+    (``AsyncMock(spec=NeptuneClient)``) keep the SPARQL arm so hermetic
+    executor tests that inject type rows stay green.
+
+    Returns ``[]`` on any read error so callers fail open (an unavailable
+    ontology must never block a job).
     """
+    from infona_client.graph.client import NeptuneClient as _NeptuneClient
+
+    # ``type is`` not ``isinstance``: AsyncMock(spec=NeptuneClient) is isinstance
+    # True and must keep using its SPARQL side effects (kg_status pattern).
+    if type(client) is _NeptuneClient:
+        try:
+            from infona_client.graph.ontology_catalog import list_types as cat_list_types
+            from infona_client.graph.store import GraphConfigError, get_optional_graph_store
+
+            store = get_optional_graph_store()
+            records = await cat_list_types(
+                store=store, tenant_id=tenant_id, layer="tenant"
+            )
+            seen: set[str] = set()
+            names: list[str] = []
+            for rec in records:
+                name = (getattr(rec, "name", None) or "").strip()
+                if name and name not in seen:
+                    seen.add(name)
+                    names.append(name)
+            return names
+        except GraphConfigError:
+            pass  # no process store → residual SPARQL below
+        except Exception:  # noqa: BLE001 — a type-list read must never break a job
+            logger.warning("enrich_list_types_failed", tenant_id=tenant_id, exc_info=True)
+            return []
+
     try:
         onto_graph = tenant_graph_uri(tenant_id)
         _, rows = parse_sparql_results(await client.query(list_types_query(onto_graph)))
@@ -208,8 +238,8 @@ async def list_declared_types(client: NeptuneClient, tenant_id: str) -> list[str
         logger.warning("enrich_list_types_failed", tenant_id=tenant_id, exc_info=True)
         return []
     prefix = f"{TYPES_PREFIX}/"
-    seen: set[str] = set()
-    names: list[str] = []
+    seen = set()
+    names = []
     for row in rows:
         uri = (row.get("type") or "").strip()
         if not uri.startswith(prefix):
