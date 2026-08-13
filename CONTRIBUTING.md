@@ -2,9 +2,12 @@
 
 ## What can ship here (OSS boundary — read first)
 
-`infona-oss` is published publicly to npm (and PyPI). **Public publication is a
-one-way door** — once code ships, it's in mirrors, archives, and forks within
-hours. Everything in this repo must be OSS-safe.
+`infona-oss` ships publicly: **npm** packages (`@infona-ai/cli`, `@infona-ai/mcp`)
+are published on every release; the **Python** package (`infona-client`) is
+installable from this git repo (`pip install -e .`) until a PyPI publish exists.
+The repo itself is public. **Public publication is a one-way door** — once code
+ships, it's in mirrors, archives, and forks within hours. Everything in this
+repo must be OSS-safe.
 
 **Ships here (OSS):**
 - `infona_client/` — ingest, resolver, **core ER engine** (normalize, block,
@@ -102,7 +105,7 @@ uvicorn infona_client.api.app:create_app --factory --port 8000
 infona_client/
   api/          FastAPI routes and middleware
   auth/         API key authentication
-  graph/        SPARQL client and query builders
+  graph/        Neo4j GraphStore, writers, ontology helpers
   nlp/          Query pipeline, prompts, example bank, embeddings
   resolver/     Schema inference, type matching, CSV mapping
   models/       Pydantic data models
@@ -140,9 +143,9 @@ Format: `type: description`
 Types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `perf`
 
 Examples:
-- `feat: add Blazegraph backend support`
+- `feat: add Ollama query-provider preset`
 - `fix: handle empty CSV columns in schema inference`
-- `docs: add Ollama configuration guide`
+- `docs: clarify Neo4j-only local graph path`
 
 ## Tests
 
@@ -157,11 +160,12 @@ pytest tests/test_validator.py -v
 pytest tests/ --cov=infona_client --cov-report=term-missing
 ```
 
-Tests mock the Neptune/Fuseki client. No running graph DB needed for unit tests.
+Unit tests use in-process stores (`MemoryGraphStore`) and mocks. No running
+graph DB is required for the default suite. Optional Neo4j integration tests
+are marked separately (see [docs/neo4j-local.md](docs/neo4j-local.md)).
 
 ## Areas We'd Love Help With
 
-- Additional graph DB backends (Blazegraph, Oxigraph, RDFLib)
 - More LLM provider support (Ollama, vLLM, Together)
 - Better eval question generation (more natural language, less attribute-name references)
 - Entity resolution ("TX" = "Texas")
