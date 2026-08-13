@@ -1554,6 +1554,56 @@ class NLQueryPipeline:
                         token_usage=token_ledger.to_list(),
                     )
 
+                # Filter integrity: reject OPTIONAL MATCH value filters that do
+                # not constrain primary rows (silent unfiltered counts / zeros).
+                # Always-LLM still applies — we only regenerate, never fixture-
+                # short-circuit. Fixtures/stubs skip (template bodies are known-good).
+                if not (gen.get("stub") or gen.get("fixture")):
+                    from infona_client.nlp.cypher_filter_integrity import (
+                        check_cypher_filter_integrity,
+                        filter_integrity_feedback,
+                    )
+
+                    filt_reason = check_cypher_filter_integrity(
+                        cypher_raw,
+                        question=question,
+                        template=gen.get("template"),
+                        params=params,
+                    )
+                    if filt_reason:
+                        last_error = filter_integrity_feedback(
+                            filt_reason, previous_cypher=cypher_raw
+                        )
+                        if attempt < max_attempts - 1:
+                            last_was_enum_filter_mismatch = True
+                            timing["cypher_filter_integrity_retry"] = 1.0
+                            logger.info(
+                                "cypher_filter_integrity_retry",
+                                reason=filt_reason[:200],
+                                question=question,
+                                attempt=attempt,
+                            )
+                            continue
+                        timing.update(token_ledger.totals_for_timing())
+                        return NLResult(
+                            answer=(
+                                "Could not answer: generated Cypher would apply "
+                                "filters incorrectly (OPTIONAL MATCH value filter "
+                                "does not constrain results). Fail closed rather "
+                                "than return a silent unfiltered total."
+                            ),
+                            sparql=cypher_raw,
+                            explanation=explanation,
+                            ontology=ontology,
+                            timing={
+                                **timing,
+                                "total_ms": round((time.time() - t0) * 1000, 1),
+                                "attempts": attempt + 1,
+                                "cypher_filter_integrity_reject": 1.0,
+                            },
+                            token_usage=token_ledger.to_list(),
+                        )
+
                 try:
                     cypher, forced_params = confine_generated_cypher(
                         cypher_raw,
