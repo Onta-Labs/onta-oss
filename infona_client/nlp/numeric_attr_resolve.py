@@ -218,54 +218,115 @@ def is_money_nl_cue(text: str) -> bool:
     return any(t in _MONEY_NL_CUES for t in toks)
 
 
+_SAFE_LEAF_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+# Dash-form catalog lines: "- unit_cost: float (literal, key=unit_cost)"
+_DASH_LITERAL_LEAF_RE = re.compile(
+    r"(?im)^\s*-\s*([A-Za-z_][A-Za-z0-9_]*)\s*:"
+    r".*?\b(?:literal|string|integer|float|boolean|number)\b"
+)
+_DASH_LITERAL_KEY_RE = re.compile(
+    r"(?im)^\s*-\s*[A-Za-z_][A-Za-z0-9_]*\s*:.*\bliteral\b.*\bkey="
+    r"([A-Za-z_][A-Za-z0-9_]*)"
+)
+# Production prompt formats (semantic retrieval / _fetch_ontology):
+#   Attributes: description, sku, unit_cost
+#   Attributes: name (string) — URI: <…>, unit_cost (float) — URI: <…> [no instances]
+_ATTRIBUTES_LINE_RE = re.compile(r"(?im)^\s*Attributes:\s*(.+)$")
+
+
+def _leaves_from_attributes_line_body(body: str) -> list[str]:
+    """Extract attribute leaf names from an ``Attributes: …`` line body.
+
+    Production ontology summaries use comma-separated attribute lists (with
+    optional ``(datatype)``, ``— URI: <…>``, and ``[annotation]`` suffixes) —
+    not the dash-literal catalog form. Bracket annotations may themselves
+    contain commas (``[values: "a", "b"]``), so strip those first.
+    """
+    if not body or not body.strip():
+        return []
+    cleaned = body.strip()
+    # Drop trailing junk after a bare "Relationships:" if a line was glued.
+    cleaned = re.split(r"(?i)\bRelationships\s*:", cleaned, maxsplit=1)[0]
+    # Strip [annotations] (enum values / no instances / unique counts).
+    cleaned = re.sub(r"\[[^\]]*\]", "", cleaned)
+    # Strip em-dash / hyphen URI suffixes.
+    cleaned = re.sub(r"[—\-]\s*URI:\s*<[^>]*>", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"\bURI:\s*<[^>]*>", "", cleaned, flags=re.I)
+    # Strip (datatype) / (literal) markers.
+    cleaned = re.sub(r"\([^)]*\)", "", cleaned)
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for part in cleaned.split(","):
+        tok = part.strip().strip("\"'")
+        # First token of residual fragment is the leaf.
+        m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\b", tok)
+        if not m:
+            continue
+        leaf = m.group(1)
+        if not _SAFE_LEAF_RE.match(leaf):
+            continue
+        key = leaf.lower()
+        if key in seen:
+            continue
+        # Skip non-attribute filler words that sometimes leak into summaries.
+        if key in {"attributes", "none", "uri", "type", "relationships"}:
+            continue
+        seen.add(key)
+        ordered.append(leaf)
+    return ordered
+
+
+def _literal_leaves_from_section(section: str) -> list[str]:
+    """Ordered unique literal / attribute leaves from one type block.
+
+    Accepts both:
+
+    * GraphStore catalog form: ``- unit_cost: float (literal, key=unit_cost)``
+    * Production prompt form: ``Attributes: sku, unit_cost`` (semantic
+      retrieval, ``_fetch_ontology``, instance-graph fallback)
+
+    The production form does not tag datatype per leaf; every name on the
+    Attributes line is a candidate leaf (relationships live on a separate
+    ``Relationships:`` line). That is enough for money/family resolve, which
+    scores by name — and is the format live ``/ask`` actually sees.
+    """
+    ordered: list[str] = []
+    seen: set[str] = set()
+
+    def _add(leaf: str) -> None:
+        if not leaf or not _SAFE_LEAF_RE.match(leaf):
+            return
+        key = leaf.lower()
+        if key in seen:
+            return
+        seen.add(key)
+        ordered.append(leaf)
+
+    text = section or ""
+    for m in _DASH_LITERAL_LEAF_RE.finditer(text):
+        _add(m.group(1))
+    for m in _DASH_LITERAL_KEY_RE.finditer(text):
+        _add(m.group(1))
+    for m in _ATTRIBUTES_LINE_RE.finditer(text):
+        for leaf in _leaves_from_attributes_line_body(m.group(1)):
+            _add(leaf)
+    return ordered
+
+
 def literal_leaves_for_type(
     type_name: str | None,
     ontology_summary: str,
 ) -> list[str]:
-    """Ordered unique literal leaves on ``type_name`` (preserve declaration order)."""
+    """Ordered unique literal leaves on ``type_name`` (preserve declaration order).
+
+    When ``type_name`` is empty, returns de-duped leaves across the whole
+    ontology summary (both dash-literal and ``Attributes:`` formats).
+    """
+    text = ontology_summary or ""
     if not type_name:
-        # Fall back to all literal leaves across ontology (de-duped).
-        leaves: list[str] = []
-        seen: set[str] = set()
-        for m in re.finditer(
-            r"(?im)^\s*-\s*([A-Za-z_][A-Za-z0-9_]*)\s*:"
-            r".*?\b(?:literal|string|integer|float|boolean|number)\b",
-            ontology_summary or "",
-        ):
-            leaf = m.group(1)
-            key = leaf.lower()
-            if key in seen:
-                continue
-            seen.add(key)
-            leaves.append(leaf)
-        return leaves
-    section = _ontology_section_for_type(type_name, ontology_summary)
-    # Preserve declaration order from section lines.
-    ordered: list[str] = []
-    seen_l: set[str] = set()
-    for m in re.finditer(
-        r"(?im)^\s*-\s*([A-Za-z_][A-Za-z0-9_]*)\s*:"
-        r".*?\b(?:literal|string|integer|float|boolean|number)\b",
-        section or "",
-    ):
-        leaf = m.group(1)
-        key = leaf.lower()
-        if key in seen_l:
-            continue
-        seen_l.add(key)
-        ordered.append(leaf)
-    # Also pick up key= aliases.
-    for m in re.finditer(
-        r"(?im)^\s*-\s*[A-Za-z_][A-Za-z0-9_]*\s*:.*\bliteral\b.*\bkey="
-        r"([A-Za-z_][A-Za-z0-9_]*)",
-        section or "",
-    ):
-        leaf = m.group(1)
-        key = leaf.lower()
-        if key not in seen_l:
-            seen_l.add(key)
-            ordered.append(leaf)
-    return ordered
+        return _literal_leaves_from_section(text)
+    section = _ontology_section_for_type(type_name, text)
+    return _literal_leaves_from_section(section)
 
 
 @dataclass

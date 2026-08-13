@@ -68,30 +68,38 @@ _AGG_OP_MAP = {
 _TRAILING_PUNCT_RE = re.compile(r"[?!.\s]+$")
 
 # Compare: "widgets under 15" / "products that cost less than 15" /
-# "items with price under 15" / "widgets cheaper than 12.5"
+# "items with price under 15" / "widgets cheaper than 12.5" /
+# "parts with unit cost under 10" (multi-word prop BEFORE bare "cost" verb)
 _NUMERIC_COMPARE_RE = re.compile(
     r"(?ix)^"
     r"(?:(?:list|show(?:\s+me)?|find|get|which|what)\s+)?"
     r"(?P<label>.+?)\s+"
     r"(?:"
-    # money verb + op + number
-    r"(?:cost|priced?|costs?|cheaper|more\s+expensive)\s+"
-    r"(?P<cost_op>less\s+than|under|below|more\s+than|over|above|at\s+least|"
-    r"at\s+most|exactly|than)\s+"
-    r"(?:\$|USD\s*)?(?P<cost_num>\d+(?:\.\d+)?)\s*(?:dollars?|usd|\$)?"
-    r"|"
-    # with|having|where prop op number
-    r"(?:with|having|where)\s+(?P<prop>[A-Za-z_][A-Za-z0-9_]*)\s+"
+    # with|having|where prop op number — multi-word props first so
+    # "unit cost under" is not stolen by the bare cost-verb branch.
+    # Stop multi-word expansion before is/compare words ("unit_cost is less").
+    r"(?:with|having|where)\s+"
+    r"(?P<prop>[A-Za-z_][A-Za-z0-9_]*"
+    r"(?:\s+(?!is\b|less\b|under\b|below\b|more\b|over\b|above\b|at\b|"
+    r"equals?\b|greater\b)[A-Za-z_][A-Za-z0-9_]*){0,3})\s+"
     r"(?:is\s+)?"
     r"(?P<cmp><=|>=|<|>|=|==|less\s+than|under|below|more\s+than|over|above|"
     r"at\s+least|at\s+most|equals?)\s+"
     r"(?:\$|USD\s*)?(?P<num>\d+(?:\.\d+)?)\s*(?:dollars?|usd|\$)?"
     r"|"
-    # "price under 15" with type earlier: label ends with type, prop is price
-    r"(?P<bare_prop>price|cost|unit_cost|list_price|amount|fee|rate)\s+"
+    # multi-word / compound bare props: "unit cost under 10", "list price under"
+    r"(?P<bare_prop>unit\s+cost|list\s+price|sale\s+price|unit_cost|list_price|"
+    r"sale_price|unit_price|total_cost|price|cost|amount|fee|rate)\s+"
     r"(?P<bare_op>less\s+than|under|below|more\s+than|over|above|at\s+least|"
     r"at\s+most|exactly)\s+"
     r"(?:\$|USD\s*)?(?P<bare_num>\d+(?:\.\d+)?)\s*(?:dollars?|usd|\$)?"
+    r"|"
+    # money verb + op + number ("cost less than", "cheaper than") — AFTER
+    # multi-word props so "unit cost under" is not re-read as verb "cost".
+    r"(?:cost|priced?|costs?|cheaper|more\s+expensive)\s+"
+    r"(?P<cost_op>less\s+than|under|below|more\s+than|over|above|at\s+least|"
+    r"at\s+most|exactly|than)\s+"
+    r"(?:\$|USD\s*)?(?P<cost_num>\d+(?:\.\d+)?)\s*(?:dollars?|usd|\$)?"
     r")"
     r"(?:\s+.*)?$"
 )
@@ -188,6 +196,66 @@ def ground_numeric_plan(
     return cmp_plan
 
 
+def _normalize_prop_mention(raw: str | None) -> str | None:
+    """Collapse multi-word NL props (``unit cost``) to a resolve-friendly mention."""
+    if not raw:
+        return None
+    s = re.sub(r"\s+", " ", raw.strip())
+    if not s:
+        return None
+    # Prefer underscore form for family/exact resolve ("unit cost" → "unit_cost")
+    underscored = re.sub(r"\s+", "_", s)
+    if _SAFE_PROP_RE.match(underscored):
+        return underscored
+    if _SAFE_PROP_RE.match(s):
+        return s
+    return s  # still usable as free-text mention for family resolve
+
+
+def _resolve_sole_money_type(
+    ontology_summary: str,
+    type_names: list[str] | None,
+    *,
+    mention: str,
+    mention_index: Any | None,
+    query_embedding: Sequence[float] | None,
+) -> str | None:
+    """When NL omits a type, pick the sole type that uniquely resolves a money leaf."""
+    names = type_names or extract_type_names_from_ontology(ontology_summary) or []
+    if not names:
+        return None
+    winners: list[str] = []
+    for tn in names:
+        r = resolve_numeric_attr(
+            mention,
+            type_name=tn,
+            ontology_summary=ontology_summary,
+            mention_index=mention_index,
+            query_embedding=query_embedding,
+            money_family=True,
+        )
+        if r.confidence == "unique" and r.prop_key:
+            winners.append(tn)
+    if len(winners) == 1:
+        return winners[0]
+    return None
+
+
+# Type-less money compare: "unit cost under 10" / "price under 10" (no type word).
+# Matched before the typed regex so "unit cost" is not split into label=unit + cost.
+_TYPELESS_MONEY_COMPARE_RE = re.compile(
+    r"(?ix)^"
+    r"(?:(?:list|show(?:\s+me)?|find|get|which|what(?:'s|\s+is)?)\s+)?"
+    r"(?:the\s+)?"
+    r"(?P<prop>unit\s+cost|list\s+price|sale\s+price|unit_cost|list_price|"
+    r"sale_price|unit_price|total_cost|price|cost|amount|fee|rate)\s+"
+    r"(?P<op>less\s+than|under|below|more\s+than|over|above|at\s+least|"
+    r"at\s+most|exactly)\s+"
+    r"(?:\$|USD\s*)?(?P<num>\d+(?:\.\d+)?)\s*(?:dollars?|usd|\$)?"
+    r"(?:\s+.*)?$"
+)
+
+
 def _try_ground_compare(
     q: str,
     ontology_summary: str,
@@ -196,6 +264,34 @@ def _try_ground_compare(
     mention_index: Any | None,
     query_embedding: Sequence[float] | None,
 ) -> GroundedNumericPlan | None:
+    # Prefer type-less multi-word money ("unit cost under 10") so the bare
+    # "cost" token is not stolen as a verb with label="unit".
+    m_tl = _TYPELESS_MONEY_COMPARE_RE.match(q)
+    if m_tl:
+        prop_mention = (
+            _normalize_prop_mention(m_tl.group("prop") or "price") or "price"
+        )
+        matched = _resolve_sole_money_type(
+            ontology_summary,
+            type_names,
+            mention=prop_mention,
+            mention_index=mention_index,
+            query_embedding=query_embedding,
+        )
+        if matched is not None:
+            return _finish_compare(
+                question=q,
+                matched=matched,
+                prop_mention=prop_mention,
+                op_raw=(m_tl.group("op") or "under").strip().lower(),
+                threshold=float(m_tl.group("num")),
+                ontology_summary=ontology_summary,
+                mention_index=mention_index,
+                query_embedding=query_embedding,
+                money=True,
+            )
+        # Fall through — typed regex may still recover with an explicit type.
+
     m = _NUMERIC_COMPARE_RE.match(q)
     if not m:
         # Soft path: money cue + number without full regex (still type-scoped)
@@ -212,7 +308,7 @@ def _try_ground_compare(
         # Type: first resolvable token-ish phrase
         label_guess = re.sub(
             r"(?i)\b(?:under|below|less\s+than|over|above|more\s+than|"
-            r"cost|price|priced|cheaper|expensive).*$",
+            r"unit\s+cost|list\s+price|cost|price|priced|cheaper|expensive).*$",
             "",
             q,
         ).strip()
@@ -222,8 +318,30 @@ def _try_ground_compare(
             label_guess,
         ).strip()
         matched = resolve_type_name(label_guess, type_names, ontology_summary)
+        # Type-less "price under 10" / "unit cost under 10": sole money type.
         if matched is None:
-            return None
+            # Prefer explicit multi-word money mention when present.
+            prop_soft = _MONEY_MENTION_DEFAULT
+            if re.search(r"(?i)\bunit\s*cost\b", q):
+                prop_soft = "unit_cost"
+            elif re.search(r"(?i)\blist\s*price\b", q):
+                prop_soft = "list_price"
+            matched = _resolve_sole_money_type(
+                ontology_summary,
+                type_names,
+                mention=prop_soft,
+                mention_index=mention_index,
+                query_embedding=query_embedding,
+            )
+            if matched is None:
+                return None
+            prop_mention = prop_soft
+        else:
+            prop_mention = _MONEY_MENTION_DEFAULT
+            if re.search(r"(?i)\bunit\s*cost\b", q):
+                prop_mention = "unit_cost"
+            elif re.search(r"(?i)\blist\s*price\b", q):
+                prop_mention = "list_price"
         op_raw = "less than"
         g0 = q.lower()
         if any(x in g0 for x in ("over", "above", "more than", "expensive")):
@@ -233,7 +351,6 @@ def _try_ground_compare(
         elif "at most" in g0:
             op_raw = "at most"
         threshold = float(num_m.group(1))
-        prop_mention = _MONEY_MENTION_DEFAULT
         return _finish_compare(
             question=q,
             matched=matched,
@@ -257,8 +374,6 @@ def _try_ground_compare(
         # label is the type phrase before bare prop — already non-greedy
         pass
     matched = resolve_type_name(label, type_names, ontology_summary)
-    if matched is None:
-        return None
 
     if m.group("cost_num") is not None:
         prop_mention = _MONEY_MENTION_DEFAULT
@@ -276,22 +391,37 @@ def _try_ground_compare(
         threshold = float(m.group("cost_num"))
         money = True
     elif m.groupdict().get("bare_num") is not None:
-        prop_mention = (m.group("bare_prop") or "price").strip()
+        prop_mention = _normalize_prop_mention(m.group("bare_prop") or "price") or "price"
         op_raw = (m.group("bare_op") or "under").strip().lower()
         threshold = float(m.group("bare_num"))
         money = True
     else:
-        prop_mention = (m.group("prop") or "").strip()
-        if not prop_mention or not _SAFE_PROP_RE.match(prop_mention):
+        prop_mention = _normalize_prop_mention(m.group("prop") or "")
+        if not prop_mention:
+            return None
+        # Multi-word collapsed to underscore is always safe; bare free text
+        # still accepted when it is a money cue (family resolve).
+        if not _SAFE_PROP_RE.match(prop_mention) and not is_money_nl_cue(prop_mention):
             return None
         op_raw = (m.group("cmp") or "<").strip().lower()
         threshold = float(m.group("num"))
         money = is_money_nl_cue(prop_mention)
 
+    if matched is None and money:
+        matched = _resolve_sole_money_type(
+            ontology_summary,
+            type_names,
+            mention=prop_mention or _MONEY_MENTION_DEFAULT,
+            mention_index=mention_index,
+            query_embedding=query_embedding,
+        )
+    if matched is None:
+        return None
+
     return _finish_compare(
         question=q,
         matched=matched,
-        prop_mention=prop_mention,
+        prop_mention=prop_mention or _MONEY_MENTION_DEFAULT,
         op_raw=op_raw,
         threshold=threshold,
         ontology_summary=ontology_summary,
@@ -523,8 +653,9 @@ def format_numeric_grounding_for_prompt(plan: GroundedNumericPlan | None) -> str
     if plan is None:
         return ""
     lines: list[str] = [
-        "Numeric grounding (structured hint — prefer these when confident;",
-        "still emit valid Cypher / allowlisted template JSON; do not invent props):",
+        "Numeric grounding (structured — use when confidence=unique;",
+        "still emit valid Cypher / allowlisted template JSON;",
+        "NEVER invent a property name that is not on the subject type):",
         f"  intent: {plan.intent}",
     ]
     if plan.subject_type:
@@ -535,6 +666,11 @@ def format_numeric_grounding_for_prompt(plan: GroundedNumericPlan | None) -> str
 
     if plan.confidence == "unique" and plan.prop_key:
         lines.append(f"  prop_key: {plan.prop_key}")
+        lines.append(
+            f"  MUST use params.prop_key={plan.prop_key!r} "
+            f"(NL may say price/cost; the ontology leaf is {plan.prop_key!r} — "
+            "do not substitute a synonym that is not declared on the type)."
+        )
         if plan.intent == "compare":
             if plan.op is not None:
                 lines.append(f"  op: {plan.op}")
@@ -569,6 +705,10 @@ def format_numeric_grounding_for_prompt(plan: GroundedNumericPlan | None) -> str
             lines.append("  candidate_props: " + ", ".join(plan.candidates[:5]))
         if plan.explanation:
             lines.append(f"  note: {plan.explanation}")
+        lines.append(
+            "  note: if the type has only one money/numeric leaf in the schema, "
+            "use that leaf name exactly — never invent price/cost when absent."
+        )
 
     return "\n".join(lines) + "\n"
 

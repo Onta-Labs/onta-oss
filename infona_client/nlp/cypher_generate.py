@@ -619,20 +619,24 @@ _FILTER_RE = re.compile(
 )
 
 # "which books cost less than 15" / "books with price under 15 dollars"
-# / "books cheaper than 15" / "price under 15"
+# / "books cheaper than 15" / "parts with unit cost under 10"
+# Multi-word prop branch precedes cost-verb so "unit cost under" is not stolen.
 _NUMERIC_FILTER_RE = re.compile(
     r"(?ix)^"
     r"(?:(?:list|show(?:\s+me)?|find|get|which|what)\s+)?"
     r"(?P<label>.+?)\s+"
     r"(?:"
-    r"(?:cost|priced?|costs?|cheaper|more\s+expensive)\s+"
-    r"(?P<cost_op>less\s+than|under|below|more\s+than|over|above|at\s+least|at\s+most|exactly|than)\s+"
-    r"(?:\$|USD\s*)?(?P<cost_num>\d+(?:\.\d+)?)\s*(?:dollars?|usd|\$)?"
-    r"|"
-    r"(?:with|having|where)\s+(?P<prop>[A-Za-z_][A-Za-z0-9_]*)\s+"
+    r"(?:with|having|where)\s+"
+    r"(?P<prop>[A-Za-z_][A-Za-z0-9_]*"
+    r"(?:\s+(?!is\b|less\b|under\b|below\b|more\b|over\b|above\b|at\b|"
+    r"equals?\b|greater\b)[A-Za-z_][A-Za-z0-9_]*){0,3})\s+"
     r"(?:is\s+)?"
     r"(?P<cmp><=|>=|<|>|=|==|less\s+than|under|below|more\s+than|over|above|at\s+least|at\s+most|equals?)\s+"
     r"(?:\$|USD\s*)?(?P<num>\d+(?:\.\d+)?)\s*(?:dollars?|usd|\$)?"
+    r"|"
+    r"(?:cost|priced?|costs?|cheaper|more\s+expensive)\s+"
+    r"(?P<cost_op>less\s+than|under|below|more\s+than|over|above|at\s+least|at\s+most|exactly|than)\s+"
+    r"(?:\$|USD\s*)?(?P<cost_num>\d+(?:\.\d+)?)\s*(?:dollars?|usd|\$)?"
     r")"
     r"(?:\s+.*)?$"
 )
@@ -1074,22 +1078,15 @@ def _relationship_leaves_in_section(section: str) -> list[str]:
 
 
 def _literal_leaves_in_section(section: str) -> set[str]:
-    """Literal attribute leaves declared on a type section (lowercased)."""
-    leaves: set[str] = set()
-    # "- name: datatype (literal...)" / "- name: float (literal, key=…)"
-    for m in re.finditer(
-        r"(?im)^\s*-\s*([A-Za-z_][A-Za-z0-9_]*)\s*:"
-        r".*?\b(?:literal|string|integer|float|boolean|number)\b",
-        section or "",
-    ):
-        leaves.add(m.group(1).lower())
-    for m in re.finditer(
-        r"(?im)^\s*-\s*[A-Za-z_][A-Za-z0-9_]*\s*:.*\bliteral\b.*\bkey="
-        r"([A-Za-z_][A-Za-z0-9_]*)",
-        section or "",
-    ):
-        leaves.add(m.group(1).lower())
-    return leaves
+    """Literal attribute leaves declared on a type section (lowercased).
+
+    Shares production ``Attributes:`` + catalog dash-literal parsing with
+    :func:`infona_client.nlp.numeric_attr_resolve.literal_leaves_for_type` so
+    promoted-dim / money resolve sees the same leaves live ``/ask`` does.
+    """
+    from infona_client.nlp.numeric_attr_resolve import _literal_leaves_from_section
+
+    return {leaf.lower() for leaf in _literal_leaves_from_section(section or "")}
 
 
 # Generic CamelCase suffixes stripped when matching range **content** tokens
@@ -1485,8 +1482,10 @@ def try_numeric_filter_query(
             op_raw = "more than"
         threshold = float(m.group("cost_num"))
     else:
-        prop = (m.group("prop") or "").strip()
-        if not _SAFE_PROP_RE.match(prop):
+        prop_raw = (m.group("prop") or "").strip()
+        # Multi-word NL props ("unit cost") → underscore for leaf resolve.
+        prop = re.sub(r"\s+", "_", prop_raw)
+        if not prop or not _SAFE_PROP_RE.match(prop):
             return None
         # Type-scoped semantic resolve when NL prop is a money synonym.
         from infona_client.nlp.numeric_attr_resolve import (
@@ -1494,7 +1493,7 @@ def try_numeric_filter_query(
             resolve_numeric_attr,
         )
 
-        if is_money_nl_cue(prop):
+        if is_money_nl_cue(prop) or is_money_nl_cue(prop_raw):
             resolved = resolve_numeric_attr(
                 prop,
                 type_name=matched,
