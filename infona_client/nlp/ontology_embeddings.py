@@ -1,17 +1,27 @@
 """Semantic ontology retrieval via embeddings.
 
-Embeds ontology types as chunks, stores in-memory with optional S3 persistence.
-At query time, retrieves the top-K most relevant types via cosine similarity
-and expands 1 hop on the ontology graph for relationship neighbors.
+Embeds ontology types as chunks, stores in-memory with optional S3 / local-disk
+persistence. At query time, retrieves the top-K most relevant types via cosine
+similarity and expands 1 hop on the ontology graph for relationship neighbors.
+
+**OSS auto-index:** when an OpenRouter key is present, indexes are built from
+the GraphStore ontology catalog as types appear (write-path refresh) and
+lazily on first ``/ask`` if the process store is empty (cold start). Neptune
+SPARQL rebuild remains a residual fallback only.
 """
+
+from __future__ import annotations
 
 from infona_client.graph.iri import IRI_BASE, TYPE_URI_PREFIX
 import asyncio
 import io
 import json
 import logging
+import os
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Iterable, Optional, Sequence
 
 import numpy as np
 
@@ -124,16 +134,235 @@ class TenantEmbeddingStore:
 
 
 class OntologyEmbeddingService:
-    def __init__(self, openrouter_api_key: str, s3_bucket: str = "", s3_prefix: str = "infona/embeddings"):
+    def __init__(
+        self,
+        openrouter_api_key: str,
+        s3_bucket: str = "",
+        s3_prefix: str = "infona/embeddings",
+        local_dir: str | None = None,
+    ):
         self._api_key = openrouter_api_key
         self._s3_bucket = s3_bucket
         self._s3_prefix = s3_prefix
+        self._local_dir = local_dir  # None → default ~/.infona/embeddings
         self._stores: dict[str, TenantEmbeddingStore] = {}
+
+    # ── GraphStore catalog index (Neo4j / OSS product path) ───────────
+
+    async def build_from_catalog(
+        self,
+        tenant_id: str,
+        *,
+        store: Any = None,
+        graph_uri: str | None = None,
+    ) -> int:
+        """Embed every tenant-catalog type from GraphStore. Returns chunk count."""
+        if not tenant_id:
+            return 0
+        uri = graph_uri or f"{IRI_BASE}/graphs/{tenant_id}"
+        infos = await self._catalog_type_infos(tenant_id, store=store)
+        if not infos:
+            return 0
+        return await self._write_chunks(uri, infos)
+
+    async def embed_types_from_catalog(
+        self,
+        tenant_id: str,
+        type_names: Sequence[str],
+        *,
+        store: Any = None,
+        graph_uri: str | None = None,
+    ) -> int:
+        """Incrementally embed named types from the GraphStore catalog."""
+        names = [n for n in (type_names or ()) if n]
+        if not tenant_id or not names:
+            return 0
+        uri = graph_uri or f"{IRI_BASE}/graphs/{tenant_id}"
+        infos = await self._catalog_type_infos(
+            tenant_id, store=store, only_names=names
+        )
+        if not infos:
+            return 0
+        return await self._merge_chunks(uri, infos)
+
+    async def ensure_index(
+        self,
+        graph_uri: str,
+        *,
+        tenant_id: str | None = None,
+        store: Any = None,
+    ) -> int:
+        """Ensure an in-memory index exists for ``graph_uri`` (auto cold build).
+
+        Order: memory → S3 → local disk → GraphStore catalog rebuild.
+        Returns number of type chunks (0 if no key/catalog/types).
+        """
+        if not graph_uri:
+            return 0
+        estore = self._stores.get(graph_uri)
+        if estore and estore.chunks:
+            return len(estore.chunks)
+        if await self._load_from_s3(graph_uri):
+            estore = self._stores.get(graph_uri)
+            if estore and estore.chunks:
+                return len(estore.chunks)
+        if await self._load_from_local(graph_uri):
+            estore = self._stores.get(graph_uri)
+            if estore and estore.chunks:
+                return len(estore.chunks)
+        tid = (tenant_id or _extract_tenant_id(graph_uri) or "").strip()
+        if not tid or tid == "unknown":
+            return 0
+        try:
+            return await self.build_from_catalog(
+                tid, store=store, graph_uri=graph_uri
+            )
+        except Exception:
+            logger.warning(
+                "ontology_embed_ensure_index_failed",
+                graph_uri=graph_uri,
+                exc_info=True,
+            )
+            return 0
+
+    async def _catalog_type_infos(
+        self,
+        tenant_id: str,
+        *,
+        store: Any = None,
+        only_names: Sequence[str] | None = None,
+    ) -> dict[str, dict]:
+        """Load type → attribute/relationship info from the ontology catalog."""
+        gs = store
+        if gs is None:
+            try:
+                from infona_client.graph.store import get_optional_graph_store
+
+                gs = get_optional_graph_store()
+            except Exception:
+                gs = None
+        if gs is None:
+            return {}
+        try:
+            from infona_client.graph.ontology_catalog import (
+                list_attributes,
+                list_types,
+            )
+
+            types = await list_types(
+                store=gs, tenant_id=tenant_id, layer="tenant"
+            )
+            attrs = await list_attributes(
+                store=gs, tenant_id=tenant_id, layer="tenant"
+            )
+        except Exception:
+            logger.debug("ontology_embed_catalog_read_failed", exc_info=True)
+            return {}
+
+        want = {n for n in (only_names or ()) if n} or None
+        by_domain: dict[str, list] = {}
+        for a in attrs or []:
+            dom = getattr(a, "domain", None) or ""
+            if not dom:
+                continue
+            if want is not None and dom not in want:
+                continue
+            by_domain.setdefault(dom, []).append(a)
+
+        out: dict[str, dict] = {}
+        for t in types or []:
+            name = getattr(t, "name", None) or ""
+            if not name:
+                continue
+            if want is not None and name not in want:
+                continue
+            out[name] = _info_from_catalog_attrs(by_domain.get(name, []))
+            # Include description in chunk when present
+            desc = (getattr(t, "description", None) or "").strip()
+            if desc:
+                out[name]["description"] = desc
+        # only_names may include types not yet listed if list failed partially
+        if want:
+            for n in want:
+                out.setdefault(n, _info_from_catalog_attrs([]))
+        return out
+
+    async def _write_chunks(
+        self, graph_uri: str, infos: dict[str, dict]
+    ) -> int:
+        if not infos:
+            return 0
+        names = list(infos.keys())
+        chunk_texts = [
+            _format_chunk_text(tn, infos[tn]) for tn in names
+        ]
+        embeddings = await self._embed_texts(chunk_texts)
+        store = TenantEmbeddingStore()
+        for i, tn in enumerate(names):
+            store.chunks[tn] = TypeChunk(
+                type_name=tn,
+                chunk_text=chunk_texts[i],
+                embedding=np.array(embeddings[i], dtype=np.float32),
+                attributes=list(infos[tn].get("attributes") or []),
+                relationship_targets=list(
+                    infos[tn].get("relationship_target_types") or []
+                ),
+            )
+        store.dirty = True
+        self._stores[graph_uri] = store
+        await self._persist(graph_uri)
+        return len(store.chunks)
+
+    async def _merge_chunks(
+        self, graph_uri: str, infos: dict[str, dict]
+    ) -> int:
+        if not infos:
+            return 0
+        names = list(infos.keys())
+        chunk_texts = [_format_chunk_text(tn, infos[tn]) for tn in names]
+        embeddings = await self._embed_texts(chunk_texts)
+        store = self._stores.get(graph_uri) or TenantEmbeddingStore()
+        for i, tn in enumerate(names):
+            store.chunks[tn] = TypeChunk(
+                type_name=tn,
+                chunk_text=chunk_texts[i],
+                embedding=np.array(embeddings[i], dtype=np.float32),
+                attributes=list(infos[tn].get("attributes") or []),
+                relationship_targets=list(
+                    infos[tn].get("relationship_target_types") or []
+                ),
+            )
+        store.dirty = True
+        self._stores[graph_uri] = store
+        await self._persist(graph_uri)
+        return len(names)
+
+    async def _persist(self, graph_uri: str) -> None:
+        await self._save_to_s3(graph_uri)
+        await self._save_to_local(graph_uri)
 
     # ── Full rebuild ──────────────────────────────────────────────────
 
     async def build_from_ontology(self, graph_uri: str, neptune: NeptuneClient) -> int:
-        """Fetch all types from Neptune, embed them, store. Returns number of types embedded."""
+        """Fetch all types from ontology, embed them, store. Returns count.
+
+        Prefers GraphStore catalog (Neo4j). Falls back to SPARQL ``neptune``
+        residual when catalog is empty / unavailable.
+        """
+        tid = _extract_tenant_id(graph_uri)
+        if tid and tid != "unknown":
+            try:
+                n = await self.build_from_catalog(
+                    tid, graph_uri=graph_uri
+                )
+                if n:
+                    return n
+            except Exception:
+                logger.debug(
+                    "build_from_catalog_failed_try_sparql", exc_info=True
+                )
+        if neptune is None:
+            return 0
         raw = await neptune.query(get_full_ontology_query(graph_uri))
         _, bindings = parse_sparql_results(raw)
 
@@ -167,17 +396,55 @@ class OntologyEmbeddingService:
         store.dirty = True
         self._stores[graph_uri] = store
 
-        await self._save_to_s3(graph_uri)
+        await self._persist(graph_uri)
         return len(store.chunks)
 
     # ── Incremental update ────────────────────────────────────────────
 
-    async def embed_types(self, graph_uri: str, type_names: list[str], neptune: NeptuneClient) -> None:
-        """Embed only the specified types and merge into the existing store."""
+    async def embed_types(
+        self,
+        graph_uri: str,
+        type_names: list[str],
+        neptune: NeptuneClient | None = None,
+        *,
+        store: Any = None,
+        tenant_id: str | None = None,
+    ) -> None:
+        """Embed only the specified types and merge into the existing store.
+
+        **Product path:** GraphStore catalog (no SPARQL). ``neptune`` is residual
+        when catalog cannot supply the types.
+        """
         if not type_names:
             return
 
-        # Fetch full ontology to get attribute info for these types
+        tid = (tenant_id or _extract_tenant_id(graph_uri) or "").strip()
+        if tid and tid != "unknown":
+            try:
+                n = await self.embed_types_from_catalog(
+                    tid,
+                    type_names,
+                    store=store,
+                    graph_uri=graph_uri,
+                )
+                if n:
+                    return
+            except Exception:
+                logger.debug(
+                    "embed_types_from_catalog_failed",
+                    types=list(type_names),
+                    exc_info=True,
+                )
+
+        if neptune is None:
+            logger.warning(
+                "embed_types_no_source",
+                types=list(type_names),
+                graph_uri=graph_uri,
+            )
+            return
+
+        # Residual SPARQL path (dual-arm / archaeology).
         raw = await neptune.query(get_full_ontology_query(graph_uri))
         _, bindings = parse_sparql_results(raw)
         all_types = _parse_ontology_bindings(bindings)
@@ -198,19 +465,19 @@ class OntologyEmbeddingService:
 
         embeddings = await self._embed_texts(chunk_texts)
 
-        store = self._stores.get(graph_uri, TenantEmbeddingStore())
+        estore = self._stores.get(graph_uri, TenantEmbeddingStore())
         for i, tn in enumerate(names):
-            store.chunks[tn] = TypeChunk(
+            estore.chunks[tn] = TypeChunk(
                 type_name=tn,
                 chunk_text=chunk_texts[i],
                 embedding=np.array(embeddings[i], dtype=np.float32),
                 attributes=infos[i]["attributes"],
                 relationship_targets=infos[i]["relationship_target_types"],
             )
-        store.dirty = True
-        self._stores[graph_uri] = store
+        estore.dirty = True
+        self._stores[graph_uri] = estore
 
-        await self._save_to_s3(graph_uri)
+        await self._persist(graph_uri)
 
     # ── Query-time retrieval ──────────────────────────────────────────
 
@@ -225,6 +492,9 @@ class OntologyEmbeddingService:
 
         Returns formatted ontology text (same format as _fetch_ontology),
         or None if no embeddings are available (triggers fallback).
+
+        Auto-builds the type index from GraphStore catalog when empty and an
+        embed key is configured (OSS cold start).
 
         ``active_types`` (ONTA-411) is the set of type names that actually carry
         instances in the KG being queried. The embedding store is TENANT-WIDE
@@ -241,11 +511,10 @@ class OntologyEmbeddingService:
         """
         store = self._stores.get(graph_uri)
 
-        # Try S3 cold start
-        if store is None:
-            loaded = await self._load_from_s3(graph_uri)
-            if loaded:
-                store = self._stores.get(graph_uri)
+        # Cold start: S3 → local disk → GraphStore catalog auto-build.
+        if store is None or not store.chunks:
+            await self.ensure_index(graph_uri)
+            store = self._stores.get(graph_uri)
         if store is None or not store.chunks:
             return None
 
@@ -328,7 +597,7 @@ class OntologyEmbeddingService:
         return "\n".join(lines)
 
     async def type_names(self, graph_uri: str) -> set[str]:
-        """Declared type names in this tenant's store (S3 cold start included).
+        """Declared type names in this tenant's store (cold start included).
 
         The store is built from the tenant's ontology, so its keys ARE the
         declared type set. Exposed because the KG-scoping probe needs candidate
@@ -339,8 +608,8 @@ class OntologyEmbeddingService:
         :meth:`retrieve` returns None.
         """
         store = self._stores.get(graph_uri)
-        if store is None:
-            await self._load_from_s3(graph_uri)
+        if store is None or not store.chunks:
+            await self.ensure_index(graph_uri)
             store = self._stores.get(graph_uri)
         return set(store.chunks) if store else set()
 
@@ -359,7 +628,78 @@ class OntologyEmbeddingService:
         top_indices = np.argsort(similarities)[::-1][:LARGE_TYPE_ATTR_KEEP]
         return [attributes[i] for i in sorted(top_indices)]
 
-    # ── S3 persistence ────────────────────────────────────────────────
+    # ── Persistence (S3 + local disk for OSS) ───────────────────────────
+
+    def _serialize_store(self, store: TenantEmbeddingStore) -> dict[str, dict]:
+        out: dict[str, dict] = {}
+        for tn, chunk in store.chunks.items():
+            out[tn] = {
+                "chunk_text": chunk.chunk_text,
+                "embedding": chunk.embedding.tolist(),
+                "attributes": chunk.attributes,
+                "relationship_targets": chunk.relationship_targets,
+            }
+        return out
+
+    def _hydrate_store(self, serialized: dict) -> TenantEmbeddingStore:
+        store = TenantEmbeddingStore()
+        for tn, data in (serialized or {}).items():
+            store.chunks[tn] = TypeChunk(
+                type_name=tn,
+                chunk_text=data["chunk_text"],
+                embedding=np.array(data["embedding"], dtype=np.float32),
+                attributes=data.get("attributes", []),
+                relationship_targets=data.get("relationship_targets", []),
+            )
+        return store
+
+    def _local_path(self, graph_uri: str) -> Path:
+        tenant_id = _extract_tenant_id(graph_uri)
+        base = self._local_dir or (os.environ.get("INFONA_EMBEDDINGS_DIR") or "").strip()
+        if not base:
+            base = str(Path.home() / ".infona" / "embeddings")
+        return Path(base) / tenant_id / "ontology.json"
+
+    async def _save_to_local(self, graph_uri: str) -> None:
+        """Persist to local disk so OSS restarts keep the type index without S3."""
+        store = self._stores.get(graph_uri)
+        if not store or not store.dirty:
+            return
+        path = self._local_path(graph_uri)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            body = json.dumps(self._serialize_store(store)).encode()
+            await asyncio.get_event_loop().run_in_executor(
+                None, path.write_bytes, body
+            )
+            store.dirty = False
+            logger.info(
+                "Saved ontology embeddings locally",
+                extra={"path": str(path), "types": len(store.chunks)},
+            )
+        except Exception:
+            logger.warning("Failed to save embeddings locally", exc_info=True)
+
+    async def _load_from_local(self, graph_uri: str) -> bool:
+        path = self._local_path(graph_uri)
+        if not path.is_file():
+            return False
+        try:
+            body = await asyncio.get_event_loop().run_in_executor(
+                None, path.read_bytes
+            )
+            self._stores[graph_uri] = self._hydrate_store(json.loads(body))
+            logger.info(
+                "Loaded ontology embeddings from local disk",
+                extra={
+                    "path": str(path),
+                    "types": len(self._stores[graph_uri].chunks),
+                },
+            )
+            return True
+        except Exception:
+            logger.debug("Could not load local embeddings", exc_info=True)
+            return False
 
     async def _save_to_s3(self, graph_uri: str) -> None:
         """Persist embedding store to S3. Non-blocking on failure."""
@@ -371,23 +711,17 @@ class OntologyEmbeddingService:
 
         tenant_id = _extract_tenant_id(graph_uri)
         key = f"{self._s3_prefix}/{tenant_id}/ontology.json"
-
-        serialized: dict[str, dict] = {}
-        for tn, chunk in store.chunks.items():
-            serialized[tn] = {
-                "chunk_text": chunk.chunk_text,
-                "embedding": chunk.embedding.tolist(),
-                "attributes": chunk.attributes,
-                "relationship_targets": chunk.relationship_targets,
-            }
+        serialized = self._serialize_store(store)
 
         try:
             body = json.dumps(serialized).encode()
             await asyncio.get_event_loop().run_in_executor(
                 None, self._s3_put, key, body,
             )
-            store.dirty = False
-            logger.info("Saved embeddings to S3", extra={"key": key, "types": len(serialized)})
+            logger.info(
+                "Saved embeddings to S3",
+                extra={"key": key, "types": len(serialized)},
+            )
         except Exception:
             logger.warning("Failed to save embeddings to S3", exc_info=True)
 
@@ -408,18 +742,11 @@ class OntologyEmbeddingService:
             body = await asyncio.get_event_loop().run_in_executor(
                 None, self._s3_get, key,
             )
-            serialized = json.loads(body)
-            store = TenantEmbeddingStore()
-            for tn, data in serialized.items():
-                store.chunks[tn] = TypeChunk(
-                    type_name=tn,
-                    chunk_text=data["chunk_text"],
-                    embedding=np.array(data["embedding"], dtype=np.float32),
-                    attributes=data.get("attributes", []),
-                    relationship_targets=data.get("relationship_targets", []),
-                )
-            self._stores[graph_uri] = store
-            logger.info("Loaded embeddings from S3", extra={"key": key, "types": len(store.chunks)})
+            self._stores[graph_uri] = self._hydrate_store(json.loads(body))
+            logger.info(
+                "Loaded embeddings from S3",
+                extra={"key": key, "types": len(self._stores[graph_uri].chunks)},
+            )
             return True
         except Exception:
             logger.debug("Could not load embeddings from S3", exc_info=True)
@@ -434,7 +761,7 @@ class OntologyEmbeddingService:
     # ── Cache management ──────────────────────────────────────────────
 
     def invalidate(self, graph_uri: str) -> None:
-        """Clear in-memory store for a graph. S3 is overwritten on next build."""
+        """Clear in-memory store for a graph. Disk/S3 overwritten on next build."""
         self._stores.pop(graph_uri, None)
 
 
@@ -501,14 +828,45 @@ def _mark_no_instances(chunk_text: str) -> str:
     return f"{head} {NO_INSTANCES_MARK}{sep}{rest}"
 
 
+def _info_from_catalog_attrs(attrs: Iterable[Any]) -> dict:
+    """Build the legacy chunk ``info`` dict from OntoAttr records."""
+    attributes: list[str] = []
+    relationships: list[str] = []
+    targets: list[str] = []
+    for a in attrs or ():
+        name = getattr(a, "name", None) or ""
+        if not name:
+            continue
+        kind = getattr(a, "kind", None) or "literal"
+        if kind == "relationship":
+            rng = getattr(a, "range_type", None) or "?"
+            relationships.append(f"{name} -> {rng}")
+            if getattr(a, "range_type", None):
+                targets.append(str(a.range_type))
+        else:
+            dt = getattr(a, "datatype", None) or "string"
+            attributes.append(f"{name} ({dt})")
+    return {
+        "attributes": attributes,
+        "relationships": relationships,
+        "functions": set(),
+        "relationship_target_types": targets,
+    }
+
+
 def _format_chunk_text(type_name: str, info: dict) -> str:
     """Format a type into embeddable chunk text (also used as LLM ontology output)."""
     lines = [f"Type: {type_name} \u2014 URI: <{type_uri(type_name)}>"]
-    if info["attributes"]:
-        lines.append(f"  Attributes: {', '.join(sorted(info['attributes']))}")
-    if info["relationships"]:
-        lines.append(f"  Relationships: {', '.join(sorted(info['relationships']))}")
-    funcs = info.get("functions", set())
+    desc = (info.get("description") or "").strip()
+    if desc:
+        lines.append(f"  Description: {desc}")
+    attrs = info.get("attributes") or []
+    if attrs:
+        lines.append(f"  Attributes: {', '.join(sorted(attrs))}")
+    rels = info.get("relationships") or []
+    if rels:
+        lines.append(f"  Relationships: {', '.join(sorted(rels))}")
+    funcs = info.get("functions", set()) or set()
     if funcs:
         lines.append(f"  Functions: {', '.join(sorted(funcs))}")
     return "\n".join(lines)
