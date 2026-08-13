@@ -1345,7 +1345,24 @@ class NLQueryPipeline:
                     timing["numeric_grounding_prop"] = num_plan.prop_key
                 if num_plan.template:
                     timing["numeric_grounding_template"] = num_plan.template
-            grounding_text = merge_grounding_texts(loc_text, num_text)
+            # Low-cardinality dim registry: known enums + entity dims as
+            # prompt context only (always-LLM; never short-circuits Cypher).
+            dim_text = ""
+            try:
+                from infona_client.nlp.dim_registry import planning_dim_grounding
+
+                dim_text = await planning_dim_grounding(
+                    store,
+                    tenant_id=tenant_id,
+                    kg=kg_name,
+                    question=question,
+                )
+                if dim_text:
+                    timing["dim_registry"] = "present"
+            except Exception:
+                logger.debug("dim_registry_grounding_failed", exc_info=True)
+                dim_text = ""
+            grounding_text = merge_grounding_texts(loc_text, num_text, dim_text)
         except Exception:
             logger.debug("ontology_subgraph_grounding_failed", exc_info=True)
             grounding_text = ""

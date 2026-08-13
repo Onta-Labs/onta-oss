@@ -47,7 +47,9 @@ from infona_client.graph.schema_bootstrap import (
     ENTITY_MERGE_CYPHER,
     ENTITY_RELS_CYPHER,
     ENTITY_TYPE_ATTR_COVERAGE_CYPHER,
+    ENTITY_TYPE_PROP_DISTINCT_CYPHER,
     ENTITY_TYPE_REL_COVERAGE_CYPHER,
+    ENTITY_TYPE_REL_TARGET_DISTINCT_CYPHER,
     ONTO_ATTR_DELETE_CYPHER,
     ONTO_ATTR_LIST_CYPHER,
     ONTO_ATTR_RANGE_TYPE_CYPHER,
@@ -90,6 +92,8 @@ _DETAIL_NORM = _norm_cypher(ENTITY_DETAIL_CYPHER)
 _RELS_NORM = _norm_cypher(ENTITY_RELS_CYPHER)
 _TYPE_ATTR_COVERAGE_NORM = _norm_cypher(ENTITY_TYPE_ATTR_COVERAGE_CYPHER)
 _TYPE_REL_COVERAGE_NORM = _norm_cypher(ENTITY_TYPE_REL_COVERAGE_CYPHER)
+_TYPE_PROP_DISTINCT_NORM = _norm_cypher(ENTITY_TYPE_PROP_DISTINCT_CYPHER)
+_TYPE_REL_TARGET_DISTINCT_NORM = _norm_cypher(ENTITY_TYPE_REL_TARGET_DISTINCT_CYPHER)
 _LITERAL_GREP_NORM = _norm_cypher(ENTITY_LITERAL_GREP_CYPHER)
 _FILTER_PROP_EQ_NORM = _norm_cypher(ENTITY_FILTER_PROP_EQ_CYPHER)
 _HOP_OUT_NORM = _norm_cypher(ENTITY_1HOP_OUT_CYPHER)
@@ -2972,6 +2976,83 @@ class MemoryGraphStore:
                     break  # one match per (entity, attr) is enough
         return out
 
+    def _entity_type_prop_distinct(
+        self,
+        tenant_id: str,
+        kg: str,
+        primary_type: str,
+        prop_key: str,
+        limit: int,
+    ) -> list[GraphRecord]:
+        """Distinct stringified property values for entities of ``primary_type``."""
+        matched = self._entity_ids_via_instance_of(tenant_id, kg, [primary_type])
+        seen: set[str] = set()
+        values: list[str] = []
+        for eid in matched:
+            row = self._entities.get((tenant_id, kg, eid))
+            if row is None:
+                continue
+            raw = self._entity_prop_value(row, prop_key)
+            if raw is None:
+                continue
+            items: list[Any]
+            if isinstance(raw, (list, tuple)):
+                items = list(raw)
+            else:
+                items = [raw]
+            for item in items:
+                if item is None:
+                    continue
+                text = str(item).strip()
+                if not text or text in seen:
+                    continue
+                seen.add(text)
+                values.append(text)
+        values.sort()
+        if limit >= 0:
+            values = values[:limit]
+        return [GraphRecord(data={"value": v}) for v in values]
+
+    def _entity_type_rel_target_distinct(
+        self,
+        tenant_id: str,
+        kg: str,
+        primary_type: str,
+        rel_attr: str,
+        limit: int,
+    ) -> list[GraphRecord]:
+        """Distinct related-entity names for one outgoing rel leaf."""
+        matched = self._entity_ids_via_instance_of(tenant_id, kg, [primary_type])
+        by_value: dict[str, str | None] = {}
+        for r in self._rels.values():
+            if r.tenant_id != tenant_id or r.kg != kg:
+                continue
+            if r.start_id not in matched:
+                continue
+            attr = r.attr or r.rel_type
+            if attr != rel_attr and r.rel_type != rel_attr:
+                continue
+            other = self._entities.get((tenant_id, kg, r.end_id))
+            display = None
+            target_type = None
+            if other is not None:
+                display = other.name or other.id
+                target_type = other.primary_type
+            else:
+                display = r.end_id
+            if not display:
+                continue
+            key = str(display)
+            if key not in by_value:
+                by_value[key] = target_type
+        ordered = sorted(by_value.items(), key=lambda x: x[0])
+        if limit >= 0:
+            ordered = ordered[:limit]
+        return [
+            GraphRecord(data={"value": val, "target_type": tt})
+            for val, tt in ordered
+        ]
+
     def _entity_filter_prop_eq(
         self,
         tenant_id: str,
@@ -3126,6 +3207,26 @@ class MemoryGraphStore:
         if norm == _TYPE_REL_COVERAGE_NORM:
             return self._entity_type_rel_coverage(
                 tenant_id, kg, str(params.get("primary_type") or "")
+            )
+
+        if norm == _TYPE_PROP_DISTINCT_NORM:
+            lim = params.get("limit")
+            return self._entity_type_prop_distinct(
+                tenant_id,
+                kg,
+                str(params.get("primary_type") or ""),
+                str(params.get("prop_key") or ""),
+                int(lim) if lim is not None else 50,
+            )
+
+        if norm == _TYPE_REL_TARGET_DISTINCT_NORM:
+            lim = params.get("limit")
+            return self._entity_type_rel_target_distinct(
+                tenant_id,
+                kg,
+                str(params.get("primary_type") or ""),
+                str(params.get("rel_attr") or ""),
+                int(lim) if lim is not None else 50,
             )
 
         if norm == _LITERAL_GREP_NORM:

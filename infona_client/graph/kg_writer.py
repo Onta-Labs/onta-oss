@@ -1380,6 +1380,17 @@ async def refresh_after_write(
     except Exception:  # noqa: BLE001 — never fail a write on a cache hiccup
         logger.warning("ontology_cache_invalidate_failed", exc_info=True)
 
+    # 1b. Low-cardinality dim registry (NL filter binding). Best-effort
+    #     invalidate so the next /ask rebuilds from fresh inventory; never
+    #     block a write on dim-cache housekeeping.
+    if kg_name:
+        try:
+            from infona_client.nlp.dim_registry import invalidate_dim_registry
+
+            invalidate_dim_registry(tenant_id, kg_name)
+        except Exception:  # noqa: BLE001
+            logger.debug("dim_registry_invalidate_failed", exc_info=True)
+
     # NOTE (ONTA-177/ONTA-173): the free-text marker cache
     # (graph/text_markers.py) is deliberately NOT invalidated here. Most writes
     # touch no textKind markers, and refresh_after_write runs after EVERY
