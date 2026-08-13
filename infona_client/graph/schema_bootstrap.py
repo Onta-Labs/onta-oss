@@ -610,6 +610,36 @@ ORDER BY a.id, b.id
 LIMIT $limit
 """.strip()
 
+# Distinct literal property values for one type+prop (low-card dim registry).
+# Cap via ``$limit`` — callers must not full-scan free-text leaves unbounded.
+ENTITY_TYPE_PROP_DISTINCT_CYPHER = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
+  tenant_id: $tenant_id, kg: $kg
+})
+WHERE c.name = $primary_type OR c.id = $primary_type
+WITH e, e[$prop_key] AS val
+WHERE val IS NOT NULL
+WITH DISTINCT toString(val) AS value
+RETURN value
+ORDER BY value ASC
+LIMIT $limit
+""".strip()
+
+# Distinct related-entity display names for one type+rel leaf (entity dims).
+ENTITY_TYPE_REL_TARGET_DISTINCT_CYPHER = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
+  tenant_id: $tenant_id, kg: $kg
+})
+WHERE c.name = $primary_type OR c.id = $primary_type
+MATCH (e)-[r]->(o:Entity {tenant_id: $tenant_id, kg: $kg})
+WHERE r.tenant_id = $tenant_id AND r.kg = $kg
+  AND (r.attr = $rel_attr OR type(r) = $rel_attr)
+WITH DISTINCT coalesce(o.name, o.id) AS value, o.primary_type AS target_type
+RETURN value, target_type
+ORDER BY value ASC
+LIMIT $limit
+""".strip()
+
 # --- ADR 0013 semantic helpers (rdfs_helpers) --------------------------------
 # Prefer these names for NL fixtures and new app code. Wave‑1 explore paths
 # may still use entity_* templates above; both are allowlisted.
@@ -766,6 +796,16 @@ TEMPLATES: Mapping[str, CypherTemplate] = {
     "entity_1hop_out": CypherTemplate(
         name="entity_1hop_out",
         cypher=ENTITY_1HOP_OUT_CYPHER,
+        writing=False,
+    ),
+    "entity_type_prop_distinct": CypherTemplate(
+        name="entity_type_prop_distinct",
+        cypher=ENTITY_TYPE_PROP_DISTINCT_CYPHER,
+        writing=False,
+    ),
+    "entity_type_rel_target_distinct": CypherTemplate(
+        name="entity_type_rel_target_distinct",
+        cypher=ENTITY_TYPE_REL_TARGET_DISTINCT_CYPHER,
         writing=False,
     ),
     # ADR 0013 semantic helper names (compose these from NL / app code)
