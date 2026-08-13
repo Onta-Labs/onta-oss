@@ -269,11 +269,51 @@ async def list_type_schema(
     planners need to map an NL phrase ("current company", "languages") onto a
     REAL predicate of the active type instead of guessing a stray word.
 
-    Reuses the same ontology query shape as :func:`_list_predicates` (so the set
-    of predicates is identical to what inference/the Explorer see); it just keeps
-    the relationship's ``rdfs:range`` target-type leaf, which ``_list_predicates``
-    drops. A bounded, single round-trip read — never an instance scan.
+    **GraphStore / Neo4j:** reads the ontology catalog (same declarations as
+    ``/ontology/*``). Under a configured GraphStore this never calls SPARQL, so
+    agent inspect cannot hit :class:`SparqlClientRetired` (ONTA-534 residual).
+
+    Residual SPARQL dual-arm remains when no GraphStore is configured (hermetic
+    dual-arm unit tests). A bounded, single round-trip read — never an instance
+    scan.
     """
+    from infona_client.graph.store import get_optional_graph_store
+
+    store = get_optional_graph_store()
+    if store is not None:
+        from infona_client.graph.ontology_catalog import list_attributes
+
+        try:
+            attrs = await list_attributes(
+                store=store,
+                tenant_id=tenant_id,
+                type_name=type_name,
+                layer="tenant",
+            )
+        except Exception:
+            logger.warning(
+                "list_type_schema_catalog_failed",
+                type_name=type_name,
+                tenant_id=tenant_id,
+                exc_info=True,
+            )
+            attrs = []
+        attributes: list[str] = []
+        relationships: list[dict] = []
+        seen: set[str] = set()
+        for a in attrs:
+            leaf = a.name
+            if not leaf or leaf in seen:
+                continue
+            seen.add(leaf)
+            if a.kind == "relationship":
+                relationships.append(
+                    {"name": leaf, "target_type": a.range_type or None}
+                )
+            else:
+                attributes.append(leaf)
+        return {"attributes": attributes, "relationships": relationships}
+
     from infona_client.graph.queries import tenant_graph_uri
 
     onto_graph = tenant_graph_uri(tenant_id)
@@ -286,9 +326,9 @@ async def list_type_schema(
         f"}}"
     )
     _, rows = parse_sparql_results(await neptune.query(q))
-    attributes: list[str] = []
-    relationships: list[dict] = []
-    seen: set[str] = set()
+    attributes = []
+    relationships = []
+    seen = set()
     for r in rows:
         attr = r.get("attr", "")
         if not attr or attr in seen:
