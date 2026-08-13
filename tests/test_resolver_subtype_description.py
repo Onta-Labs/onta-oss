@@ -248,9 +248,10 @@ async def test_top_level_different_does_not_write_description(mock_neptune, mock
     assert "Spaceship" in result.types_created
     spaceship = (await _types())["Spaceship"]
     assert spaceship.parent_type is None
-    assert spaceship.description == "", (
-        "top-level DIFFERENT branch must not write subtype_description"
-    )
+    # Catalog always gets a short default description; must not be the LLM
+    # subtype_description prose (DESC).
+    assert spaceship.description != DESC
+    assert "Entity type" in spaceship.description
     mock_neptune.update.assert_not_called()
 
 
@@ -266,9 +267,8 @@ async def test_flagged_top_level_does_not_write_description(mock_neptune, mock_c
     assert "Widget" in result.flagged_types
     widget = (await _types())["Widget"]
     assert widget.parent_type is None
-    assert widget.description == "", (
-        "FLAGGED top-level branch must not write subtype_description"
-    )
+    assert widget.description != DESC
+    assert "Entity type" in widget.description
     mock_neptune.update.assert_not_called()
 
 
@@ -288,7 +288,6 @@ async def test_same_as_rejected_does_not_write_description(mock_neptune, mock_ca
     assert "Gadget" in result.types_created
     gadget = (await _types())["Gadget"]
     assert gadget.parent_type is None
-    assert gadget.description == "", (
-        "same_as-rejected (top-level) branch must not write subtype_description"
-    )
+    assert gadget.description != DESC
+    assert "Entity type" in gadget.description
     mock_neptune.update.assert_not_called()

@@ -76,6 +76,8 @@ class OntoTypeRecord:
     tenant_id: str
     kg: str
     description: str = ""
+    #: UTC date ``YYYY-MM-DD`` when ``description`` was last set (mandatory).
+    description_updated_at: str | None = None
     parent_type: str | None = None
     label_token: str | None = None
     uri: str | None = None
@@ -98,6 +100,8 @@ class OntoAttrRecord:
     range_type: str | None = None
     cardinality: str = "1:1"
     description: str = ""
+    #: UTC date ``YYYY-MM-DD`` when ``description`` was last set (mandatory).
+    description_updated_at: str | None = None
     prop_key: str | None = None
     # ONTA-531 — markers that used to be SPARQL triples on the attr subject.
     core_slot: bool = False
@@ -245,12 +249,14 @@ def _record_from_type_row(
 ) -> OntoTypeRecord:
     dep = row.get("deprecated_at")
     sup = row.get("superseded_by")
+    dua = row.get("description_updated_at")
     return OntoTypeRecord(
         name=str(row["name"]),
         layer=str(row.get("layer") or default_layer or ""),
         tenant_id=str(row.get("tenant_id") or ""),
         kg=str(row.get("kg") or ""),
         description=str(row.get("description") or ""),
+        description_updated_at=str(dua) if dua else None,
         parent_type=row.get("parent_type"),
         label_token=row.get("label_token"),
         uri=row.get("uri"),
@@ -275,6 +281,7 @@ def _record_from_attr_row(
     text_kind = str(raw_tk).strip() if raw_tk else None
     if text_kind == "":
         text_kind = None
+    dua = row.get("description_updated_at")
     return OntoAttrRecord(
         name=str(row["name"]),
         domain=str(row["domain"]),
@@ -286,6 +293,7 @@ def _record_from_attr_row(
         range_type=row.get("range_type"),
         cardinality=str(row.get("cardinality") or "1:1"),
         description=str(row.get("description") or ""),
+        description_updated_at=str(dua) if dua else None,
         prop_key=row.get("prop_key"),
         core_slot=core_bool,
         text_kind=text_kind,
@@ -320,16 +328,22 @@ async def upsert_type_pg(
     cutover; Class hierarchy is the preferred path for NL / explore subclass
     helpers.
     """
+    from infona_client.graph.ontology_descriptions import ensure_description
+
     leaf = _validate_type_leaf(name)
     layer = layer_from_scope(session.scope)
     label_token = _label_token_for(leaf)
     uri = _type_uri(leaf)
+    provided = bool((description or "").strip())
+    desc, desc_at = ensure_description(leaf, description, kind="type")
     rows = await session.execute_template(
         "onto_type_upsert",
         {
             "layer": layer,
             "name": leaf,
-            "description": description or "",
+            "description": desc,
+            "description_updated_at": desc_at,
+            "description_provided": provided,
             "label_token": label_token,
             "uri": uri,
         },
@@ -375,7 +389,8 @@ async def upsert_type_pg(
         layer=layer,
         tenant_id=session.scope.tenant_id,
         kg=session.scope.kg,
-        description=description or "",
+        description=desc,
+        description_updated_at=desc_at,
         parent_type=parent_type,
         label_token=label_token,
         uri=uri,
@@ -420,6 +435,8 @@ async def upsert_attribute_pg(
     ``datatype`` follows the RDF-era convention: a primitive name for literals,
     or a target type leaf for relationships (see :func:`classify_attr_range`).
     """
+    from infona_client.graph.ontology_descriptions import ensure_description
+
     domain = _validate_type_leaf(type_name)
     leaf, prop_key = _validate_attr_leaf(attr_name)
     kind, lit_dt, range_type = classify_attr_range(datatype)
@@ -435,6 +452,19 @@ async def upsert_attribute_pg(
             )
         card = cardinality
 
+    attr_kind: str = "relationship" if kind == "relationship" else "literal"
+    provided = bool((description or "").strip())
+    desc, desc_at = ensure_description(
+        leaf,
+        description,
+        kind=attr_kind,  # type: ignore[arg-type]
+        domain=domain,
+        datatype=lit_dt,
+        range_type=range_type,
+    )
+    # Stub domain OntoType on CREATE of DECLARES must also carry a description.
+    domain_desc, domain_desc_at = ensure_description(domain, "", kind="type")
+
     rows = await session.execute_template(
         "onto_attr_upsert",
         {
@@ -445,9 +475,13 @@ async def upsert_attribute_pg(
             "datatype": lit_dt,
             "range_type": range_type,
             "cardinality": card,
-            "description": description or "",
+            "description": desc,
+            "description_updated_at": desc_at,
+            "description_provided": provided,
             "prop_key": prop_key,
             "domain_label_token": _label_token_for(domain),
+            "domain_description": domain_desc,
+            "domain_description_updated_at": domain_desc_at,
         },
     )
     if kind == "relationship" and range_type:
@@ -461,6 +495,16 @@ async def upsert_attribute_pg(
                 "range_label_token": _label_token_for(range_type),
             },
         )
+        # Range type stub should also be described when first created.
+        try:
+            await upsert_type_pg(
+                session,
+                range_type,
+                description="",
+                clear_parent=False,
+            )
+        except Exception:
+            pass  # best-effort; range node may already exist with desc
     if rows:
         return _record_from_attr_row(rows[0].to_dict(), default_layer=layer)
     return OntoAttrRecord(
@@ -473,7 +517,8 @@ async def upsert_attribute_pg(
         datatype=lit_dt,
         range_type=range_type,
         cardinality=card,
-        description=description or "",
+        description=desc,
+        description_updated_at=desc_at,
         prop_key=prop_key,
     )
 
