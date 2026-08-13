@@ -23,6 +23,8 @@ the residual map + what has shipped.
 | **`NeptuneClient` fail-closed under GraphStore** | Done (slice 2) — `SparqlClientRetired` on query/update/ask/batch_exists when process store is configured (escape: `allow_http=True` / `INFONA_SPARQL_HTTP_ENABLED=1`) |
 | **Dual-route SPARQL fallthrough → 503** | Done (slice 2) — explore type summary / records / entity detail, grep, knowledge_graphs type usage |
 | **`kg_data_status` / `list_kg_names` GraphStore-first** | Done (slice 2) — real `NeptuneClient` uses registry + entity counts; duck-typed test doubles keep SPARQL ASKs |
+| **KG `/schema` + `/type-edges` GraphStore-first** | Done (inspect #5) — compose type_counts + type_summary; MCP `inspect_graph_schema` no longer 500 under Neo4j; real `NeptuneClient` empty KG stays GraphStore (no SPARQL hang) |
+| **`list_type_schema` catalog-first** | Done (inspect #5) — agent ontology inspect uses ontology catalog under GraphStore |
 | **Hermetic suite** | Must stay green |
 
 ---

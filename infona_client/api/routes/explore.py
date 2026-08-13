@@ -1662,6 +1662,141 @@ def _sorted_slots(slots: list[dict], min_coverage: float) -> tuple[list[dict], i
     return kept, omitted
 
 
+async def _schema_from_graph_store(
+    *,
+    tenant_id: str,
+    kg_name: str,
+    type_names: list[str] | None,
+    min_coverage: float,
+    include_empty: bool,
+    limit: int,
+) -> dict:
+    """Population-aware KG schema via GraphStore (P-A1a type_summary compose).
+
+    Raises :class:`~infona_client.graph.store.GraphConfigError` when no store is
+    configured (caller maps to 503 under real NeptuneClient / Neo4j-only).
+    """
+    from infona_client.graph import explore_store as es
+    from infona_client.graph import ontology_catalog as oc
+
+    counts = await es.type_counts(tenant_id=tenant_id, kg_name=kg_name)
+    if counts is None:
+        from infona_client.graph.store import GraphConfigError
+
+        raise GraphConfigError("GraphStore explore path unavailable for type_counts")
+    count_map = {r.name: int(r.entity_count) for r in counts}
+
+    declared_names: list[str] = []
+    try:
+        declared = await oc.list_types(tenant_id=tenant_id, layer="tenant")
+        declared_names = [t.name for t in declared if t.name]
+    except Exception:
+        logger.debug("schema_graphstore_list_types_failed", exc_info=True)
+
+    all_names = sorted(
+        set(count_map) | set(declared_names),
+        key=lambda n: (-count_map.get(n, 0), n.lower()),
+    )
+    wanted = {t.lower() for t in (type_names or []) if t}
+    names = [n for n in all_names if n.lower() in wanted] if wanted else list(all_names)
+
+    async def _one(name: str):
+        try:
+            return await es.type_summary(
+                tenant_id=tenant_id, kg_name=kg_name, type_name=name
+            )
+        except Exception:
+            logger.warning(
+                "schema_graphstore_type_summary_failed",
+                type_name=name,
+                kg=kg_name,
+                exc_info=True,
+            )
+            return None
+
+    rows = await asyncio.gather(*[_one(n) for n in names]) if names else []
+
+    assembled: list[dict] = []
+    for name, row in zip(names, rows):
+        if row is None:
+            if not include_empty and not wanted:
+                continue
+            # Declared or instance-named type with no summary row — minimal shell.
+            summary = {
+                "name": name,
+                "description": "",
+                "parent_type": None,
+                "entity_count": count_map.get(name, 0),
+                "attributes": [],
+                "relationships": [],
+                "spatially_indexed": False,
+                "temporally_indexed": False,
+            }
+        else:
+            summary = row.as_api_dict()
+        summary["attributes"], attrs_omitted = _sorted_slots(
+            list(summary.get("attributes") or []), min_coverage
+        )
+        summary["relationships"], rels_omitted = _sorted_slots(
+            list(summary.get("relationships") or []), min_coverage
+        )
+        entity_count = int(summary.get("entity_count") or 0)
+        summary["populated"] = entity_count > 0
+        summary["declared_only"] = entity_count == 0 and name in declared_names
+        summary["attributes_withheld"] = attrs_omitted
+        summary["relationships_withheld"] = rels_omitted
+        assembled.append(summary)
+
+    if not include_empty and not wanted:
+        assembled = [t for t in assembled if t["entity_count"] > 0]
+
+    assembled.sort(key=lambda t: (-t["entity_count"], t["name"]))
+    kept = assembled[:limit]
+    return {
+        "kg": kg_name,
+        "types": kept,
+        "total_types": len(assembled),
+        "truncated": len(assembled) > len(kept),
+        "omitted_type_names": [t["name"] for t in assembled[limit:]],
+        "available_type_names": all_names if (wanted and not assembled) else [],
+        "stats_source": "graph_store",
+        "coverage_note": _SCHEMA_COVERAGE_NOTE,
+    }
+
+
+async def _type_edges_from_graph_store(
+    *, tenant_id: str, kg_name: str
+) -> list[tuple[str, str]]:
+    """Undirected type→type edges from per-type relationship summaries."""
+    from infona_client.graph import explore_store as es
+
+    counts = await es.type_counts(tenant_id=tenant_id, kg_name=kg_name)
+    if counts is None:
+        from infona_client.graph.store import GraphConfigError
+
+        raise GraphConfigError("GraphStore explore path unavailable for type_counts")
+    pairs: list[tuple[str, str]] = []
+    for row in counts:
+        if row.entity_count <= 0:
+            continue
+        try:
+            summary = await es.type_summary(
+                tenant_id=tenant_id, kg_name=kg_name, type_name=row.name
+            )
+        except Exception:
+            logger.debug(
+                "type_edges_summary_failed", type_name=row.name, exc_info=True
+            )
+            continue
+        if summary is None:
+            continue
+        for rel in summary.relationships:
+            tgt = rel.target_type
+            if tgt:
+                pairs.append((row.name, tgt))
+    return pairs
+
+
 @router.get("/kgs/{kg_name}/schema")
 async def get_kg_schema(
     kg_name: str,
@@ -1696,9 +1831,46 @@ async def get_kg_schema(
     (ONTA-248 / ONTA-258). ``min_coverage`` is the one filter that withholds
     slots, and it only acts when the caller explicitly sets it.
 
+    **GraphStore / Neo4j:** composes :func:`explore_store.type_counts` +
+    :func:`explore_store.type_summary` + ontology catalog declarations
+    (``stats_source=graph_store``). Required under production GraphStore so
+    MCP ``inspect_graph_schema`` does not hit retired SPARQL (ONTA-534 residual).
+
     Not exposed here: sample VALUES. Nothing serves them over HTTP today (the NL
     pipeline computes them inside ``/ask`` only). Deliberately out of scope.
     """
+    from fastapi import HTTPException
+
+    from infona_client.graph.client import NeptuneClient as _NC
+    from infona_client.graph.store import GraphConfigError
+
+    try:
+        gs_result = await _schema_from_graph_store(
+            tenant_id=tenant.tenant_id,
+            kg_name=kg_name,
+            type_names=type_names,
+            min_coverage=min_coverage,
+            include_empty=include_empty,
+            limit=limit,
+        )
+        # Production Neo4j (real NeptuneClient) always uses GraphStore — even for
+        # empty KGs — so we never fall through to SparqlClientRetired (500).
+        # Dual-arm unit tests seed AsyncMock SPARQL only while the autouse
+        # MemoryGraphStore is empty: fall through when both are empty mocks.
+        if gs_result.get("types") or type(client) is _NC:
+            return gs_result
+    except GraphConfigError as exc:
+        if type(client) is _NC and not getattr(client, "_allow_http", False):
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Graph store is not configured. Neo4j GraphStore is required "
+                    f"(ONTA-534). {exc}"
+                ),
+            ) from exc
+        # Residual SPARQL dual-arm (hermetic unit tests / QC archaeology).
+        pass
+
     stack = layer_stack_for(tenant)
     kg_graph = kg_graph_uri(tenant.tenant_id, kg_name)
 
@@ -1854,6 +2026,30 @@ async def get_type_edges(
     from the overview, while high-coverage and core-slot edges are kept. With
     the flag OFF the read is byte-identical to before (no filtering).
     """
+    from fastapi import HTTPException
+
+    from infona_client.graph.client import NeptuneClient as _NC
+    from infona_client.graph.store import GraphConfigError
+
+    try:
+        pairs = await _type_edges_from_graph_store(
+            tenant_id=tenant.tenant_id, kg_name=kg_name
+        )
+        # Same dual-arm rule as /schema: real NeptuneClient always GraphStore;
+        # empty Memory + AsyncMock may fall through to SPARQL edge stats tests.
+        if pairs or type(client) is _NC:
+            return _dedupe_undirected(pairs)
+    except GraphConfigError as exc:
+        if type(client) is _NC and not getattr(client, "_allow_http", False):
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Graph store is not configured. Neo4j GraphStore is required "
+                    f"(ONTA-534). {exc}"
+                ),
+            ) from exc
+        pass
+
     # ACT only when enabled AND not observe-only. Observe-only collects the
     # coverage distribution (via the recompute drift report) without touching the
     # overview, so the floor can be set from real data before it filters anything.
