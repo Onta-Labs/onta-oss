@@ -49,8 +49,8 @@ open; the **content and managed ops** are not.
 
 | Track | Use |
 |-------|-----|
-| **Neo4j 5 Community** (`docker compose up -d neo4j`) | **Default / production path** — Cypher, GraphStore |
-| Fuseki (optional compose profile `legacy-sparql`) | Legacy SPARQL path only — not for new work |
+| **Neo4j 5 Community** (`docker compose up -d`) | **Only supported product path** — Cypher, GraphStore |
+| Fuseki compose profile `legacy-sparql` | **Quarantine / residual only** — product `graph_backend()` rejects non-neo4j; not a usable OSS backend |
 
 Set `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` (see `.env.example`). Never
 expect a platform-held Neo4j password in OSS.

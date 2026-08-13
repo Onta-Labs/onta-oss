@@ -261,9 +261,10 @@ Instance writers resolve the store once per write batch via
 | Normalization (promote_to_node, list_explode, strip_emoji) | `normalization/execute.py` |
 | ER rebuild / merge | `resolver/er/rebuild.py` |
 
-When the backend is `neo4j` (default), missing store config fails closed
-(`GraphConfigError`). Only an explicit legacy `neptune` / `fuseki` backend
-returns `None` so rails keep the SPARQL path.
+When the backend is `neo4j` (the only supported value), missing store config
+fails closed (`GraphConfigError`). Setting `INFONA_GRAPH_BACKEND` to `neptune`
+or `fuseki` also raises — those backends were removed with the Neo4j cutover
+(ONTA-527); there is no SPARQL fallback.
 
 **Still SPARQL-only by design (this epic):** normalization SELECTs that find
 candidates before the write, ontology-graph config rows (normalization
@@ -412,7 +413,7 @@ list/count via `INSTANCE_OF` → Class (not denorm `primary_type` alone).
 | `NEO4J_USER` | `neo4j` | Username |
 | `NEO4J_PASSWORD` | — | Password (required with URI) |
 | `NEO4J_DATABASE` | driver default | Optional DB name (Wave 1: single DB) |
-| `INFONA_GRAPH_BACKEND` | `neo4j` | Production default. Set `neptune`/`fuseki` only for legacy SPARQL |
+| `INFONA_GRAPH_BACKEND` | `neo4j` | Only supported value. Any other value (incl. `neptune`/`fuseki`) raises `GraphConfigError` |
 
 No platform or AWS-managed credentials are embedded in this package.
 
@@ -430,8 +431,9 @@ Response body points callers at the agent, SDK, and high-level APIs
 (`/ask`, `/agent`, `/triples`, `/kgs`, ingest, explore). There is **no** SPARQL
 compatibility façade over Neo4j.
 
-**Not deleted:** SPARQL client code, `sparql_scope`, and route modules remain for
-legacy Neptune/Fuseki deployments. Only the public HTTP contract hard-breaks
-under neo4j.
+**Residual code only:** SPARQL client helpers, `sparql_scope`, and route modules
+remain in-tree for migration/QC archaeology. They are **not** a supported
+product path — `graph_backend()` rejects non-neo4j, and the public SPARQL HTTP
+contract is 410 under the Neo4j product path.
 
 Hermetic tests: `tests/test_query_neo4j_hard_break.py`.

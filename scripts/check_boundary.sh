@@ -2,8 +2,10 @@
 #
 # OSS/proprietary boundary guardrail (MOE-21, Layer 1).
 #
-# infona-oss is published publicly to npm + PyPI, and the repo ITSELF is
-# public (so is the sdist, which hatchling builds from VCS-tracked files, i.e.
+# infona-oss ships publicly: npm packages (@infona-ai/cli, @infona-ai/mcp) are
+# published on release; the Python package (infona-client) is installable from
+# this git repo until a PyPI publish exists; the repo ITSELF is public (so is
+# any future sdist, which hatchling builds from VCS-tracked files, i.e.
 # including tests/ and docs/). Public publication is a one-way door. This
 # script mechanically enforces that nothing proprietary has leaked. It is run
 # by CI (.github/workflows/boundary.yml) on every PR + push, and locally:
@@ -15,9 +17,10 @@
 #
 # Two scopes, because the two failure modes differ:
 #
-#   CODE scope  — infona_client/ + packages/: what ships to PyPI/npm and is
-#                 copied into the ECS image. Import/module-path rules apply
-#                 only here, since docs legitimately name proprietary paths.
+#   CODE scope  — infona_client/ + packages/: what ships via npm (and git/PyPI
+#                 for Python) and is copied into the ECS image. Import/module-
+#                 path rules apply only here, since docs legitimately name
+#                 proprietary paths.
 #   REPO scope  — every git-tracked file, plus uncommitted ones so a local run
 #                 catches a leak BEFORE it lands. A leaked ALB host or
 #                 credential is just as public sitting in an eval artifact as
