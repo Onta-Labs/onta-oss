@@ -2014,39 +2014,27 @@ def format_schema_types_for_cypher(types: Sequence[Any]) -> str:
     Accepts any objects with ``name``, optional ``entity_count``,
     ``description``, ``parent_type``, and ``attributes`` (each with
     ``name`` / ``kind`` / ``datatype`` / ``range_type`` / ``prop_key``).
+
+    Catalog-only (no per-slot inventory): type-level ``[no instances]`` only;
+    declared slots on populated types are treated as usable. Prefer
+    :func:`ontology_from_graph_store` (``prefer_populated=True``) for the
+    planning path that demotes declared-empty leaves and surfaces
+    instance-only predicates.
     """
-    lines: list[str] = []
-    for t in types or ():
-        name = getattr(t, "name", None) or ""
-        if not name:
-            continue
-        count = int(getattr(t, "entity_count", 0) or 0)
-        empty_suffix = " [no instances]" if count == 0 else f" ({count} entities)"
-        lines.append(f"Type: {name}{empty_suffix}")
-        desc = getattr(t, "description", None) or ""
-        if desc:
-            lines.append(f"  description: {desc}")
-        parent = getattr(t, "parent_type", None)
-        if parent:
-            lines.append(f"  parent: {parent}")
-        for a in getattr(t, "attributes", ()) or ():
-            aname = getattr(a, "name", None) or ""
-            if not aname:
-                continue
-            kind = getattr(a, "kind", None) or "literal"
-            prop_key = getattr(a, "prop_key", None) or aname
-            range_type = getattr(a, "range_type", None)
-            datatype = getattr(a, "datatype", None) or "string"
-            if kind == "relationship" or range_type:
-                lines.append(
-                    f"  - {aname} -> {range_type or '?'} "
-                    f"(relationship, key={prop_key})"
-                )
-            else:
-                lines.append(
-                    f"  - {aname}: {datatype} (literal, key={prop_key})"
-                )
-    return "\n".join(lines)
+    from infona_client.nlp.planning_schema import (
+        format_planning_ontology,
+        planning_types_from_schema_and_summaries,
+    )
+
+    planning = planning_types_from_schema_and_summaries(
+        types,
+        summaries_by_name=None,
+        inventory_probed=False,
+        max_empty_types=10_000,  # catalog-only: do not silently drop empties
+    )
+    # No planning preface on the bare catalog formatter (keeps unit tests and
+    # non-ask consumers byte-stable aside from empty-type slot elision).
+    return format_planning_ontology(planning, preface=False, max_empty_types=10_000)
 
 
 async def ontology_from_graph_store(
@@ -2054,24 +2042,136 @@ async def ontology_from_graph_store(
     *,
     tenant_id: str,
     kg: str,
+    prefer_populated: bool = True,
+    type_names: Sequence[str] | None = None,
+    force_include: Sequence[str] | None = None,
+    max_empty_types: int | None = None,
 ) -> tuple[str, list[str]]:
-    """Load ontology text + type names from GraphStore catalog when possible.
+    """Load ontology text + type names from GraphStore for NL planning.
 
-    Returns ``("", [])`` on any failure so the pipeline can fall back to the
-    SPARQL ontology summary (or empty).
+    When ``prefer_populated`` (default), merges tenant catalog declarations with
+    per-type instance inventory (:func:`~infona_client.graph.explore_store.type_summary`)
+    so populated leaves rank first and declared-but-empty edges/attrs are
+    secondary ``[no instances]`` slots. Instance-only leaves (present in the KG
+    but not in the catalog) are first-class primary context.
+
+    ``type_names`` optionally scopes the text to a semantic top-K (plus 1-hop
+    relationship neighbours from inventory). Empty types are capped via
+    ``max_empty_types`` to reduce tenant-ontology pollution in per-KG /ask.
+
+    Returns ``("", [])`` on any failure so the pipeline can fall back.
     """
     if store is None or not tenant_id or not kg:
         return "", []
     try:
         from infona_client.graph.ontology_catalog import schema_types_for_kg
+        from infona_client.nlp.planning_schema import (
+            DEFAULT_MAX_EMPTY_TYPES,
+            format_planning_ontology,
+            planning_types_from_schema_and_summaries,
+        )
 
         rows = await schema_types_for_kg(
             store, tenant_id=tenant_id, kg=kg, include_attrs=True
         )
         if not rows:
             return "", []
-        text = format_schema_types_for_cypher(rows)
-        names = [r.name for r in rows if getattr(r, "name", None)]
+
+        empty_cap = (
+            DEFAULT_MAX_EMPTY_TYPES if max_empty_types is None else int(max_empty_types)
+        )
+        force = list(force_include or ())
+        wanted = {n for n in (type_names or ()) if n}
+        force_set = set(force) | wanted
+
+        if not prefer_populated:
+            text = format_schema_types_for_cypher(rows)
+            names = [r.name for r in rows if getattr(r, "name", None)]
+            return text, names
+
+        # Probe inventory for types that carry instances (and any force-include).
+        summaries: dict[str, Any] = {}
+        try:
+            from infona_client.graph.explore_store import type_summary
+
+            probe_names = [
+                r.name
+                for r in rows
+                if getattr(r, "name", None)
+                and (
+                    int(getattr(r, "entity_count", 0) or 0) > 0
+                    or r.name in force_set
+                )
+            ]
+            # Also probe wanted names not in catalog (instance-only types).
+            seen_probe = set(probe_names)
+            for n in force_set:
+                if n not in seen_probe:
+                    probe_names.append(n)
+                    seen_probe.add(n)
+
+            async def _one(name: str) -> tuple[str, Any]:
+                try:
+                    row = await type_summary(
+                        store=store,
+                        tenant_id=tenant_id,
+                        kg_name=kg,
+                        type_name=name,
+                    )
+                    return name, row
+                except Exception:
+                    return name, None
+
+            if probe_names:
+                import asyncio
+
+                results = await asyncio.gather(*[_one(n) for n in probe_names])
+                for name, row in results:
+                    if row is not None:
+                        summaries[name] = row
+        except Exception:
+            summaries = {}
+
+        planning = planning_types_from_schema_and_summaries(
+            rows,
+            summaries,
+            max_empty_types=empty_cap if not wanted else 10_000,
+            force_include=force_set or None,
+            inventory_probed=True,
+        )
+
+        # Optional semantic / caller type filter + 1-hop neighbour expansion
+        # via *populated* relationship ranges (planning truth, not dead edges).
+        if wanted:
+            expand = set(wanted) | set(force)
+            for t in planning:
+                if t.name not in expand:
+                    continue
+                for s in t.slots:
+                    if (
+                        s.populated
+                        and s.kind == "relationship"
+                        and s.range_type
+                    ):
+                        expand.add(s.range_type)
+            planning = [t for t in planning if t.name in expand]
+            # Preserve population order from planning_types_from_schema_and_summaries
+            # (already sorted); re-filter only.
+
+        if not planning:
+            # Fall back to catalog-only formatting rather than empty string so
+            # callers still get *some* schema when filters were too aggressive.
+            text = format_schema_types_for_cypher(rows)
+            names = [r.name for r in rows if getattr(r, "name", None)]
+            return text, names
+
+        text = format_planning_ontology(
+            planning,
+            max_empty_types=empty_cap if not wanted else 10_000,
+            force_include=force_set or None,
+            preface=True,
+        )
+        names = [t.name for t in planning]
         return text, names
     except Exception:
         return "", []
