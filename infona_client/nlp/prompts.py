@@ -219,9 +219,28 @@ rels (e.g. `HAS_GENRE`) — only valid when kept consistent with Assertions.
 
 FORBIDDEN relationship / property shapes (they do not exist in this graph):
 - NEVER invent `HAS_ASSERTION`, `predicate_key`, or `Assertion.prop_key`.
-- For SUM/AVG/MIN/MAX over a number attribute, ALWAYS use:
+- For SUM/AVG/MIN/MAX over a number attribute **without an extra status/value \
+filter on entities**, use:
   `OPTIONAL MATCH (a:Assertion {tenant_id:$tenant_id, kg:$kg, subject_id:e.id})-[:PREDICATE]->(p:Property {tenant_id:$tenant_id, kg:$kg}) WHERE p.name = $prop`
-  then `toFloat(coalesce(a.literal_value, e[p.name]))`. Do NOT walk HAS_ASSERTION.
+  then `WITH e, coalesce(a.literal_value, e[p.name]) AS raw WHERE raw IS NOT NULL` \
+and aggregate `toFloat(...)`. Do NOT walk HAS_ASSERTION.
+
+CRITICAL — required filters must actually constrain rows (silent-wrong trap):
+- A WHERE attached to OPTIONAL MATCH only decides whether the optional bind \
+succeeds; it does **NOT** drop primary MATCH entity rows. Putting \
+`a.literal_value = $value` only on OPTIONAL MATCH then `RETURN count(e)` yields \
+an **unfiltered total** (wrong). Fail closed is better than a silent wrong total.
+- For required property/value filters (status, phase, label, equality, \
+"how many X that are Y", "sum Z for active", …) you MUST use one of:
+  1. **template** `literal_values` / `literal_compare` / `related_entity_name_filter` \
+(preferred — set the JSON `template` field + params), OR
+  2. **entity denorm**: `WHERE e.<prop_key> = $prop_value` (or compare) on the \
+Entity after type MATCH, OR
+  3. **required MATCH** (not OPTIONAL) on Assertion with the value predicate, OR
+  4. OPTIONAL MATCH for Assertion **only if** followed by \
+`WITH e, a WHERE a IS NOT NULL` (or `coalesce → WHERE raw IS NOT NULL AND raw = $v`).
+- Filtered aggregates: first constrain entities with a required filter, then \
+aggregate the measure attribute. Never OPTIONAL-filter the status/phase predicate.
 
 - Correct datatype read pattern:
   `(a:Assertion {tenant_id:$tenant_id, kg:$kg, subject_id:e.id})-[:PREDICATE]->(p:Property)`
@@ -232,9 +251,11 @@ FORBIDDEN relationship / property shapes (they do not exist in this graph):
 
 Prefer allowlisted semantic helper templates (set the JSON ``template`` field when \
 the shape matches; params must match the template). Helpers include:
-- entities_of_type / entities_of_type_count — type membership; pass expanded \
-`$type_names` (include subclasses when the question means "type T and subtypes")
-- literal_values — datatype property equality (`$type_names`, `$prop_key`, `$prop_value`)
+- entities_of_type / entities_of_type_count — type membership ONLY when the \
+question has **no** property/value filter; pass expanded `$type_names` \
+(include subclasses when the question means "type T and subtypes")
+- literal_values — datatype property equality (`$type_names`, `$prop_key`, `$prop_value`) \
+— use for "how many X with status/phase/label = Y", equality filters, filtered counts
 - literal_compare — numeric inequality (`$prop_key`, `$op` in lt/le/gt/ge/eq, `$threshold`)
 - related_entities — 1-hop object relationships (`$from_types`, `$to_types`, optional `$rel_attr`)
 - related_entity_name_filter — subjects linked to a related entity by display name \
