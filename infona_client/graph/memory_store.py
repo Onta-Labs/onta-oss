@@ -261,6 +261,7 @@ class _OntoTypeRow:
     layer: str
     name: str
     description: str = ""
+    description_updated_at: str | None = None
     label_token: str | None = None
     uri: str | None = None
     parent_type: str | None = None
@@ -273,6 +274,7 @@ class _OntoTypeRow:
                 "name": self.name,
                 "layer": self.layer,
                 "description": self.description,
+                "description_updated_at": self.description_updated_at,
                 "label_token": self.label_token,
                 "uri": self.uri,
                 "parent_type": self.parent_type,
@@ -296,6 +298,7 @@ class _OntoAttrRow:
     range_type: str | None = None
     cardinality: str = "1:1"
     description: str = ""
+    description_updated_at: str | None = None
     prop_key: str | None = None
     core_slot: bool = False
     text_kind: str | None = None
@@ -312,6 +315,7 @@ class _OntoAttrRow:
                 "range_type": self.range_type,
                 "cardinality": self.cardinality,
                 "description": self.description,
+                "description_updated_at": self.description_updated_at,
                 "prop_key": self.prop_key,
                 "layer": self.layer,
                 "tenant_id": self.tenant_id,
@@ -1686,6 +1690,8 @@ class MemoryGraphStore:
         name: str,
         *,
         description: str = "",
+        description_updated_at: str | None = None,
+        description_provided: bool = False,
         label_token: str | None = None,
         uri: str | None = None,
     ) -> list[GraphRecord]:
@@ -1694,6 +1700,11 @@ class MemoryGraphStore:
         key = (tenant_id, kg, layer, name)
         class_id = uri or type_uri(name)
         existing = self._onto_types.get(key)
+        dua = (
+            str(description_updated_at)
+            if description_updated_at
+            else None
+        )
         if existing is None:
             row = _OntoTypeRow(
                 tenant_id=tenant_id,
@@ -1701,13 +1712,22 @@ class MemoryGraphStore:
                 layer=layer,
                 name=name,
                 description=description or "",
+                description_updated_at=dua,
                 label_token=label_token,
                 uri=class_id,
             )
             self._onto_types[key] = row
         else:
-            if description:
+            if not (existing.description or "").strip() and description:
                 existing.description = description
+                if dua:
+                    existing.description_updated_at = dua
+            elif description_provided and description and description != existing.description:
+                existing.description = description
+                if dua:
+                    existing.description_updated_at = dua
+            elif existing.description_updated_at is None and dua:
+                existing.description_updated_at = dua
             if label_token is not None:
                 existing.label_token = label_token
             if uri is not None:
@@ -1804,10 +1824,14 @@ class MemoryGraphStore:
         range_type: str | None,
         cardinality: str,
         description: str,
+        description_updated_at: str | None = None,
+        description_provided: bool = False,
         prop_key: str | None,
         domain_label_token: str | None,
+        domain_description: str = "",
+        domain_description_updated_at: str | None = None,
     ) -> list[GraphRecord]:
-        # Ensure domain type exists (DECLARES target).
+        # Ensure domain type exists (DECLARES target) with mandatory description.
         dkey = (tenant_id, kg, layer, domain)
         if dkey not in self._onto_types:
             self._onto_types[dkey] = _OntoTypeRow(
@@ -1815,10 +1839,23 @@ class MemoryGraphStore:
                 kg=kg,
                 layer=layer,
                 name=domain,
+                description=domain_description or "",
+                description_updated_at=(
+                    str(domain_description_updated_at)
+                    if domain_description_updated_at
+                    else None
+                ),
                 label_token=domain_label_token,
             )
+        elif not (self._onto_types[dkey].description or "").strip() and domain_description:
+            self._onto_types[dkey].description = domain_description
+            if domain_description_updated_at:
+                self._onto_types[dkey].description_updated_at = str(
+                    domain_description_updated_at
+                )
         akey = (tenant_id, kg, layer, domain, name)
         existing = self._onto_attrs.get(akey)
+        dua = str(description_updated_at) if description_updated_at else None
         if existing is None:
             row = _OntoAttrRow(
                 tenant_id=tenant_id,
@@ -1831,6 +1868,7 @@ class MemoryGraphStore:
                 range_type=range_type,
                 cardinality=cardinality or "1:1",
                 description=description or "",
+                description_updated_at=dua,
                 prop_key=prop_key,
             )
             self._onto_attrs[akey] = row
@@ -1840,8 +1878,16 @@ class MemoryGraphStore:
             existing.range_type = range_type
             if cardinality:
                 existing.cardinality = cardinality
-            if description:
+            if not (existing.description or "").strip() and description:
                 existing.description = description
+                if dua:
+                    existing.description_updated_at = dua
+            elif description_provided and description and description != existing.description:
+                existing.description = description
+                if dua:
+                    existing.description_updated_at = dua
+            elif existing.description_updated_at is None and dua:
+                existing.description_updated_at = dua
             if prop_key is not None:
                 existing.prop_key = prop_key
             # text_kind is NOT touched by a general attribute upsert — only
@@ -3210,6 +3256,8 @@ class MemoryGraphStore:
                 str(params["layer"]),
                 str(params["name"]),
                 description=str(params.get("description") or ""),
+                description_updated_at=params.get("description_updated_at"),
+                description_provided=bool(params.get("description_provided")),
                 label_token=params.get("label_token"),
                 uri=params.get("uri"),
             )
@@ -3255,8 +3303,14 @@ class MemoryGraphStore:
                 range_type=params.get("range_type"),
                 cardinality=str(params.get("cardinality") or "1:1"),
                 description=str(params.get("description") or ""),
+                description_updated_at=params.get("description_updated_at"),
+                description_provided=bool(params.get("description_provided")),
                 prop_key=params.get("prop_key"),
                 domain_label_token=params.get("domain_label_token"),
+                domain_description=str(params.get("domain_description") or ""),
+                domain_description_updated_at=params.get(
+                    "domain_description_updated_at"
+                ),
             )
 
         if norm == _ONTO_ATTR_RANGE_NORM:
