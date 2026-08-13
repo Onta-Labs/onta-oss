@@ -1225,6 +1225,11 @@ class NLQueryPipeline:
                 format_grounding_for_prompt,
                 ground_ask_plan,
             )
+            from infona_client.nlp.ontology_mention_index import (
+                get_process_mention_index,
+                get_resolve_context,
+                lookup_query_embedding,
+            )
 
             names_for_ground = type_names or None
             if not names_for_ground and ontology:
@@ -1233,10 +1238,21 @@ class NLQueryPipeline:
                 )
 
                 names_for_ground = extract_type_names_from_ontology(ontology) or None
+            # Optional ONTA-537 mention index + precomputed query embedding
+            # when the ask path already has them (best-effort; hermetic without).
+            _rctx = get_resolve_context()
+            _midx = (
+                _rctx.mention_index
+                if _rctx is not None and _rctx.mention_index is not None
+                else get_process_mention_index()
+            )
+            _qemb = lookup_query_embedding(question, _rctx)
             grounded = ground_ask_plan(
                 question,
                 ontology,
                 type_names=names_for_ground,
+                mention_index=_midx,
+                query_embedding=_qemb,
             )
             grounding_text = format_grounding_for_prompt(grounded)
             if grounded is not None:
@@ -1313,10 +1329,27 @@ class NLQueryPipeline:
                                         extract_type_names_from_ontology(ontology)
                                         or None
                                     )
+                                    from infona_client.nlp.ontology_mention_index import (
+                                        get_process_mention_index,
+                                        get_resolve_context,
+                                        lookup_query_embedding,
+                                    )
+
+                                    _rctx_esc = get_resolve_context()
+                                    _midx_esc = (
+                                        _rctx_esc.mention_index
+                                        if _rctx_esc is not None
+                                        and _rctx_esc.mention_index is not None
+                                        else get_process_mention_index()
+                                    )
                                     grounded_esc = ground_ask_plan(
                                         question,
                                         ontology,
                                         type_names=names_esc,
+                                        mention_index=_midx_esc,
+                                        query_embedding=lookup_query_embedding(
+                                            question, _rctx_esc
+                                        ),
                                     )
                                     grounding_text = format_grounding_for_prompt(
                                         grounded_esc
