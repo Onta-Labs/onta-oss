@@ -1466,9 +1466,24 @@ class NLQueryPipeline:
                                         mention_index=_midx_esc,
                                         query_embedding=_qemb_esc,
                                     )
+                                    dim_esc = ""
+                                    try:
+                                        from infona_client.nlp.dim_registry import (
+                                            planning_dim_grounding,
+                                        )
+
+                                        dim_esc = await planning_dim_grounding(
+                                            store,
+                                            tenant_id=tenant_id,
+                                            kg=kg_name,
+                                            question=question,
+                                        )
+                                    except Exception:
+                                        dim_esc = ""
                                     grounding_text = merge_grounding_texts(
                                         format_grounding_for_prompt(grounded_esc),
                                         format_numeric_grounding_for_prompt(num_esc),
+                                        dim_esc,
                                     )
                                 except Exception:
                                     pass
