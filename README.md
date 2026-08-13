@@ -36,16 +36,17 @@ cp .env.example .env
 ```
 
 > Import path: `infona_client`. Graph IRIs: `https://graph.infona.ai/`.  
-> CLI/MCP: workspace + upcoming publishes use primary bins `infona` / `infona-mcp`
-> (`npm ci && npm run build -w packages/cli`). Dual aliases `onta` / `onta-mcp`
-> remain for back-compat. Prefer `infona`. Python package name is `infona-client`
-> (PyPI not yet published — install from this repo with `pip install -e .`).
+> CLI/MCP: published on npm as `@infona-ai/cli` / `@infona-ai/mcp` with primary
+> bins `infona` / `infona-mcp` (`npm ci && npm run build -w packages/cli`).
+> Compatibility aliases `onta` / `onta-mcp` remain. Prefer `infona`.
+> Python package name is `infona-client` (PyPI not yet published — install from
+> this repo with `pip install -e .`).
 
 ### 2. Start Neo4j
 
 ```bash
 docker compose up -d
-# Neo4j only (default). Legacy Fuseki: docker compose --profile legacy-sparql up -d
+# Neo4j only. Product rejects non-neo4j INFONA_GRAPH_BACKEND (ONTA-527).
 
 export NEO4J_URI=bolt://localhost:7687
 export NEO4J_USER=neo4j
@@ -206,7 +207,9 @@ Local models (Ollama / vLLM) via OpenAI-compatible endpoints are possible if you
 - **Backend:** FastAPI + Neo4j GraphStore (Cypher)
 - **Ingestion:** LLM schema inference → deterministic mapping
 - **Query:** ontology + few-shot bank → Cypher → answer
-- **Legacy SPARQL / Fuseki:** still in-tree; not the default
+- **SPARQL / Fuseki / Neptune:** removed as product backends (`graph_backend()`
+  rejects them). Residual compose profile / scripts are quarantine-only
+  archaeology — not a supported local path.
 
 ## License
 

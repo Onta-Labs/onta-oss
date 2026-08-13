@@ -4,7 +4,7 @@ MCP (Model Context Protocol) server for [Infona](https://infona.ai). Gives AI ag
 
 ## Install / run
 
-Package: **`@infona-ai/mcp`**. Primary binary: **`infona-mcp`** (`infona-mcp` and `mcp` remain compatibility aliases).
+Package: **`@infona-ai/mcp`**. Primary binary: **`infona-mcp`**. Compatibility alias: **`onta-mcp`** (same entrypoint). There is no bare `mcp` bin.
 
 No install needed — use `npx`:
 
@@ -74,7 +74,7 @@ The server registers **19** tools, plus **1 more** (`list_local_files`) when you
 - `INFONA_TENANT` — default `demo-tenant`
 - `INFONA_LOCAL_FILES_DIR`: **optional, unset by default.** An absolute path to one directory (or several, joined by your platform's path separator, max 4) that the agent may LIST. Setting it registers the `list_local_files` tool; leaving it unset means that tool does not exist.
 
-Older env-var prefixes (`ONTA_*`, `INFONA_*`, `INFONA_*`) are still accepted for back-compat, so existing configs keep working unchanged. Prefer `INFONA_*` for new configs.
+Env vars are **`INFONA_*` only** — there is no `ONTA_*` (or other legacy-prefix) fallback in this package.
 
 ### `INFONA_LOCAL_FILES_DIR` and what it grants
 
