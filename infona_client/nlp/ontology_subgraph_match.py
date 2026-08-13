@@ -3,8 +3,9 @@
 Grounding spine for questions like ``how many widgets in east``:
 
 1. **Extract** an :class:`NlSketch` (type mentions, values, locative/rel cues, intent).
-2. **Enumerate** ontology relationship paths (domain type —rel→ range type).
-3. **Rank** paths against the sketch (location-ish cues, range-type synonyms).
+2. **Enumerate** ontology relationship paths (1-hop and multi-hop chains).
+3. **Rank** paths against the sketch (location-ish cues, range-type synonyms,
+   optional embedder cosine + :class:`OntologyMentionIndex` semantic dims).
 4. **Ground** a structured :class:`GroundedAskPlan` for the LLM prompt
    (preferred ADR 0013 template + safe params) — never silent free-form Cypher.
 
@@ -19,16 +20,22 @@ Grounding spine for questions like ``how many widgets in east``:
 * Anti-overfit: synthetic type names only in tests; ranking uses **general**
   location/rel families and range-type precision (ONTA-538), not persona CSV
   column hardcodes.
+* Multi-hop (default max 2 hops, hard cap 3): prompt-only grounding when no
+  multi-hop ADR 0013 template exists — never invent raw Cypher in params.
+* Embedder / mention-index ranking is **optional**; absent → hermetic
+  string/family heuristics only (no network, no crash).
 
 See also: :mod:`infona_client.nlp.cypher_generate` (type / rel resolve),
+:mod:`infona_client.nlp.ontology_mention_index` (ONTA-537 full-embed guards),
 ADR 0013 templates (``related_entity_name_filter``, ``entities_of_type_count``).
 """
 
 from __future__ import annotations
 
+import inspect
 import re
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Sequence
+from typing import Any, Awaitable, Callable, Mapping, Sequence
 
 from infona_client.graph.rdfs_helpers import (
     TEMPLATE_ENTITIES_OF_TYPE,
@@ -244,6 +251,23 @@ _BARE_TYPE_RE = re.compile(
 # Ambiguity margin: top-2 within this absolute score gap → no unique winner.
 _PATH_AMBIGUITY_MARGIN = 0.5
 
+# Multi-hop defaults.
+_DEFAULT_MAX_HOPS = 2
+_HARD_MAX_HOPS = 3
+# Mild penalty per extra hop so direct 1-hop wins when both are valid.
+_MULTI_HOP_PENALTY = 1.5
+# Cosine boost scale when an embedder is present (added to base score).
+_EMBED_COSINE_SCALE = 4.0
+# Semantic resolve_rel boost when dim synonym maps to a path leaf.
+_SEMANTIC_REL_BOOST = 7.0
+
+
+# Sync batch embedder: texts → vectors (hermetic tests). Async EmbedFn lives
+# on ontology_mention_index and is accepted via ground_ask_plan_async.
+SyncEmbedBatchFn = Callable[[Sequence[str]], list[list[float]]]
+# Async EmbedFn re-export style (optional import avoided at module load).
+AsyncEmbedFn = Callable[[Sequence[str]], Awaitable[list[list[float]]]]
+
 
 @dataclass(frozen=True)
 class NlSketch:
@@ -259,18 +283,76 @@ class NlSketch:
 
 @dataclass(frozen=True)
 class OntologyPath:
-    """One ontology relationship edge: domain --rel_attr--> range."""
+    """Ontology relationship path: 1-hop domain--rel-->range, or multi-hop chain.
+
+    1-hop (default)::
+
+        OntologyPath(domain_type="Widget", rel_attr="stored_in", range_type="Site")
+
+    Multi-hop (e.g. Part -[:stored_in]→ Bin -[:in_facility]→ Facility)::
+
+        OntologyPath(
+            domain_type="Part",
+            rel_attr="stored_in",
+            range_type="Bin",
+            chain=(("in_facility", "Facility"),),
+        )
+
+    ``chain`` holds additional hops after the first edge as
+    ``(rel_attr, range_type)`` pairs. Empty ``chain`` ⇒ 1-hop.
+    """
 
     domain_type: str
     rel_attr: str
     range_type: str | None = None
+    chain: tuple[tuple[str, str | None], ...] = ()
 
     def as_tuple(self) -> tuple[str, str, str | None]:
+        """First-edge triple (back-compat for 1-hop callers / tests)."""
         return (self.domain_type, self.rel_attr, self.range_type)
 
+    @property
+    def hop_count(self) -> int:
+        return 1 + len(self.chain)
+
+    @property
+    def terminal_range(self) -> str | None:
+        if self.chain:
+            return self.chain[-1][1]
+        return self.range_type
+
+    @property
+    def intermediate_types(self) -> tuple[str, ...]:
+        """Range types of non-terminal edges (empty for 1-hop)."""
+        if not self.chain:
+            return ()
+        out: list[str] = []
+        if self.range_type:
+            out.append(self.range_type)
+        for _rel, rng in self.chain[:-1]:
+            if rng:
+                out.append(rng)
+        return tuple(out)
+
+    @property
+    def all_rel_attrs(self) -> tuple[str, ...]:
+        rels = [self.rel_attr]
+        for rel, _rng in self.chain:
+            rels.append(rel)
+        return tuple(rels)
+
     def describe(self) -> str:
-        rng = self.range_type or "?"
-        return f"{self.domain_type} -[:{self.rel_attr}]-> {rng}"
+        parts = [f"{self.domain_type} -[:{self.rel_attr}]-> {self.range_type or '?'}"]
+        for rel, rng in self.chain:
+            parts.append(f"-[:{rel}]-> {rng or '?'}")
+        return " ".join(parts)
+
+    def signature(self) -> str:
+        """Stable embed text for path ranking (domain rel range …)."""
+        bits = [self.domain_type, self.rel_attr, self.range_type or ""]
+        for rel, rng in self.chain:
+            bits.extend([rel, rng or ""])
+        return " ".join(b for b in bits if b)
 
 
 @dataclass(frozen=True)
@@ -287,6 +369,10 @@ class GroundedAskPlan:
     When ``confidence == "unique"`` and a path is present, ``params`` holds
     **safe** template bindings only (no free Cypher). When ambiguous / none,
     ``ranked_paths`` may still carry a shortlist for the prompt.
+
+    Multi-hop unique winners are **prompt-only** (no multi-hop ADR 0013
+    template yet): ``template`` stays ``None``; ``path.describe()`` carries
+    the chain the LLM must follow.
     """
 
     question: str
@@ -429,8 +515,40 @@ def _dedupe_keep(items) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# 2. Candidate ontology paths
+# 2. Candidate ontology paths (1-hop + multi-hop)
 # ---------------------------------------------------------------------------
+
+
+def _clamp_max_hops(max_hops: int | None) -> int:
+    n = _DEFAULT_MAX_HOPS if max_hops is None else int(max_hops)
+    if n < 1:
+        n = 1
+    return min(n, _HARD_MAX_HOPS)
+
+
+def _outbound_edges(
+    ontology_summary: str,
+    type_names: Sequence[str],
+) -> dict[str, list[tuple[str, str | None]]]:
+    """type → list of (rel_attr, range_type) for relationship edges only."""
+    graph: dict[str, list[tuple[str, str | None]]] = {}
+    for tname in type_names:
+        section = _ontology_section_for_type(tname, ontology_summary)
+        if not section:
+            continue
+        edges: list[tuple[str, str | None]] = []
+        seen: set[tuple[str, str | None]] = set()
+        for leaf, range_type in _relationship_specs_in_section(section):
+            if not leaf or not _SAFE_PROP_RE.match(leaf):
+                continue
+            key = (leaf, range_type)
+            if key in seen:
+                continue
+            seen.add(key)
+            edges.append(key)
+        if edges:
+            graph[tname] = edges
+    return graph
 
 
 def candidate_ontology_paths(
@@ -438,43 +556,96 @@ def candidate_ontology_paths(
     type_names: Sequence[str] | None = None,
     *,
     domain_type: str | None = None,
+    max_hops: int = _DEFAULT_MAX_HOPS,
 ) -> list[OntologyPath]:
     """Enumerate relationship paths from the ontology summary text.
 
     Only **relationship** edges (not pure literals). When ``domain_type`` is
-    set, only that type's outbound edges are returned.
+    set, only paths starting at that type are returned.
+
+    Enumerates 1-hop edges and multi-hop chains up to ``max_hops`` (default 2,
+    hard-capped at 3). Multi-hop walks require typed intermediate ranges so
+    the next hop can be resolved from the ontology graph.
     """
     names = (
         list(type_names)
         if type_names is not None
         else extract_type_names_from_ontology(ontology_summary)
     )
-    if domain_type:
-        names = [domain_type]
     if not names:
-        # Still try to parse every Type: block from the summary.
         names = extract_type_names_from_ontology(ontology_summary)
 
+    hop_limit = _clamp_max_hops(max_hops)
+    graph = _outbound_edges(ontology_summary, names)
+
+    start_types = [domain_type] if domain_type else list(graph.keys())
+    # If domain_type was requested but not in graph keys (no edges), still empty.
+    if domain_type and domain_type not in graph:
+        # Case-insensitive lookup
+        lower_map = {k.lower(): k for k in graph}
+        resolved = lower_map.get(domain_type.lower())
+        start_types = [resolved] if resolved else []
+
     paths: list[OntologyPath] = []
-    seen: set[tuple[str, str, str | None]] = set()
-    for tname in names:
-        section = _ontology_section_for_type(tname, ontology_summary)
-        if not section:
+    seen: set[tuple] = set()
+
+    def _add(path: OntologyPath) -> None:
+        key = (
+            path.domain_type,
+            path.rel_attr,
+            path.range_type,
+            path.chain,
+        )
+        if key in seen:
+            return
+        seen.add(key)
+        paths.append(path)
+
+    for start in start_types:
+        if not start or start not in graph:
             continue
-        for leaf, range_type in _relationship_specs_in_section(section):
-            if not leaf or not _SAFE_PROP_RE.match(leaf):
-                continue
-            key = (tname, leaf, range_type)
-            if key in seen:
-                continue
-            seen.add(key)
-            paths.append(
+        # BFS: state = (current_type, list of (rel, range) hops so far)
+        # hop length 1..hop_limit
+        stack: list[tuple[str, list[tuple[str, str | None]]]] = []
+        for rel, rng in graph[start]:
+            stack.append((rng or "", [(rel, rng)]))
+            _add(
                 OntologyPath(
-                    domain_type=tname,
-                    rel_attr=leaf,
-                    range_type=range_type,
+                    domain_type=start,
+                    rel_attr=rel,
+                    range_type=rng,
+                    chain=(),
                 )
             )
+
+        while stack:
+            cur_type, hops = stack.pop()
+            if len(hops) >= hop_limit:
+                continue
+            if not cur_type:
+                continue
+            # Resolve current type for outbound edges (case-insensitive).
+            next_key = cur_type if cur_type in graph else None
+            if next_key is None:
+                lower_map = {k.lower(): k for k in graph}
+                next_key = lower_map.get(cur_type.lower())
+            if next_key is None:
+                continue
+            for rel, rng in graph[next_key]:
+                new_hops = hops + [(rel, rng)]
+                first_rel, first_rng = new_hops[0]
+                rest = tuple(new_hops[1:])
+                _add(
+                    OntologyPath(
+                        domain_type=start,
+                        rel_attr=first_rel,
+                        range_type=first_rng,
+                        chain=rest,
+                    )
+                )
+                if len(new_hops) < hop_limit and rng:
+                    stack.append((rng, new_hops))
+
     return paths
 
 
@@ -504,13 +675,24 @@ def _is_location_leaf(leaf: str) -> bool:
     return bool(tokens & _LOCATION_LEAF_TOKENS)
 
 
+def _mention_matches_type(mention: str, type_name: str | None) -> bool:
+    if not type_name or not mention:
+        return False
+    m = re.sub(r"[^a-z0-9]", "", mention.lower())
+    t = re.sub(r"[^a-z0-9]", "", type_name.lower())
+    if not m or not t:
+        return False
+    m_stem = m[:-1] if m.endswith("s") and len(m) > 3 else m
+    return m == t or m_stem == t or m == t + "s" or t.startswith(m_stem)
+
+
 def _score_path_against_sketch(
     sketch: NlSketch,
     path: OntologyPath,
     *,
     subject_type: str | None,
 ) -> RankedPath:
-    """Score one path. Higher = better. Reasons are for tests / prompt."""
+    """Score one path with string/family heuristics. Higher = better."""
     score = 0.0
     reasons: list[str] = []
 
@@ -524,37 +706,44 @@ def _score_path_against_sketch(
     cues = {c.lower() for c in sketch.rel_cues}
     locative = bool(cues & _LOCATIVE_CUES)
     relational = bool(cues & _RELATIONAL_CUES)
+    terminal = path.terminal_range
+    hop_count = path.hop_count
 
     # Explicit dim word: high-precision range-type or leaf match (ONTA-538).
+    # Match against first hop leaf *and* terminal range (value binds at end).
     dim_hit = False
     for dim in sketch.dim_mentions:
-        # Leaf name / has_ / tokens
         dim_l = dim.lower()
         sing = _singularize_token(dim_l)
-        leaf_l = path.rel_attr.lower()
-        leaf_tokens = set(leaf_l.split("_")) - {"has", "by", "the", "a", "an"}
-        if dim_l == leaf_l or sing == leaf_l:
-            score += 8.0
-            reasons.append(f"leaf_exact:{dim}")
-            dim_hit = True
-        elif dim_l in leaf_tokens or sing in leaf_tokens:
-            score += 6.0
-            reasons.append(f"leaf_token:{dim}")
-            dim_hit = True
-        # Range-type precision (no substring Website←site)
-        if path.range_type:
-            tier = _score_range_type_precision(dim, path.range_type)
+        # Any hop leaf
+        for leaf in path.all_rel_attrs:
+            leaf_l = leaf.lower()
+            leaf_tokens = set(leaf_l.split("_")) - {"has", "by", "the", "a", "an"}
+            if dim_l == leaf_l or sing == leaf_l:
+                score += 8.0
+                reasons.append(f"leaf_exact:{dim}")
+                dim_hit = True
+                break
+            if dim_l in leaf_tokens or sing in leaf_tokens:
+                score += 6.0
+                reasons.append(f"leaf_token:{dim}")
+                dim_hit = True
+                break
+        # Prefer terminal range for value-filter plans; also allow intermediate
+        # only as weak multi-hop support (scored separately).
+        if terminal:
+            tier = _score_range_type_precision(dim, terminal)
             if tier >= 3:
                 score += 8.0
-                reasons.append(f"range_exact:{dim}→{path.range_type}")
+                reasons.append(f"range_exact:{dim}→{terminal}")
                 dim_hit = True
             elif tier == 2:
                 score += 6.0
-                reasons.append(f"range_camel:{dim}→{path.range_type}")
+                reasons.append(f"range_camel:{dim}→{terminal}")
                 dim_hit = True
             elif tier == 1:
                 score += 5.0
-                reasons.append(f"range_content:{dim}→{path.range_type}")
+                reasons.append(f"range_content:{dim}→{terminal}")
                 dim_hit = True
 
     # When an explicit dim word is present, only dim-matched paths keep their
@@ -563,11 +752,14 @@ def _score_path_against_sketch(
     has_explicit_dim = bool(sketch.dim_mentions)
 
     # Locative cue without (matching) dim: prefer location-ish edges.
+    # For multi-hop, score terminal range / first leaf for family signals.
     if locative and not dim_hit and not has_explicit_dim:
-        if _is_location_leaf(path.rel_attr):
+        if _is_location_leaf(path.rel_attr) or any(
+            _is_location_leaf(r) for r in path.all_rel_attrs
+        ):
             score += 4.0
             reasons.append("locative_leaf")
-        if _is_location_range(path.range_type):
+        if _is_location_range(terminal):
             score += 4.0
             reasons.append("locative_range")
         # Mild base for any relationship when locative + value present
@@ -593,7 +785,231 @@ def _score_path_against_sketch(
         score += 0.5
         reasons.append("has_value")
 
+    # Multi-hop: prefer shorter paths; only reward extra hops when sketch
+    # supports the intermediate (type mention) or terminal dim is the only fit.
+    if hop_count > 1:
+        score -= _MULTI_HOP_PENALTY * (hop_count - 1)
+        reasons.append(f"multi_hop_penalty:{hop_count}")
+        # Intermediate type mentioned in NL → sketch supports the chain.
+        for mid in path.intermediate_types:
+            for mention in sketch.type_mentions:
+                if _mention_matches_type(mention, mid):
+                    score += 3.0
+                    reasons.append(f"intermediate_type:{mid}")
+                    break
+            for dim in sketch.dim_mentions:
+                if _mention_matches_type(dim, mid):
+                    score += 2.0
+                    reasons.append(f"intermediate_dim:{mid}")
+                    break
+        # Terminal type/dim already scored above via range precision.
+        # Extra support: second type mention matching terminal.
+        for mention in sketch.type_mentions[1:]:
+            if _mention_matches_type(mention, terminal):
+                score += 2.0
+                reasons.append(f"terminal_type_mention:{terminal}")
+                break
+
     return RankedPath(path=path, score=score, reasons=tuple(reasons))
+
+
+def _is_async_embedder(embedder: Any) -> bool:
+    """True when embedder is an async batch EmbedFn (coroutine function / async __call__)."""
+    if embedder is None or not callable(embedder):
+        return False
+    try:
+        if inspect.iscoroutinefunction(embedder):
+            return True
+        call = getattr(embedder, "__call__", None)
+        if call is not None and inspect.iscoroutinefunction(call):
+            return True
+    except Exception:  # noqa: BLE001
+        return False
+    return False
+
+
+def _is_sync_embedder(embedder: Any) -> bool:
+    """True when embedder is a sync batch callable (not async EmbedFn)."""
+    if embedder is None or not callable(embedder):
+        return False
+    return not _is_async_embedder(embedder)
+
+
+def _l2_normalize_list(vec: Sequence[float]) -> list[float]:
+    import math
+
+    s = math.sqrt(sum(float(x) * float(x) for x in vec))
+    if s == 0.0:
+        return [float(x) for x in vec]
+    return [float(x) / s for x in vec]
+
+
+def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    # Assume roughly unit; still normalize for safety.
+    na = _l2_normalize_list(a)
+    nb = _l2_normalize_list(b)
+    return sum(x * y for x, y in zip(na, nb))
+
+
+def _sketch_embed_text(sketch: NlSketch) -> str:
+    """Compact text for embedding the NL sketch for **path** ranking.
+
+    Prefer dim / locative cues over type mentions: the subject type is already
+    constrained by domain match, and including type names can dominate
+    keyword-style FakeEmbedders (``gadget`` steals the vector from ``depot``).
+    """
+    parts: list[str] = []
+    # Dim words are the primary path-ranking signal (warehouse, depot, site).
+    parts.extend(sketch.dim_mentions)
+    if sketch.dim_mentions:
+        # Reinforce dims so they win over incidental tokens.
+        parts.extend(sketch.dim_mentions)
+    else:
+        # No explicit dim: include type mention + cue as weak path signal.
+        parts.extend(sketch.type_mentions)
+        parts.extend(sketch.rel_cues)
+    return " ".join(parts).strip() if parts else (sketch.question or "")
+
+
+def _apply_embedder_boosts(
+    sketch: NlSketch,
+    ranked: list[RankedPath],
+    embedder: Any,
+) -> list[RankedPath]:
+    """Boost ranked paths with cosine(sketch, path.signature) via sync embedder."""
+    if not ranked or not _is_sync_embedder(embedder):
+        return ranked
+    texts = [_sketch_embed_text(sketch)] + [r.path.signature() for r in ranked]
+    try:
+        vectors = embedder(texts)
+    except Exception:  # noqa: BLE001 — degrade, never crash ranking
+        return ranked
+    if not isinstance(vectors, (list, tuple)) or len(vectors) != len(texts):
+        return ranked
+    q_vec = vectors[0]
+    out: list[RankedPath] = []
+    for i, rp in enumerate(ranked):
+        p_vec = vectors[i + 1]
+        cos = _cosine(q_vec, p_vec)
+        if cos <= 0:
+            out.append(rp)
+            continue
+        boost = _EMBED_COSINE_SCALE * cos
+        out.append(
+            RankedPath(
+                path=rp.path,
+                score=rp.score + boost,
+                reasons=rp.reasons + (f"embed_cos:{cos:.3f}",),
+            )
+        )
+    return out
+
+
+def _apply_semantic_index_boosts(
+    sketch: NlSketch,
+    ranked: list[RankedPath],
+    *,
+    mention_index: Any,
+    query_embedding: Sequence[float] | None,
+    subject_type: str | None,
+) -> list[RankedPath]:
+    """Boost paths whose rel leaf matches OntologyMentionIndex.resolve_rel.
+
+    ONTA-537 guards: only when the index is healthy and **fully embedded** for
+    the candidate relationship leaves. Partial indexes are ignored (fail open
+    to string/family ranking — never invent edges from a subset).
+    """
+    if not ranked:
+        return ranked
+    try:
+        from infona_client.nlp.ontology_mention_index import (
+            OntologyMentionIndex,
+            get_resolve_context,
+            lookup_query_embedding,
+        )
+    except Exception:  # noqa: BLE001
+        return ranked
+
+    if not isinstance(mention_index, OntologyMentionIndex):
+        return ranked
+
+    # Collect candidate first-hop leaves (and all hops) for full-embed guard.
+    # ONTA-537: never rank only a partially embedded subset of allowed leaves.
+    # is_healthy() is type-centric — for rel scoring we only require full
+    # embedding of the *relationship* candidate set (rel-only indexes OK).
+    leaves = sorted({rel for rp in ranked for rel in rp.path.all_rel_attrs})
+    if not leaves:
+        return ranked
+    if not mention_index.rels_fully_embedded(leaves):
+        return ranked
+
+    # Query tokens: dim mentions first, then loose rel-ish words from sketch.
+    tokens: list[str] = list(sketch.dim_mentions)
+    # Also try common synonym tokens from question when no dim (e.g. depot).
+    if not tokens:
+        # Peek non-stopword tokens from the question that look like dims.
+        for tok in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", sketch.question or ""):
+            tl = tok.lower()
+            if tl in _STOPWORDS or tl in _ALL_CUES:
+                continue
+            if any(_mention_matches_type(tok, m) for m in sketch.type_mentions):
+                continue
+            if any(v.lower() == tl for v in sketch.value_mentions):
+                continue
+            if _SAFE_PROP_RE.match(tok):
+                tokens.append(tok)
+    if not tokens:
+        return ranked
+
+    ctx = get_resolve_context()
+    q_emb = query_embedding
+    resolved_leaves: set[str] = set()
+    for tok in tokens:
+        emb = q_emb
+        if emb is None:
+            emb = lookup_query_embedding(tok, ctx)
+        if emb is None:
+            # try singular
+            emb = lookup_query_embedding(_singularize_token(tok.lower()), ctx)
+        if emb is None:
+            continue
+        # Restrict resolve_rel to leaves present on subject domain when known.
+        domain_leaves = leaves
+        if subject_type:
+            domain_leaves = sorted(
+                {
+                    rel
+                    for rp in ranked
+                    if rp.path.domain_type.lower() == subject_type.lower()
+                    for rel in rp.path.all_rel_attrs
+                }
+            ) or leaves
+        hit = mention_index.resolve_rel(
+            tok, query_embedding=emb, rel_names=domain_leaves
+        )
+        if hit:
+            resolved_leaves.add(hit)
+
+    if not resolved_leaves:
+        return ranked
+
+    out: list[RankedPath] = []
+    for rp in ranked:
+        if any(rel in resolved_leaves for rel in rp.path.all_rel_attrs):
+            hits = [r for r in rp.path.all_rel_attrs if r in resolved_leaves]
+            out.append(
+                RankedPath(
+                    path=rp.path,
+                    score=rp.score + _SEMANTIC_REL_BOOST,
+                    reasons=rp.reasons
+                    + tuple(f"semantic_rel:{h}" for h in hits),
+                )
+            )
+        else:
+            out.append(rp)
+    return out
 
 
 def rank_paths(
@@ -601,20 +1017,57 @@ def rank_paths(
     paths: Sequence[OntologyPath],
     *,
     subject_type: str | None = None,
-    embedder: Any | None = None,  # reserved for future semantic ranking
+    embedder: Any | None = None,
+    mention_index: Any | None = None,
+    query_embedding: Sequence[float] | None = None,
 ) -> list[RankedPath]:
     """Rank ontology paths against a sketch (highest score first).
 
-    ``embedder`` is optional and currently unused (string / family heuristics
-    only); reserved for ONTA-537-style cosine ranking when an index is ready.
+    Ranking layers (all optional after base heuristics):
+
+    1. **String / family** — domain match, dim/range precision, locative family
+       (always on; hermetic).
+    2. **Multi-hop penalty** — shorter paths preferred when scores tie; multi-hop
+       only wins when terminal/intermediate evidence supports the chain.
+    3. **Embedder** — optional sync batch ``embedder(texts) -> vectors``; cosine
+       boost between sketch text and :meth:`OntologyPath.signature`. Async
+       :data:`~infona_client.nlp.ontology_mention_index.EmbedFn` is not called
+       here — pre-embed via :func:`ground_ask_plan_async` or pass
+       ``query_embedding`` + index.
+    4. **Semantic dim index** — optional :class:`OntologyMentionIndex` with
+       ONTA-537 full-embed guards; ``resolve_rel`` boosts synonym dims
+       (``depot``/``warehouse`` → ``stored_in``). Partial / unhealthy index is
+       ignored (degrade, never crash).
     """
-    del embedder  # reserved
     ranked = [
         _score_path_against_sketch(sketch, p, subject_type=subject_type)
         for p in paths
     ]
     ranked = [r for r in ranked if r.score > 0]
-    ranked.sort(key=lambda r: (-r.score, r.path.rel_attr, r.path.domain_type))
+
+    if embedder is not None:
+        ranked = _apply_embedder_boosts(sketch, ranked, embedder)
+
+    if mention_index is not None:
+        ranked = _apply_semantic_index_boosts(
+            sketch,
+            ranked,
+            mention_index=mention_index,
+            query_embedding=query_embedding,
+            subject_type=subject_type,
+        )
+
+    # Prefer higher score; on ties prefer shorter hop count (fail-closed still
+    # applies via _unique_winner when scores remain within margin).
+    ranked.sort(
+        key=lambda r: (
+            -r.score,
+            r.path.hop_count,
+            r.path.rel_attr,
+            r.path.domain_type,
+            r.path.describe(),
+        )
+    )
     return ranked
 
 
@@ -633,8 +1086,6 @@ def _unique_winner(
     # Same score band or within margin → ambiguous (never silent wrong edge).
     if abs(top.score - second.score) <= _PATH_AMBIGUITY_MARGIN:
         return None, "ambiguous"
-    # Also fail if both share the same range type at high score with different leaves
-    # (two edges to Site) — already covered by margin when scores equal.
     return top, "unique"
 
 
@@ -684,14 +1135,19 @@ def ground_ask_plan(
     type_names: Sequence[str] | None = None,
     mention_index: Any | None = None,
     query_embedding: Any | None = None,
+    embedder: Any | None = None,
+    max_hops: int = _DEFAULT_MAX_HOPS,
 ) -> GroundedAskPlan | None:
     """End-to-end: sketch → paths → rank → safe plan (or fail-closed).
 
     Returns ``None`` only when the question/ontology is empty or no subject
     type can be resolved. Ambiguous path ranking still returns a plan with
     ``confidence="ambiguous"`` and ``path=None`` so the LLM can see the shortlist.
+
+    Optional ``mention_index`` / ``query_embedding`` / sync ``embedder`` feed
+    ranking only — never skip the LLM. Multi-hop unique winners are
+    prompt-only (no multi-hop allowlisted template).
     """
-    del mention_index, query_embedding  # reserved for semantic resolve
     q = (question or "").strip()
     if not q:
         return None
@@ -785,13 +1241,21 @@ def ground_ask_plan(
             explanation="Subject type resolved but no intent/path to ground.",
         )
 
-    # Path ranking for related-entity name filter shapes.
+    # Path ranking for related-entity name filter shapes (1-hop + multi-hop).
     paths = candidate_ontology_paths(
-        ontology_summary, names, domain_type=subject
+        ontology_summary,
+        names,
+        domain_type=subject,
+        max_hops=max_hops,
     )
-    # If subject has no outbound edges, also try all paths whose domain matches
-    # resolved type (already filtered). Empty → no path.
-    ranked = rank_paths(sketch, paths, subject_type=subject)
+    ranked = rank_paths(
+        sketch,
+        paths,
+        subject_type=subject,
+        embedder=embedder,
+        mention_index=mention_index,
+        query_embedding=query_embedding,
+    )
     winner, confidence = _unique_winner(ranked)
 
     # Explicit dim that failed to rank any path → do not invent.
@@ -831,13 +1295,14 @@ def ground_ask_plan(
         )
 
     if winner is None or confidence == "none":
-        # Locative + value but no scoring path: if exactly one outbound edge,
-        # accept it only when locative (unique edge is a strong signal).
+        # Locative + value but no scoring path: if exactly one outbound 1-hop
+        # edge, accept it only when locative (unique edge is a strong signal).
         is_locative = bool(
             {c.lower() for c in sketch.rel_cues} & _LOCATIVE_CUES
         )
-        if is_locative and value and len(paths) == 1:
-            only = paths[0]
+        one_hop = [p for p in paths if p.hop_count == 1]
+        if is_locative and value and len(one_hop) == 1:
+            only = one_hop[0]
             winner = RankedPath(
                 path=only,
                 score=2.0,
@@ -878,9 +1343,39 @@ def ground_ask_plan(
             explanation=f"Preferred path {path.describe()} but no value to bind.",
         )
 
-    # Grounded related-entity name filter (list or count intent).
-    # Intent "count" still targets related_entity_name_filter params; the prompt
-    # tells the LLM to COUNT matching subjects (no separate count template yet).
+    intent = sketch.intent if sketch.intent != "unknown" else "list"
+
+    # Multi-hop: prompt-only (no multi-hop ADR 0013 template). Do not invent
+    # raw Cypher; do not stuff multi-hop into single-hop related_entity params.
+    if path.hop_count > 1:
+        expl = (
+            f"{'Count' if intent == 'count' else 'Find'} {subject} entities "
+            f"via multi-hop path {path.describe()} "
+            f"with related name {value!r} on terminal "
+            f"{path.terminal_range or '?'}. "
+            f"(No multi-hop allowlisted template — follow preferred_path in Cypher.)"
+        )
+        return GroundedAskPlan(
+            question=q,
+            intent=intent,
+            sketch=sketch,
+            subject_type=subject,
+            path=path,
+            value=value,
+            template=None,
+            params=_safe_params(
+                {
+                    "type_names": expanded,
+                    "target_name": value,
+                    "limit": DEFAULT_LIST_LIMIT,
+                }
+            ),
+            confidence="unique",
+            ranked_paths=list(ranked[:5]),
+            explanation=expl,
+        )
+
+    # 1-hop: grounded related-entity name filter (list or count intent).
     params = _safe_params(
         {
             "type_names": expanded,
@@ -889,7 +1384,6 @@ def ground_ask_plan(
             "limit": DEFAULT_LIST_LIMIT,
         }
     )
-    intent = sketch.intent if sketch.intent != "unknown" else "list"
     expl = (
         f"{'Count' if intent == 'count' else 'Find'} {subject} entities "
         f"related via {path.rel_attr} to name {value!r}"
@@ -909,6 +1403,126 @@ def ground_ask_plan(
         ranked_paths=list(ranked[:5]),
         explanation=expl,
     )
+
+
+async def ground_ask_plan_async(
+    question: str,
+    ontology_summary: str,
+    *,
+    type_names: Sequence[str] | None = None,
+    mention_index: Any | None = None,
+    query_embedding: Any | None = None,
+    embedder: Any | None = None,
+    max_hops: int = _DEFAULT_MAX_HOPS,
+) -> GroundedAskPlan | None:
+    """Async variant: materialize embeddings from async ``EmbedFn`` then ground.
+
+    When ``embedder`` is an async batch function, embeds the sketch text and
+    each candidate path signature once, then ranks with a sync cosine table
+    (no further network). When embedder is sync or absent, delegates to
+    :func:`ground_ask_plan`.
+    """
+    q = (question or "").strip()
+    if not q or not (ontology_summary or "").strip():
+        return await _maybe_async_none(
+            ground_ask_plan(
+                question,
+                ontology_summary,
+                type_names=type_names,
+                mention_index=mention_index,
+                query_embedding=query_embedding,
+                embedder=embedder if _is_sync_embedder(embedder) else None,
+                max_hops=max_hops,
+            )
+        )
+
+    # Async EmbedFn path: precompute vectors for sketch + path signatures.
+    if embedder is not None and _is_async_embedder(embedder):
+        names = (
+            list(type_names)
+            if type_names is not None
+            else extract_type_names_from_ontology(ontology_summary)
+        )
+        sketch = extract_nl_sketch(q)
+        subject: str | None = None
+        for mention in sketch.type_mentions:
+            hit = resolve_type_name(mention, names or [], ontology_summary)
+            if hit is not None:
+                subject = hit
+                break
+        paths = (
+            candidate_ontology_paths(
+                ontology_summary,
+                names,
+                domain_type=subject,
+                max_hops=max_hops,
+            )
+            if subject
+            else []
+        )
+        sketch_text = _sketch_embed_text(sketch)
+        texts = [sketch_text] + [p.signature() for p in paths]
+        try:
+            vectors = await embedder(texts)
+        except Exception:  # noqa: BLE001
+            vectors = None
+        sync_map: dict[str, list[float]] = {}
+        q_emb = query_embedding
+        if (
+            isinstance(vectors, (list, tuple))
+            and vectors
+            and len(vectors) == len(texts)
+        ):
+            q_emb = q_emb if q_emb is not None else vectors[0]
+            for i, p in enumerate(paths):
+                sync_map[p.signature()] = list(vectors[i + 1])
+            sketch_vec = list(vectors[0])
+            dim = len(sketch_vec) or 1
+
+            def _sync_batch(batch: Sequence[str]) -> list[list[float]]:
+                out: list[list[float]] = []
+                for t in batch:
+                    if t == sketch_text:
+                        out.append(list(sketch_vec))
+                    elif t in sync_map:
+                        out.append(list(sync_map[t]))
+                    else:
+                        out.append([0.0] * dim)
+                return out
+
+            return ground_ask_plan(
+                question,
+                ontology_summary,
+                type_names=type_names,
+                mention_index=mention_index,
+                query_embedding=q_emb,
+                embedder=_sync_batch,
+                max_hops=max_hops,
+            )
+        # Async embed failed — fall through without embedder.
+        return ground_ask_plan(
+            question,
+            ontology_summary,
+            type_names=type_names,
+            mention_index=mention_index,
+            query_embedding=query_embedding,
+            embedder=None,
+            max_hops=max_hops,
+        )
+
+    return ground_ask_plan(
+        question,
+        ontology_summary,
+        type_names=type_names,
+        mention_index=mention_index,
+        query_embedding=query_embedding,
+        embedder=embedder if _is_sync_embedder(embedder) else None,
+        max_hops=max_hops,
+    )
+
+
+async def _maybe_async_none(plan: GroundedAskPlan | None) -> GroundedAskPlan | None:
+    return plan
 
 
 def format_grounding_for_prompt(plan: GroundedAskPlan | None) -> str:
@@ -935,6 +1549,20 @@ def format_grounding_for_prompt(plan: GroundedAskPlan | None) -> str:
 
     if plan.confidence == "unique" and plan.path is not None:
         lines.append(f"  preferred_path: {plan.path.describe()}")
+        if plan.path.hop_count > 1:
+            lines.append(f"  path_hops: {plan.path.hop_count}")
+            lines.append(
+                "  note: multi-hop path — emit Cypher that traverses each "
+                "relationship in preferred_path in order; bind the related "
+                "entity name filter on the **terminal** node "
+                f"({plan.path.terminal_range or '?'}). There is no multi-hop "
+                "allowlisted template; do not invent intermediate types."
+            )
+            if plan.intent == "count":
+                lines.append(
+                    "  note: intent is COUNT — return count of subjects matching "
+                    "this multi-hop related-entity name filter."
+                )
         if plan.template:
             lines.append(f"  preferred_template: {plan.template}")
         if plan.params:
@@ -943,7 +1571,10 @@ def format_grounding_for_prompt(plan: GroundedAskPlan | None) -> str:
             for k in sorted(plan.params.keys()):
                 param_bits.append(f"{k}={plan.params[k]!r}")
             lines.append(f"  template_params: {{{', '.join(param_bits)}}}")
-        if plan.intent == "count" and plan.template == TEMPLATE_RELATED_ENTITY_NAME_FILTER:
+        if (
+            plan.intent == "count"
+            and plan.template == TEMPLATE_RELATED_ENTITY_NAME_FILTER
+        ):
             lines.append(
                 "  note: intent is COUNT — return count of subjects matching "
                 "this related-entity name filter (do not return the unfiltered "
@@ -987,5 +1618,6 @@ __all__ = [
     "extract_nl_sketch",
     "format_grounding_for_prompt",
     "ground_ask_plan",
+    "ground_ask_plan_async",
     "rank_paths",
 ]
