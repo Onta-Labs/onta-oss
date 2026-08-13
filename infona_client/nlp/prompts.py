@@ -241,6 +241,14 @@ Entity after type MATCH, OR
 `WITH e, a WHERE a IS NOT NULL` (or `coalesce → WHERE raw IS NOT NULL AND raw = $v`).
 - Filtered aggregates: first constrain entities with a required filter, then \
 aggregate the measure attribute. Never OPTIONAL-filter the status/phase predicate.
+- If the question filters (for/in/where/with/status/quoted values, multi-constraint \
+NL), Cypher MUST constrain those values — never emit an unfiltered sum/avg/count \
+of a measure as a silent total. Template `literal_aggregate` alone is ONLY for \
+unfiltered measure aggregates; when a dimension filter is required, use \
+literal_values / literal_compare / related_entity_name_filter first (or free-form \
+with a required filter) then aggregate. If you cannot tell which field a filter \
+token binds to, prefer an honest constrained plan or fail closed over inventing \
+a field or returning a silent unfiltered total.
 
 - Correct datatype read pattern:
   `(a:Assertion {tenant_id:$tenant_id, kg:$kg, subject_id:e.id})-[:PREDICATE]->(p:Property)`
