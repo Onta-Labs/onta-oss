@@ -512,3 +512,195 @@ def test_deterministic_price_under_still_works_for_unit_tests():
     )
     assert p is not None
     assert p["params"]["prop_key"] == "unit_cost"
+
+
+# ---------------------------------------------------------------------------
+# 5. Live /ask ontology formats (Attributes: line — why #363 missed live)
+# ---------------------------------------------------------------------------
+
+# Production semantic-retrieval / _fetch_ontology shape (NOT dash-literal).
+SEMANTIC_UNIT_COST_ONLY = (
+    "Type: Widget — URI: <https://graph.infona.ai/types/Widget>\n"
+    "  Attributes: description, sku, unit_cost\n"
+    "  Relationships: supplied_by\n"
+    "Type: Supplier — URI: <https://graph.infona.ai/types/Supplier>\n"
+    "  Attributes: name\n"
+)
+# Full ontology fetch with URI annotations + bracket notes.
+FULL_FETCH_UNIT_COST = (
+    "Type: Part — URI: <https://graph.infona.ai/types/Part>\n"
+    "  Attributes: sku (string) — URI: <https://graph.infona.ai/types/Part/attrs/sku>, "
+    "unit_cost (float) — URI: <https://graph.infona.ai/types/Part/attrs/unit_cost> "
+    "[no instances]\n"
+)
+
+
+def test_literal_leaves_parse_attributes_line_format():
+    """Live /ask ontology is Attributes: csv, not '- leaf: float (literal)'."""
+    from infona_client.nlp.numeric_attr_resolve import literal_leaves_for_type
+
+    leaves = literal_leaves_for_type("Widget", SEMANTIC_UNIT_COST_ONLY)
+    assert "unit_cost" in leaves
+    assert "sku" in leaves
+    # Relationships line must not pollute leaves.
+    assert "supplied_by" not in leaves
+
+    leaves_p = literal_leaves_for_type("Part", FULL_FETCH_UNIT_COST)
+    assert leaves_p == ["sku", "unit_cost"] or set(leaves_p) >= {"sku", "unit_cost"}
+
+
+def test_price_nl_resolves_unit_cost_on_semantic_ontology():
+    """NL 'price' + semantic Attributes: unit_cost only → unique unit_cost."""
+    r = resolve_numeric_attr(
+        "price",
+        type_name="Widget",
+        ontology_summary=SEMANTIC_UNIT_COST_ONLY,
+        money_family=True,
+    )
+    assert r.confidence == "unique"
+    assert r.prop_key == "unit_cost"
+
+    got = resolve_cost_prop(
+        SEMANTIC_UNIT_COST_ONLY, type_name="Widget", mention="price"
+    )
+    assert got == "unit_cost"
+
+
+def test_ground_numeric_plan_live_format_and_prompt():
+    """Grounding injects unit_cost into the Cypher prompt for live ontology text."""
+    for question in (
+        "widgets with price under 10",
+        "widgets with unit cost under 10",
+        "which widgets cost less than 10",
+        "price under 10",  # type-less; sole money type
+        "unit cost under 10",
+    ):
+        plan = ground_numeric_plan(
+            question,
+            SEMANTIC_UNIT_COST_ONLY,
+            type_names=["Widget", "Supplier"],
+        )
+        assert plan is not None, question
+        assert plan.confidence == "unique", (question, plan.explanation)
+        assert plan.prop_key == "unit_cost", question
+        assert plan.subject_type == "Widget", question
+        assert plan.op == "lt"
+        assert plan.threshold == 10.0
+
+    plan = ground_numeric_plan(
+        "parts with unit cost under 10",
+        FULL_FETCH_UNIT_COST,
+        type_names=["Part"],
+    )
+    assert plan is not None
+    assert plan.prop_key == "unit_cost"
+    assert plan.mention in ("unit_cost", "unit cost")
+
+    text = format_numeric_grounding_for_prompt(plan)
+    assert "unit_cost" in text
+    assert "MUST use" in text or "prop_key" in text
+
+    prompt = build_cypher_generation_prompt(
+        "parts with price under 10",
+        FULL_FETCH_UNIT_COST,
+        tenant_id="t",
+        kg_name="parts_alpha",
+        grounding_text=text,
+    )
+    assert "unit_cost" in prompt
+    # Must not leave the model without the resolved leaf.
+    assert "prop_key" in prompt
+
+
+@pytest.mark.asyncio
+async def test_always_llm_semantic_ontology_grounding_prop_key(monkeypatch):
+    """Pipeline with production Attributes: ontology still injects unit_cost."""
+    store = MemoryGraphStore()
+    from infona_client.graph.rdf_model import AssertionFact, assert_fact
+
+    scope = GraphScope.for_instance("demo-tenant", "gadgets")
+    session = store.session(scope)
+    eid = f"{IRI_BASE}/entities/Widget/w1"
+    await assert_fact(
+        session, AssertionFact(subject_id=eid, kind="type", value="Widget")
+    )
+    await assert_fact(
+        session,
+        AssertionFact(
+            subject_id=eid, kind="literal", property_leaf="unit_cost", value=7.5
+        ),
+    )
+
+    neptune = MagicMock()
+    neptune.query = AsyncMock(side_effect=AssertionError("SPARQL path must not run"))
+    pipe = NLQueryPipeline(neptune, anthropic_key="", graph_store=store)
+    pipe._fetch_ontology = AsyncMock(return_value=SEMANTIC_UNIT_COST_ONLY)  # type: ignore[method-assign]
+    pipe._openrouter_key = "test-key"  # type: ignore[attr-defined]
+    pipe._query_provider = "openrouter"  # type: ignore[attr-defined]
+    pipe._query_model = "test-model"  # type: ignore[attr-defined]
+
+    captured: dict = {}
+
+    async def fake_llm(question: str, ontology: str, *, grounding_text: str = "", **kw):
+        captured["grounding_text"] = grounding_text
+        captured["ontology"] = ontology
+        # Simulate a well-behaved model that obeys grounded prop_key.
+        return {
+            "cypher": LITERAL_COMPARE_CYPHER,
+            "template": TEMPLATE_LITERAL_COMPARE,
+            "params": {
+                "type_names": ["Widget"],
+                "prop_key": "unit_cost",
+                "op": "lt",
+                "threshold": 10.0,
+                "limit": 25,
+            },
+            "explanation": "filter Widget.unit_cost < 10",
+            "functions_needed": [],
+        }
+
+    pipe._try_llm_cypher = fake_llm  # type: ignore[method-assign]
+
+    result = await pipe.ask(
+        "widgets with price under 10",
+        graph_uri=f"{IRI_BASE}/graphs/demo-tenant",
+        instance_graph=f"{IRI_BASE}/graphs/demo-tenant/kg/gadgets",
+        use_cypher=True,
+    )
+
+    gtext = captured.get("grounding_text") or ""
+    assert "unit_cost" in gtext, gtext
+    assert "prop_key" in gtext
+    assert result.timing.get("numeric_grounding_prop") == "unit_cost" or (
+        result.timing.get("numeric_grounding_confidence") == "unique"
+    )
+    # Always-LLM: no fixture short-circuit flag.
+    assert result.timing.get("cypher_stub") == 0.0
+
+
+def test_multi_word_unit_cost_fixture_and_mention():
+    """'unit cost' (space) binds unit_cost, not invented price."""
+    filt = try_numeric_filter_query(
+        "widgets with unit cost under 10",
+        UNIT_COST_ONLY,
+        type_names=["Widget"],
+    )
+    assert filt is not None
+    assert filt["params"]["prop_key"] == "unit_cost"
+
+    filt_sem = try_numeric_filter_query(
+        "widgets with unit cost under 10",
+        SEMANTIC_UNIT_COST_ONLY,
+        type_names=["Widget"],
+    )
+    assert filt_sem is not None
+    assert filt_sem["params"]["prop_key"] == "unit_cost"
+
+    plan = ground_numeric_plan(
+        "parts where unit_cost is less than 10",
+        FULL_FETCH_UNIT_COST,
+        type_names=["Part"],
+    )
+    assert plan is not None
+    assert plan.prop_key == "unit_cost"
+    assert plan.mention == "unit_cost"  # not unit_cost_is
