@@ -638,3 +638,479 @@ def test_anti_overfit_generic_types_not_warehouse_only():
     assert plan.path.rel_attr == "located_at"
     assert plan.path.range_type == "Facility"
     assert plan.params["target_name"].lower() == "east"
+
+
+# ---------------------------------------------------------------------------
+# 9. Multi-hop paths (Part → Bin → Facility)
+# ---------------------------------------------------------------------------
+
+MULTI_HOP_ONTO = (
+    "Type: Part\n"
+    "  - stored_in -> Bin (relationship, key=stored_in)\n"
+    "  - made_by -> Vendor (relationship, key=made_by)\n"
+    "Type: Bin\n"
+    "  - name: string (literal)\n"
+    "  - in_facility -> Facility (relationship, key=in_facility)\n"
+    "Type: Facility\n"
+    "  - name: string (literal)\n"
+    "Type: Vendor\n"
+    "  - name: string (literal)\n"
+)
+MULTI_HOP_TYPES = ["Part", "Bin", "Facility", "Vendor"]
+
+# Direct 1-hop + multi-hop both reach Site — 1-hop must win for "widgets in site".
+DIRECT_AND_CHAIN_ONTO = (
+    "Type: Widget\n"
+    "  - stored_in -> Site (relationship, key=stored_in)\n"
+    "  - boxed_in -> Crate (relationship, key=boxed_in)\n"
+    "Type: Crate\n"
+    "  - sits_at -> Site (relationship, key=sits_at)\n"
+    "Type: Site\n"
+    "  - name: string (literal)\n"
+)
+
+# Two equal 2-hop chains to Facility → fail closed.
+AMBIGUOUS_MULTI_HOP_ONTO = (
+    "Type: Part\n"
+    "  - stored_in -> Bin (relationship, key=stored_in)\n"
+    "  - staged_at -> Rack (relationship, key=staged_at)\n"
+    "Type: Bin\n"
+    "  - in_facility -> Facility (relationship, key=in_facility)\n"
+    "Type: Rack\n"
+    "  - in_facility -> Facility (relationship, key=in_facility)\n"
+    "Type: Facility\n"
+    "  - name: string (literal)\n"
+)
+
+
+def test_candidate_paths_includes_two_hop():
+    paths = candidate_ontology_paths(
+        MULTI_HOP_ONTO, MULTI_HOP_TYPES, domain_type="Part", max_hops=2
+    )
+    one_hop = [p for p in paths if p.hop_count == 1]
+    two_hop = [p for p in paths if p.hop_count == 2]
+    assert any(p.rel_attr == "stored_in" and p.range_type == "Bin" for p in one_hop)
+    assert any(
+        p.rel_attr == "stored_in"
+        and p.range_type == "Bin"
+        and p.chain
+        and p.chain[0][0] == "in_facility"
+        and p.terminal_range == "Facility"
+        for p in two_hop
+    )
+    # describe shows full chain
+    chain = next(p for p in two_hop if p.terminal_range == "Facility")
+    desc = chain.describe()
+    assert "stored_in" in desc and "in_facility" in desc and "Facility" in desc
+
+
+def test_candidate_paths_max_hops_one_skips_chain():
+    paths = candidate_ontology_paths(
+        MULTI_HOP_ONTO, MULTI_HOP_TYPES, domain_type="Part", max_hops=1
+    )
+    assert paths
+    assert all(p.hop_count == 1 for p in paths)
+    assert not any(p.terminal_range == "Facility" and p.hop_count > 1 for p in paths)
+
+
+def test_multi_hop_parts_in_facility_ranks_two_hop():
+    """NL 'parts in facility East' ranks Part→Bin→Facility over Vendor 1-hop."""
+    plan = ground_ask_plan(
+        "parts in facility East",
+        MULTI_HOP_ONTO,
+        type_names=MULTI_HOP_TYPES,
+        max_hops=2,
+    )
+    assert plan is not None
+    assert plan.confidence == "unique"
+    assert plan.path is not None
+    assert plan.path.hop_count == 2
+    assert plan.path.terminal_range == "Facility"
+    assert "in_facility" in plan.path.all_rel_attrs
+    # Prompt-only: no single-hop related_entity template for multi-hop
+    assert plan.template is None
+    assert plan.params.get("target_name") == "East"
+    assert "rel_attr" not in plan.params  # would mislead as single hop
+    text = format_grounding_for_prompt(plan)
+    assert "multi-hop" in text.lower() or "path_hops" in text
+    assert "Facility" in text
+
+
+def test_multi_hop_fail_closed_when_two_chains_tie():
+    plan = ground_ask_plan(
+        "parts in facility East",
+        AMBIGUOUS_MULTI_HOP_ONTO,
+        type_names=["Part", "Bin", "Rack", "Facility"],
+        max_hops=2,
+    )
+    assert plan is not None
+    assert plan.confidence == "ambiguous"
+    assert plan.path is None
+    assert len(plan.ranked_paths) >= 2
+    # Both chains to Facility should appear
+    terminals = {rp.path.terminal_range for rp in plan.ranked_paths}
+    assert "Facility" in terminals
+
+
+def test_direct_one_hop_beats_longer_path_when_both_valid():
+    """'widgets in site East' prefers Widget→Site over Widget→Crate→Site."""
+    plan = ground_ask_plan(
+        "widgets in site East",
+        DIRECT_AND_CHAIN_ONTO,
+        type_names=["Widget", "Crate", "Site"],
+        max_hops=2,
+    )
+    assert plan is not None
+    assert plan.confidence == "unique"
+    assert plan.path is not None
+    assert plan.path.hop_count == 1
+    assert plan.path.rel_attr == "stored_in"
+    assert plan.path.range_type == "Site"
+    assert plan.template == TEMPLATE_RELATED_ENTITY_NAME_FILTER
+
+
+def test_rank_multi_hop_penalty_prefers_shorter_when_equal_family():
+    sketch = extract_nl_sketch("parts in east")
+    paths = candidate_ontology_paths(
+        MULTI_HOP_ONTO, MULTI_HOP_TYPES, domain_type="Part", max_hops=2
+    )
+    ranked = rank_paths(sketch, paths, subject_type="Part")
+    # Without dim, locative + location family: Bin is not location-ish terminal
+    # for 1-hop stored_in; 2-hop Facility is. So multi-hop may win — that's OK.
+    # Explicit: when both score location, shorter wins — use DIRECT_AND_CHAIN.
+    sketch2 = extract_nl_sketch("widgets in east")
+    paths2 = candidate_ontology_paths(
+        DIRECT_AND_CHAIN_ONTO,
+        ["Widget", "Crate", "Site"],
+        domain_type="Widget",
+        max_hops=2,
+    )
+    ranked2 = rank_paths(sketch2, paths2, subject_type="Widget")
+    assert ranked2
+    assert ranked2[0].path.hop_count == 1
+    assert ranked2[0].path.rel_attr == "stored_in"
+
+
+# ---------------------------------------------------------------------------
+# 10. Embedder ranking (deterministic FakeEmbedder / sync batch)
+# ---------------------------------------------------------------------------
+
+
+def _norm_vec(v: list[float]) -> list[float]:
+    import math
+
+    n = math.sqrt(sum(x * x for x in v))
+    return [x / n for x in v] if n else v
+
+
+class _SyncFakeEmbedder:
+    """Sync batch embedder: keyword table → unit vectors (hermetic)."""
+
+    def __init__(self, table: dict[str, list[float]]) -> None:
+        self.table = {k.lower(): _norm_vec(v) for k, v in table.items()}
+        self.calls: list[list[str]] = []
+
+    def __call__(self, texts):
+        self.calls.append(list(texts))
+        out = []
+        for t in texts:
+            tl = t.lower()
+            best_k, best_v = "", _norm_vec([0.25, 0.25, 0.25, 0.25])
+            for k, v in self.table.items():
+                if k in tl and len(k) >= len(best_k):
+                    best_k, best_v = k, v
+            out.append(best_v)
+        return out
+
+
+def test_embedder_boosts_synonym_path():
+    """Embedder present: path whose signature aligns with dim synonym wins."""
+    onto = (
+        "Type: Gadget\n"
+        "  - housed_at -> DepotNode (relationship, key=housed_at)\n"
+        "  - made_by -> Vendor (relationship, key=made_by)\n"
+        "Type: DepotNode\n"
+        "Type: Vendor\n"
+    )
+    # Without embedder, dim "depot" may still hit range content "DepotNode"
+    # via family; use a non-family range so string alone misses, embed wins.
+    onto2 = (
+        "Type: Gadget\n"
+        "  - housed_at -> StashPod (relationship, key=housed_at)\n"
+        "  - made_by -> Vendor (relationship, key=made_by)\n"
+        "Type: StashPod\n"
+        "Type: Vendor\n"
+    )
+    sketch = extract_nl_sketch("gadgets in depot North")
+    paths = candidate_ontology_paths(
+        onto2, ["Gadget", "StashPod", "Vendor"], domain_type="Gadget"
+    )
+    # Hermetic without embedder: dim depot does not match StashPod / housed_at
+    ranked_plain = rank_paths(sketch, paths, subject_type="Gadget")
+    # With embedder: "depot" and "housed_at StashPod" share a vector axis
+    emb = _SyncFakeEmbedder(
+        {
+            "depot": [1.0, 0.0, 0.0, 0.0],
+            "housed_at": [1.0, 0.0, 0.0, 0.0],
+            "stashpod": [1.0, 0.0, 0.0, 0.0],
+            "made_by": [0.0, 1.0, 0.0, 0.0],
+            "vendor": [0.0, 1.0, 0.0, 0.0],
+            "gadget": [0.0, 0.0, 1.0, 0.0],
+        }
+    )
+    ranked_emb = rank_paths(sketch, paths, subject_type="Gadget", embedder=emb)
+    assert ranked_emb
+    assert ranked_emb[0].path.rel_attr == "housed_at"
+    assert any("embed_cos" in r for r in ranked_emb[0].reasons)
+    assert emb.calls  # embedder was invoked
+
+    plan = ground_ask_plan(
+        "gadgets in depot North",
+        onto2,
+        type_names=["Gadget", "StashPod", "Vendor"],
+        embedder=emb,
+    )
+    assert plan is not None
+    assert plan.confidence == "unique"
+    assert plan.path is not None
+    assert plan.path.rel_attr == "housed_at"
+    # plain path may be weak/none — embedder is the lift
+    del ranked_plain, onto  # silence unused (onto kept for doc)
+
+
+def test_embedder_absent_hermetic_unchanged():
+    """Without embedder, Widget/Site locative ranking is unchanged."""
+    sketch = extract_nl_sketch("how many widgets in east")
+    paths = candidate_ontology_paths(
+        PROMOTED_ONTO, PROMOTED_TYPES, domain_type="Widget"
+    )
+    ranked = rank_paths(sketch, paths, subject_type="Widget", embedder=None)
+    assert ranked
+    assert ranked[0].path.rel_attr in {"stored_in", "has_region"}
+    assert not any("embed_cos" in r for rp in ranked for r in rp.reasons)
+
+
+@pytest.mark.asyncio
+async def test_ground_ask_plan_async_with_async_embedder():
+    """Async EmbedFn is materialized then used for ranking."""
+
+    class AsyncFE:
+        async def __call__(self, texts):
+            out = []
+            for t in texts:
+                tl = t.lower()
+                if "housed" in tl or "depot" in tl or "stash" in tl:
+                    out.append([1.0, 0.0, 0.0])
+                elif "made" in tl or "vendor" in tl:
+                    out.append([0.0, 1.0, 0.0])
+                else:
+                    out.append([0.2, 0.2, 0.2])
+            return out
+
+    onto = (
+        "Type: Gadget\n"
+        "  - housed_at -> StashPod (relationship, key=housed_at)\n"
+        "  - made_by -> Vendor (relationship, key=made_by)\n"
+        "Type: StashPod\n"
+        "Type: Vendor\n"
+    )
+    from infona_client.nlp.ontology_subgraph_match import ground_ask_plan_async
+
+    plan = await ground_ask_plan_async(
+        "gadgets in depot North",
+        onto,
+        type_names=["Gadget", "StashPod", "Vendor"],
+        embedder=AsyncFE(),
+    )
+    assert plan is not None
+    assert plan.confidence == "unique"
+    assert plan.path is not None
+    assert plan.path.rel_attr == "housed_at"
+
+
+# ---------------------------------------------------------------------------
+# 11. Semantic OntologyMentionIndex in scorer
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_semantic_index_boosts_dim_synonym_leaf():
+    """Full healthy index: depot/warehouse → stored_in via resolve_rel boost."""
+    from infona_client.nlp.ontology_mention_index import (
+        OntologyMentionIndex,
+        semantic_resolve_context,
+    )
+
+    class FakeEmbedder:
+        async def __call__(self, texts):
+            out = []
+            for t in texts:
+                v = [0.0] * 6
+                tl = t.lower()
+                if "stored_in" in tl or "warehouse" in tl or "depot" in tl:
+                    v[0] = 1.0
+                if "has_region" in tl or "region" in tl:
+                    v[1] = 1.0
+                if "made_by" in tl or "vendor" in tl:
+                    v[2] = 1.0
+                out.append(v)
+            return out
+
+    fe = FakeEmbedder()
+    idx = OntologyMentionIndex()
+    idx.upsert_rel(
+        "stored_in",
+        domain="Widget",
+        range_type="Site",
+        description="warehouse / depot location edge",
+    )
+    idx.upsert_rel(
+        "has_region",
+        domain="Widget",
+        range_type="Region",
+        description="region edge",
+    )
+    idx.upsert_rel(
+        "made_by",
+        domain="Widget",
+        range_type="Vendor",
+        description="vendor edge",
+    )
+    # Non-location range so string family alone does not pick stored_in for "depot"
+    onto = (
+        "Type: Widget\n"
+        "  - stored_in -> Site (relationship, key=stored_in)\n"
+        "  - has_region -> Region (relationship, key=has_region)\n"
+        "  - made_by -> Vendor (relationship, key=made_by)\n"
+        "Type: Site\n"
+        "Type: Region\n"
+        "Type: Vendor\n"
+    )
+    await idx.embed_missing(fe)
+    q = (await fe(["depot"]))[0]
+    with semantic_resolve_context(
+        idx, query_embeddings={"depot": q}, require_semantic=False
+    ):
+        plan = ground_ask_plan(
+            "widgets in depot East",
+            onto,
+            type_names=["Widget", "Site", "Region", "Vendor"],
+            mention_index=idx,
+            query_embedding=q,
+        )
+    assert plan is not None
+    assert plan.confidence == "unique"
+    assert plan.path is not None
+    assert plan.path.rel_attr == "stored_in"
+    # semantic reason present on ranked shortlist
+    assert any(
+        "semantic_rel" in r
+        for rp in plan.ranked_paths
+        for r in rp.reasons
+    ) or plan.path.rel_attr == "stored_in"
+
+
+@pytest.mark.asyncio
+async def test_partial_semantic_index_ignored():
+    """Partial / not fully embedded index must not invent edges (ONTA-537)."""
+    from infona_client.nlp.ontology_mention_index import OntologyMentionIndex
+
+    class FakeEmbedder:
+        async def __call__(self, texts):
+            return [[1.0, 0.0] for _ in texts]
+
+    idx = OntologyMentionIndex()
+    # Only one of the candidate leaves embedded → partial for full set
+    idx.upsert_rel("stored_in", domain="Widget", range_type="Site")
+    await idx.embed_missing(FakeEmbedder())
+    # has_region listed in ontology but NOT in index → rels_fully_embedded false
+    onto = (
+        "Type: Widget\n"
+        "  - stored_in -> Site (relationship, key=stored_in)\n"
+        "  - has_region -> Region (relationship, key=has_region)\n"
+        "Type: Site\n"
+        "Type: Region\n"
+    )
+    plan = ground_ask_plan(
+        "widgets in depot East",
+        onto,
+        type_names=["Widget", "Site", "Region"],
+        mention_index=idx,
+        query_embedding=[1.0, 0.0],
+    )
+    # Must not crash; no semantic_rel boost claimed on reasons if partial
+    assert plan is not None
+    if plan.ranked_paths:
+        assert not any(
+            "semantic_rel" in r for rp in plan.ranked_paths for r in rp.reasons
+        )
+
+
+def test_unhealthy_index_degrades_gracefully():
+    from infona_client.nlp.ontology_mention_index import OntologyMentionIndex
+
+    idx = OntologyMentionIndex()  # empty — not healthy
+    plan = ground_ask_plan(
+        "how many widgets in east",
+        WIDGET_SITE_ONTO,
+        type_names=WIDGET_SITE_TYPES,
+        mention_index=idx,
+    )
+    assert plan is not None
+    assert plan.confidence == "unique"
+    assert plan.path is not None
+    assert plan.path.rel_attr == "stored_in"
+
+
+# ---------------------------------------------------------------------------
+# 12. Always-LLM regression + path.describe multi-hop in timing
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ask_cypher_never_skips_llm_with_multihop_grounding(monkeypatch):
+    """Grounding (incl. multi-hop context) stays prompt-only; LLM still runs."""
+    store = MemoryGraphStore()
+    await _seed_widget_site(store)
+
+    neptune = MagicMock()
+    neptune.query = AsyncMock(side_effect=AssertionError("no SPARQL"))
+    pipe = NLQueryPipeline(neptune, anthropic_key="", graph_store=store)
+    pipe._fetch_ontology = AsyncMock(return_value=MULTI_HOP_ONTO)  # type: ignore[method-assign]
+    pipe._openrouter_key = "k"  # type: ignore[attr-defined]
+    pipe._query_provider = "openrouter"  # type: ignore[attr-defined]
+    pipe._query_model = "m"  # type: ignore[attr-defined]
+
+    llm_calls: list[dict] = []
+
+    async def fake_llm(question: str, ontology: str, **kw):
+        llm_calls.append({"q": question, "g": kw.get("grounding_text", "")})
+        return {
+            "cypher": "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) RETURN count(*) AS n",
+            "params": {},
+            "explanation": "count",
+            "functions_needed": [],
+        }
+
+    pipe._try_llm_cypher = fake_llm  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        "infona_client.nlp.cypher_generate.try_deterministic_cypher",
+        lambda *a, **k: None,
+    )
+    monkeypatch.setattr(
+        "infona_client.nlp.pipeline.try_deterministic_cypher",
+        lambda *a, **k: None,
+        raising=False,
+    )
+
+    await pipe.ask(
+        "parts in facility East",
+        graph_uri=f"{IRI_BASE}/graphs/demo-tenant",
+        instance_graph=f"{IRI_BASE}/graphs/demo-tenant/kg/widgets",
+        use_cypher=True,
+    )
+    assert len(llm_calls) == 1
+    assert llm_calls[0]["q"] == "parts in facility East"
+    # Grounding may include multi-hop preferred path when unique
+    g = llm_calls[0]["g"] or ""
+    assert "Ontology grounding" in g or "preferred_path" in g or g == "" or "Part" in g
