@@ -995,6 +995,126 @@ def _parse_vals(vals_field: str) -> dict[str, str]:
     return out
 
 
+def _prop_key_for_leaf(leaf: str) -> str | None:
+    """Entity property key for an attribute leaf, or None if reserved/unsafe."""
+    from infona_client.graph.facts import (
+        RESERVED_ENTITY_PROPERTY_KEYS,
+        sanitize_prop_key,
+    )
+
+    raw = (leaf or "").strip()
+    if not raw:
+        return None
+    if raw in ("name", "title", "headline"):
+        return raw
+    if raw in RESERVED_ENTITY_PROPERTY_KEYS:
+        return None
+    try:
+        return sanitize_prop_key(raw)
+    except Exception:  # noqa: BLE001 — skip an unsanitizable leaf
+        return None
+
+
+async def _select_entities_via_store(
+    tenant_id: str,
+    kg_name: str,
+    type_name: str,
+    attributes: list[str],
+    *,
+    limit: Optional[int] = None,
+    scope: Optional[EnrichScope] = None,
+    entity_uris: Optional[list[str]] = None,
+) -> Optional[list[dict]]:
+    """List enrich targets from GraphStore (ONTA-534). ``None`` = store unavailable.
+
+    Same shape as the SPARQL SELECT path: ``{uri, label, vals}`` with ``vals``
+    keyed by attribute IRI so :meth:`EnrichmentExecutor.run` is store-agnostic.
+    """
+    from infona_client.graph.scope import GraphScope
+    from infona_client.graph.store import GraphConfigError, get_optional_graph_store
+
+    try:
+        store = get_optional_graph_store()
+        session = store.session(GraphScope.for_instance(tenant_id, kg_name))
+    except GraphConfigError:
+        return None
+    except Exception:  # noqa: BLE001
+        logger.warning("enrich_store_session_failed", exc_info=True)
+        return None
+
+    try:
+        rows = await session.execute_template(
+            "entity_list_by_type", {"primary_type": type_name}
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning("enrich_store_list_failed", type_name=type_name, exc_info=True)
+        return None
+
+    summaries = [r.to_dict() if hasattr(r, "to_dict") else dict(r) for r in rows]
+    if entity_uris:
+        allowed = set(entity_uris)
+        summaries = [s for s in summaries if s.get("id") in allowed]
+
+    cap = int(limit) if isinstance(limit, (int, float)) and not isinstance(limit, bool) and limit else None
+    entities: list[dict] = []
+    for summary in summaries:
+        eid = str(summary.get("id") or "").strip()
+        if not eid:
+            continue
+        props: dict = {}
+        try:
+            detail_rows = await session.execute_template("entity_detail", {"id": eid})
+        except Exception:  # noqa: BLE001 — still emit the entity with no vals
+            detail_rows = []
+        if detail_rows:
+            detail = (
+                detail_rows[0].to_dict()
+                if hasattr(detail_rows[0], "to_dict")
+                else dict(detail_rows[0])
+            )
+            raw_props = detail.get("props") or {}
+            if isinstance(raw_props, dict):
+                props = raw_props
+
+        if scope is not None and scope.predicate and scope.value is not None:
+            pred_key = _prop_key_for_leaf(scope.predicate)
+            have = ""
+            if pred_key:
+                have = props.get(pred_key)
+            if have is None or have == "":
+                # Display name is stored on Entity.name (rdfs:label).
+                if (scope.predicate or "").strip().lower() in {"name", "label", "title"}:
+                    have = props.get("name") or summary.get("name")
+            if not _values_match(str(have or ""), str(scope.value)):
+                continue
+
+        label = summary.get("name") or props.get("name") or ""
+        slug = _slug_from_uri(eid)
+        if not label or label == slug:
+            for fb in NAME_FALLBACK_ATTRS:
+                alt = props.get(fb)
+                if alt:
+                    label = str(alt)
+                    break
+        if not label:
+            label = slug
+
+        vals: dict[str, str] = {}
+        for attr in attributes:
+            key = _prop_key_for_leaf(attr)
+            if not key:
+                continue
+            val = props.get(key)
+            if val is None or val == "":
+                continue
+            vals[_attr_uri(type_name, attr)] = str(val)
+
+        entities.append({"uri": eid, "label": str(label), "vals": vals})
+        if cap is not None and len(entities) >= cap:
+            break
+    return entities
+
+
 def _values_match(existing: str, candidate: str) -> bool:
     """Loose match: case-insensitive substring or exact equality."""
     if not existing or not candidate:
@@ -1146,6 +1266,19 @@ class EnrichmentExecutor:
         three-layer COG-112 perf fix. (No LIMIT: the COUNT reflects the full
         scoped subset, not the capped SELECT.)
         """
+        if type(self._neptune) is NeptuneClient:
+            store_entities = await _select_entities_via_store(
+                tenant_id,
+                kg_name,
+                type_name,
+                attributes=[],
+                limit=None,
+                scope=scope,
+                entity_uris=entity_uris,
+            )
+            if store_entities is not None:
+                return len(store_entities)
+
         graph_uri = kg_graph_uri(tenant_id, kg_name)
         if entity_uris:
             values = " ".join(f"<{u}>" for u in _validate_entity_uris(entity_uris))
@@ -1329,31 +1462,53 @@ class EnrichmentExecutor:
             missing_adapter_names: set[str] = set()
 
             graph_uri = kg_graph_uri(tenant_id, job.kg_name)
-            # Resolve a scope predicate to concrete instance IRI(s) so the
-            # entity-selection SELECT matches a predicate-indexed term, not an
-            # unbounded per-entity scan (COG-112 perf fix). entity_uris path
-            # never needs this. A valid predicate always resolves to candidate
-            # IRIs (the direct build covers relationships under …/onto/<pred>);
-            # only an empty/invalid predicate yields [] → the scope block matches
-            # nothing (consistent with count_entities → matched 0).
-            scope_pred_iris: Optional[list[str]] = None
-            if job.scope is not None and not job.entity_uris:
-                scope_pred_iris = await self._resolve_scope_predicate_iris(
-                    tenant_id, job.type_name, job.scope
+            # GraphStore-first for a *real* NeptuneClient (production). SPARQL
+            # HTTP is retired (ONTA-534); duck-typed test doubles keep the
+            # SPARQL SELECT so hermetic executor tests stay green.
+            # ``type is`` not ``isinstance``: AsyncMock(spec=NeptuneClient)
+            # makes isinstance True (kg_status pattern).
+            store_entities: Optional[list[dict]] = None
+            if type(self._neptune) is NeptuneClient:
+                store_entities = await _select_entities_via_store(
+                    tenant_id,
+                    job.kg_name,
+                    job.type_name,
+                    job.attributes,
+                    limit=job.limit,
+                    scope=job.scope,
+                    entity_uris=job.entity_uris,
                 )
-            sel = _build_select_query(
-                graph_uri,
-                job.type_name,
-                job.attributes,
-                job.limit,
-                scope=job.scope,
-                entity_uris=job.entity_uris,
-                scope_pred_iris=scope_pred_iris,
-            )
-            raw = await self._neptune.query(sel)
-            _, bindings = parse_sparql_results(raw)
 
-            entities: list[dict] = []
+            if store_entities is not None:
+                entities = store_entities
+                bindings = []
+            else:
+                # Residual SPARQL dual-arm (hermetic mocks / allow_http).
+                # Resolve a scope predicate to concrete instance IRI(s) so the
+                # entity-selection SELECT matches a predicate-indexed term, not an
+                # unbounded per-entity scan (COG-112 perf fix). entity_uris path
+                # never needs this. A valid predicate always resolves to candidate
+                # IRIs (the direct build covers relationships under …/onto/<pred>);
+                # only an empty/invalid predicate yields [] → the scope block matches
+                # nothing (consistent with count_entities → matched 0).
+                scope_pred_iris: Optional[list[str]] = None
+                if job.scope is not None and not job.entity_uris:
+                    scope_pred_iris = await self._resolve_scope_predicate_iris(
+                        tenant_id, job.type_name, job.scope
+                    )
+                sel = _build_select_query(
+                    graph_uri,
+                    job.type_name,
+                    job.attributes,
+                    job.limit,
+                    scope=job.scope,
+                    entity_uris=job.entity_uris,
+                    scope_pred_iris=scope_pred_iris,
+                )
+                raw = await self._neptune.query(sel)
+                _, bindings = parse_sparql_results(raw)
+
+                entities = []
             for row in bindings:
                 e_uri = row.get("e", "")
                 if not e_uri:
@@ -2565,7 +2720,13 @@ class EnrichmentExecutor:
         return out
 
     async def _resolve_declared_datatype(
-        self, onto_graph: str, type_name: str, attr_name: str, values: list[str]
+        self,
+        onto_graph: str,
+        type_name: str,
+        attr_name: str,
+        values: list[str],
+        *,
+        tenant_id: str | None = None,
     ) -> str:
         """Resolve the ``datatype`` to declare for one enriched attribute, never
         DOWNGRADING an existing richer range.
@@ -2586,10 +2747,43 @@ class EnrichmentExecutor:
         ``xsd:string``, the inferred datatype wins (so a brand-new attribute is
         typed correctly, and a previously-untyped string slot can be upgraded)."""
         inferred = _infer_datatype_from_values(values)
-        raw = await self._neptune.query(
-            get_attribute_range_query(onto_graph, type_name, attr_name)
-        )
-        _, bindings = parse_sparql_results(raw)
+        # GraphStore catalog (ONTA-534): a real NeptuneClient cannot SPARQL.
+        # Prefer the declared datatype / relationship range when present.
+        if type(self._neptune) is NeptuneClient and tenant_id:
+            try:
+                from infona_client.graph.ontology_catalog import list_attributes
+
+                attrs = await list_attributes(
+                    tenant_id=tenant_id, type_name=type_name, layer="tenant"
+                )
+                match = next((a for a in attrs if a.name == attr_name), None)
+                if match is not None:
+                    if match.kind == "relationship" and match.range_type:
+                        return match.range_type
+                    if match.datatype and match.datatype != "string":
+                        return match.datatype
+                return inferred
+            except Exception:  # noqa: BLE001 — fall through to SPARQL / inferred
+                logger.warning(
+                    "enrich_declare_range_catalog_failed",
+                    type_name=type_name,
+                    attr=attr_name,
+                    exc_info=True,
+                )
+                return inferred
+        try:
+            raw = await self._neptune.query(
+                get_attribute_range_query(onto_graph, type_name, attr_name)
+            )
+            _, bindings = parse_sparql_results(raw)
+        except Exception:  # noqa: BLE001 — never fail a write over a range read
+            logger.warning(
+                "enrich_declare_range_query_failed",
+                type_name=type_name,
+                attr=attr_name,
+                exc_info=True,
+            )
+            return inferred
         existing = bindings[0].get("range") if bindings else None
         if existing and existing != XSD_STRING:
             # Re-assert the existing richer range verbatim (round-trips back to the
@@ -2627,7 +2821,7 @@ class EnrichmentExecutor:
         resolved: dict[str, str] = {}
         for name, values in attr_values.items():
             datatype = await self._resolve_declared_datatype(
-                onto_graph, type_name, name, values
+                onto_graph, type_name, name, values, tenant_id=tenant_id
             )
             resolved[name] = datatype
             await commit_ontology(

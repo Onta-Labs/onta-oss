@@ -25,6 +25,7 @@ the residual map + what has shipped.
 | **`kg_data_status` / `list_kg_names` GraphStore-first** | Done (slice 2) — real `NeptuneClient` uses registry + entity counts; duck-typed test doubles keep SPARQL ASKs |
 | **KG `/schema` + `/type-edges` GraphStore-first** | Done (inspect #5) — compose type_counts + type_summary; MCP `inspect_graph_schema` no longer 500 under Neo4j; real `NeptuneClient` empty KG stays GraphStore (no SPARQL hang) |
 | **`list_type_schema` catalog-first** | Done (inspect #5) — agent ontology inspect uses ontology catalog under GraphStore |
+| **Enrich plan + entity select GraphStore-first** | Done (2026-08-13) — `_list_types` / `list_declared_types` read the ontology catalog; executor `run` / `count_entities` list instance entities via GraphStore when `type(client) is NeptuneClient`. Fixes Ask Onta "couldn't determine the specifics" after SPARQL retirement |
 | **Hermetic suite** | Must stay green |
 
 ---
