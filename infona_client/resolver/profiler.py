@@ -126,12 +126,54 @@ def _norm_cell(value: Any) -> str:
     return str(value)
 
 
-def _is_number(v: str) -> bool:
+# Currency / money wrappers around a pure numeric core — still NUMBER-shaped
+# so cost columns like "$12.50" / "1,234.56 USD" become float attrs, not strings.
+_MONEY_NUMBER_RE = re.compile(
+    r"""(?x)
+    ^\s*
+    (?:[\$€£¥]\s*)?                  # leading currency symbol
+    (?:USD|EUR|GBP|JPY|CAD|AUD)?\s*  # optional ISO code prefix
+    (?P<num>
+        [-+]?
+        (?:\d{1,3}(?:,\d{3})+|\d+)   # 1,234 or 1234
+        (?:\.\d+)?                   # optional fraction
+    )
+    \s*(?:USD|EUR|GBP|JPY|CAD|AUD|\$|€|£)?  # trailing code/symbol
+    \s*$
+    """
+)
+
+
+def strip_money_wrappers(v: str) -> str | None:
+    """Return the bare numeric lexical form if ``v`` is clearly a money/number.
+
+    Leaves non-numeric free text (``"about 12"``, SKUs, mixed prose) alone by
+    returning ``None`` — only high-precision currency-wrapped or plain numbers.
+    """
+    if v is None:
+        return None
+    s = str(v).strip()
+    if not s:
+        return None
+    # Plain float first (fast path).
     try:
-        float(v)
+        float(s)
+        return s
     except ValueError:
-        return False
-    return True
+        pass
+    m = _MONEY_NUMBER_RE.match(s)
+    if not m:
+        return None
+    return m.group("num").replace(",", "")
+
+
+def _is_number(v: str) -> bool:
+    """True for plain numbers **and** clear currency-wrapped values (``$12.50``).
+
+    Intentionally narrow: mixed prose and codes stay non-numeric so they do not
+    force a float datatype on free-text columns.
+    """
+    return strip_money_wrappers(v) is not None
 
 
 def _value_shape(counts: Counter[str], non_empty: int) -> ValueShape:
