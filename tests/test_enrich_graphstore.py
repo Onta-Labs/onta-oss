@@ -23,9 +23,18 @@ from infona_client.agent.capabilities.enrich_cap import (
 )
 from infona_client.agent.planner import register_default_capabilities, reset_plan_store
 from infona_client.agent.registry import AgentContext, reset_capabilities
+from infona_client.api_registry import (
+    RegistryApiSource,
+    RegistrySourceAdapter,
+    make_api_source_catalog,
+)
 from infona_client.enrichment.cache import EnrichmentCache
-from infona_client.enrichment.executor import EnrichmentExecutor
+from infona_client.enrichment.executor import (
+    EnrichmentExecutor,
+    _extract_bind_attrs,
+)
 from infona_client.enrichment.job_store import InMemoryJobStore
+from infona_client.enrichment.sources.base import register_adapter
 from infona_client.enrichment.models import (
     ConflictPolicy,
     EnrichJob,
@@ -333,6 +342,144 @@ def test_executor_empty_type_completes_zero_not_failed():
             assert final is not None
             assert final.status != JobStatus.failed, final.error
             assert final.progress.total == 0
+
+        asyncio.run(run())
+    finally:
+        asyncio.run(store.close())
+        reset_graph_store_for_tests()
+
+
+def test_extract_bind_attrs_reads_nct_id_and_slug_fallback():
+    """Binding leaves must come from GraphStore props, not SPARQL.
+
+    Production job b70d2aec (gt-demo / ClinicalTrial) selected 25 entities
+    via GraphStore then SPARQL-bound nct_id → SparqlClientRetired → {} →
+    ClinicalTrials.gov returned no_match in <1s without an HTTP call.
+    """
+    uri = entity_uri(TYPE_CT, "NCT04660344")
+    from_prop = _extract_bind_attrs(
+        {"nct_id": "NCT04660344", "trial_name": "IMvigor011"},
+        ["nct_id"],
+        uri=uri,
+        label="IMvigor011",
+    )
+    assert from_prop == {"nct_id": "NCT04660344"}
+
+    from_slug = _extract_bind_attrs(
+        {"trial_name": "IMvigor011"},
+        ["nct_id"],
+        uri=uri,
+        label="IMvigor011",
+    )
+    assert from_slug == {"nct_id": "NCT04660344"}
+
+    # Non-id leaves must not be backfilled from the URI slug.
+    assert _extract_bind_attrs(
+        {"trial_name": "IMvigor011"},
+        ["bls_series_id"],
+        uri=uri,
+        label="IMvigor011",
+    ) == {}
+
+
+def test_executor_binds_nct_id_from_graphstore_without_sparql():
+    """ClinicalTrials.gov must receive nct_id when SPARQL is retired.
+
+    Reproduces the 2026-08-13 Ask Onta run: GraphStore select + retired
+    SPARQL bind → empty entity_attributes → adapter no-op → 50/50 no_match.
+    """
+    import httpx
+
+    store = _store()
+    seen: dict[str, str] = {}
+
+    def handler(req):
+        from urllib.parse import parse_qs, urlparse
+
+        seen.update({k: v[0] for k, v in parse_qs(urlparse(str(req.url)).query).items()})
+        return httpx.Response(
+            200,
+            json={
+                "studies": [
+                    {
+                        "protocolSection": {
+                            "identificationModule": {
+                                "nctId": "NCT04660344",
+                                "briefTitle": "IMvigor011",
+                            },
+                            "statusModule": {"overallStatus": "COMPLETED"},
+                            "sponsorCollaboratorsModule": {
+                                "leadSponsor": {"name": "Hoffmann-La Roche"}
+                            },
+                        }
+                    }
+                ]
+            },
+        )
+
+    try:
+
+        async def run():
+            await _seed_catalog(store, with_attrs=True)
+            await upsert_attribute(
+                store=store,
+                type_name=TYPE_CT,
+                attr_name="nct_id",
+                datatype="string",
+                layer="tenant",
+                tenant_id=TENANT,
+            )
+            e1 = entity_uri(TYPE_CT, "NCT04660344")
+            rdf_type = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+            rdfs_label = "http://www.w3.org/2000/01/rdf-schema#label"
+            type_iri = f"{IRI_BASE}/types/{TYPE_CT}"
+            nct_pred = f"{IRI_BASE}/types/{TYPE_CT}/attrs/nct_id"
+            await insert_facts(
+                None,
+                GRAPH,
+                [
+                    (e1, rdf_type, type_iri),
+                    (e1, rdfs_label, "IMvigor011"),
+                    (e1, nct_pred, "NCT04660344"),
+                ],
+                store=store,
+            )
+
+            spec = make_api_source_catalog().get("clinicaltrials_gov")
+            assert spec is not None
+            adapter = RegistrySourceAdapter(
+                spec,
+                executor=RegistryApiSource(transport=httpx.MockTransport(handler)),
+            )
+            register_adapter(adapter)
+
+            jobs = InMemoryJobStore()
+            job = EnrichJob(
+                id="job-ctgov",
+                tenant_id=TENANT,
+                kg_name=KG,
+                type_name=TYPE_CT,
+                attributes=[ATTR_SPONSOR],
+                sources=["api:clinicaltrials_gov"],
+                tier=EnrichmentTier.lite,
+                status=JobStatus.queued,
+                created_at=datetime.now(timezone.utc),
+                conflict_policy=ConflictPolicy.skip,
+            )
+            await jobs.create(job)
+            executor = EnrichmentExecutor(
+                _retired_client(), jobs, EnrichmentCache(), adapter
+            )
+            await executor.run(job, TENANT)
+            final = await jobs.get(job.id)
+            assert final is not None
+            assert final.status != JobStatus.failed, final.error
+            assert final.progress.filled == 1, (
+                f"expected CT.gov fill, got processed={final.progress.processed} "
+                f"no_match={final.progress.no_match} filled={final.progress.filled} "
+                f"seen={seen}"
+            )
+            assert seen.get("query.id") == "NCT04660344"
 
         asyncio.run(run())
     finally:

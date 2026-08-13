@@ -430,6 +430,9 @@ def test_clinicaltrials_binding_rejects_placeholder_nct_ids():
     ):
         assert adapter._build_bindings(ep, "Some trial", attrs) == {}, attrs
 
+    # Label itself is a well-formed NCT (ingest keyed the node by type_id).
+    assert adapter._build_bindings(ep, "NCT04660344", {}) == {"id": "NCT04660344"}
+
 
 def test_clinicaltrials_lookup_skips_api_for_placeholder_nct():
     """Invalid nct_id must short-circuit before RegistryApiSource.execute."""

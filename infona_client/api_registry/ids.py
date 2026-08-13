@@ -46,6 +46,16 @@ _ATTR_BIND_NORMALIZERS: dict[str, Callable[[str], Optional[str]]] = {
 }
 
 
+def has_id_format_guard(attr_leaf: str) -> bool:
+    """True iff ``attr_leaf`` has a well-known identifier format guard.
+
+    Only these leaves may be backfilled from an entity URI slug / label —
+    a missing ``bls_series_id`` must not silently bind the entity's display
+    name.
+    """
+    return attr_leaf in _ATTR_BIND_NORMALIZERS
+
+
 def normalize_attribute_binding(attr_leaf: str, value: str) -> str:
     """Apply a format normalizer for ``attr_leaf`` when one is registered.
 
@@ -64,5 +74,6 @@ def normalize_attribute_binding(attr_leaf: str, value: str) -> str:
 __all__ = [
     "is_valid_nct_id",
     "normalize_nct_id",
+    "has_id_format_guard",
     "normalize_attribute_binding",
 ]
