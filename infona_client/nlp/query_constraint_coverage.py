@@ -393,9 +393,11 @@ def check_constraint_coverage(
             sketch=sk,
         )
 
-    # --- Fail: filter intent + measure/type plan with no dimension filter ---
+    # --- Fail-closed core: filter intent + aggregate/count/type plan, no dim ---
+    # Product P0 is silent wrong *totals*. Entity-detail / free list plans with
+    # an unbound name token are softer (medium) so recovery paths like
+    # "show details for <id>" still execute after empty-query escalation.
     if filterish and not has_dim and is_agg_or_count:
-        # literal_aggregate / pure type / free unfiltered sum under filter intent
         if tmpl in _MEASURE_ONLY_TEMPLATES:
             reason = (
                 f"question has filter intent but template {tmpl} is measure-only "
@@ -430,11 +432,31 @@ def check_constraint_coverage(
             sketch=sk,
         )
 
-    # --- Fail: tokens present, none bound, and no dim filter either ---
-    if tokens and not bound and not has_dim:
+    # Pure type list under filter intent (integrity also catches many of these).
+    if filterish and not has_dim and (
+        pure_type_scan_without_filter(cypher or "") or tmpl in _PURE_TYPE_TEMPLATES
+    ):
         reason = (
-            "filter tokens from the question do not appear in Cypher/params and "
-            "the plan has no dimension filter"
+            "question has filter intent but plan has no dimension filter "
+            "(list/type scan would drop constraints)"
+        )
+        clarify = build_clarification_prompt(unbound or tokens, sketch=sk)
+        return CoverageResult(
+            ok=False,
+            confidence="low",
+            reason=reason,
+            unbound_tokens=tuple(unbound or tokens),
+            bound_tokens=tuple(bound),
+            clarification_prompt=clarify,
+            fail_closed=True,
+            sketch=sk,
+        )
+
+    # --- Multi-token AND: only fail-closed when also aggregate/count-ish ---
+    if len(tokens) >= 2 and len(bound) <= 1 and is_agg_or_count and not has_dim:
+        reason = (
+            f"multi-constraint question ({len(tokens)} filter-like tokens) but "
+            f"only {len(bound)} appear in the plan (aggregate/count risk)"
         )
         clarify = build_clarification_prompt(unbound, sketch=sk)
         return CoverageResult(
@@ -448,28 +470,7 @@ def check_constraint_coverage(
             sketch=sk,
         )
 
-    # --- Fail / low: multi-token AND with at most one bound ---
-    if len(tokens) >= 2 and len(bound) <= 1:
-        # If we have a dim filter and exactly one token bound, medium is possible
-        # only when we still have a constraining filter — but product wants
-        # fail-closed when multi-constraint coverage is clearly incomplete.
-        if len(bound) == 0 or not has_dim:
-            reason = (
-                f"multi-constraint question ({len(tokens)} filter-like tokens) but "
-                f"only {len(bound)} appear in the plan"
-            )
-            clarify = build_clarification_prompt(unbound, sketch=sk)
-            return CoverageResult(
-                ok=False,
-                confidence="low",
-                reason=reason,
-                unbound_tokens=tuple(unbound),
-                bound_tokens=tuple(bound),
-                clarification_prompt=clarify,
-                fail_closed=True,
-                sketch=sk,
-            )
-        # Partial: has dim filter + exactly one of ≥2 tokens bound → medium, ok
+    if len(tokens) >= 2 and len(bound) == 1 and has_dim:
         reason = (
             f"partial multi-constraint coverage: {len(bound)}/{len(tokens)} filter "
             "tokens bound; plan has a dimension filter"
@@ -496,6 +497,22 @@ def check_constraint_coverage(
             ok=True,
             confidence="medium",
             reason=reason,
+            unbound_tokens=tuple(unbound),
+            bound_tokens=tuple(bound),
+            clarification_prompt=build_clarification_prompt(unbound, sketch=sk),
+            fail_closed=False,
+            sketch=sk,
+        )
+
+    # Unbound tokens on a non-aggregate free-form plan: soft medium, still OK.
+    if tokens and not bound and not has_dim and not is_agg_or_count:
+        return CoverageResult(
+            ok=True,
+            confidence="medium",
+            reason=(
+                "filter tokens not visible in plan params/text, but plan is not an "
+                "aggregate/count total — soft gap only"
+            ),
             unbound_tokens=tuple(unbound),
             bound_tokens=tuple(bound),
             clarification_prompt=build_clarification_prompt(unbound, sketch=sk),
@@ -540,25 +557,6 @@ def check_constraint_coverage(
             sketch=sk,
         )
 
-    # Filter intent, not aggregate/count-ish, no dim filter — list/other shapes.
-    # Still low if pure type list under filter intent.
-    if pure_type_scan_without_filter(cypher or "") or tmpl in _PURE_TYPE_TEMPLATES:
-        reason = (
-            "question has filter intent but plan has no dimension filter "
-            "(list/type scan would drop constraints)"
-        )
-        clarify = build_clarification_prompt(unbound or tokens, sketch=sk)
-        return CoverageResult(
-            ok=False,
-            confidence="low",
-            reason=reason,
-            unbound_tokens=tuple(unbound or tokens),
-            bound_tokens=tuple(bound),
-            clarification_prompt=clarify,
-            fail_closed=True,
-            sketch=sk,
-        )
-
     # Unknown free-form with filter intent but some filter-like shape already
     # accepted by integrity — medium caution.
     if cypher_has_constraining_filter(cypher or ""):
@@ -572,18 +570,18 @@ def check_constraint_coverage(
             sketch=sk,
         )
 
-    reason = (
-        "question has filter intent but plan coverage is ambiguous / incomplete"
-    )
-    clarify = build_clarification_prompt(unbound or tokens, sketch=sk)
+    # Remaining filter-intent free-form (not aggregate, not pure type): soft OK.
     return CoverageResult(
-        ok=False,
-        confidence="low",
-        reason=reason,
-        unbound_tokens=tuple(unbound or tokens),
+        ok=True,
+        confidence="medium",
+        reason=(
+            "filter intent present; free-form plan is not a known unfiltered "
+            "aggregate/type-total shape — soft confidence only"
+        ),
+        unbound_tokens=tuple(unbound),
         bound_tokens=tuple(bound),
-        clarification_prompt=clarify,
-        fail_closed=True,
+        clarification_prompt=build_clarification_prompt(unbound or tokens, sketch=sk),
+        fail_closed=False,
         sketch=sk,
     )
 

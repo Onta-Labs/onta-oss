@@ -23,10 +23,12 @@ _AGGREGATE_RE = re.compile(
 )
 
 # Measure-ish noun after aggregate verb: "sum unit_qty", "total price", "avg score".
+# Stop before dim prepositions so "sum unit_qty for North" → unit_qty, not North.
 _MEASURE_AFTER_AGG_RE = re.compile(
     r"(?ix)\b(?:sum|total|average|avg|mean|min(?:imum)?|max(?:imum)?)\s+"
     r"(?:of\s+|the\s+)*"
-    r"(?P<measure>[A-Za-z][A-Za-z0-9_]*(?:\s+[A-Za-z][A-Za-z0-9_]*){0,2})"
+    r"(?P<measure>[A-Za-z][A-Za-z0-9_]*)"
+    r"(?=\s+(?:for|in|at|where|with|having)\b|\s*$|[^\w\s]|\s+\w)"
 )
 
 # Free tokens after dim prepositions. Deliberately does NOT start on bare
@@ -197,6 +199,43 @@ _STOPWORDS = frozenset(
         "false",
         "yes",
         "no",
+        # Existential / locative noise from "are there any …" / "is there a …"
+        "there",
+        "here",
+        "anywhere",
+        "somewhere",
+        "elsewhere",
+        "something",
+        "anything",
+        "everything",
+        "nothing",
+        "someone",
+        "anyone",
+        "everyone",
+        "things",
+        "thing",
+        "stuff",
+        "ones",
+        "one",
+        "it",
+        "them",
+        "they",
+        "we",
+        "i",
+        "my",
+        "mine",
+        "his",
+        "her",
+        "hers",
+        "their",
+        "details",
+        "info",
+        "information",
+        "show",
+        "tell",
+        "describe",
+        "list",
+        "display",
     }
 )
 
