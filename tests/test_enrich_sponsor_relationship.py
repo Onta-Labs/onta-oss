@@ -29,6 +29,9 @@ def test_infer_does_not_touch_status_or_phase():
     assert _infer_relationship_target("status", types) is None
     assert _infer_relationship_target("phase", types) is None
     assert _infer_relationship_target("nct_id", types) is None
+    # manufacturer stays a literal unless the catalog already ranged it —
+    # hermetic enrich tests use it as a string brand.
+    assert _infer_relationship_target("manufacturer", types) is None
 
 
 def test_infer_exact_type_name_match():

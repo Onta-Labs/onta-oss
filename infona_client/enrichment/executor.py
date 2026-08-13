@@ -463,11 +463,6 @@ _ORG_ATTR_LEAVES = frozenset(
         "sponsor",
         "sponsor_name",
         "lead_sponsor_name",
-        "manufacturer",
-        "company",
-        "organization",
-        "employer",
-        "vendor",
     }
 )
 _ORG_TYPE_PREFERENCE = ("Company", "Organization", "Sponsor")
@@ -2367,6 +2362,8 @@ class EnrichmentExecutor:
         inferred = _infer_datatype_from_values(values)
         del onto_graph  # catalog-only; SPARQL range query is retired (ONTA-527)
         declared_type_names: list[str] = []
+        if inferred not in PRIMITIVE_TYPES:
+            return inferred
         if not tenant_id:
             return _infer_relationship_target(attr_name) or inferred
         try:
@@ -2403,20 +2400,14 @@ class EnrichmentExecutor:
                 type_name=type_name,
                 attr=attr_name,
             )
-            return (
-                _infer_relationship_target(attr_name, declared_type_names)
-                or inferred
-            )
+            return _infer_relationship_target(attr_name, declared_type_names) or inferred
         except Exception:  # noqa: BLE001 — never fail a write over a range read
             logger.exception(
                 "enrich_declare_range_catalog_failed",
                 type_name=type_name,
                 attr=attr_name,
             )
-            return (
-                _infer_relationship_target(attr_name, declared_type_names)
-                or inferred
-            )
+            return _infer_relationship_target(attr_name, declared_type_names) or inferred
 
     async def _declare_attributes(
         self,
