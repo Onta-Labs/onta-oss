@@ -362,12 +362,18 @@ def check_constraint_coverage(
     params: dict[str, Any] | None = None,
     template: str | None = None,
     integrity_reason: str | None = None,
+    schema_reason: str | None = None,
     sketch: QueryIntentSketch | None = None,
 ) -> CoverageResult:
     """Return coverage + confidence for a generated plan.
 
     ``integrity_reason`` non-empty forces ``low`` / fail-closed (compose with
     :func:`check_cypher_filter_integrity` without deleting it).
+
+    ``schema_reason`` non-empty forces ``low`` / fail-closed even when filter
+    tokens appear "bound" in the plan text (invented hops like ``HAS_OFFERED_IN``
+    can still embed the NL value while returning empty/zero — see
+    :mod:`schema_valid_cypher`).
     """
     params = dict(params or {})
     tmpl = (template or "").strip() or None
@@ -391,6 +397,23 @@ def check_constraint_coverage(
             clarification_prompt=clarify,
             fail_closed=True,
             sketch=sk,
+        )
+
+    # Invented schema hop: tokens may look bound (value appears as a literal)
+    # but the relationship/attr is not in the ontology → high-conf zeros.
+    # Fail closed regardless of aggregate vs list — invalid hop is never high.
+    if schema_reason:
+        clarify = build_clarification_prompt(unbound or tokens, sketch=sk)
+        return CoverageResult(
+            ok=False,
+            confidence="low",
+            reason=f"schema-invalid predicates: {schema_reason}",
+            unbound_tokens=tuple(unbound),
+            bound_tokens=tuple(bound),
+            clarification_prompt=clarify,
+            fail_closed=True,
+            sketch=sk,
+            extra={"schema_reason": schema_reason},
         )
 
     # --- Fail-closed core: filter intent + aggregate/count/type plan, no dim ---

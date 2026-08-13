@@ -73,6 +73,8 @@ _MONEY_FAMILY_STEMS: frozenset[str] = frozenset(
 )
 
 # Strong money compounds / leaves (full-token after normalize).
+# Family-only leaves like assay_cost / tuition_usd still match via stems;
+# listing compounds here improves unique resolve when NL is bare price/cost.
 _MONEY_STRONG_LEAVES: frozenset[str] = frozenset(
     {
         "price",
@@ -104,6 +106,13 @@ _MONEY_STRONG_LEAVES: frozenset[str] = frozenset(
         "fee",
         "charge",
         "rate",
+        "assay_cost",
+        "assaycost",
+        "tuition",
+        "tuition_usd",
+        "tuitionusd",
+        "tuition_cost",
+        "tuitioncost",
     }
 )
 
@@ -129,6 +138,9 @@ _MONEY_NL_CUES: frozenset[str] = frozenset(
         "rates",
         "payment",
         "payments",
+        "tuition",
+        "tuitions",
+        "assay",
     }
 )
 
@@ -397,7 +409,16 @@ def _score_leaf_against_mention(
             # Family hit without exact name — still strong for price↔unit_cost
             family_boost = 0.72
             # Prefer stronger compounds slightly over bare amount
-            if l_norm in ("unit_cost", "list_price", "unit_price", "sale_price"):
+            if l_norm in (
+                "unit_cost",
+                "list_price",
+                "unit_price",
+                "sale_price",
+                "assay_cost",
+                "tuition_usd",
+                "tuition",
+                "tuition_cost",
+            ):
                 family_boost = 0.74
             if l_norm in ("price", "cost", "has_price", "has_cost"):
                 family_boost = 0.78
@@ -572,7 +593,17 @@ def resolve_numeric_attr(
             n = normalize_leaf_key(leaf)
             if n in ("price", "has_price"):
                 base = 0.80
-            elif n in ("unit_cost", "list_price", "cost", "has_cost", "unit_price"):
+            elif n in (
+                "unit_cost",
+                "list_price",
+                "cost",
+                "has_cost",
+                "unit_price",
+                "assay_cost",
+                "tuition_usd",
+                "tuition",
+                "tuition_cost",
+            ):
                 base = 0.76
             scored.append(ScoredLeaf(leaf=leaf, score=base, reasons=("money_fallback",)))
 
