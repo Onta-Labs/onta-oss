@@ -170,14 +170,17 @@ def _entities_query_response(rows: list[dict]) -> dict:
     return {"head": {"vars": ["e", "label", "nameAttr", "vals"]}, "results": {"bindings": bindings}}
 
 
-def _make_enrich_executor():
+async def _make_enrich_executor():
+    from tests._enrichment_prov_helpers import seed_enrich_entities
+
     neptune = AsyncMock()
     # One entity, five attributes → five (entity, attribute) items in one worker
     # (single entity ⇒ fully sequential ⇒ deterministic ceiling trip point).
     rows = [
         {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Bosch", "vals": ""},
     ]
-    neptune.query.return_value = _entities_query_response(rows)
+    await seed_enrich_entities("Product", rows)
+    neptune.query.side_effect = AssertionError("enrich must not SPARQL")
     neptune.update.return_value = None
     store = InMemoryJobStore()
     executor = EnrichmentExecutor(neptune, store, EnrichmentCache(), MagicMock())
@@ -206,7 +209,7 @@ async def test_low_ceiling_halts_enrichment_run_with_partial_coverage():
     the run halts at the third item (cumulative $3 ≥ $2.5) to terminal ``failed``
     with a ``cost_ceiling`` manifest and an ACCURATE partial (3 completed, 2
     dropped) — never a silent partial, never a bogus success."""
-    executor, store = _make_enrich_executor()
+    executor, store = await _make_enrich_executor()
     job = _make_enrich_job("enrich-ceiling-low", ceiling=2.5)
     await store.create(job)
 
@@ -246,7 +249,7 @@ async def test_high_ceiling_control_completes_clean():
     """LOAD-BEARING CONTROL. The SAME run under a HIGH ceiling ($1000) completes
     normally — all five items done, nothing dropped, terminal ``completed`` — so
     the halt above is PROVEN to be caused by the ceiling, not an unrelated error."""
-    executor, store = _make_enrich_executor()
+    executor, store = await _make_enrich_executor()
     job = _make_enrich_job("enrich-ceiling-high", ceiling=1000.0)
     await store.create(job)
 

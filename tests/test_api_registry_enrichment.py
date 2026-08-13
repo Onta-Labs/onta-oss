@@ -37,6 +37,7 @@ from infona_client.enrichment.tiers import (
     reset_tiers,
 )
 from infona_client.retrieval import safety as safety_mod
+from tests._enrichment_prov_helpers import seed_enrich_entities
 
 
 @pytest.fixture(autouse=True)
@@ -230,16 +231,13 @@ def test_chain_prefix_survives_a_later_register_tier_override():
 # --------------------------------------------------------------------------- #
 # Authority-precedence E2E through the real executor
 # --------------------------------------------------------------------------- #
-def _physician_neptune():
-    rows = [{"uri": "https://graph.infona.ai/entities/Physician/p1", "label": "Jane Smith", "vals": ""}]
-    bindings = [{
-        "e": {"type": "uri", "value": rows[0]["uri"]},
-        "label": {"type": "literal", "value": rows[0]["label"]},
-        "vals": {"type": "literal", "value": rows[0]["vals"]},
-    }]
+async def _physician_store():
+    await seed_enrich_entities(
+        "Physician",
+        [{"uri": "https://graph.infona.ai/entities/Physician/p1", "label": "Jane Smith", "vals": ""}],
+    )
     neptune = AsyncMock()
-    neptune.query.return_value = {"head": {"vars": ["e", "label", "vals"]},
-                                  "results": {"bindings": bindings}}
+    neptune.query.side_effect = AssertionError("enrich must not SPARQL")
     neptune.update.return_value = None
     return neptune
 
@@ -274,7 +272,7 @@ def test_registry_verdict_outranks_web_adapter():
         assert "api:nppes" in chain
         assert chain.index("api:nppes") < chain.index("webfake")
 
-        neptune = _physician_neptune()
+        neptune = await _physician_store()
         store = InMemoryJobStore()
         job = EnrichJob(
             id="job-nppes", tenant_id="test-tenant", kg_name="kg",
@@ -566,37 +564,45 @@ def test_load_binding_attrs_parses_leaves_scoped_to_uris():
     async def run():
         e1 = "https://graph.infona.ai/entities/ingredient/roma_tomatoes"
         bls_uri = "https://graph.infona.ai/types/ingredient/attrs/bls_series_id"
-        captured = {}
-
-        def _query(sparql):
-            captured["sparql"] = sparql
-            return {"head": {"vars": ["e", "vals"]},
-                    "results": {"bindings": [{
-                        "e": {"type": "uri", "value": e1},
-                        "vals": {"type": "literal", "value": f"{bls_uri}::APU0000712311"}}]}}
-
+        await seed_enrich_entities(
+            "ingredient",
+            [{"uri": e1, "label": "Roma tomatoes", "vals": f"{bls_uri}::APU0000712311"}],
+        )
         neptune = AsyncMock()
-        neptune.query.side_effect = _query
+        neptune.query.side_effect = AssertionError("enrich must not SPARQL")
         ex = EnrichmentExecutor(neptune, InMemoryJobStore(), EnrichmentCache(), _DummyAdapter())
         out = await ex._load_binding_attrs(
-            "https://graph.infona.ai/graphs/test", [e1], "ingredient", {"bls_series_id"})
+            "https://graph.infona.ai/graphs/test-tenant/kg/kg",
+            [e1],
+            "ingredient",
+            {"bls_series_id"},
+            tenant_id="test-tenant",
+            kg_name="kg",
+        )
         assert out == {e1: {"bls_series_id": "APU0000712311"}}
-        # Scoped to exactly the passed URI + the concrete leaf predicate IRI.
-        assert e1 in captured["sparql"]
-        assert bls_uri in captured["sparql"]
 
     asyncio.run(run())
 
 
-def test_load_binding_attrs_is_graceful_on_query_error():
+def test_load_binding_attrs_is_empty_when_scope_missing():
+    """Missing tenant/kg is a scope error, not a SPARQL-raised-so-return-{}.
+
+    The retired fail-open was ``except SparqlClientRetired: return {}`` —
+    that is how ClinicalTrials.gov saw empty nct_id bindings. A missing
+    scope must still return {} (nothing to read) but must not query SPARQL.
+    """
     async def run():
         neptune = AsyncMock()
-        neptune.query.side_effect = RuntimeError("neptune down")
+        neptune.query.side_effect = AssertionError("enrich must not SPARQL")
         ex = EnrichmentExecutor(neptune, InMemoryJobStore(), EnrichmentCache(), _DummyAdapter())
         out = await ex._load_binding_attrs(
             "https://graph.infona.ai/graphs/test",
-            ["https://graph.infona.ai/entities/ingredient/x"], "ingredient", {"bls_series_id"})
+            ["https://graph.infona.ai/entities/ingredient/x"],
+            "ingredient",
+            {"bls_series_id"},
+        )
         assert out == {}
+        neptune.query.assert_not_called()
 
     asyncio.run(run())
 
@@ -658,26 +664,17 @@ def test_attribute_binding_flows_end_to_end_through_executor():
 
         entity_uri = "https://graph.infona.ai/entities/ingredient/roma_tomatoes"
         bls_uri = "https://graph.infona.ai/types/ingredient/attrs/bls_series_id"
-
-        def _query(sparql):
-            if "bls_series_id" in sparql:
-                # The separate _load_binding_attrs read: the entity's key attr.
-                return {"head": {"vars": ["e", "vals"]},
-                        "results": {"bindings": [{
-                            "e": {"type": "uri", "value": entity_uri},
-                            "vals": {"type": "literal", "value": f"{bls_uri}::APU0000712311"}}]}}
-            if "?nameAttr" in sparql:
-                # The target-attr entity SELECT: national_avg_price is still EMPTY.
-                return {"head": {"vars": ["e", "label", "nameAttr", "vals"]},
-                        "results": {"bindings": [{
-                            "e": {"type": "uri", "value": entity_uri},
-                            "label": {"type": "literal", "value": "Roma tomatoes"},
-                            "vals": {"type": "literal", "value": ""}}]}}
-            # Ontology / strategy / write-path reads fail-open to empty.
-            return {"head": {"vars": []}, "results": {"bindings": []}}
+        await seed_enrich_entities(
+            "ingredient",
+            [{
+                "uri": entity_uri,
+                "label": "Roma tomatoes",
+                "vals": f"{bls_uri}::APU0000712311",
+            }],
+        )
 
         neptune = AsyncMock()
-        neptune.query.side_effect = _query
+        neptune.query.side_effect = AssertionError("enrich must not SPARQL")
         neptune.update.return_value = None
 
         store = InMemoryJobStore()

@@ -77,14 +77,17 @@ def _entities_query_response(rows: list[dict]) -> dict:
     }
 
 
-def _single_product_neptune():
+async def _single_product_neptune():
     from unittest.mock import AsyncMock
+
+    from tests._enrichment_prov_helpers import seed_enrich_entities
 
     rows = [
         {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Bosch", "vals": ""},
     ]
+    await seed_enrich_entities("Product", rows)
     neptune = AsyncMock()
-    neptune.query.return_value = _entities_query_response(rows)
+    neptune.query.side_effect = AssertionError("enrich must not SPARQL")
     neptune.update.return_value = None
     return neptune
 
@@ -155,7 +158,7 @@ def test_executor_source_urls_flow_into_chain_lookup_context():
         from infona_client.enrichment.sources.base import register_adapter
 
         # WITH source_urls.
-        neptune = _single_product_neptune()
+        neptune = await _single_product_neptune()
         store = InMemoryJobStore()
         executor = EnrichmentExecutor(
             neptune, store, EnrichmentCache(), _FakeWikidata()
@@ -176,7 +179,7 @@ def test_executor_source_urls_flow_into_chain_lookup_context():
         ]
 
         # WITHOUT source_urls → no target_urls key (unchanged call shape).
-        neptune2 = _single_product_neptune()
+        neptune2 = await _single_product_neptune()
         store2 = InMemoryJobStore()
         executor2 = EnrichmentExecutor(
             neptune2, store2, EnrichmentCache(), _FakeWikidata()
@@ -199,7 +202,7 @@ def test_executor_source_urls_flow_into_wikidata_lookup_context():
     context as ``target_urls`` (covers the wikidata/default code path)."""
 
     async def run():
-        neptune = _single_product_neptune()
+        neptune = await _single_product_neptune()
         store = InMemoryJobStore()
         wikidata = _FakeWikidata()
         executor = EnrichmentExecutor(neptune, store, EnrichmentCache(), wikidata)
@@ -234,7 +237,7 @@ def test_executor_type_name_flows_into_chain_lookup_context():
     async def run():
         from infona_client.enrichment.sources.base import register_adapter
 
-        neptune = _single_product_neptune()
+        neptune = await _single_product_neptune()
         store = InMemoryJobStore()
         executor = EnrichmentExecutor(
             neptune, store, EnrichmentCache(), _FakeWikidata()
@@ -242,7 +245,7 @@ def test_executor_type_name_flows_into_chain_lookup_context():
         adapter = _RecordingAdapter("typesrc", value="Robert Bosch GmbH")
         register_adapter(adapter)
 
-        job = _make_job(type_name="Restaurant")
+        job = _make_job(type_name="Product")
         job.sources = ["typesrc"]
         await store.create(job)
         await asyncio.wait_for(executor.run(job, "test-tenant"), timeout=TIMEOUT)
@@ -250,7 +253,7 @@ def test_executor_type_name_flows_into_chain_lookup_context():
         assert adapter.calls
         ctx = adapter.calls[0][2]
         # Bare canonical type label (ontology casing), NOT a URI, NOT lowercased.
-        assert ctx.get("entity_type") == "Restaurant"
+        assert ctx.get("entity_type") == "Product"
 
     asyncio.run(run())
 
@@ -260,12 +263,12 @@ def test_executor_type_name_flows_into_wikidata_lookup_context():
     context as ``entity_type`` (covers the wikidata/default code path)."""
 
     async def run():
-        neptune = _single_product_neptune()
+        neptune = await _single_product_neptune()
         store = InMemoryJobStore()
         wikidata = _FakeWikidata()
         executor = EnrichmentExecutor(neptune, store, EnrichmentCache(), wikidata)
 
-        job = _make_job(type_name="Person")
+        job = _make_job(type_name="Product")
         await store.create(job)
         verdicts = await asyncio.wait_for(
             executor._lookup("Ada Lovelace", "manufacturer", job, cache_hit_inc=False),
@@ -273,7 +276,7 @@ def test_executor_type_name_flows_into_wikidata_lookup_context():
         )
         assert verdicts == []
         assert wikidata.calls
-        assert wikidata.calls[0][2].get("entity_type") == "Person"
+        assert wikidata.calls[0][2].get("entity_type") == "Product"
 
     asyncio.run(run())
 
