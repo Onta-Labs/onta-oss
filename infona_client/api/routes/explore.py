@@ -145,6 +145,24 @@ from infona_client.graph.predicates import (  # noqa: E402
 _SUMMARY_TTL_SECONDS = 1800.0
 _summary_cache: dict[tuple[str, str, str], tuple[float, dict]] = {}
 
+
+def invalidate_summary_cache(tenant_id: str, kg_name: str) -> int:
+    """Drop every in-process type-summary for one (tenant, kg).
+
+    Explorer Browse chips AND table columns are derived from this cache
+    (``fieldStats``), not from the live records payload. Enrichment's
+    ``refresh_after_write`` → ``schedule_recompute`` used to evict only at the
+    *end* of a SPARQL whole-KG scan. Under Neo4j that scan raises
+    ``SparqlClientRetired``, ``_safe_recompute`` swallowed it, and the 30-minute
+    cache kept serving the pre-enrich schema — refresh showed the old table
+    even though facts had landed (job c7c2c7d2). Evict *first*, always.
+    """
+    dropped = 0
+    for key in [k for k in _summary_cache if k[0] == tenant_id and k[1] == kg_name]:
+        _summary_cache.pop(key, None)
+        dropped += 1
+    return dropped
+
 # --- Precomputed stats graph --------------------------------------------------
 # Per (type, predicate): coverage count + entity-valued-object total, plus a
 # per-type entity count. All integer literals → no string escaping needed.
@@ -970,7 +988,21 @@ async def recompute_kg_stats(client: NeptuneClient, tenant_id: str, kg_name: str
 
     Run at ingest time (or via the recompute endpoint / backfill). Replaces the
     KG's stats graph atomically and busts the in-memory cache for its types.
+
+    Cache eviction is FIRST and unconditional. The Explorer type-summary
+    endpoint is GraphStore-live on Neo4j; a retired SPARQL scan must not
+    leave a 30-minute stale ``fieldStats`` sitting in ``_summary_cache``.
     """
+    invalidate_summary_cache(tenant_id, kg_name)
+
+    # Production GraphStore: type_summary_pg already reads Entity props live.
+    # The SPARQL stats-graph rewrite is leftover Neptune. Skip it so we never
+    # raise SparqlClientRetired after a successful enrich write.
+    from infona_client.graph.client import NeptuneClient as _NeptuneClient
+
+    if type(client) is _NeptuneClient and not getattr(client, "_allow_http", False):
+        return {"kg": kg_name, "backend": "graphstore", "cache_evicted": True}
+
     kg = kg_graph_uri(tenant_id, kg_name)
     stats = _stats_graph_uri(tenant_id, kg_name)
     scan = (
@@ -1097,8 +1129,7 @@ async def recompute_kg_stats(client: NeptuneClient, tenant_id: str, kg_name: str
         update = f"DROP SILENT GRAPH <{stats}>"
     await client.update(update)
 
-    for key in [k for k in _summary_cache if k[0] == tenant_id and k[1] == kg_name]:
-        _summary_cache.pop(key, None)
+    invalidate_summary_cache(tenant_id, kg_name)
 
     # Ingest changed the data → the KG's stored triple count is stale. Drop it
     # so the next `list_kgs` recomputes (and re-stores) it once. Local import
@@ -1357,8 +1388,7 @@ async def drop_kg_stats(client: NeptuneClient, tenant_id: str, kg_name: str) -> 
         # name, so a KG recreated under the same name would otherwise inherit the
         # deleted KG's distribution. Matches the stats-graph cleanup rationale above.
         await client.update(f"DROP SILENT GRAPH <{stats}> ; DROP SILENT GRAPH <{hist}>")
-    for key in [k for k in _summary_cache if k[0] == tenant_id and k[1] == kg_name]:
-        _summary_cache.pop(key, None)
+    invalidate_summary_cache(tenant_id, kg_name)
     # Drop the materialized dashboard-summary row too — its key is derived from
     # the KG name, so a KG recreated under the same name would otherwise inherit
     # the deleted KG's counts. Best-effort, matching the cache eviction above.
@@ -1380,7 +1410,15 @@ async def _safe_recompute(client: NeptuneClient, tenant_id: str, kg_name: str) -
     try:
         await recompute_kg_stats(client, tenant_id, kg_name)
     except Exception:
-        pass  # best-effort; reads fall back to a live scan until it succeeds
+        # Cache was already evicted at the top of recompute_kg_stats (and
+        # again in schedule_recompute). Log the scan failure — do not hide
+        # another SparqlClientRetired the way job c7c2c7d2 did.
+        logger.warning(
+            "recompute_kg_stats_failed",
+            tenant_id=tenant_id,
+            kg_name=kg_name,
+            exc_info=True,
+        )
 
 
 #: KGs with a recompute already in flight. Repeated scheduling for the SAME KG
@@ -1411,7 +1449,13 @@ def schedule_recompute(client: NeptuneClient, tenant_id: str, kg_name: str) -> N
     ``POST /ingest/csv/rows``) and the ``POST /recompute-stats`` that the CLI
     fires right after the last batch both land inside the ~15s scan, so the
     last writer's numbers would never be persisted.
+
+    Evicts ``_summary_cache`` *synchronously* before the background scan so a
+    refresh that lands between write and scan completion cannot serve the
+    pre-write Explorer table. On Neo4j the scan itself is a no-op; eviction
+    is the product-visible recompute.
     """
+    invalidate_summary_cache(tenant_id, kg_name)
     key = (tenant_id, kg_name)
     if key in _recompute_inflight:
         # Defer, don't discard: the running scan may predate this caller's write.
