@@ -185,7 +185,7 @@ def test_refresh_after_write_runs_all_three(monkeypatch):
         )
 
         class FakeSvc:
-            async def embed_types(self, graph, types, neptune):
+            async def embed_types(self, graph, types, neptune=None, **kwargs):
                 calls["embed"].append((graph, list(types)))
 
         monkeypatch.setattr(pipeline_mod, "get_embedding_service", lambda: FakeSvc())
@@ -228,7 +228,7 @@ def test_refresh_after_write_skips_embed_without_types(monkeypatch):
         monkeypatch.setattr(pipeline_mod.NLQueryPipeline, "invalidate_cache", lambda graph: None)
 
         class FakeSvc:
-            async def embed_types(self, graph, types, neptune):
+            async def embed_types(self, graph, types, neptune=None, **kwargs):
                 embedded.append(types)
 
         monkeypatch.setattr(pipeline_mod, "get_embedding_service", lambda: FakeSvc())
@@ -253,7 +253,7 @@ def test_refresh_after_write_is_best_effort(monkeypatch):
         monkeypatch.setattr(pipeline_mod.NLQueryPipeline, "invalidate_cache", lambda graph: None)
 
         class BadSvc:
-            async def embed_types(self, graph, types, neptune):
+            async def embed_types(self, graph, types, neptune=None, **kwargs):
                 raise RuntimeError("embedding backend down")
 
         monkeypatch.setattr(pipeline_mod, "get_embedding_service", lambda: BadSvc())

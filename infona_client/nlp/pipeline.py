@@ -407,19 +407,49 @@ ANSWER_ROW_CAP = int(os.environ.get("INFONA_ANSWER_ROW_CAP", "100"))
 _embedding_service = None
 
 
+def _resolve_openrouter_api_key() -> str:
+    """OpenRouter key for embeddings / LLM helpers.
+
+    Settings uses ``INFONA_`` prefix (``INFONA_OPENROUTER_API_KEY``). OSS
+    quickstart docs often set bare ``OPENROUTER_API_KEY`` — accept both so
+    auto ontology embed turns on without a second env rename.
+    """
+    import os
+
+    from infona_client.config import settings
+
+    return (
+        (getattr(settings, "openrouter_api_key", None) or "").strip()
+        or (os.environ.get("INFONA_OPENROUTER_API_KEY") or "").strip()
+        or (os.environ.get("OPENROUTER_API_KEY") or "").strip()
+    )
+
+
 def get_embedding_service():
-    """Lazy-init singleton for the ontology embedding service."""
+    """Lazy-init singleton for the ontology embedding service.
+
+    Returns ``None`` only when no OpenRouter key is configured (cannot embed).
+    """
     global _embedding_service
     if _embedding_service is None:
         from infona_client.config import settings
-        if settings.openrouter_api_key:
+
+        key = _resolve_openrouter_api_key()
+        if key:
             from infona_client.nlp.ontology_embeddings import OntologyEmbeddingService
+
             _embedding_service = OntologyEmbeddingService(
-                openrouter_api_key=settings.openrouter_api_key,
+                openrouter_api_key=key,
                 s3_bucket=settings.embeddings_s3_bucket,
                 s3_prefix=settings.embeddings_s3_prefix,
             )
     return _embedding_service
+
+
+def reset_embedding_service_for_tests() -> None:
+    """Drop the process singleton (tests only)."""
+    global _embedding_service
+    _embedding_service = None
 
 
 # Spatial fast-path helpers (ONTA-157 Phase 2). Module-level + pure so they're
