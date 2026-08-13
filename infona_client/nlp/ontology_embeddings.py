@@ -513,13 +513,20 @@ class OntologyEmbeddingService:
 
         # Cold start: S3 → local disk → GraphStore catalog auto-build.
         if store is None or not store.chunks:
-            await self.ensure_index(graph_uri)
+            try:
+                await self.ensure_index(graph_uri)
+            except Exception:
+                logger.debug("retrieve_ensure_index_failed", exc_info=True)
             store = self._stores.get(graph_uri)
         if store is None or not store.chunks:
             return None
 
         # Embed the question
-        q_embedding = (await self._embed_texts([question]))[0]
+        try:
+            q_embedding = (await self._embed_texts([question]))[0]
+        except Exception:
+            logger.warning("retrieve_question_embed_failed", exc_info=True)
+            return None
         q_vec = np.array(q_embedding, dtype=np.float32)
 
         # Cosine similarity against all type embeddings
