@@ -1217,13 +1217,18 @@ class NLQueryPipeline:
         except Exception:
             pass
 
-        # Ontology-subgraph grounding (planning layer) — structured prompt
-        # context only. Never short-circuits the LLM (always-LLM product rule).
+        # Ontology-subgraph + numeric grounding (planning layer) — structured
+        # prompt context only. Never short-circuits the LLM (always-LLM rule).
         grounding_text = ""
         try:
             from infona_client.nlp.ontology_subgraph_match import (
                 format_grounding_for_prompt,
                 ground_ask_plan,
+            )
+            from infona_client.nlp.numeric_plan_grounding import (
+                format_numeric_grounding_for_prompt,
+                ground_numeric_plan,
+                merge_grounding_texts,
             )
             from infona_client.nlp.ontology_mention_index import (
                 get_process_mention_index,
@@ -1254,13 +1259,28 @@ class NLQueryPipeline:
                 mention_index=_midx,
                 query_embedding=_qemb,
             )
-            grounding_text = format_grounding_for_prompt(grounded)
+            loc_text = format_grounding_for_prompt(grounded)
             if grounded is not None:
                 timing["grounding_confidence"] = grounded.confidence
                 if grounded.template:
                     timing["grounding_template"] = grounded.template
                 if grounded.path is not None:
                     timing["grounding_path"] = grounded.path.describe()
+            num_plan = ground_numeric_plan(
+                question,
+                ontology,
+                type_names=names_for_ground,
+                mention_index=_midx,
+                query_embedding=_qemb,
+            )
+            num_text = format_numeric_grounding_for_prompt(num_plan)
+            if num_plan is not None:
+                timing["numeric_grounding_confidence"] = num_plan.confidence
+                if num_plan.prop_key:
+                    timing["numeric_grounding_prop"] = num_plan.prop_key
+                if num_plan.template:
+                    timing["numeric_grounding_template"] = num_plan.template
+            grounding_text = merge_grounding_texts(loc_text, num_text)
         except Exception:
             logger.debug("ontology_subgraph_grounding_failed", exc_info=True)
             grounding_text = ""
@@ -1321,6 +1341,11 @@ class NLQueryPipeline:
                                         format_grounding_for_prompt,
                                         ground_ask_plan,
                                     )
+                                    from infona_client.nlp.numeric_plan_grounding import (
+                                        format_numeric_grounding_for_prompt,
+                                        ground_numeric_plan,
+                                        merge_grounding_texts,
+                                    )
                                     from infona_client.nlp.cypher_generate import (
                                         extract_type_names_from_ontology,
                                     )
@@ -1342,17 +1367,26 @@ class NLQueryPipeline:
                                         and _rctx_esc.mention_index is not None
                                         else get_process_mention_index()
                                     )
+                                    _qemb_esc = lookup_query_embedding(
+                                        question, _rctx_esc
+                                    )
                                     grounded_esc = ground_ask_plan(
                                         question,
                                         ontology,
                                         type_names=names_esc,
                                         mention_index=_midx_esc,
-                                        query_embedding=lookup_query_embedding(
-                                            question, _rctx_esc
-                                        ),
+                                        query_embedding=_qemb_esc,
                                     )
-                                    grounding_text = format_grounding_for_prompt(
-                                        grounded_esc
+                                    num_esc = ground_numeric_plan(
+                                        question,
+                                        ontology,
+                                        type_names=names_esc,
+                                        mention_index=_midx_esc,
+                                        query_embedding=_qemb_esc,
+                                    )
+                                    grounding_text = merge_grounding_texts(
+                                        format_grounding_for_prompt(grounded_esc),
+                                        format_numeric_grounding_for_prompt(num_esc),
                                     )
                                 except Exception:
                                     pass

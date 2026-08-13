@@ -673,7 +673,22 @@ _CMP_OP_MAP = {
 
 # Natural-language cost/price props for "cost less than N" phrases.
 # Prefer short leaves first (export dual-writes both `price` and `has_price`).
-_COST_PROP_CANDIDATES = ("price", "has_price", "cost", "has_cost", "amount")
+# Kept for back-compat / tests; production resolve uses type-scoped
+# :func:`infona_client.nlp.numeric_attr_resolve.resolve_cost_prop`.
+_COST_PROP_CANDIDATES = (
+    "price",
+    "has_price",
+    "cost",
+    "has_cost",
+    "unit_cost",
+    "list_price",
+    "amount",
+    "value_usd",
+    "msrp",
+    "fee",
+    "charge",
+    "rate",
+)
 
 # "products made by Acme" / "books written by Orwell" / "books by Herbert"
 _MADE_BY_FILTER_RE = re.compile(
@@ -1395,13 +1410,34 @@ def try_filter_query(
     )
 
 
-def _resolve_cost_prop(ontology_summary: str) -> str:
-    """Pick price/cost prop key present in the ontology text, default price."""
-    text = ontology_summary or ""
-    for cand in _COST_PROP_CANDIDATES:
-        if re.search(rf"(?i)\b{re.escape(cand)}\b", text):
-            return cand
-    return "price"
+def _resolve_cost_prop(
+    ontology_summary: str,
+    type_name: str | None = None,
+    *,
+    mention: str = "price",
+) -> str | None:
+    """Type-scoped money/cost leaf resolve (semantic + family heuristics).
+
+    Returns the unique leaf on ``type_name`` or ``None`` when ambiguous /
+    missing (fail closed). Falls back to a whole-ontology candidate scan only
+    when ``type_name`` is unset, still without inventing a missing default.
+    """
+    from infona_client.nlp.numeric_attr_resolve import resolve_cost_prop as _sem
+
+    got = _sem(
+        ontology_summary,
+        type_name=type_name,
+        mention=mention or "price",
+    )
+    if got:
+        return got
+    # Legacy whole-ontology first-hit when type_name missing (tests without type).
+    if not type_name:
+        text = ontology_summary or ""
+        for cand in _COST_PROP_CANDIDATES:
+            if re.search(rf"(?i)\b{re.escape(cand)}\b", text):
+                return cand
+    return None
 
 
 def try_numeric_filter_query(
@@ -1431,7 +1467,10 @@ def try_numeric_filter_query(
         return None
 
     if m.group("cost_num") is not None:
-        prop_key = _resolve_cost_prop(ontology_summary)
+        prop_key = _resolve_cost_prop(ontology_summary, matched, mention="price")
+        if not prop_key:
+            # Fail closed on ambiguous / missing money leaf — do not invent.
+            return None
         op_raw = (m.group("cost_op") or "less than").strip().lower()
         g0 = (m.group(0) or "").lower()
         # Map "cheaper than" / "more expensive than" using the verb, not bare "than".
@@ -1449,7 +1488,27 @@ def try_numeric_filter_query(
         prop = (m.group("prop") or "").strip()
         if not _SAFE_PROP_RE.match(prop):
             return None
-        prop_key = prop
+        # Type-scoped semantic resolve when NL prop is a money synonym.
+        from infona_client.nlp.numeric_attr_resolve import (
+            is_money_nl_cue,
+            resolve_numeric_attr,
+        )
+
+        if is_money_nl_cue(prop):
+            resolved = resolve_numeric_attr(
+                prop,
+                type_name=matched,
+                ontology_summary=ontology_summary,
+                money_family=True,
+            )
+            if resolved.confidence == "unique" and resolved.prop_key:
+                prop_key = resolved.prop_key
+            elif resolved.confidence == "ambiguous":
+                return None
+            else:
+                prop_key = prop
+        else:
+            prop_key = prop
         op_raw = (m.group("cmp") or "<").strip().lower()
         threshold = float(m.group("num"))
 
@@ -1781,7 +1840,25 @@ def try_hop_query(
 
 
 def _resolve_numeric_prop(prop: str | None, ontology_summary: str, type_name: str) -> str | None:
-    """Pick a numeric/datatype prop key from the question or ontology section."""
+    """Pick a numeric/datatype prop key from the question or ontology section.
+
+    Type-scoped and semantic-aware: ``price`` NL can bind ``unit_cost`` when
+    that is the only money leaf. Ambiguous multi-leaf ties return ``None``.
+    """
+    from infona_client.nlp.numeric_attr_resolve import resolve_numeric_attr
+
+    mention = (prop or "amount").strip()
+    resolved = resolve_numeric_attr(
+        mention,
+        type_name=type_name,
+        ontology_summary=ontology_summary,
+        money_family=True,
+    )
+    if resolved.confidence == "unique" and resolved.prop_key:
+        return resolved.prop_key
+    if resolved.confidence == "ambiguous":
+        return None
+
     section = _ontology_section_for_type(type_name, ontology_summary)
     text = section or ontology_summary or ""
     if prop and _SAFE_PROP_RE.match(prop):
@@ -1790,7 +1867,6 @@ def _resolve_numeric_prop(prop: str | None, ontology_summary: str, type_name: st
             rf"(?i)\b{re.escape(prop)}\b", text
         ):
             return prop
-        # Common "amount" when ontology uses value_usd etc. — fall through candidates.
     for cand in _NUMERIC_AGG_PROP_CANDIDATES:
         if re.search(rf"(?im)^\s*-\s*{re.escape(cand)}\b", text):
             return cand
