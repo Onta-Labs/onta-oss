@@ -1015,6 +1015,49 @@ def _prop_key_for_leaf(leaf: str) -> str | None:
         return None
 
 
+def _extract_bind_attrs(
+    props: dict,
+    bind_leaves,
+    *,
+    uri: str = "",
+    label: str = "",
+) -> dict[str, str]:
+    """Pull ``attribute:<leaf>`` binding values out of a GraphStore property map.
+
+    Target-attr ``vals`` never include identifier leaves (nct_id, …) because
+    those are not the attributes being filled. Registry adapters still need
+    them to construct the API request. When a leaf has a well-known id format
+    guard (NCT) and the property is missing, the entity URI slug / label is
+    tried — ingest often keys the node by that id.
+    """
+    from infona_client.api_registry.ids import (
+        has_id_format_guard,
+        normalize_attribute_binding,
+    )
+
+    out: dict[str, str] = {}
+    slug = _slug_from_uri(uri) if uri else ""
+    for leaf in bind_leaves or ():
+        leaf_s = str(leaf or "").strip()
+        if not leaf_s:
+            continue
+        raw = ""
+        key = _prop_key_for_leaf(leaf_s)
+        if key:
+            val = props.get(key) if isinstance(props, dict) else None
+            if val is not None and val != "":
+                raw = str(val)
+        if not raw and has_id_format_guard(leaf_s):
+            for cand in (slug, label, str((props or {}).get("id") or "")):
+                if cand and normalize_attribute_binding(leaf_s, cand):
+                    raw = cand
+                    break
+        if not raw:
+            continue
+        out[leaf_s] = normalize_attribute_binding(leaf_s, raw) or raw
+    return out
+
+
 async def _select_entities_via_store(
     tenant_id: str,
     kg_name: str,
@@ -1109,7 +1152,13 @@ async def _select_entities_via_store(
                 continue
             vals[_attr_uri(type_name, attr)] = str(val)
 
-        entities.append({"uri": eid, "label": str(label), "vals": vals})
+        # Stash the full property map so binding-source leaves (e.g. nct_id
+        # for ClinicalTrials.gov) can be read without a residual SPARQL hop.
+        # Production GraphStore is Neo4j-only; NeptuneClient.query raises
+        # SparqlClientRetired and the old SPARQL bind path fail-opened to {}.
+        entities.append(
+            {"uri": eid, "label": str(label), "vals": vals, "props": props}
+        )
         if cap is not None and len(entities) >= cap:
             break
     return entities
@@ -1570,15 +1619,35 @@ class EnrichmentExecutor:
             except Exception:  # noqa: BLE001 - never break the job over binding setup
                 bind_leaves = set()
             if bind_leaves and entities:
-                try:
-                    _bmap = await self._load_binding_attrs(
-                        graph_uri,
-                        [e["uri"] for e in entities],
-                        job.type_name,
+                _bmap: dict[str, dict[str, str]] = {}
+                need_fetch: list[str] = []
+                for e in entities:
+                    from_props = _extract_bind_attrs(
+                        e.get("props") or {},
                         bind_leaves,
+                        uri=e.get("uri") or "",
+                        label=e.get("label") or "",
                     )
-                except Exception:  # noqa: BLE001
-                    _bmap = {}
+                    if from_props:
+                        _bmap[e["uri"]] = from_props
+                    elif e.get("props") is None:
+                        # SPARQL-selected entities have no stashed props;
+                        # residual SPARQL / GraphStore bind read below.
+                        need_fetch.append(e["uri"])
+                if need_fetch:
+                    try:
+                        fetched = await self._load_binding_attrs(
+                            graph_uri,
+                            need_fetch,
+                            job.type_name,
+                            bind_leaves,
+                            tenant_id=tenant_id,
+                            kg_name=job.kg_name,
+                        )
+                    except Exception:  # noqa: BLE001
+                        fetched = {}
+                    for uri, attrs in (fetched or {}).items():
+                        _bmap.setdefault(uri, {}).update(attrs)
                 for e in entities:
                     e["bind_attrs"] = _bmap.get(e["uri"], {})
 
@@ -2118,6 +2187,9 @@ class EnrichmentExecutor:
         entity_uris: list[str],
         type_name: str,
         leaves,
+        *,
+        tenant_id: str = "",
+        kg_name: str = "",
     ) -> dict[str, dict[str, str]]:
         """Fetch specific attribute LEAVES for the given entity URIs so an
         ``attribute:<attr>`` enrich_from recipe can bind a request param FROM
@@ -2132,12 +2204,24 @@ class EnrichmentExecutor:
         so we filter to those concrete predicate IRIs and reverse-map each back to
         its leaf. Graceful: any error → ``{}`` so the recipe simply no-ops (the
         chain falls through) with no crash and no behavior change.
+
+        GraphStore-first (ONTA-534): production Neo4j has no SPARQL. A residual
+        SPARQL hop raises ``SparqlClientRetired`` and used to fail-open to ``{}``,
+        so ClinicalTrials.gov (and every other ``attribute:<id>`` adapter) saw
+        empty bindings and returned no_match without ever calling the API.
         """
+        leaf_list = [str(x) for x in (leaves or []) if x]
+        uris = _validate_entity_uris([u for u in (entity_uris or []) if u])
+        if not leaf_list or not uris:
+            return {}
+
+        store_map = await self._load_binding_attrs_via_store(
+            uris, leaf_list, tenant_id=tenant_id, kg_name=kg_name
+        )
+        if store_map:
+            return store_map
+
         try:
-            leaf_list = [str(x) for x in (leaves or []) if x]
-            uris = _validate_entity_uris([u for u in (entity_uris or []) if u])
-            if not leaf_list or not uris:
-                return {}
             # Reverse map the concrete literal-attribute predicate IRI -> leaf.
             uri_to_leaf = {_attr_uri(type_name, leaf): leaf for leaf in leaf_list}
             pred_in = ", ".join(f"<{u}>" for u in uri_to_leaf)
@@ -2168,6 +2252,56 @@ class EnrichmentExecutor:
         except Exception:  # noqa: BLE001 - never break the job over a binding read
             logger.debug("enrichment _load_binding_attrs failed", exc_info=True)
             return {}
+
+    async def _load_binding_attrs_via_store(
+        self,
+        entity_uris: list[str],
+        leaf_list: list[str],
+        *,
+        tenant_id: str,
+        kg_name: str,
+    ) -> dict[str, dict[str, str]]:
+        """Read binding leaves from GraphStore entity_detail props. ``{}`` if
+        the store is unavailable or none of the URIs resolve."""
+        if not tenant_id or not kg_name:
+            return {}
+        from infona_client.graph.scope import GraphScope
+        from infona_client.graph.store import GraphConfigError, get_optional_graph_store
+
+        try:
+            store = get_optional_graph_store()
+            session = store.session(GraphScope.for_instance(tenant_id, kg_name))
+        except GraphConfigError:
+            return {}
+        except Exception:  # noqa: BLE001
+            logger.debug(
+                "enrichment _load_binding_attrs_via_store session failed",
+                exc_info=True,
+            )
+            return {}
+
+        out: dict[str, dict[str, str]] = {}
+        for eid in entity_uris:
+            try:
+                detail_rows = await session.execute_template(
+                    "entity_detail", {"id": eid}
+                )
+            except Exception:  # noqa: BLE001
+                continue
+            if not detail_rows:
+                continue
+            detail = (
+                detail_rows[0].to_dict()
+                if hasattr(detail_rows[0], "to_dict")
+                else dict(detail_rows[0])
+            )
+            raw_props = detail.get("props") or {}
+            if not isinstance(raw_props, dict):
+                continue
+            bound = _extract_bind_attrs(raw_props, leaf_list, uri=eid)
+            if bound:
+                out[eid] = bound
+        return out
 
     async def _lookup_chain(
         self,
