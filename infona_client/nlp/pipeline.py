@@ -1285,6 +1285,9 @@ class NLQueryPipeline:
         # Ontology-subgraph + numeric grounding (planning layer) — structured
         # prompt context only. Never short-circuits the LLM (always-LLM rule).
         grounding_text = ""
+        # Unique dim-registry binds for post-gen coverage (leaf+value required).
+        # Initialized outside the try so coverage gates always see a defined list.
+        dim_binds: list = []
         try:
             from infona_client.nlp.ontology_subgraph_match import (
                 format_grounding_for_prompt,
@@ -1347,11 +1350,12 @@ class NLQueryPipeline:
                     timing["numeric_grounding_template"] = num_plan.template
             # Low-cardinality dim registry: known enums + entity dims as
             # prompt context only (always-LLM; never short-circuits Cypher).
+            # Structured unique binds also feed post-gen constraint coverage.
             dim_text = ""
             try:
-                from infona_client.nlp.dim_registry import planning_dim_grounding
+                from infona_client.nlp.dim_registry import planning_dim_context
 
-                dim_text = await planning_dim_grounding(
+                dim_text, dim_binds = await planning_dim_context(
                     store,
                     tenant_id=tenant_id,
                     kg=kg_name,
@@ -1359,9 +1363,15 @@ class NLQueryPipeline:
                 )
                 if dim_text:
                     timing["dim_registry"] = "present"
+                if dim_binds:
+                    timing["dim_binds_count"] = float(len(dim_binds))
+                    timing["dim_bound_leaves"] = ", ".join(
+                        getattr(b.dim, "leaf", "") for b in dim_binds
+                    )[:200]
             except Exception:
                 logger.debug("dim_registry_grounding_failed", exc_info=True)
                 dim_text = ""
+                dim_binds = []
             grounding_text = merge_grounding_texts(loc_text, num_text, dim_text)
         except Exception:
             logger.debug("ontology_subgraph_grounding_failed", exc_info=True)
@@ -1469,15 +1479,23 @@ class NLQueryPipeline:
                                     dim_esc = ""
                                     try:
                                         from infona_client.nlp.dim_registry import (
-                                            planning_dim_grounding,
+                                            planning_dim_context,
                                         )
 
-                                        dim_esc = await planning_dim_grounding(
+                                        dim_esc, dim_binds = await planning_dim_context(
                                             store,
                                             tenant_id=tenant_id,
                                             kg=kg_name,
                                             question=question,
                                         )
+                                        if dim_binds:
+                                            timing["dim_binds_count"] = float(
+                                                len(dim_binds)
+                                            )
+                                            timing["dim_bound_leaves"] = ", ".join(
+                                                getattr(b.dim, "leaf", "")
+                                                for b in dim_binds
+                                            )[:200]
                                     except Exception:
                                         dim_esc = ""
                                     grounding_text = merge_grounding_texts(
@@ -1654,6 +1672,7 @@ class NLQueryPipeline:
                             params=params,
                             template=gen.get("template"),
                             integrity_reason=filt_reason,
+                            dim_binds=dim_binds,
                         )
                         timing.update(cov_fail.to_timing())
                         if attempt < max_attempts - 1:
@@ -1710,6 +1729,7 @@ class NLQueryPipeline:
                             params=params,
                             template=gen.get("template"),
                             schema_reason=schema_res.reason,
+                            dim_binds=dim_binds,
                         )
                         timing.update(cov_schema.to_timing())
                         if attempt < max_attempts - 1:
@@ -1748,6 +1768,7 @@ class NLQueryPipeline:
                         cypher_raw,
                         params=params,
                         template=gen.get("template"),
+                        dim_binds=dim_binds,
                     )
                     timing.update(cov.to_timing())
                     if not cov.ok and cov.fail_closed:

@@ -964,6 +964,47 @@ async def ensure_dim_registry(
         return get_cached_dim_registry(tenant_id, kg)
 
 
+async def planning_dim_binds(
+    store: "GraphStore | None",
+    *,
+    tenant_id: str,
+    kg: str,
+    question: str,
+    type_hint: str | None = None,
+) -> list[DimBind]:
+    """Ensure registry + return unique :class:`DimBind` list for the question.
+
+    Same bind path as the planning prompt (``bind_tokens_in_question``).
+    Callers that only need structured binds for post-gen coverage use this;
+    ambiguous tokens are omitted (fail-closed unique only).
+    """
+    reg = await ensure_dim_registry(store, tenant_id=tenant_id, kg=kg)
+    if reg is None or not reg.dims:
+        return []
+    return bind_tokens_in_question(question, reg, type_hint=type_hint)
+
+
+async def planning_dim_context(
+    store: "GraphStore | None",
+    *,
+    tenant_id: str,
+    kg: str,
+    question: str,
+    type_hint: str | None = None,
+) -> tuple[str, list[DimBind]]:
+    """Ensure registry once; return ``(prompt_text, unique_binds)`` for /ask.
+
+    Prefer this over calling :func:`planning_dim_grounding` +
+    :func:`planning_dim_binds` separately so bind lists stay consistent
+    between prompt grounding and constraint-coverage gates.
+    """
+    reg = await ensure_dim_registry(store, tenant_id=tenant_id, kg=kg)
+    if reg is None or not reg.dims:
+        return "", []
+    binds = bind_tokens_in_question(question, reg, type_hint=type_hint)
+    return format_dims_for_prompt(reg, binds=binds), binds
+
+
 async def planning_dim_grounding(
     store: "GraphStore | None",
     *,
@@ -973,11 +1014,14 @@ async def planning_dim_grounding(
     type_hint: str | None = None,
 ) -> str:
     """Ensure registry + format prompt block for /ask grounding spine."""
-    reg = await ensure_dim_registry(store, tenant_id=tenant_id, kg=kg)
-    if reg is None or not reg.dims:
-        return ""
-    binds = bind_tokens_in_question(question, reg, type_hint=type_hint)
-    return format_dims_for_prompt(reg, binds=binds)
+    text, _binds = await planning_dim_context(
+        store,
+        tenant_id=tenant_id,
+        kg=kg,
+        question=question,
+        type_hint=type_hint,
+    )
+    return text
 
 
 __all__ = [
@@ -1005,6 +1049,8 @@ __all__ = [
     "is_dim_eligible_leaf",
     "normalize_dim_token",
     "passes_cardinality_gates",
+    "planning_dim_binds",
+    "planning_dim_context",
     "planning_dim_grounding",
     "put_cached_dim_registry",
     "rank_filter_token_dims",

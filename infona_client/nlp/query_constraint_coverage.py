@@ -7,6 +7,9 @@ checks whether generated Cypher **covers** NL constraints:
 * plan is not a silent unfiltered aggregate / pure type count when filters
   were asked for
 * multi-constraint tokens not dropped wholesale
+* **dim-registry unique binds** (leaf+value) actually applied — not merely that
+  a token string appears next to a *different* leaf (wrong-leaf / multi-filter
+  drop class)
 
 **Confidence** (attached to timing / NLResult):
 
@@ -18,7 +21,9 @@ checks whether generated Cypher **covers** NL constraints:
 
 **Fail-closed:** never recommend executing an unfiltered aggregate/count when
 the question has filter intent (or unbound filter tokens). Prefer clarification
-over a silent wrong total.
+over a silent wrong total. Unique registry binds on aggregate/count plans are
+required predicates: missing any unique bind → fail-closed (even if some other
+dimension filter is present).
 
 Anti-overfit: synthetic types/attrs/values only in tests; no persona gold.
 """
@@ -28,19 +33,46 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, Protocol, Sequence, runtime_checkable
 
 from infona_client.nlp.cypher_filter_integrity import (
     cypher_has_constraining_filter,
     pure_type_scan_without_filter,
     question_has_filter_intent,
 )
+from infona_client.nlp.dim_registry import normalize_dim_token
 from infona_client.nlp.query_intent import (
     QueryIntentSketch,
     sketch_query_intent,
 )
 
 QueryConfidence = Literal["high", "medium", "low"]
+
+
+@runtime_checkable
+class _DimValueLike(Protocol):
+    display: str
+    normalized: str
+
+
+@runtime_checkable
+class _DimEntryLike(Protocol):
+    leaf: str
+    kind: str
+    subject_type: str
+
+    @property
+    def range_type(self) -> str | None: ...
+
+
+@runtime_checkable
+class DimBindLike(Protocol):
+    """Minimal protocol for registry binds (avoids hard circular import shape)."""
+
+    token: str
+    dim: _DimEntryLike
+    matched_value: _DimValueLike
+
 
 # Templates that *can* carry a dimension filter when params are populated.
 _DIM_FILTER_TEMPLATES = frozenset(
@@ -126,6 +158,9 @@ class CoverageResult:
     fail_closed: bool = False
     sketch: QueryIntentSketch | None = None
     extra: dict[str, Any] = field(default_factory=dict)
+    # Registry unique binds that are / aren't applied with the correct leaf.
+    unbound_dim_binds: tuple[str, ...] = ()  # "leaf=value" labels
+    bound_dim_binds: tuple[str, ...] = ()
 
     def to_timing(self) -> dict[str, float | str]:
         """Sparse timing / debug keys for NLResult.timing."""
@@ -141,6 +176,10 @@ class CoverageResult:
             out["bound_filter_tokens"] = ", ".join(self.bound_tokens)[:300]
         if self.fail_closed:
             out["query_constraint_fail_closed"] = 1.0
+        if self.unbound_dim_binds:
+            out["unbound_dim_binds"] = ", ".join(self.unbound_dim_binds)[:300]
+        if self.bound_dim_binds:
+            out["bound_dim_binds"] = ", ".join(self.bound_dim_binds)[:300]
         return out
 
 
@@ -257,6 +296,202 @@ def tokens_bound_in_plan(
     return bound, unbound
 
 
+def _dim_bind_label(bind: DimBindLike) -> str:
+    """Human-readable leaf=value label for timing / feedback."""
+    leaf = getattr(bind.dim, "leaf", "") or ""
+    val = getattr(bind.matched_value, "display", "") or ""
+    kind = (getattr(bind.dim, "kind", "") or "").lower()
+    if kind == "entity_dim":
+        rt = getattr(bind.dim, "range_type", None) or ""
+        if rt:
+            return f"{leaf}->{rt}={val}"
+    return f"{leaf}={val}"
+
+
+def _leaf_present_in_plan(
+    leaf: str,
+    cypher: str,
+    params: dict[str, Any] | None,
+) -> bool:
+    """True when the plan constrains (or reads) this dim leaf, not a different one."""
+    if not leaf:
+        return False
+    leaf_l = leaf.strip().lower()
+    if not leaf_l:
+        return False
+    params = params or {}
+    for key in ("prop_key", "rel_attr", "filter_prop_key", "filter_key"):
+        raw = params.get(key)
+        if raw is None:
+            continue
+        if str(raw).strip().lower() == leaf_l:
+            return True
+    c = (cypher or "").lower()
+    # Free-form entity property: e.leaf / e[`leaf`] / p.name = 'leaf' / rel type.
+    patterns = (
+        f"e.{leaf_l}",
+        f"e[`{leaf_l}`]",
+        f'e["{leaf_l}"]',
+        f"e['{leaf_l}']",
+        f".{leaf_l}",
+        f"['{leaf_l}']",
+        f'["{leaf_l}"]',
+        f"`{leaf_l}`",
+        f"name = '{leaf_l}'",
+        f'name = "{leaf_l}"',
+        f":{leaf_l}",  # relationship type token
+        f"[:{leaf_l}",
+        f"-[:{leaf_l}",
+    )
+    if any(p in c for p in patterns):
+        return True
+    # Compact underscore-free form for camelCase leaves rarely used.
+    compact = leaf_l.replace("_", "")
+    if compact and compact != leaf_l:
+        if f"e.{compact}" in c or f":{compact}" in c:
+            return True
+    # prop_key / rel_attr params already checked; also accept when $prop_key is
+    # used and params.prop_key equals leaf (done above). When cypher has
+    # p.name = $prop_key and prop_key is the leaf — covered by params.
+    if "$prop_key" in c and str(params.get("prop_key", "")).strip().lower() == leaf_l:
+        return True
+    if "$rel_attr" in c and str(params.get("rel_attr", "")).strip().lower() == leaf_l:
+        return True
+    # Whole-word leaf token in cypher body (template free-form).
+    if re.search(rf"(?i)(?<![A-Za-z0-9_]){re.escape(leaf_l)}(?![A-Za-z0-9_])", c):
+        return True
+    return False
+
+
+def _value_present_in_plan(
+    value_display: str,
+    value_normalized: str,
+    cypher: str,
+    params: dict[str, Any] | None,
+) -> bool:
+    """True when the dim value is applied via params or an equality literal."""
+    params = params or {}
+    val_norm = (value_normalized or normalize_dim_token(value_display) or "").strip()
+    if not val_norm and not (value_display or "").strip():
+        return False
+
+    def _matches(raw: Any) -> bool:
+        if raw is None:
+            return False
+        s = str(raw).strip()
+        if not s:
+            return False
+        n = normalize_dim_token(s)
+        if val_norm and n == val_norm:
+            return True
+        # Compact match (NorthFleet vs north fleet).
+        if val_norm and n.replace(" ", "") == val_norm.replace(" ", ""):
+            return True
+        return False
+
+    for key in ("prop_value", "needle", "target_name"):
+        if key in params and _matches(params.get(key)):
+            return True
+
+    # Equality / contains literals in free-form Cypher.
+    display = (value_display or "").strip()
+    c = cypher or ""
+    candidates = {display, value_normalized or "", normalize_dim_token(display)}
+    candidates = {x for x in candidates if x}
+    for cand in candidates:
+        # Quoted forms
+        for q in ("'", '"'):
+            if f"{q}{cand}{q}" in c:
+                return True
+        # Case-insensitive search over plan blob for multi-word / mixed case.
+    blob = _plan_blob(cypher, params)
+    for cand in candidates:
+        for v in _token_variants(cand):
+            if v and v in blob:
+                # Value alone is not enough without leaf check (caller combines).
+                return True
+    return False
+
+
+def plan_covers_dim_bind(
+    bind: DimBindLike,
+    cypher: str,
+    *,
+    params: dict[str, Any] | None = None,
+    template: str | None = None,
+) -> bool:
+    """True when the plan constrains by this registry bind's leaf **and** value.
+
+    Wrong-leaf plans (token string present, but different property) return
+    False — the residual persona class this gate targets.
+    """
+    params = params or {}
+    dim = bind.dim
+    leaf = (getattr(dim, "leaf", None) or "").strip()
+    matched = bind.matched_value
+    display = getattr(matched, "display", "") or ""
+    normalized = getattr(matched, "normalized", "") or normalize_dim_token(display)
+    kind = (getattr(dim, "kind", "") or "").lower()
+
+    leaf_ok = _leaf_present_in_plan(leaf, cypher, params)
+    value_ok = _value_present_in_plan(display, normalized, cypher, params)
+
+    if kind == "entity_dim":
+        # Entity dims may use related_entity_name_filter with $target_name +
+        # $rel_attr, or free-form MATCH on the relationship type / target label.
+        tmpl = (template or "").strip()
+        if tmpl in (
+            "related_entity_name_filter",
+            "related_entity_name_filter_inverse",
+        ):
+            rel_ok = _leaf_present_in_plan(leaf, cypher, params) or (
+                str(params.get("rel_attr", "")).strip().lower() == leaf.lower()
+            )
+            # target_name carries the entity label/value.
+            tgt_ok = value_ok or _param_nonempty(params, "target_name") and (
+                normalize_dim_token(str(params.get("target_name", "")))
+                == (normalized or normalize_dim_token(display))
+            )
+            if rel_ok and tgt_ok:
+                return True
+        # Free-form: need both relationship/leaf cue and target value.
+        if leaf_ok and value_ok:
+            return True
+        # Some plans only put $target_name when rel is in cypher as type.
+        if value_ok and leaf_ok:
+            return True
+        return False
+
+    # Literal enum / default: require both leaf and value.
+    return bool(leaf_ok and value_ok)
+
+
+def split_dim_binds_coverage(
+    binds: Sequence[DimBindLike] | None,
+    cypher: str,
+    *,
+    params: dict[str, Any] | None = None,
+    template: str | None = None,
+) -> tuple[list[DimBindLike], list[DimBindLike]]:
+    """Split unique registry binds into (covered, missing)."""
+    if not binds:
+        return [], []
+    covered: list[DimBindLike] = []
+    missing: list[DimBindLike] = []
+    # Dedup by dim_id-ish (leaf+value) so multi-token same bind is once.
+    seen: set[str] = set()
+    for b in binds:
+        label = _dim_bind_label(b)
+        if label in seen:
+            continue
+        seen.add(label)
+        if plan_covers_dim_bind(b, cypher, params=params, template=template):
+            covered.append(b)
+        else:
+            missing.append(b)
+    return covered, missing
+
+
 def _plan_is_aggregate_or_count(cypher: str, template: str | None, sketch: QueryIntentSketch) -> bool:
     tmpl = (template or "").strip()
     if tmpl in _MEASURE_ONLY_TEMPLATES or tmpl in _PURE_TYPE_TEMPLATES:
@@ -310,6 +545,12 @@ def fail_closed_answer(result: CoverageResult) -> str:
             + ", ".join(f"'{t}'" for t in result.unbound_tokens)
             + "."
         )
+    if result.unbound_dim_binds:
+        parts.append(
+            "Missing dim-registry constraint(s): "
+            + ", ".join(f"'{b}'" for b in result.unbound_dim_binds)
+            + "."
+        )
     if result.clarification_prompt:
         parts.append(result.clarification_prompt)
     else:
@@ -342,11 +583,23 @@ def coverage_feedback(result: CoverageResult, *, previous_cypher: str = "") -> s
         "a constrained plan over a silent unfiltered total; fail closed is better "
         "than a wrong number.",
         "5. Filtered aggregates: first constrain entities, then aggregate the measure.",
+        "6. When the dim registry bound a token to a specific leaf+value, the plan "
+        "MUST constrain with THAT leaf (and the stored value) — filtering a "
+        "different property while only mentioning the token string is not enough.",
     ]
     if result.unbound_tokens:
         parts.append(
             "Unbound filter tokens from the question: "
             + ", ".join(result.unbound_tokens)
+        )
+    if result.unbound_dim_binds:
+        parts.append(
+            "Unbound dim-registry binds (use these leaf = value constraints): "
+            + ", ".join(result.unbound_dim_binds)
+        )
+        parts.append(
+            "Required: emit equality / related-name filters for each unbound bind "
+            "above (correct leaf, exact stored value from the dim registry block)."
         )
     if result.clarification_prompt:
         parts.append(f"Clarification needed: {result.clarification_prompt}")
@@ -364,6 +617,7 @@ def check_constraint_coverage(
     integrity_reason: str | None = None,
     schema_reason: str | None = None,
     sketch: QueryIntentSketch | None = None,
+    dim_binds: Sequence[DimBindLike] | None = None,
 ) -> CoverageResult:
     """Return coverage + confidence for a generated plan.
 
@@ -374,6 +628,13 @@ def check_constraint_coverage(
     tokens appear "bound" in the plan text (invented hops like ``HAS_OFFERED_IN``
     can still embed the NL value while returning empty/zero — see
     :mod:`schema_valid_cypher`).
+
+    ``dim_binds`` — unique :class:`~infona_client.nlp.dim_registry.DimBind`
+    list from the dim registry for this question. Each unique bind is a
+    **required predicate** (leaf + value). On aggregate/count plans, any
+    missing unique bind fails closed — even if a *different* leaf provides
+    ``plan_has_dimension_filter`` True (wrong-leaf / multi-filter drop class).
+    Ambiguous registry tokens are never passed here (bind path is unique-only).
     """
     params = dict(params or {})
     tmpl = (template or "").strip() or None
@@ -386,9 +647,22 @@ def check_constraint_coverage(
         question
     )
 
+    covered_binds, missing_binds = split_dim_binds_coverage(
+        dim_binds, cypher, params=params, template=tmpl
+    )
+    bound_bind_labels = tuple(_dim_bind_label(b) for b in covered_binds)
+    unbound_bind_labels = tuple(_dim_bind_label(b) for b in missing_binds)
+    n_unique_binds = len(covered_binds) + len(missing_binds)
+
+    def _with_binds(**kwargs: Any) -> CoverageResult:
+        """Inject registry bind labels into CoverageResult kwargs."""
+        kwargs.setdefault("bound_dim_binds", bound_bind_labels)
+        kwargs.setdefault("unbound_dim_binds", unbound_bind_labels)
+        return CoverageResult(**kwargs)
+
     if integrity_reason:
         clarify = build_clarification_prompt(unbound, sketch=sk)
-        return CoverageResult(
+        return _with_binds(
             ok=False,
             confidence="low",
             reason=f"filter integrity failed: {integrity_reason}",
@@ -404,7 +678,7 @@ def check_constraint_coverage(
     # Fail closed regardless of aggregate vs list — invalid hop is never high.
     if schema_reason:
         clarify = build_clarification_prompt(unbound or tokens, sketch=sk)
-        return CoverageResult(
+        return _with_binds(
             ok=False,
             confidence="low",
             reason=f"schema-invalid predicates: {schema_reason}",
@@ -415,6 +689,71 @@ def check_constraint_coverage(
             sketch=sk,
             extra={"schema_reason": schema_reason},
         )
+
+    # --- Registry unique binds as required predicates (aggregate/count) ------
+    # Residual class: wrong leaf still looks "filtered" (has_dim True) and
+    # token string appears, so pre-bind coverage returned high. Fail closed.
+    if missing_binds and is_agg_or_count:
+        labels = ", ".join(unbound_bind_labels)
+        if n_unique_binds >= 2:
+            reason = (
+                f"multi-bind dim-registry coverage fail: {len(missing_binds)}/"
+                f"{n_unique_binds} unique binds missing from plan "
+                f"({labels}) — aggregate/count would drop filter(s)"
+            )
+        else:
+            reason = (
+                f"dim-registry unique bind not applied in aggregate plan: "
+                f"{labels} — wrong leaf or missing value constraint "
+                f"(token string alone is not enough)"
+            )
+        # Prefer clarifying with the bound leaf so the user (and LLM retry)
+        # know which field is required, not just the raw token.
+        clarify_toks = [
+            f"{b.token}→{b.dim.leaf}" for b in missing_binds
+        ] or list(unbound or tokens)
+        clarify = build_clarification_prompt(clarify_toks, sketch=sk)
+        return _with_binds(
+            ok=False,
+            confidence="low",
+            reason=reason,
+            unbound_tokens=tuple(unbound or [b.token for b in missing_binds]),
+            bound_tokens=tuple(bound),
+            clarification_prompt=clarify,
+            fail_closed=True,
+            sketch=sk,
+            extra={
+                "dim_binds_total": n_unique_binds,
+                "dim_binds_missing": len(missing_binds),
+            },
+        )
+
+    # Non-aggregate list/detail: report unbound registry binds as soft medium.
+    if missing_binds and not is_agg_or_count:
+        labels = ", ".join(unbound_bind_labels)
+        reason = (
+            f"soft gap: dim-registry unique bind(s) not applied in plan "
+            f"({labels}); plan is not an aggregate/count total"
+        )
+        # If there is also no dim filter at all under filter intent, still
+        # fall through to the harder pure-type gates below when applicable;
+        # otherwise soft-pass with medium confidence.
+        if has_dim or not filterish:
+            return _with_binds(
+                ok=True,
+                confidence="medium",
+                reason=reason,
+                unbound_tokens=tuple(unbound or [b.token for b in missing_binds]),
+                bound_tokens=tuple(bound),
+                clarification_prompt=build_clarification_prompt(
+                    [b.token for b in missing_binds], sketch=sk
+                ),
+                fail_closed=False,
+                sketch=sk,
+            )
+        # No dim filter + missing registry binds on a list plan: still soft
+        # unless pure type scan (handled below). Keep labels for later returns
+        # by continuing with filterish path.
 
     # --- Fail-closed core: filter intent + aggregate/count/type plan, no dim ---
     # Product P0 is silent wrong *totals*. Entity-detail / free list plans with
@@ -444,7 +783,7 @@ def check_constraint_coverage(
                 "total risk"
             )
         clarify = build_clarification_prompt(unbound or tokens, sketch=sk)
-        return CoverageResult(
+        return _with_binds(
             ok=False,
             confidence="low",
             reason=reason,
@@ -464,7 +803,7 @@ def check_constraint_coverage(
             "(list/type scan would drop constraints)"
         )
         clarify = build_clarification_prompt(unbound or tokens, sketch=sk)
-        return CoverageResult(
+        return _with_binds(
             ok=False,
             confidence="low",
             reason=reason,
@@ -482,7 +821,7 @@ def check_constraint_coverage(
             f"only {len(bound)} appear in the plan (aggregate/count risk)"
         )
         clarify = build_clarification_prompt(unbound, sketch=sk)
-        return CoverageResult(
+        return _with_binds(
             ok=False,
             confidence="low",
             reason=reason,
@@ -493,19 +832,30 @@ def check_constraint_coverage(
             sketch=sk,
         )
 
+    # Multi-token partial with a dim filter: if registry says ≥2 unique binds
+    # and all are covered, stay high; if some missing, already handled above
+    # for aggregates. For non-agg, soft medium remains.
     if len(tokens) >= 2 and len(bound) == 1 and has_dim:
         reason = (
             f"partial multi-constraint coverage: {len(bound)}/{len(tokens)} filter "
             "tokens bound; plan has a dimension filter"
         )
         clarify = build_clarification_prompt(unbound, sketch=sk)
-        return CoverageResult(
+        conf: QueryConfidence = "medium"
+        # When registry unique binds are all covered, upgrade signal.
+        if n_unique_binds >= 1 and not missing_binds and covered_binds:
+            conf = "high"
+            reason = (
+                "constraint coverage ok (dim-registry unique binds applied; "
+                f"text tokens partial {len(bound)}/{len(tokens)})"
+            )
+        return _with_binds(
             ok=True,
-            confidence="medium",
+            confidence=conf,
             reason=reason,
             unbound_tokens=tuple(unbound),
             bound_tokens=tuple(bound),
-            clarification_prompt=clarify,
+            clarification_prompt=clarify if conf == "medium" else "",
             fail_closed=False,
             sketch=sk,
         )
@@ -516,20 +866,31 @@ def check_constraint_coverage(
             f"soft gap: {len(unbound)} filter token(s) unbound but plan has a "
             "dimension filter"
         )
-        return CoverageResult(
+        conf2: QueryConfidence = "medium"
+        if n_unique_binds >= 1 and not missing_binds and covered_binds:
+            conf2 = "high"
+            reason = (
+                "constraint coverage ok (dim-registry unique binds applied; "
+                f"{len(unbound)} non-registry text token(s) unbound)"
+            )
+        return _with_binds(
             ok=True,
-            confidence="medium",
+            confidence=conf2,
             reason=reason,
             unbound_tokens=tuple(unbound),
             bound_tokens=tuple(bound),
-            clarification_prompt=build_clarification_prompt(unbound, sketch=sk),
+            clarification_prompt=(
+                build_clarification_prompt(unbound, sketch=sk)
+                if conf2 == "medium"
+                else ""
+            ),
             fail_closed=False,
             sketch=sk,
         )
 
     # Unbound tokens on a non-aggregate free-form plan: soft medium, still OK.
     if tokens and not bound and not has_dim and not is_agg_or_count:
-        return CoverageResult(
+        return _with_binds(
             ok=True,
             confidence="medium",
             reason=(
@@ -545,10 +906,30 @@ def check_constraint_coverage(
 
     # --- Soft: filter intent, has dim filter, no extractable tokens ---
     if filterish and has_dim and not tokens:
-        return CoverageResult(
+        # Still require registry binds when present (already handled for agg;
+        # for non-agg missing_binds soft path above). All good if no missing.
+        if missing_binds:
+            return _with_binds(
+                ok=True,
+                confidence="medium",
+                reason=(
+                    "filter intent with dim filter, but dim-registry unique bind(s) "
+                    f"missing: {', '.join(unbound_bind_labels)}"
+                ),
+                unbound_tokens=(),
+                bound_tokens=(),
+                fail_closed=False,
+                sketch=sk,
+            )
+        return _with_binds(
             ok=True,
             confidence="high",
-            reason="filter intent covered by dimension filter in plan",
+            reason="filter intent covered by dimension filter in plan"
+            + (
+                f"; dim-registry binds: {', '.join(bound_bind_labels)}"
+                if bound_bind_labels
+                else ""
+            ),
             unbound_tokens=(),
             bound_tokens=(),
             fail_closed=False,
@@ -557,11 +938,32 @@ def check_constraint_coverage(
 
     # --- Tokens all bound (or none) + dim filter or no filter intent ---
     if filterish and has_dim:
-        return CoverageResult(
+        # Registry all covered (or none supplied) → high.
+        if missing_binds:
+            # Non-agg already soft-returned above; agg already hard-failed.
+            # Defensive medium.
+            return _with_binds(
+                ok=True,
+                confidence="medium",
+                reason=(
+                    "dimension filter present but dim-registry unique bind(s) "
+                    f"missing: {', '.join(unbound_bind_labels)}"
+                ),
+                unbound_tokens=tuple(unbound),
+                bound_tokens=tuple(bound),
+                fail_closed=False,
+                sketch=sk,
+            )
+        return _with_binds(
             ok=True,
             confidence="high",
             reason="constraint coverage ok (dimension filter present"
             + (f"; tokens bound: {', '.join(bound)}" if bound else "")
+            + (
+                f"; dim-registry binds: {', '.join(bound_bind_labels)}"
+                if bound_bind_labels
+                else ""
+            )
             + ")",
             unbound_tokens=tuple(unbound),
             bound_tokens=tuple(bound),
@@ -570,7 +972,9 @@ def check_constraint_coverage(
         )
 
     if not filterish:
-        return CoverageResult(
+        # No filter intent from sketch, but registry uniquely bound tokens
+        # on an aggregate still require those binds (already handled above).
+        return _with_binds(
             ok=True,
             confidence="high",
             reason="no filter intent; coverage gate not required",
@@ -583,7 +987,7 @@ def check_constraint_coverage(
     # Unknown free-form with filter intent but some filter-like shape already
     # accepted by integrity — medium caution.
     if cypher_has_constraining_filter(cypher or ""):
-        return CoverageResult(
+        return _with_binds(
             ok=True,
             confidence="medium",
             reason="filter intent; free-form plan has constraining filter signals",
@@ -594,7 +998,7 @@ def check_constraint_coverage(
         )
 
     # Remaining filter-intent free-form (not aggregate, not pure type): soft OK.
-    return CoverageResult(
+    return _with_binds(
         ok=True,
         confidence="medium",
         reason=(
@@ -622,12 +1026,15 @@ def assign_query_confidence(
 
 __all__ = [
     "CoverageResult",
+    "DimBindLike",
     "QueryConfidence",
     "assign_query_confidence",
     "build_clarification_prompt",
     "check_constraint_coverage",
     "coverage_feedback",
     "fail_closed_answer",
+    "plan_covers_dim_bind",
     "plan_has_dimension_filter",
+    "split_dim_binds_coverage",
     "tokens_bound_in_plan",
 ]
