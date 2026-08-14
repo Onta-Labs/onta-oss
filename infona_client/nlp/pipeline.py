@@ -1367,6 +1367,9 @@ class NLQueryPipeline:
         # Live inventory for zero-instance / pollution-type coverage gate.
         build_ctx = None
         populated_types_for_coverage: tuple[str, ...] | None = None
+        # Money leaf hard-bind (probe / numeric plan → params after gen).
+        money_leaf_bound: str | None = None
+        money_cue_bound: str | None = None
         try:
             from infona_client.nlp.ontology_subgraph_match import (
                 format_grounding_for_prompt,
@@ -1465,6 +1468,7 @@ class NLQueryPipeline:
                 timing["numeric_grounding_confidence"] = num_plan.confidence
                 if num_plan.prop_key:
                     timing["numeric_grounding_prop"] = num_plan.prop_key
+                    money_leaf_bound = num_plan.prop_key
                 if num_plan.template:
                     timing["numeric_grounding_template"] = num_plan.template
             # Low-cardinality dim registry: known enums + entity dims as
@@ -1541,8 +1545,11 @@ class NLQueryPipeline:
                     )
                     top = probe_ctx.money_candidates[0]
                     timing["money_leaf_top"] = top.leaf
+                    if not money_leaf_bound:
+                        money_leaf_bound = top.leaf
                     if probe_ctx.money_cue:
                         timing["money_cue"] = probe_ctx.money_cue
+                        money_cue_bound = probe_ctx.money_cue
             except Exception:
                 logger.debug("query_probe_failed", exc_info=True)
                 probe_text = ""
@@ -1551,6 +1558,29 @@ class NLQueryPipeline:
             grounding_text = merge_grounding_texts(
                 build_text, probe_text, loc_text, num_text, dim_text
             )
+            # Structured ask process log (input + grounding spine).
+            try:
+                from infona_client.nlp.ask_process_log import log_ask_event
+
+                log_ask_event(
+                    "ask_grounding",
+                    question=question,
+                    tenant_id=tenant_id,
+                    kg=kg_name,
+                    ontology_source=ontology_source,
+                    ontology=(ontology or "")[:4000],
+                    grounding_text=(grounding_text or "")[:4000],
+                    money_leaf_bound=money_leaf_bound,
+                    money_cue=money_cue_bound,
+                    dim_binds=[
+                        f"{getattr(b, 'token', '')}->{getattr(getattr(b, 'dim', None), 'leaf', '')}"
+                        for b in (dim_binds or [])[:12]
+                    ],
+                    populated_types=list(populated_types_for_coverage or [])[:20],
+                    query_model=f"{self._query_provider}:{self._query_model}",
+                )
+            except Exception:
+                pass
         except Exception:
             logger.debug("ontology_subgraph_grounding_failed", exc_info=True)
             grounding_text = ""
@@ -1821,6 +1851,63 @@ class NLQueryPipeline:
                 last_gen = gen
                 cypher_raw = gen.get("cypher") or gen.get("sparql") or ""
                 params = dict(gen.get("params") or {})
+                # Hard-bind money leaf so "cost"/"price" cannot execute as bare
+                # $cost_prop with wrong name → high-conf empty sum.
+                if money_leaf_bound:
+                    try:
+                        from infona_client.nlp.ask_process_log import (
+                            apply_money_leaf_params,
+                            log_ask_event,
+                        )
+
+                        before = dict(params)
+                        params = apply_money_leaf_params(
+                            params,
+                            money_leaf=money_leaf_bound,
+                            money_cue=money_cue_bound,
+                        )
+                        timing["money_leaf_hard_bound"] = money_leaf_bound
+                        log_ask_event(
+                            "ask_gen_attempt",
+                            attempt=attempt,
+                            question=question,
+                            tenant_id=tenant_id,
+                            kg=kg_name,
+                            cypher=cypher_raw,
+                            params_before=before,
+                            params_after=params,
+                            explanation=explanation,
+                            money_leaf_bound=money_leaf_bound,
+                            template=gen.get("template"),
+                        )
+                    except Exception:
+                        from infona_client.nlp.ask_process_log import (
+                            apply_money_leaf_params,
+                        )
+
+                        params = apply_money_leaf_params(
+                            params,
+                            money_leaf=money_leaf_bound,
+                            money_cue=money_cue_bound,
+                        )
+                        timing["money_leaf_hard_bound"] = money_leaf_bound
+                else:
+                    try:
+                        from infona_client.nlp.ask_process_log import log_ask_event
+
+                        log_ask_event(
+                            "ask_gen_attempt",
+                            attempt=attempt,
+                            question=question,
+                            tenant_id=tenant_id,
+                            kg=kg_name,
+                            cypher=cypher_raw,
+                            params=params,
+                            explanation=gen.get("explanation") or "",
+                            template=gen.get("template"),
+                        )
+                    except Exception:
+                        pass
                 last_params = params
                 explanation = gen.get("explanation") or explanation
                 functions_needed = gen.get("functions_needed") or functions_needed
@@ -2351,6 +2438,38 @@ class NLQueryPipeline:
                         q_clarify = cov_ok.clarification_prompt or ""
                     except Exception:
                         pass
+                try:
+                    from infona_client.nlp.ask_process_log import log_ask_event
+
+                    log_ask_event(
+                        "ask_result",
+                        question=question,
+                        tenant_id=tenant_id,
+                        kg=kg_name,
+                        answer=(answer or "")[:1500],
+                        cypher=cypher,
+                        params=last_params,
+                        rows=len(bindings),
+                        query_confidence=q_conf,
+                        query_confidence_reason=q_conf_reason,
+                        money_leaf_bound=money_leaf_bound,
+                        timing={
+                            k: timing.get(k)
+                            for k in (
+                                "query_probe",
+                                "money_leaf_top",
+                                "money_leaf_hard_bound",
+                                "numeric_grounding_prop",
+                                "dim_values_present",
+                                "query_confidence",
+                                "attempts",
+                                "total_ms",
+                            )
+                            if k in timing
+                        },
+                    )
+                except Exception:
+                    pass
                 return NLResult(
                     answer=answer,
                     sparql=cypher,

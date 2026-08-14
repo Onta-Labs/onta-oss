@@ -39,6 +39,8 @@ class PlanningSlot:
     prop_key: str | None = None
     populated: bool = False
     count: int = 0
+    # Short catalog description (query-gen synonym aid); empty when unknown.
+    description: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +104,7 @@ def merge_declared_and_populated(
         range_type = _leaf(a, "range_type") or None
         datatype = _leaf(a, "datatype") or None
         prop_key = _leaf(a, "prop_key") or name
+        desc = _leaf(a, "description") or ""
         if kind == "relationship" or range_type:
             kind = "relationship"
         else:
@@ -116,6 +119,7 @@ def merge_declared_and_populated(
             prop_key=prop_key,
             populated=bool(default_declared_populated),
             count=0,
+            description=desc,
         )
 
     for a in populated_literals or ():
@@ -135,6 +139,9 @@ def merge_declared_and_populated(
             prop_key=(prev.prop_key if prev else None) or name,
             populated=True,
             count=count,
+            description=(prev.description if prev else "")
+            or _leaf(a, "description")
+            or "",
         )
 
     for r in populated_relationships or ():
@@ -157,6 +164,9 @@ def merge_declared_and_populated(
             prop_key=(prev.prop_key if prev else None) or name,
             populated=True,
             count=count,
+            description=(prev.description if prev else "")
+            or _leaf(r, "description")
+            or "",
         )
 
     def _sort_key(s: PlanningSlot) -> tuple:
@@ -231,13 +241,18 @@ def format_planning_slot(slot: PlanningSlot) -> str:
     """One Cypher-oriented slot line (matches format_schema_types_for_cypher)."""
     prop_key = slot.prop_key or slot.name
     mark = f" {NO_INSTANCES_MARK}" if not slot.populated else ""
+    # Short description helps synonym resolution (cost→assay_cost, price→list_price).
+    desc = (slot.description or "").strip().replace("\n", " ")
+    if len(desc) > 120:
+        desc = desc[:117].rstrip() + "..."
+    desc_bit = f" — {desc}" if desc else ""
     if slot.kind == "relationship" or slot.range_type:
         return (
             f"  - {slot.name} -> {slot.range_type or '?'} "
-            f"(relationship, key={prop_key}){mark}"
+            f"(relationship, key={prop_key}){mark}{desc_bit}"
         )
     dtype = slot.datatype or "string"
-    return f"  - {slot.name}: {dtype} (literal, key={prop_key}){mark}"
+    return f"  - {slot.name}: {dtype} (literal, key={prop_key}){mark}{desc_bit}"
 
 
 def format_planning_type(ptype: PlanningType) -> str:
