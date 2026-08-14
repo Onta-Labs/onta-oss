@@ -15,10 +15,10 @@ closed. ``mock_neptune.query/update.assert_not_called()`` is the proof the store
 path ran rather than a resurrected SPARQL one — the routes still declare the
 NeptuneClient dependency, so the mock exists but must never be touched.
 
-Three capabilities did NOT survive the cutover and are pinned as strict xfails
-rather than quietly dropped: attribute ALIASES (register / rename / retire),
-per-type computed FUNCTIONS in the viewer payload, and a 4xx for a reserved
-attribute name. Each xfail names the module and mechanism.
+Attribute ALIASES (register / rename / retire) did NOT survive the cutover
+and stay pinned as strict xfails rather than quietly dropped. Type-attached
+FUNCTIONS are back: POST /graphs/{t}/functions writes the function store,
+and the workspace ontology overlay lists them on the type.
 
 ``GET /kgs/{kg}/types/{type}/usage`` was ported to GraphStore by ONTA-535
 (via ``explore_store.type_summary``); its tests seed the catalog + instances
@@ -339,24 +339,10 @@ def test_get_full_schema(client, auth_headers, mock_neptune, store):
     mock_neptune.query.assert_not_called()
 
 
-@pytest.mark.xfail(
-    reason=(
-        "LOST CAPABILITY (ONTA-527): type-attached FUNCTIONS are gone from the "
-        "ontology payload, on BOTH sides. Read: they were projected out of the "
-        "ontology graph by graph/ontology_queries.py::full_ontology_detail_query "
-        "(?funcName) and folded in by graph/global_ontology.py::fetch_ontology; "
-        "the replacement, api/routes/ontology.py::_workspace_ontology_store, "
-        "hardcodes functions=[] on every WorkspaceOntologyType because "
-        "ontology_catalog has no function records. Write: POST "
-        "/graphs/{t}/functions still builds graph/queries.py::"
-        "register_function_triple and awaits client.update, i.e. it is SPARQL-"
-        "only and lands nowhere in production — here it 201s against the mock "
-        "and stores nothing. Both halves need a catalog port; the ontology "
-        "viewer currently reports every type as having no functions."
-    ),
-    strict=True,
-)
 def test_type_detail_lists_attached_functions(client, auth_headers, store):
+    from infona_client.functions.store import reset_function_store
+
+    reset_function_store()
     _seed_type(store, "Place")
     reg = client.post(
         f"/graphs/{TENANT}/functions",

@@ -58,6 +58,7 @@ from .store import (
     make_type_skill_store,
     reset_type_skill_store,
 )
+from .upload import parse_skill_upload
 
 __all__ = [
     "TypeSkill",
@@ -84,4 +85,5 @@ __all__ = [
     "render_skills_block",
     "skills_prompt_block",
     "DEFAULT_PROMPT_BUDGET",
+    "parse_skill_upload",
 ]

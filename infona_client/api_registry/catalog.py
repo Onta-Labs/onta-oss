@@ -4,7 +4,7 @@ The GLOBAL catalog is **operator-curated, not user-managed**: entries are
 versioned JSON data files in the repo, loaded at startup — there is no runtime
 write path for the global layers (ONTA-194 scope decision).
 
-Three layers, mirroring the ADR 0002 content split (+ the ONTA-2xx tenant layer):
+Four layers, mirroring the ADR 0002 content split (+ tenant + user layers):
 
   * **global_public** — the OSS seed catalog shipped in ``data/`` (free/official
     APIs). Always loaded.
@@ -12,17 +12,21 @@ Three layers, mirroring the ADR 0002 content split (+ the ONTA-2xx tenant layer)
     contributed by the proprietary package through
     :func:`register_api_source_layer` (same plugin shape as ``register_adapter``
     / ``register_web_source``). The OSS package never imports the premium tree.
+  * **user_custom** — per-user private APIs a signed-in user registers once
+    (``user_store.py``). Visible in every workspace that user can access.
+    Rank 15: below ``tenant_custom`` so a workspace entry still shadows a
+    same-slug user entry for THAT workspace only.
   * **tenant_custom** — per-workspace private/internal APIs a tenant connects
     itself (ONTA-2xx). These are NOT operator-curated: they live in the durable
     store (``store.py``), are scoped strictly to one tenant, and are merged in on
-    top of the global layers by :func:`get_api_source_catalog` when it is given a
-    ``tenant_id``. They have the HIGHEST precedence so a tenant can shadow a
-    global slug for its own workspace (never for anyone else).
+    top of the global + user layers by :func:`get_api_source_catalog` when it is
+    given a ``tenant_id``. They have the HIGHEST precedence so a tenant can
+    shadow a global or user slug for its own workspace (never for anyone else).
 
-Precedence: ``tenant_custom`` (20) > ``global_enhanced`` (10) > ``global_public``
-(0) — later layers shadow earlier by slug. Only the two global layers are part of
-the process-wide singleton; the tenant layer is merged per-request and cached
-per-tenant with explicit invalidation on write.
+Precedence: ``tenant_custom`` (20) > ``user_custom`` (15) > ``global_enhanced``
+(10) > ``global_public`` (0) — later layers shadow earlier by slug. Only the two
+global layers are part of the process-wide singleton; user and tenant layers
+are merged per-request and cached with explicit invalidation on write.
 """
 
 from __future__ import annotations
@@ -39,17 +43,20 @@ logger = logging.getLogger(__name__)
 
 _DATA_DIR = Path(__file__).parent / "data"
 
-# Canonical layer names. tenant_custom is the per-workspace private layer.
+# Canonical layer names. tenant_custom is the per-workspace private layer;
+# user_custom is per-auth-subject and visible across that user's workspaces.
 LAYER_GLOBAL_PUBLIC = "global_public"
 LAYER_GLOBAL_ENHANCED = "global_enhanced"
+LAYER_USER_CUSTOM = "user_custom"
 LAYER_TENANT_CUSTOM = "tenant_custom"
 
 # Layer precedence: lower rank is a base that higher ranks shadow by slug.
-# tenant_custom leads so a workspace's own entry shadows a global slug for that
-# workspace only (the merge is per-tenant — see get_api_source_catalog).
+# tenant_custom leads so a workspace's own entry shadows a user or global slug
+# for that workspace only (the merge is per-tenant — see get_api_source_catalog).
 _LAYER_RANK = {
     LAYER_GLOBAL_PUBLIC: 0,
     LAYER_GLOBAL_ENHANCED: 10,
+    LAYER_USER_CUSTOM: 15,
     LAYER_TENANT_CUSTOM: 20,
 }
 _DEFAULT_RANK = 5
@@ -197,38 +204,52 @@ _catalog_singleton: Optional[ApiSourceCatalog] = None
 # the store. The async ``load_tenant_custom_catalog`` populates/refreshes it, and
 # every write route invalidates it — so a stale merge can never outlive a write.
 _tenant_custom_cache: dict[str, list[ApiSourceSpec]] = {}
+_user_custom_cache: dict[str, list[ApiSourceSpec]] = {}
 
 
-def get_api_source_catalog(tenant_id: Optional[str] = None) -> ApiSourceCatalog:
-    """Return the catalog, optionally merged with a tenant's custom entries.
+def get_api_source_catalog(
+    tenant_id: Optional[str] = None, *, subject: Optional[str] = None
+) -> ApiSourceCatalog:
+    """Return the catalog, optionally merged with user + tenant custom entries.
 
     Built lazily so premium overlays registered at startup
     (``_load_api_registry_plugin``) are present by the time the first request
     consults the registry. Call ``reset_api_source_catalog()`` after registering
     a new layer (tests) to rebuild.
 
-    When ``tenant_id`` is given AND that tenant's custom layer has been loaded
-    into the per-tenant cache (via :func:`load_tenant_custom_catalog`), the
-    returned catalog is the GLOBAL catalog merged with that tenant's
-    ``tenant_custom`` entries (highest precedence — a tenant slug shadows a global
-    slug for THAT tenant only; every other tenant is unaffected). This function
-    stays synchronous and never touches the durable store: an unknown/unloaded
-    tenant simply gets the global catalog, so a sync caller never blocks.
+    When ``subject`` is given AND that subject's custom layer has been loaded
+    into the per-user cache (via :func:`load_user_custom_catalog`), those
+    ``user_custom`` entries are merged on top of the global catalog.
 
-    Strict isolation: a tenant only ever sees ``global_public`` + ``global_enhanced``
-    + its OWN ``tenant_custom`` entries — never another tenant's.
+    When ``tenant_id`` is given AND that tenant's custom layer has been loaded
+    into the per-tenant cache (via :func:`load_tenant_custom_catalog`), those
+    ``tenant_custom`` entries are merged last (highest precedence — a tenant
+    slug shadows a user or global slug for THAT tenant only).
+
+    This function stays synchronous and never touches the durable store: an
+    unknown/unloaded subject or tenant simply omits that layer, so a sync
+    caller never blocks.
+
+    Strict isolation: a caller only ever sees ``global_public`` +
+    ``global_enhanced`` + THEIR OWN ``user_custom`` + THIS tenant's
+    ``tenant_custom`` — never another user's or another tenant's. The operator
+    global view (no tenant_id, no subject) never includes user or tenant layers.
     """
     global _catalog_singleton
     if _catalog_singleton is None:
         _catalog_singleton = make_api_source_catalog()
-    if tenant_id is None:
+    user = _user_custom_cache.get(subject) if subject else None
+    tenant = _tenant_custom_cache.get(tenant_id) if tenant_id else None
+    if not user and not tenant:
         return _catalog_singleton
-    custom = _tenant_custom_cache.get(tenant_id)
-    if not custom:
-        # Unknown tenant, or a tenant known to have zero custom entries: the
-        # global catalog is exactly what it should see.
-        return _catalog_singleton
-    return _merge_tenant_custom(_catalog_singleton, custom)
+    merged = ApiSourceCatalog(entries=dict(_catalog_singleton.entries))
+    if user:
+        for spec in user:
+            merged.entries[spec.slug] = spec
+    if tenant:
+        for spec in tenant:
+            merged.entries[spec.slug] = spec
+    return merged
 
 
 def _merge_tenant_custom(
@@ -272,6 +293,30 @@ async def load_tenant_custom_catalog(
     return get_api_source_catalog(tenant_id)
 
 
+async def load_user_custom_catalog(
+    subject: str, store: "object"
+) -> ApiSourceCatalog:
+    """Load a subject's custom entries from ``store``, cache them, and return
+    the merged catalog (global + that subject's ``user_custom``).
+
+    ``store`` is a ``UserApiSourceStore`` (typed loosely to avoid a hard import
+    cycle with ``user_store.py``). Invalid stored specs are skipped.
+    """
+    records = await store.list_for_subject(subject)  # type: ignore[attr-defined]
+    specs: list[ApiSourceSpec] = []
+    for rec in records:
+        spec = rec.materialized_spec()
+        if validate_spec(spec):
+            logger.warning(
+                "api_registry: skipping invalid stored user entry %s/%s",
+                subject, spec.slug or "?",
+            )
+            continue
+        specs.append(spec)
+    set_user_custom_specs(subject, specs)
+    return get_api_source_catalog(subject=subject)
+
+
 def set_tenant_custom_specs(tenant_id: str, specs: list[ApiSourceSpec]) -> None:
     """Replace a tenant's cached custom-layer specs. Used by the async loader and
     by tests/injectors that want a tenant layer without a store.
@@ -285,6 +330,16 @@ def set_tenant_custom_specs(tenant_id: str, specs: list[ApiSourceSpec]) -> None:
         s.layer = LAYER_TENANT_CUSTOM
         tagged.append(s)
     _tenant_custom_cache[tenant_id] = tagged
+
+
+def set_user_custom_specs(subject: str, specs: list[ApiSourceSpec]) -> None:
+    """Replace a subject's cached user-layer specs. Used by the async loader
+    and by tests/injectors that want a user layer without a store."""
+    tagged: list[ApiSourceSpec] = []
+    for s in specs:
+        s.layer = LAYER_USER_CUSTOM
+        tagged.append(s)
+    _user_custom_cache[subject] = tagged
 
 
 def _reset_coverage_index() -> None:
@@ -314,12 +369,19 @@ def invalidate_tenant_catalog(tenant_id: str) -> None:
     _reset_coverage_index()
 
 
+def invalidate_user_catalog(subject: str) -> None:
+    """Drop a subject's cached user layer so the next load re-reads the store."""
+    _user_custom_cache.pop(subject, None)
+    _reset_coverage_index()
+
+
 def reset_api_source_catalog() -> None:
-    """Drop the cached catalog + all per-tenant custom layers so the next access
-    rebuilds (tests / startup)."""
+    """Drop the cached catalog + all per-tenant and per-user custom layers so
+    the next access rebuilds (tests / startup)."""
     global _catalog_singleton
     _catalog_singleton = None
     _tenant_custom_cache.clear()
+    _user_custom_cache.clear()
     _reset_coverage_index()
 
 
@@ -329,10 +391,14 @@ __all__ = [
     "make_api_source_catalog",
     "get_api_source_catalog",
     "load_tenant_custom_catalog",
+    "load_user_custom_catalog",
     "set_tenant_custom_specs",
+    "set_user_custom_specs",
     "invalidate_tenant_catalog",
+    "invalidate_user_catalog",
     "reset_api_source_catalog",
     "register_api_source_layer",
     "reset_api_source_layers",
     "registered_layers",
+    "LAYER_USER_CUSTOM",
 ]

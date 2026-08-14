@@ -9,7 +9,7 @@ from slowapi.errors import RateLimitExceeded
 
 from infona_client.api.middleware import RequestLoggingMiddleware
 from infona_client.api.rate_limit import limiter
-from infona_client.api.routes import actions, agent, api_sources, ask, conversations, corrections, enrich, explore, export, functions, grep, health, history, ingest, jobs, knowledge_graphs, lambda_functions, normalize, ontology, operator, query, schedules, search, skills, tenants, triples, usage, workspace_invites
+from infona_client.api.routes import actions, agent, api_sources, ask, conversations, corrections, enrich, explore, export, functions, grep, health, history, ingest, jobs, knowledge_graphs, lambda_functions, normalize, ontology, operator, query, schedules, search, skills, tenants, triples, usage, user_api_sources, workspace_invites
 from infona_client.config import settings
 from infona_client.graph.client import NeptuneClient
 from infona_client.graph.queries import InvalidGraphIdentifier
@@ -477,6 +477,9 @@ def create_app() -> FastAPI:
     # ONTA-2xx: the per-tenant API source registry (webapp/CLI/MCP all ride these
     # canonical routes via the shared SDK — interface-convergence rule).
     app.include_router(api_sources.router, tags=["api_sources"])
+    # User-scoped API sources: register once, visible in every workspace the
+    # caller can access. Canonical /v1/me/api-sources (not under /graphs).
+    app.include_router(user_api_sources.router, tags=["user_api_sources"])
     # Type-attached SKILLS: markdown instruction attached to an entity type,
     # consumed by LM agents (distinct from FUNCTIONS, which are type-attached
     # compute). One canonical route set for webapp/CLI/MCP.
