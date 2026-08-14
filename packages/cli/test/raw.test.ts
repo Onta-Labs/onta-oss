@@ -199,6 +199,18 @@ describe("canonical paths + methods for every covered op", () => {
     { name: "enrichJobs", run: (c) => c.raw.enrichJobs(), method: "GET", url: `${PREFIX}/enrich/jobs` },
     { name: "jobs", run: (c) => c.raw.jobs(), method: "GET", url: `${PREFIX}/jobs` },
     {
+      name: "purgeJobs",
+      run: (c) => c.raw.purgeJobs(),
+      method: "DELETE",
+      url: `${PREFIX}/jobs`,
+    },
+    {
+      name: "deleteJob",
+      run: (c) => c.raw.deleteJob("job 1"),
+      method: "DELETE",
+      url: `${PREFIX}/jobs/${ENC("job 1")}`,
+    },
+    {
       name: "actionFindMergeDuplicates",
       run: (c) => c.raw.actionFindMergeDuplicates({}),
       method: "POST",
