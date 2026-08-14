@@ -101,11 +101,15 @@ def schedule_recompute(client: Any, tenant_id: str, kg_name: str) -> None:
         _recompute_pending.add(key)
         return
     _recompute_inflight.add(key)
+    # Look up on the public explore module so tests that patch
+    # ``explore._safe_recompute`` (the coalescing suite) still bind.
+    coro = _host()._safe_recompute(client, tenant_id, kg_name)
     try:
-        task = asyncio.create_task(_safe_recompute(client, tenant_id, kg_name))
+        task = asyncio.create_task(coro)
     except Exception:
         # No running loop (a sync caller): never leave the key stuck marked
         # in-flight, or this KG could never be recomputed again.
+        coro.close()
         _recompute_inflight.discard(key)
         raise
     _bg_tasks.add(task)
