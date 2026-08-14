@@ -1471,8 +1471,12 @@ class NLQueryPipeline:
             # prompt context only (always-LLM; never short-circuits Cypher).
             # Structured unique binds also feed post-gen constraint coverage.
             dim_text = ""
+            dim_registry_obj = None
             try:
-                from infona_client.nlp.dim_registry import planning_dim_context
+                from infona_client.nlp.dim_registry import (
+                    get_cached_dim_registry,
+                    planning_dim_context,
+                )
 
                 dim_text, dim_binds = await planning_dim_context(
                     store,
@@ -1487,12 +1491,65 @@ class NLQueryPipeline:
                     timing["dim_bound_leaves"] = ", ".join(
                         getattr(b.dim, "leaf", "") for b in dim_binds
                     )[:200]
+                try:
+                    dim_registry_obj = get_cached_dim_registry(
+                        tenant_id, kg_name
+                    )
+                except Exception:
+                    dim_registry_obj = None
             except Exception:
                 logger.debug("dim_registry_grounding_failed", exc_info=True)
                 dim_text = ""
                 dim_binds = []
+            # Cheap read-only probe: dim values + money leaf candidates.
+            # Merged into grounding before LLM (always-LLM; never short-circuit).
+            probe_text = ""
+            try:
+                from infona_client.nlp.query_probe import build_probe_context
+
+                probe_ctx = await build_probe_context(
+                    store,
+                    tenant_id=tenant_id,
+                    kg=kg_name,
+                    question=question,
+                    ontology_summary=ontology or "",
+                    registry=dim_registry_obj,
+                    binds=dim_binds,
+                    populated_types=populated_for_numeric,
+                    build_ctx=build_ctx,
+                    type_hint=(
+                        build_ctx.question_type_hits[0]
+                        if build_ctx is not None and build_ctx.question_type_hits
+                        else None
+                    ),
+                )
+                # Prefer money + dim-values sections (build already in build_text).
+                probe_bits = [
+                    probe_ctx.dim_values_text or "",
+                    probe_ctx.money_text or "",
+                ]
+                probe_text = "\n\n".join(
+                    b.strip() for b in probe_bits if b and b.strip()
+                )
+                if probe_text:
+                    timing["query_probe"] = "present"
+                if probe_ctx.extra.get("dim_values_present"):
+                    timing["dim_values_present"] = 1.0
+                if probe_ctx.money_candidates:
+                    timing["money_leaf_candidates"] = float(
+                        len(probe_ctx.money_candidates)
+                    )
+                    top = probe_ctx.money_candidates[0]
+                    timing["money_leaf_top"] = top.leaf
+                    if probe_ctx.money_cue:
+                        timing["money_cue"] = probe_ctx.money_cue
+            except Exception:
+                logger.debug("query_probe_failed", exc_info=True)
+                probe_text = ""
+            # Order: build inventory, dim values/money probe, subgraph,
+            # numeric plan, dim registry binds.
             grounding_text = merge_grounding_texts(
-                build_text, loc_text, num_text, dim_text
+                build_text, probe_text, loc_text, num_text, dim_text
             )
         except Exception:
             logger.debug("ontology_subgraph_grounding_failed", exc_info=True)
@@ -1626,24 +1683,76 @@ class NLQueryPipeline:
                                     except Exception:
                                         dim_esc = ""
                                     build_esc = ""
+                                    build_ctx_esc = None
                                     try:
                                         from infona_client.nlp.query_build import (
                                             collect_query_build_context,
                                             format_query_build_for_prompt,
                                         )
 
-                                        build_esc = format_query_build_for_prompt(
-                                            await collect_query_build_context(
-                                                store,
-                                                tenant_id=tenant_id,
-                                                kg=kg_name,
-                                                question=question,
-                                            )
+                                        build_ctx_esc = await collect_query_build_context(
+                                            store,
+                                            tenant_id=tenant_id,
+                                            kg=kg_name,
+                                            question=question,
                                         )
+                                        build_esc = format_query_build_for_prompt(
+                                            build_ctx_esc
+                                        )
+                                        if (
+                                            build_ctx_esc is not None
+                                            and build_ctx_esc.populated_type_names
+                                        ):
+                                            populated_types_for_coverage = (
+                                                build_ctx_esc.populated_type_names
+                                            )
                                     except Exception:
                                         build_esc = ""
+                                    probe_esc = ""
+                                    try:
+                                        from infona_client.nlp.dim_registry import (
+                                            get_cached_dim_registry,
+                                        )
+                                        from infona_client.nlp.query_probe import (
+                                            build_probe_context,
+                                        )
+
+                                        reg_esc = get_cached_dim_registry(
+                                            tenant_id, kg_name
+                                        )
+                                        pop_for_probe = (
+                                            list(populated_types_for_coverage)
+                                            if populated_types_for_coverage
+                                            else pop_esc
+                                        )
+                                        pctx = await build_probe_context(
+                                            store,
+                                            tenant_id=tenant_id,
+                                            kg=kg_name,
+                                            question=question,
+                                            ontology_summary=ontology or "",
+                                            registry=reg_esc,
+                                            binds=dim_binds,
+                                            populated_types=pop_for_probe,
+                                            build_ctx=build_ctx_esc,
+                                        )
+                                        probe_esc = "\n\n".join(
+                                            b.strip()
+                                            for b in (
+                                                pctx.dim_values_text,
+                                                pctx.money_text,
+                                            )
+                                            if b and b.strip()
+                                        )
+                                        if pctx.money_candidates:
+                                            timing["money_leaf_candidates"] = float(
+                                                len(pctx.money_candidates)
+                                            )
+                                    except Exception:
+                                        probe_esc = ""
                                     grounding_text = merge_grounding_texts(
                                         build_esc,
+                                        probe_esc,
                                         format_grounding_for_prompt(grounded_esc),
                                         format_numeric_grounding_for_prompt(num_esc),
                                         dim_esc,

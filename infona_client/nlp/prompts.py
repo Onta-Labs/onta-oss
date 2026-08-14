@@ -288,6 +288,12 @@ Key rules:
 populated schema leaves first. Prefer types with count > 0 that match the \
 question; never default to empty pollution types (e.g. Product/Book shells from \
 other KGs) when a populated type fits.
+- If Graph build notes list **dim values**, equality-filter with those exact \
+stored strings (do not invent enum values). If **money / measure leaf candidates** \
+are listed for cost/price/tuition cues, use that prop_key (e.g. assay_cost / \
+unit_cost / list_price) — never invent a bare price/cost leaf that is not \
+declared. Multi-constraint questions MUST constrain **all** listed dims before \
+SUM/COUNT/AVG.
 - Parameterize user filters: string/number needles as `$param`, not concatenated.
 - Prefer `count(*)` with an alias: `RETURN count(*) AS n`.
 - Return human-readable fields (`name`, literal values) not only internal ids \

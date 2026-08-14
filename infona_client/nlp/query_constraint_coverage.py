@@ -618,6 +618,9 @@ def coverage_feedback(result: CoverageResult, *, previous_cypher: str = "") -> s
         "7. Prefer $type_names / INSTANCE_OF targets from the LIVE populated type "
         "inventory. Do NOT target empty pollution types (0 entities in this KG) "
         "when the question matches a populated type.",
+        "8. Multi-constraint questions (two or more filter values such as a zone "
+        "AND a status) MUST apply ALL of those filters before SUM/COUNT/AVG — "
+        "a single-filter or unfiltered measure aggregate is a silent wrong total.",
     ]
     if result.empty_plan_types:
         parts.append(
@@ -1008,7 +1011,83 @@ def check_constraint_coverage(
             sketch=sk,
         )
 
-    # --- Multi-token AND: only fail-closed when also aggregate/count-ish ---
+    # --- Multi-filter fail-closed (aggregate/count) --------------------------------
+    # Product class: DockA + ready total cost → silent unfiltered (or single-
+    # filter) SUM of the measure with high conf. When the question has ≥2
+    # filter constraints (tokens and/or unique dim-registry binds), the plan
+    # must apply ≥2 real dim filters (or cover every unique registry bind).
+    # A single-filter aggregate under multi-filter intent is fail-closed —
+    # never medium/high silent total.
+    required_filters = max(len(tokens), n_unique_binds)
+    if n_unique_binds >= 2:
+        # Registry is authoritative when it uniquely bound ≥2 dims.
+        applied_filters = len(covered_binds)
+    elif n_unique_binds == 1:
+        applied_filters = len(covered_binds) + max(
+            0, len(bound) - 1
+        )  # one bind + any extra bound token
+        if has_dim and applied_filters < 1:
+            applied_filters = 1
+    else:
+        # No registry binds: count bound tokens when a dim filter is present.
+        applied_filters = len(bound) if has_dim else 0
+        if has_dim and applied_filters == 0:
+            applied_filters = 1  # weak single filter signal
+
+    multi_filter_intent = required_filters >= 2 or (
+        len(tokens) >= 2 and (filterish or sk.has_filter_intent)
+    )
+    if multi_filter_intent and is_agg_or_count and applied_filters < min(
+        2, required_filters if required_filters >= 2 else 2
+    ):
+        # Need at least 2 real dim filters when ≥2 constraints were asked.
+        need = max(2, n_unique_binds) if n_unique_binds >= 2 else 2
+        reason = (
+            f"multi-filter intent ({required_filters} constraint(s); tokens="
+            f"{list(tokens)[:6]!r}"
+            + (
+                f", dim_binds={list(unbound_bind_labels) + list(bound_bind_labels)}"
+                if n_unique_binds
+                else ""
+            )
+            + f") but plan applies only {applied_filters} real dim filter(s) "
+            f"(need ≥{need}) — silent wrong total risk; apply ALL filters "
+            "before SUM/COUNT"
+        )
+        clarify_toks = list(unbound) or list(tokens)
+        if missing_binds:
+            clarify_toks = [
+                f"{b.token}→{b.dim.leaf}" for b in missing_binds
+            ] + clarify_toks
+        clarify = build_clarification_prompt(clarify_toks, sketch=sk)
+        # Explicit dual-constraint feedback when we know both tokens.
+        if len(tokens) >= 2:
+            a, b = tokens[0], tokens[1]
+            extra_fb = (
+                f"Apply BOTH filters (e.g. constrain by '{a}' AND '{b}') "
+                "before SUM/COUNT — do not emit a single-filter or unfiltered "
+                "measure aggregate."
+            )
+            if clarify:
+                clarify = f"{clarify} {extra_fb}"
+            else:
+                clarify = extra_fb
+        return _with_binds(
+            ok=False,
+            confidence="low",
+            reason=reason,
+            unbound_tokens=tuple(unbound or tokens),
+            bound_tokens=tuple(bound),
+            clarification_prompt=clarify,
+            fail_closed=True,
+            sketch=sk,
+            extra={
+                "multi_filter_required": required_filters,
+                "multi_filter_applied": applied_filters,
+            },
+        )
+
+    # Multi-token AND: only fail-closed when also aggregate/count-ish ---
     if len(tokens) >= 2 and len(bound) <= 1 and is_agg_or_count and not has_dim:
         reason = (
             f"multi-constraint question ({len(tokens)} filter-like tokens) but "
@@ -1026,10 +1105,9 @@ def check_constraint_coverage(
             sketch=sk,
         )
 
-    # Multi-token partial with a dim filter: if registry says ≥2 unique binds
-    # and all are covered, stay high; if some missing, already handled above
-    # for aggregates. For non-agg, soft medium remains.
-    if len(tokens) >= 2 and len(bound) == 1 and has_dim:
+    # Multi-token partial with a dim filter on non-aggregate plans: soft medium
+    # (lists/details may still be useful). Aggregates already fail-closed above.
+    if len(tokens) >= 2 and len(bound) == 1 and has_dim and not is_agg_or_count:
         reason = (
             f"partial multi-constraint coverage: {len(bound)}/{len(tokens)} filter "
             "tokens bound; plan has a dimension filter"

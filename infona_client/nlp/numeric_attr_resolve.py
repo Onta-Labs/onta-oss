@@ -541,11 +541,38 @@ def _score_leaf_against_mention(
                 family_boost = 0.74
             if l_norm in ("price", "cost", "has_price", "has_cost"):
                 family_boost = 0.78
+            # Stem alignment: bare "cost" prefers *cost* leaves; bare "price"
+            # prefers *price* leaves (list_price over unit_cost; assay_cost
+            # over tuition when both cost-shaped). Cross-stem synonym is
+            # weaker so populated-type ranking can still break ties.
+            if m_toks <= {"cost", "costs", "costing"} or m_norm in {
+                "cost",
+                "costs",
+                "costing",
+            }:
+                if "cost" in l_toks:
+                    family_boost = max(family_boost, 0.86)
+                    reasons.append("cost_stem")
+                elif "price" in l_toks or "tuition" in l_toks:
+                    family_boost = min(family_boost, 0.70)
+                    reasons.append("cost_to_price_synonym")
+            if m_toks <= {"price", "prices", "priced"} or m_norm in {
+                "price",
+                "prices",
+                "priced",
+            }:
+                if "price" in l_toks:
+                    family_boost = max(family_boost, 0.86)
+                    reasons.append("price_stem")
+                elif "cost" in l_toks or "tuition" in l_toks:
+                    family_boost = min(family_boost, 0.70)
+                    reasons.append("price_to_cost_synonym")
             # When mention is specifically "price" and leaf is unit_cost, keep
             # high but below exact price.
             if money_mention and money_leaf:
                 score = max(score, family_boost)
-                reasons.append("money_family")
+                if "money_family" not in reasons:
+                    reasons.append("money_family")
         elif money_mention and not money_leaf:
             # Mention is money-ish but leaf is not — do not boost.
             pass

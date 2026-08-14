@@ -253,7 +253,42 @@ _STATUS_VALUE_ALLOW = frozenset(
         "published",
         "enabled",
         "disabled",
+        "ready",
+        "available",
+        "unavailable",
+        "online",
+        "offline",
+        "failed",
+        "success",
+        "running",
+        "stopped",
+        "paused",
+        "complete",
+        "completed",
+        "approved",
+        "rejected",
+        "queued",
     }
+)
+
+# Free status/value words (closed vocab) appearing anywhere in the question —
+# catches "total cost of ready widgets in DockA" where "ready" is not after a
+# for/in/where prep.
+_STATUSISH_FREE_RE = re.compile(
+    r"(?ix)\b(?P<tok>"
+    + "|".join(sorted(_STATUS_VALUE_ALLOW, key=len, reverse=True))
+    + r")\b"
+)
+
+# Code-like identifiers (DockA, ZoneB12, T2) often used as zone/region values.
+# Keep short CamelCase (DockA) so long type names (SynthWidget) are not
+# mistaken for filter values — registry binds still catch multi-word labels.
+_CODE_TOKEN_RE = re.compile(
+    r"\b(?P<tok>"
+    r"[A-Z][a-z]{1,8}[A-Z][a-z]{0,3}[0-9]{0,4}"  # DockA, ZoneB2 (not SynthWidget)
+    r"|[A-Za-z]{1,6}[0-9]+[A-Za-z0-9]{0,4}"  # alnum: Zone12, T2b
+    r"|[A-Z]{2,6}[0-9]+"  # ALLCAPS+digits: SKU1
+    r")\b"
 )
 
 # After "for/in/…", drop measure-ish heads when they look like the aggregate
@@ -422,6 +457,14 @@ def extract_filter_tokens(question: str) -> list[str]:
         if label.lower() in _LABEL_DIGIT_STOP:
             continue
         _add(f"{label} {m.group('num')}", allow_measure_head=True)
+
+    # Status-ish free words (ready/active/…) anywhere — multi-filter class.
+    for m in _STATUSISH_FREE_RE.finditer(q):
+        _add(m.group("tok"), allow_measure_head=True)
+
+    # Code-like CamelCase / alnum ids (DockA, Zone12) as dim values.
+    for m in _CODE_TOKEN_RE.finditer(q):
+        _add(m.group("tok"), allow_measure_head=True)
 
     return out
 
