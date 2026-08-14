@@ -1387,6 +1387,41 @@ class NLQueryPipeline:
                 )
 
                 names_for_ground = extract_type_names_from_ontology(ontology) or None
+            # Live GraphStore inventory first — scopes money leaf ranking to
+            # types populated in THIS KG (anti tuition_usd pollution).
+            build_text = ""
+            build_ctx = None
+            populated_for_numeric: list[str] | None = None
+            try:
+                from infona_client.nlp.query_build import (
+                    collect_query_build_context,
+                    format_query_build_for_prompt,
+                )
+
+                build_ctx = await collect_query_build_context(
+                    store,
+                    tenant_id=tenant_id,
+                    kg=kg_name,
+                    question=question,
+                )
+                build_text = format_query_build_for_prompt(build_ctx)
+                if build_ctx is not None and build_ctx.types:
+                    timing["query_build"] = "present"
+                    timing["query_build_types"] = float(
+                        len(build_ctx.populated_type_names)
+                    )
+                    if build_ctx.question_type_hits:
+                        timing["query_build_type_hits"] = ", ".join(
+                            build_ctx.question_type_hits
+                        )[:200]
+                    if build_ctx.populated_type_names:
+                        populated_for_numeric = list(build_ctx.populated_type_names)
+            except Exception:
+                logger.debug("query_build_context_failed", exc_info=True)
+                build_text = ""
+                build_ctx = None
+            if not populated_for_numeric and kg_active_types:
+                populated_for_numeric = sorted(kg_active_types)
             # Optional ONTA-537 mention index + precomputed query embedding
             # when the ask path already has them (best-effort; hermetic without).
             _rctx = get_resolve_context()
@@ -1416,6 +1451,7 @@ class NLQueryPipeline:
                 type_names=names_for_ground,
                 mention_index=_midx,
                 query_embedding=_qemb,
+                populated_types=populated_for_numeric,
             )
             num_text = format_numeric_grounding_for_prompt(num_plan)
             if num_plan is not None:
@@ -1448,34 +1484,6 @@ class NLQueryPipeline:
                 logger.debug("dim_registry_grounding_failed", exc_info=True)
                 dim_text = ""
                 dim_binds = []
-            # Live GraphStore inventory: *build* Cypher from populated types
-            # (anti-pollution / no pure guess against empty Product shells).
-            build_text = ""
-            try:
-                from infona_client.nlp.query_build import (
-                    collect_query_build_context,
-                    format_query_build_for_prompt,
-                )
-
-                build_ctx = await collect_query_build_context(
-                    store,
-                    tenant_id=tenant_id,
-                    kg=kg_name,
-                    question=question,
-                )
-                build_text = format_query_build_for_prompt(build_ctx)
-                if build_ctx is not None and build_ctx.types:
-                    timing["query_build"] = "present"
-                    timing["query_build_types"] = float(
-                        len(build_ctx.populated_type_names)
-                    )
-                    if build_ctx.question_type_hits:
-                        timing["query_build_type_hits"] = ", ".join(
-                            build_ctx.question_type_hits
-                        )[:200]
-            except Exception:
-                logger.debug("query_build_context_failed", exc_info=True)
-                build_text = ""
             grounding_text = merge_grounding_texts(
                 build_text, loc_text, num_text, dim_text
             )
@@ -1575,12 +1583,18 @@ class NLQueryPipeline:
                                         mention_index=_midx_esc,
                                         query_embedding=_qemb_esc,
                                     )
+                                    pop_esc = (
+                                        list(kg_active_types)
+                                        if kg_active_types
+                                        else None
+                                    )
                                     num_esc = ground_numeric_plan(
                                         question,
                                         ontology,
                                         type_names=names_esc,
                                         mention_index=_midx_esc,
                                         query_embedding=_qemb_esc,
+                                        populated_types=pop_esc,
                                     )
                                     dim_esc = ""
                                     try:
