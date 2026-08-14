@@ -72,7 +72,6 @@ OVERSIZE_ALLOWLIST: dict[str, int] = {
     "infona_client/graph/neo4j_store.py": 1181,
     "infona_client/graph/ontology_base_pin.py": 887,
     "infona_client/graph/ontology_catalog.py": 1025,
-    "infona_client/graph/ontology_commit.py": 1992,
     "infona_client/graph/ontology_queries.py": 1312,
     "infona_client/graph/ontology_snapshots.py": 1421,
     "infona_client/graph/pg_ops.py": 805,

@@ -2,9 +2,9 @@
 
 ONTA-403 — the schema-write analogue of ``test_write_path_convergence.py``
 (ADR 0007). Builders in ``graph/ontology_queries.py`` remain the SPARQL
-construction layer; only ``graph/ontology_commit.py`` may *apply* them in
-production (call a builder and hand the SPARQL to ``neptune.update`` / call
-the builder in a write path).
+construction layer; only the ``graph/ontology_commit*.py`` commit path may
+*apply* them in production (call a builder and hand the SPARQL to
+``neptune.update`` / call the builder in a write path).
 
 Two layers:
 - **Structural** — deny-by-default source scan of ``infona_client/`` for raw
@@ -37,10 +37,15 @@ _BUILDERS = (
 )
 
 # Modules permitted to *call* a builder. ontology_queries defines them;
-# ontology_commit is the single application path.
+# ontology_commit* is the single application path (facade + SPARQL siblings).
 _ALLOWLIST: dict[str, str] = {
     "graph/ontology_queries.py": "defines the SPARQL builders",
-    "graph/ontology_commit.py": "the ONE commit path that applies builders (ONTA-403)",
+    "graph/ontology_commit_sparql.py": (
+        "SPARQL apply-one / upsert sibling of the ONE commit path (ONTA-403)"
+    ),
+    "graph/ontology_commit_sparql_ops.py": (
+        "SPARQL alias/rename/deprecate sibling of the ONE commit path (ONTA-403)"
+    ),
     # Dual-backend catalog apply path (SPARQL builders + Neo4j pg upserts).
     "graph/ontology_catalog.py": "catalog dual-backend apply; wraps builders for SPARQL stores",
     # False positive: OntologyMentionIndex.upsert_type builds embed-text strings
