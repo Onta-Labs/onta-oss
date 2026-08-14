@@ -7,29 +7,31 @@ relationship labels and attribute keys that are **not** in the ontology
 filtered, coverage sees filter tokens bound, and aggregates return **0 with
 high confidence**.
 
-This module is pure + hermetic:
+This module is pure + hermetic for the check itself:
 
-1. Extract relationship / attribute **leaves** from ontology summary text
-   (dash-literal catalog form + production ``Attributes:`` /
-   ``Relationships:`` lines).
+1. Build an allowlist of relationship / attribute **leaves** — prefer live
+   GraphStore catalog + instance-populated inventory for the active tenant+kg
+   (:func:`inventory_from_graph_store` / :meth:`OntologyLeafInventory.from_leaves`);
+   fall back to parsing ontology summary text when the store probe fails.
 2. Parse free-form Cypher for typed rel patterns and property keys.
 3. Reject plans that use non-schema hops / leaves (fail closed).
 
 **Allowlisted ADR 0013 structural edges** (``INSTANCE_OF``, ``PREDICATE``,
 ``SUBJECT``, ``OBJECT``, ``SUBCLASS_OF``) always pass. Typed dual-write
 shortcuts are valid **only** when ``sanitize_rel_type(leaf)`` (or the leaf
-itself) matches a declared relationship leaf — never invent ``HAS_<LEAF>``
-when the leaf is bare ``leaf``.
+itself) matches a declared *or instance-populated* relationship leaf — never
+invent ``HAS_<LEAF>`` when the leaf is bare ``leaf``.
 
 **Product rules:** always-LLM (regenerate, never fixture short-circuit);
 fail closed over high-conf zeros; anti-overfit (synthetic leaves only in tests).
+Post-gen gate only — never short-circuits generation.
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Iterable, Sequence
 
 from infona_client.graph.facts import sanitize_rel_type
 from infona_client.nlp.cypher_generate import (
@@ -264,9 +266,56 @@ def extract_attribute_leaves(ontology_summary: str) -> list[str]:
     return ordered
 
 
+def _ordered_unique_leaves(leaves: Iterable[str]) -> list[str]:
+    """Stable unique safe identifier leaves (preserve first-seen casing)."""
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for raw in leaves or ():
+        if not raw or not isinstance(raw, str):
+            continue
+        leaf = raw.strip()
+        if not leaf or not _SAFE_IDENT_RE.match(leaf):
+            continue
+        key = leaf.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        ordered.append(leaf)
+    return ordered
+
+
+def _build_allow_sets(
+    rels: Sequence[str],
+    attrs: Sequence[str],
+) -> tuple[frozenset[str], frozenset[str]]:
+    """Compute dual-write rel tokens + prop keys from leaf lists."""
+    tokens: set[str] = set(STRUCTURAL_REL_TYPES)
+    prop_keys: set[str] = {k.lower() for k in STRUCTURAL_PROP_KEYS}
+    for leaf in rels:
+        prop_keys.add(leaf.lower())
+        prop_keys.add(normalize_leaf_key(leaf))
+        try:
+            tokens.add(sanitize_rel_type(leaf))
+        except Exception:  # noqa: BLE001 — bad leaf stays out of allow-set
+            pass
+        # Also accept the leaf as written uppercased (LLM sometimes copies
+        # the leaf name into a type token without HAS_ invent).
+        if _SAFE_IDENT_RE.match(leaf):
+            tokens.add(leaf.upper())
+    for leaf in attrs:
+        prop_keys.add(leaf.lower())
+        prop_keys.add(normalize_leaf_key(leaf))
+    return frozenset(tokens), frozenset(prop_keys)
+
+
 @dataclass(frozen=True)
 class OntologyLeafInventory:
-    """Schema inventory extracted from ontology summary text."""
+    """Schema inventory for free-form Cypher allowlisting.
+
+    Prefer building via :meth:`from_leaves` / :func:`inventory_from_graph_store`
+    (live catalog + instance-populated slots). :meth:`from_ontology` remains
+    the text-parse fallback when the store probe fails.
+    """
 
     relationship_leaves: tuple[str, ...] = ()
     attribute_leaves: tuple[str, ...] = ()
@@ -276,37 +325,217 @@ class OntologyLeafInventory:
     # Lowercased attribute + relationship leaves for prop-key checks.
     allowed_prop_keys: frozenset[str] = field(default_factory=frozenset)
     empty: bool = True
+    # Provenance: "graph_store" | "ontology_text" | "merged" | "explicit"
+    source: str = "explicit"
 
     @classmethod
-    def from_ontology(cls, ontology_summary: str) -> OntologyLeafInventory:
-        rels = extract_relationship_leaves(ontology_summary)
-        attrs = extract_attribute_leaves(ontology_summary)
-        types = extract_type_names_from_ontology(ontology_summary or "")
-        tokens: set[str] = set(STRUCTURAL_REL_TYPES)
-        prop_keys: set[str] = {k.lower() for k in STRUCTURAL_PROP_KEYS}
-        for leaf in rels:
-            prop_keys.add(leaf.lower())
-            prop_keys.add(normalize_leaf_key(leaf))
-            try:
-                tokens.add(sanitize_rel_type(leaf))
-            except Exception:  # noqa: BLE001 — bad leaf stays out of allow-set
-                pass
-            # Also accept the leaf as written uppercased (LLM sometimes copies
-            # the leaf name into a type token without HAS_ invent).
-            if _SAFE_IDENT_RE.match(leaf):
-                tokens.add(leaf.upper())
-        for leaf in attrs:
-            prop_keys.add(leaf.lower())
-            prop_keys.add(normalize_leaf_key(leaf))
+    def from_leaves(
+        cls,
+        *,
+        relationship_leaves: Sequence[str] = (),
+        attribute_leaves: Sequence[str] = (),
+        type_names: Sequence[str] = (),
+        source: str = "explicit",
+    ) -> OntologyLeafInventory:
+        """Build inventory from structured leaf lists (catalog / planning / tests)."""
+        rels = _ordered_unique_leaves(relationship_leaves)
+        attrs = _ordered_unique_leaves(attribute_leaves)
+        types = _ordered_unique_leaves(type_names)
+        tokens, prop_keys = _build_allow_sets(rels, attrs)
         empty = not rels and not attrs and not types
         return cls(
             relationship_leaves=tuple(rels),
             attribute_leaves=tuple(attrs),
             type_names=tuple(types),
-            allowed_rel_tokens=frozenset(tokens),
-            allowed_prop_keys=frozenset(prop_keys),
+            allowed_rel_tokens=tokens,
+            allowed_prop_keys=prop_keys,
             empty=empty,
+            source=source,
         )
+
+    @classmethod
+    def from_ontology(cls, ontology_summary: str) -> OntologyLeafInventory:
+        """Parse leaves from ontology summary text (fallback when store fails)."""
+        rels = extract_relationship_leaves(ontology_summary)
+        attrs = extract_attribute_leaves(ontology_summary)
+        types = extract_type_names_from_ontology(ontology_summary or "")
+        return cls.from_leaves(
+            relationship_leaves=rels,
+            attribute_leaves=attrs,
+            type_names=types,
+            source="ontology_text",
+        )
+
+    @classmethod
+    def from_planning_types(
+        cls,
+        planning_types: Sequence[Any],
+        *,
+        source: str = "planning",
+    ) -> OntologyLeafInventory:
+        """Build inventory from :class:`~infona_client.nlp.planning_schema.PlanningType` rows.
+
+        Includes every slot (populated and declared-empty) so declared schema
+        remains queryable; instance-only slots from inventory overlay are
+        first-class.
+        """
+        rels: list[str] = []
+        attrs: list[str] = []
+        types: list[str] = []
+        for t in planning_types or ():
+            name = getattr(t, "name", None) or (
+                t.get("name") if isinstance(t, dict) else None
+            )
+            if name:
+                types.append(str(name))
+            slots = getattr(t, "slots", None)
+            if slots is None and isinstance(t, dict):
+                slots = t.get("slots") or ()
+            for s in slots or ():
+                sname = getattr(s, "name", None) or (
+                    s.get("name") if isinstance(s, dict) else None
+                )
+                if not sname:
+                    continue
+                kind = (
+                    getattr(s, "kind", None)
+                    or (s.get("kind") if isinstance(s, dict) else None)
+                    or "literal"
+                )
+                range_type = getattr(s, "range_type", None) or (
+                    s.get("range_type") if isinstance(s, dict) else None
+                )
+                if str(kind).lower() == "relationship" or range_type:
+                    rels.append(str(sname))
+                else:
+                    attrs.append(str(sname))
+                # prop_key may differ from name (sanitize rewrite).
+                pk = getattr(s, "prop_key", None) or (
+                    s.get("prop_key") if isinstance(s, dict) else None
+                )
+                if pk and str(pk) != str(sname):
+                    if str(kind).lower() == "relationship" or range_type:
+                        rels.append(str(pk))
+                    else:
+                        attrs.append(str(pk))
+        return cls.from_leaves(
+            relationship_leaves=rels,
+            attribute_leaves=attrs,
+            type_names=types,
+            source=source,
+        )
+
+    def merge(self, other: OntologyLeafInventory) -> OntologyLeafInventory:
+        """Union leaves from ``other`` (order: self first, then other)."""
+        if other is None or other.empty:
+            return self
+        if self.empty:
+            return other
+        return OntologyLeafInventory.from_leaves(
+            relationship_leaves=list(self.relationship_leaves)
+            + list(other.relationship_leaves),
+            attribute_leaves=list(self.attribute_leaves)
+            + list(other.attribute_leaves),
+            type_names=list(self.type_names) + list(other.type_names),
+            source="merged",
+        )
+
+
+async def inventory_from_graph_store(
+    store: Any,
+    *,
+    tenant_id: str,
+    kg: str,
+    type_names: Sequence[str] | None = None,
+) -> OntologyLeafInventory | None:
+    """Build schema allowlist from live GraphStore catalog + type inventory.
+
+    Source of truth for schema-valid:
+
+    * **Declared** attribute / relationship leaves from the tenant catalog
+      for types present in this KG's schema view.
+    * **Plus instance-populated** prop keys and relationship leaves from
+      :func:`~infona_client.graph.explore_store.type_summary` (covers
+      promoted / instance-only leaves that sparse ontology text misses).
+
+    Returns ``None`` when the store is unavailable or the probe fails so
+    callers can fall back to :meth:`OntologyLeafInventory.from_ontology`.
+    """
+    if store is None or not tenant_id or not kg:
+        return None
+    try:
+        from infona_client.graph.ontology_catalog import schema_types_for_kg
+        from infona_client.nlp.planning_schema import (
+            planning_types_from_schema_and_summaries,
+        )
+
+        rows = await schema_types_for_kg(
+            store, tenant_id=tenant_id, kg=kg, include_attrs=True
+        )
+        if not rows and not type_names:
+            return None
+
+        force_set = {n for n in (type_names or ()) if n}
+        summaries: dict[str, Any] = {}
+        try:
+            from infona_client.graph.explore_store import type_summary
+
+            probe_names: list[str] = []
+            seen_probe: set[str] = set()
+            for r in rows or ():
+                name = getattr(r, "name", None)
+                if not name:
+                    continue
+                # Probe types with instances, plus any caller-scoped names.
+                if int(getattr(r, "entity_count", 0) or 0) > 0 or name in force_set:
+                    if name not in seen_probe:
+                        probe_names.append(name)
+                        seen_probe.add(name)
+            for n in force_set:
+                if n not in seen_probe:
+                    probe_names.append(n)
+                    seen_probe.add(n)
+
+            async def _one(name: str) -> tuple[str, Any]:
+                try:
+                    row = await type_summary(
+                        store=store,
+                        tenant_id=tenant_id,
+                        kg_name=kg,
+                        type_name=name,
+                    )
+                    return name, row
+                except Exception:  # noqa: BLE001 — best-effort inventory
+                    return name, None
+
+            if probe_names:
+                import asyncio
+
+                results = await asyncio.gather(*[_one(n) for n in probe_names])
+                for name, row in results:
+                    if row is not None:
+                        summaries[name] = row
+        except Exception:  # noqa: BLE001
+            summaries = {}
+
+        planning = planning_types_from_schema_and_summaries(
+            rows or (),
+            summaries,
+            max_empty_types=10_000,
+            force_include=force_set or None,
+            inventory_probed=True,
+        )
+        # If caller scoped type_names, still keep full inventory leaves for
+        # those types + any instance-only types discovered in summaries —
+        # schema-valid is about the KG, not the semantic top-K window alone.
+        inv = OntologyLeafInventory.from_planning_types(
+            planning, source="graph_store"
+        )
+        if inv.empty:
+            return None
+        return inv
+    except Exception:  # noqa: BLE001 — never brick /ask on inventory probe
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -445,13 +674,18 @@ def check_schema_valid_cypher(
     template: str | None = None,
     inventory: OntologyLeafInventory | None = None,
 ) -> SchemaValidResult:
-    """Return schema-validity of free-form Cypher against ontology leaves.
+    """Return schema-validity of free-form Cypher against schema leaves.
+
+    Prefer passing a precomputed ``inventory`` from
+    :func:`inventory_from_graph_store` (live catalog + populated slots). When
+    omitted, falls back to parsing ``ontology_summary`` text.
 
     ``ok=True`` when:
 
-    * ontology inventory is empty (cannot validate — fail open so a missing
-      ontology summary does not brick /ask), OR
-    * every typed rel and non-structural prop key is schema-grounded.
+    * inventory is empty (cannot validate — fail open so a missing schema
+      does not brick /ask), OR
+    * every typed rel and non-structural prop key is schema-grounded
+      (declared catalog leaf **or** instance-populated prop/rel for this KG).
 
     Known ADR 0013 **templates** still validate ``prop_key`` / ``rel_attr``
     params (a template name does not license inventing a leaf), but free-form
@@ -546,7 +780,8 @@ def schema_valid_feedback(result: SchemaValidResult, *, previous_cypher: str = "
         "",
         "Rewrite rules (REQUIRED):",
         "1. ONLY use relationship and attribute names that appear in the "
-        "ontology schema text provided.",
+        "ontology schema (live catalog / populated inventory for this KG, or "
+        "the schema text provided).",
         "2. Typed dual-write relationship tokens are the UPPER_SNAKE form of a "
         "declared leaf via sanitize_rel_type (offered_in → OFFERED_IN). Do NOT "
         "invent HAS_OFFERED_IN / HAS_* when the leaf is not literally has_*.",
@@ -561,12 +796,12 @@ def schema_valid_feedback(result: SchemaValidResult, *, previous_cypher: str = "
     ]
     if result.inventory and result.inventory.relationship_leaves:
         parts.append(
-            "Declared relationship leaves: "
+            "Allowed relationship leaves: "
             + ", ".join(result.inventory.relationship_leaves[:40])
         )
     if result.inventory and result.inventory.attribute_leaves:
         parts.append(
-            "Declared attribute leaves (sample): "
+            "Allowed attribute leaves (sample): "
             + ", ".join(result.inventory.attribute_leaves[:40])
         )
     if previous_cypher and previous_cypher.strip():
@@ -619,5 +854,6 @@ __all__ = [
     "extract_cypher_rel_types",
     "extract_relationship_leaves",
     "fail_closed_schema_answer",
+    "inventory_from_graph_store",
     "schema_valid_feedback",
 ]

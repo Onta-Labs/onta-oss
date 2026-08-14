@@ -122,7 +122,11 @@ def format_query_build_for_prompt(ctx: QueryBuildContext | None) -> str:
         "question explicitly requires another. (2) Prefer relationship/attr "
         "leaves marked populated in the ontology schema. (3) Filtered aggregates "
         "must constrain first, then SUM/COUNT. (4) Do not emit a pure Product/"
-        "Book/pollution type scan when a more specific populated type matches."
+        "Book/pollution type scan when a more specific populated type matches. "
+        "(5) If Graph build notes / probe list dim values, equality-filter with "
+        "those exact strings. (6) If money candidates are listed for cost/price, "
+        "use that prop_key. (7) Multi-constraint questions MUST constrain all "
+        "listed dims before aggregate."
     )
     return "\n".join(lines)
 

@@ -10,6 +10,9 @@ checks whether generated Cypher **covers** NL constraints:
 * **dim-registry unique binds** (leaf+value) actually applied — not merely that
   a token string appears next to a *different* leaf (wrong-leaf / multi-filter
   drop class)
+* **zero-instance primary types** when live inventory is provided: plan must
+  not target only empty pollution types while the question matches other
+  *populated* types (high-conf empty totals class)
 
 **Confidence** (attached to timing / NLResult):
 
@@ -23,7 +26,10 @@ checks whether generated Cypher **covers** NL constraints:
 the question has filter intent (or unbound filter tokens). Prefer clarification
 over a silent wrong total. Unique registry binds on aggregate/count plans are
 required predicates: missing any unique bind → fail-closed (even if some other
-dimension filter is present).
+dimension filter is present). When ``populated_types`` / ``type_counts`` is
+supplied, a plan whose primary types all have 0 entities while the question
+matched other populated types is also fail-closed (retry with inventory
+feedback) so we never ship ``0 @ high conf`` for a pollution type.
 
 Anti-overfit: synthetic types/attrs/values only in tests; no persona gold.
 """
@@ -33,7 +39,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol, Sequence, runtime_checkable
+from typing import Any, Literal, Mapping, Protocol, Sequence, runtime_checkable
 
 from infona_client.nlp.cypher_filter_integrity import (
     cypher_has_constraining_filter,
@@ -161,6 +167,9 @@ class CoverageResult:
     # Registry unique binds that are / aren't applied with the correct leaf.
     unbound_dim_binds: tuple[str, ...] = ()  # "leaf=value" labels
     bound_dim_binds: tuple[str, ...] = ()
+    # Live inventory: plan types with 0 entities vs question-matched populated.
+    empty_plan_types: tuple[str, ...] = ()
+    matched_populated_types: tuple[str, ...] = ()
 
     def to_timing(self) -> dict[str, float | str]:
         """Sparse timing / debug keys for NLResult.timing."""
@@ -180,6 +189,13 @@ class CoverageResult:
             out["unbound_dim_binds"] = ", ".join(self.unbound_dim_binds)[:300]
         if self.bound_dim_binds:
             out["bound_dim_binds"] = ", ".join(self.bound_dim_binds)[:300]
+        if self.empty_plan_types:
+            out["empty_plan_types"] = ", ".join(self.empty_plan_types)[:300]
+            out["query_zero_instance_type"] = 1.0
+        if self.matched_populated_types:
+            out["matched_populated_types"] = ", ".join(
+                self.matched_populated_types
+            )[:300]
         return out
 
 
@@ -534,6 +550,19 @@ def build_clarification_prompt(
 
 def fail_closed_answer(result: CoverageResult) -> str:
     """User-facing honest answer when we refuse to execute an uncovered plan."""
+    if result.empty_plan_types and result.matched_populated_types:
+        parts = [
+            "Could not answer with confidence: the generated plan targeted "
+            "type(s) with no instances in this knowledge graph "
+            f"({', '.join(result.empty_plan_types)}) while the question matches "
+            "populated type(s) "
+            f"({', '.join(result.matched_populated_types)}). "
+            "Executing it would return a silent zero with false high confidence.",
+        ]
+        if result.reason:
+            parts.append(f"Reason: {result.reason}")
+        return " ".join(parts)
+
     parts = [
         "Could not answer with confidence: the generated plan does not cover "
         "filter constraints from the question, so executing it risked a silent "
@@ -586,7 +615,24 @@ def coverage_feedback(result: CoverageResult, *, previous_cypher: str = "") -> s
         "6. When the dim registry bound a token to a specific leaf+value, the plan "
         "MUST constrain with THAT leaf (and the stored value) — filtering a "
         "different property while only mentioning the token string is not enough.",
+        "7. Prefer $type_names / INSTANCE_OF targets from the LIVE populated type "
+        "inventory. Do NOT target empty pollution types (0 entities in this KG) "
+        "when the question matches a populated type.",
+        "8. Multi-constraint questions (two or more filter values such as a zone "
+        "AND a status) MUST apply ALL of those filters before SUM/COUNT/AVG — "
+        "a single-filter or unfiltered measure aggregate is a silent wrong total.",
     ]
+    if result.empty_plan_types:
+        parts.append(
+            "Rejected plan targeted zero-instance type(s): "
+            + ", ".join(result.empty_plan_types)
+        )
+    if result.matched_populated_types:
+        parts.append(
+            "Question matches these POPULATED types (use one of these as primary "
+            "$type_names): "
+            + ", ".join(result.matched_populated_types)
+        )
     if result.unbound_tokens:
         parts.append(
             "Unbound filter tokens from the question: "
@@ -608,6 +654,114 @@ def coverage_feedback(result: CoverageResult, *, previous_cypher: str = "") -> s
     return "\n".join(parts)
 
 
+def _normalize_type_set(names: Sequence[str] | None) -> set[str]:
+    out: set[str] = set()
+    for n in names or ():
+        s = str(n or "").strip()
+        if s:
+            out.add(s)
+    return out
+
+
+def resolve_populated_type_set(
+    *,
+    populated_types: Sequence[str] | None = None,
+    type_counts: Mapping[str, int] | None = None,
+) -> set[str] | None:
+    """Return the set of type names with entity_count > 0, or None if unknown.
+
+    ``None`` means inventory was not supplied — caller must skip the
+    zero-instance gate (preserves hermetic tests that omit inventory).
+    """
+    if type_counts is not None:
+        pops: set[str] = set()
+        for name, cnt in type_counts.items():
+            s = str(name or "").strip()
+            if not s:
+                continue
+            try:
+                n = int(cnt)
+            except (TypeError, ValueError):
+                n = 0
+            if n > 0:
+                pops.add(s)
+        # Also union explicit populated_types when both given.
+        pops |= _normalize_type_set(populated_types)
+        return pops
+    if populated_types is not None:
+        return _normalize_type_set(populated_types)
+    return None
+
+
+def plan_primary_types(
+    cypher: str,
+    params: dict[str, Any] | None = None,
+) -> set[str]:
+    """Type names the plan uses as primary INSTANCE_OF / $type_names targets.
+
+    Prefers explicit params (templates / confined generators), then falls back
+    to :func:`~infona_client.nlp.empty_type_guard.types_referenced`.
+    """
+    from infona_client.nlp.empty_type_guard import types_referenced
+
+    return set(types_referenced(cypher or "", params))
+
+
+def zero_instance_type_coverage(
+    question: str,
+    cypher: str,
+    *,
+    params: dict[str, Any] | None = None,
+    populated_types: Sequence[str] | None = None,
+    type_counts: Mapping[str, int] | None = None,
+) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
+    """Detect pollution-type primary targets under live inventory.
+
+    Returns ``(empty_plan_types, matched_populated_alternatives)`` when the
+    plan's primary types are **all** zero-instance (or unknown-empty) in this
+    KG **and** the question matches at least one *other* populated type.
+    Returns ``None`` when inventory is missing or the plan is inventory-safe.
+
+    Anti-overfit: pure string/count logic; no product type hardcodes.
+    """
+    populated = resolve_populated_type_set(
+        populated_types=populated_types, type_counts=type_counts
+    )
+    if populated is None:
+        return None
+    # No populated inventory at all → nothing to prefer; skip gate.
+    if not populated:
+        return None
+
+    plan_types = plan_primary_types(cypher, params)
+    if not plan_types:
+        return None
+
+    # Case-insensitive membership against live inventory.
+    pop_by_norm = {n.lower(): n for n in populated}
+
+    def _is_populated(name: str) -> bool:
+        return name.lower() in pop_by_norm
+
+    empty_plan = sorted(t for t in plan_types if not _is_populated(t))
+    populated_plan = [t for t in plan_types if _is_populated(t)]
+    # Any primary type with instances → plan can return rows; not this class.
+    if populated_plan:
+        return None
+    if not empty_plan:
+        return None
+
+    # Question matched populated types that are *not* the empty plan targets.
+    from infona_client.nlp.query_build import match_question_types
+
+    hits = match_question_types(question, sorted(populated))
+    empty_norm = {t.lower() for t in empty_plan}
+    alternatives = tuple(h for h in hits if h.lower() not in empty_norm)
+    if not alternatives:
+        return None
+    return (tuple(empty_plan), alternatives)
+
+
 def check_constraint_coverage(
     question: str,
     cypher: str,
@@ -618,6 +772,8 @@ def check_constraint_coverage(
     schema_reason: str | None = None,
     sketch: QueryIntentSketch | None = None,
     dim_binds: Sequence[DimBindLike] | None = None,
+    populated_types: Sequence[str] | None = None,
+    type_counts: Mapping[str, int] | None = None,
 ) -> CoverageResult:
     """Return coverage + confidence for a generated plan.
 
@@ -635,6 +791,11 @@ def check_constraint_coverage(
     missing unique bind fails closed — even if a *different* leaf provides
     ``plan_has_dimension_filter`` True (wrong-leaf / multi-filter drop class).
     Ambiguous registry tokens are never passed here (bind path is unique-only).
+
+    ``populated_types`` / ``type_counts`` — optional live GraphStore inventory
+    (from :mod:`query_build`). When supplied, a plan whose primary types all
+    have 0 entities while the question matches other populated types fails
+    closed (pollution-type / high-conf empty class). Omitted → gate skipped.
     """
     params = dict(params or {})
     tmpl = (template or "").strip() or None
@@ -688,6 +849,42 @@ def check_constraint_coverage(
             fail_closed=True,
             sketch=sk,
             extra={"schema_reason": schema_reason},
+        )
+
+    # --- Zero-instance primary types (live inventory) -----------------------
+    # Pollution type with 0 entities (e.g. empty Product shell) while the
+    # question matches a populated type (Widget/Sensor). Even with a dim
+    # filter this returns 0 @ high conf — fail closed + regenerate.
+    zero_hit = zero_instance_type_coverage(
+        question,
+        cypher,
+        params=params,
+        populated_types=populated_types,
+        type_counts=type_counts,
+    )
+    if zero_hit is not None:
+        empty_plan, matched_pops = zero_hit
+        reason = (
+            f"plan primary type(s) have 0 entities in this KG "
+            f"({', '.join(empty_plan)}) while question matches populated "
+            f"type(s) ({', '.join(matched_pops)}) — pollution/empty-type "
+            f"total risk (would return 0 with false high confidence)"
+        )
+        return _with_binds(
+            ok=False,
+            confidence="low",
+            reason=reason,
+            unbound_tokens=tuple(unbound),
+            bound_tokens=tuple(bound),
+            clarification_prompt="",
+            fail_closed=True,
+            sketch=sk,
+            empty_plan_types=empty_plan,
+            matched_populated_types=matched_pops,
+            extra={
+                "zero_instance_types": list(empty_plan),
+                "matched_populated_types": list(matched_pops),
+            },
         )
 
     # --- Registry unique binds as required predicates (aggregate/count) ------
@@ -814,7 +1011,83 @@ def check_constraint_coverage(
             sketch=sk,
         )
 
-    # --- Multi-token AND: only fail-closed when also aggregate/count-ish ---
+    # --- Multi-filter fail-closed (aggregate/count) --------------------------------
+    # Product class: DockA + ready total cost → silent unfiltered (or single-
+    # filter) SUM of the measure with high conf. When the question has ≥2
+    # filter constraints (tokens and/or unique dim-registry binds), the plan
+    # must apply ≥2 real dim filters (or cover every unique registry bind).
+    # A single-filter aggregate under multi-filter intent is fail-closed —
+    # never medium/high silent total.
+    required_filters = max(len(tokens), n_unique_binds)
+    if n_unique_binds >= 2:
+        # Registry is authoritative when it uniquely bound ≥2 dims.
+        applied_filters = len(covered_binds)
+    elif n_unique_binds == 1:
+        applied_filters = len(covered_binds) + max(
+            0, len(bound) - 1
+        )  # one bind + any extra bound token
+        if has_dim and applied_filters < 1:
+            applied_filters = 1
+    else:
+        # No registry binds: count bound tokens when a dim filter is present.
+        applied_filters = len(bound) if has_dim else 0
+        if has_dim and applied_filters == 0:
+            applied_filters = 1  # weak single filter signal
+
+    multi_filter_intent = required_filters >= 2 or (
+        len(tokens) >= 2 and (filterish or sk.has_filter_intent)
+    )
+    if multi_filter_intent and is_agg_or_count and applied_filters < min(
+        2, required_filters if required_filters >= 2 else 2
+    ):
+        # Need at least 2 real dim filters when ≥2 constraints were asked.
+        need = max(2, n_unique_binds) if n_unique_binds >= 2 else 2
+        reason = (
+            f"multi-filter intent ({required_filters} constraint(s); tokens="
+            f"{list(tokens)[:6]!r}"
+            + (
+                f", dim_binds={list(unbound_bind_labels) + list(bound_bind_labels)}"
+                if n_unique_binds
+                else ""
+            )
+            + f") but plan applies only {applied_filters} real dim filter(s) "
+            f"(need ≥{need}) — silent wrong total risk; apply ALL filters "
+            "before SUM/COUNT"
+        )
+        clarify_toks = list(unbound) or list(tokens)
+        if missing_binds:
+            clarify_toks = [
+                f"{b.token}→{b.dim.leaf}" for b in missing_binds
+            ] + clarify_toks
+        clarify = build_clarification_prompt(clarify_toks, sketch=sk)
+        # Explicit dual-constraint feedback when we know both tokens.
+        if len(tokens) >= 2:
+            a, b = tokens[0], tokens[1]
+            extra_fb = (
+                f"Apply BOTH filters (e.g. constrain by '{a}' AND '{b}') "
+                "before SUM/COUNT — do not emit a single-filter or unfiltered "
+                "measure aggregate."
+            )
+            if clarify:
+                clarify = f"{clarify} {extra_fb}"
+            else:
+                clarify = extra_fb
+        return _with_binds(
+            ok=False,
+            confidence="low",
+            reason=reason,
+            unbound_tokens=tuple(unbound or tokens),
+            bound_tokens=tuple(bound),
+            clarification_prompt=clarify,
+            fail_closed=True,
+            sketch=sk,
+            extra={
+                "multi_filter_required": required_filters,
+                "multi_filter_applied": applied_filters,
+            },
+        )
+
+    # Multi-token AND: only fail-closed when also aggregate/count-ish ---
     if len(tokens) >= 2 and len(bound) <= 1 and is_agg_or_count and not has_dim:
         reason = (
             f"multi-constraint question ({len(tokens)} filter-like tokens) but "
@@ -832,10 +1105,9 @@ def check_constraint_coverage(
             sketch=sk,
         )
 
-    # Multi-token partial with a dim filter: if registry says ≥2 unique binds
-    # and all are covered, stay high; if some missing, already handled above
-    # for aggregates. For non-agg, soft medium remains.
-    if len(tokens) >= 2 and len(bound) == 1 and has_dim:
+    # Multi-token partial with a dim filter on non-aggregate plans: soft medium
+    # (lists/details may still be useful). Aggregates already fail-closed above.
+    if len(tokens) >= 2 and len(bound) == 1 and has_dim and not is_agg_or_count:
         reason = (
             f"partial multi-constraint coverage: {len(bound)}/{len(tokens)} filter "
             "tokens bound; plan has a dimension filter"
@@ -1035,6 +1307,9 @@ __all__ = [
     "fail_closed_answer",
     "plan_covers_dim_bind",
     "plan_has_dimension_filter",
+    "plan_primary_types",
+    "resolve_populated_type_set",
     "split_dim_binds_coverage",
     "tokens_bound_in_plan",
+    "zero_instance_type_coverage",
 ]
