@@ -118,6 +118,9 @@ async def test_ask_success(pipeline, store):
     assert "MATCH" in result.sparql
     assert result.timing.get("query_language") == "cypher"
     assert result.timing.get("cypher_exec_path") == "template:entities_of_type_count"
+    # User-visible timing row is title-cased from this key ("Cypher Exec").
+    assert "cypher_exec_ms" in result.timing
+    assert not any(k.startswith("neptune_exec_ms") for k in result.timing)
 
 
 @pytest.mark.asyncio

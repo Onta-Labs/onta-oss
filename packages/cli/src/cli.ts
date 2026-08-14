@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { Client, InfonaError } from "./client.js";
 import { renderAgentResult } from "./agentRender.js";
+import { ASK_DEBUG_HELP, formatAskDebug } from "./askDebug.js";
 import { readConfig, writeConfig, configPathForDisplay } from "./config.js";
 
 // Read version from package.json at runtime so we never drift again.
@@ -541,7 +542,7 @@ program
   .command("ask <question>")
   .description("Ask a natural language question")
   .option("--kg <name>", "Context graph to query")
-  .option("-d, --debug", "Show SPARQL and latency breakdown")
+  .option("-d, --debug", ASK_DEBUG_HELP)
   .option("-m, --model <model>", "Override query model")
   .action(
     async (
@@ -560,42 +561,9 @@ program
         const roundtripMs = Date.now() - t0;
         process.stdout.write(`\nA: ${result.answer ?? "No answer"}\n`);
         if (opts.debug) {
-          process.stdout.write(`\nSPARQL:\n${result.sparql ?? ""}\n`);
-          const timing = (result.timing ?? {}) as Record<string, unknown>;
-          if (Object.keys(timing).length) {
-            process.stdout.write(`\n${"─".repeat(40)}\n`);
-            process.stdout.write(
-              `${"Stage".padEnd(25)} ${"Time".padStart(10)}\n`,
-            );
-            process.stdout.write(`${"─".repeat(40)}\n`);
-            for (const [key, val] of Object.entries(timing)) {
-              if (key === "attempts") {
-                process.stdout.write(
-                  `${"Attempts".padEnd(25)} ${String(val).padStart(10)}\n`,
-                );
-              } else if (typeof val === "string") {
-                const label = key
-                  .replace(/_/g, " ")
-                  .replace(/\b\w/g, (c) => c.toUpperCase());
-                process.stdout.write(
-                  `${label.padEnd(25)} ${val.padStart(10)}\n`,
-                );
-              } else {
-                const label = key
-                  .replace(/_ms$/, "")
-                  .replace(/_/g, " ")
-                  .replace(/\b\w/g, (c) => c.toUpperCase());
-                const num = typeof val === "number" ? val : Number(val);
-                process.stdout.write(
-                  `${label.padEnd(25)} ${num.toFixed(1).padStart(8)}ms\n`,
-                );
-              }
-            }
-            process.stdout.write(`${"─".repeat(40)}\n`);
-            process.stdout.write(
-              `${"Client roundtrip".padEnd(25)} ${roundtripMs.toFixed(1).padStart(8)}ms\n`,
-            );
-          }
+          process.stdout.write(
+            formatAskDebug(result, { roundtripMs }) + "\n",
+          );
         }
       });
     },
