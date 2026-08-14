@@ -2,7 +2,7 @@
 question from the open web and returns a **cited answer / artifact** (ADR 0006).
 
 This is the read-only counterpart to web *discovery* ingest. Discovery
-(:mod:`infona_client.web_sources`, :class:`WebIngestCapability`) turns a query
+(:mod:`infona_client.web_sources`; premium ``WebIngestCapability``) turns a query
 into rows and WRITES them into a knowledge graph. The research harness answers a
 question — "list every TTS model on the VAPI Humanness Index with its score" —
 by **planning** a target schema, **discovering** sources, **fetching** them via a

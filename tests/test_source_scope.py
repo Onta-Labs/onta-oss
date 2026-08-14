@@ -256,13 +256,3 @@ def test_no_incident_brand_literals_in_source_scope_module():
         assert banned not in src, f"banned brand {banned!r} in source_scope.py"
 
 
-def test_spec_prompt_does_not_hardcode_model_llm_core_chips():
-    """WS4: _SPEC_SYSTEM must not force Model core chips to LLM-only attrs."""
-    from infona_client.agent.capabilities import web_ingest_cap as cap
-
-    prompt = cap._SPEC_SYSTEM
-    # Old overfit example removed
-    assert '["provider","context_length","input_price"]' not in prompt
-    assert "For Model:" not in prompt or "context_length" not in prompt.split("For Model:")[-1][:80]
-    assert "do NOT" in prompt or "do not" in prompt.lower()
-    assert "TTS" in prompt or "speech" in prompt or "modality" in prompt

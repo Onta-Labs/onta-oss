@@ -43,7 +43,6 @@ from infona_client.agent.capabilities.normalize_cap import NormalizeCapability
 from infona_client.agent.capabilities.ontology_cap import OntologyCapability
 from infona_client.agent.capabilities.query import QueryCapability
 from infona_client.agent.capabilities.subscribe_cap import SubscribeCapability
-from infona_client.agent.capabilities.web_ingest_cap import WebIngestCapability
 from infona_client.agent.capabilities.web_research_cap import WebResearchCapability
 from infona_client.agent.conversation_store import (  # noqa: F401  (re-exported)
     Turn,
@@ -86,10 +85,27 @@ _INTENT_TO_CAPABILITY = {
     "clean": "normalize",
     "dedup": "dedup",  # registered (DedupCapability) → plans an ER rebuild
     "ontology": "ontology",  # registered (OntologyCapability) → inspect/declare
-    "discover": "web_ingest",  # registered (WebIngestCapability) → web search + ingest
+    "discover": "web_ingest",  # premium capability; OSS does not register it
     "research": "web_research",  # registered (WebResearchCapability) → cited answer/artifact, no KG write
     "subscribe": "subscribe",  # registered (SubscribeCapability) → recurring notify schedule
 }
+
+# Honest OSS answer when the user asks to mint records from the web. The
+# capability lives in hosted Infona (`infona.web_ingest`); falling through to
+# /ask would look like a query failure instead of a product-boundary message.
+_WEB_INGEST_HOSTED_ONLY = (
+    "Web discovery ingest (find records on the web and add them "
+    "to the graph) is not included in this OSS build. Ingest a "
+    "CSV or JSON file, or use hosted Infona."
+)
+
+
+def _hosted_only_web_ingest_answer() -> dict:
+    return {
+        "kind": "answer",
+        "answer": _WEB_INGEST_HOSTED_ONLY,
+        "narrative": "",
+    }
 
 # When the user asks for SEVERAL actions in one breath ("clean the names and
 # dedupe"), we plan each capability and compose them into one ordered plan. This
@@ -776,10 +792,11 @@ async def _respond(
     # enrich pass in the SAME turn would match 0 and premature-clarify (the
     # enrich-plan-order-1 short-circuit that beat discovery). Discovery mints them
     # first; enriching the fresh entities is a natural follow-up turn. Only when
-    # the discover capability is registered.
-    if _is_web_discovery_request(message) and get_capability(
-        _INTENT_TO_CAPABILITY["discover"]
-    ) is not None:
+    # the discover capability is registered (premium). OSS returns a hosted-only
+    # answer instead of falling through to /ask.
+    if _is_web_discovery_request(message):
+        if get_capability(_INTENT_TO_CAPABILITY["discover"]) is None:
+            return _hosted_only_web_ingest_answer()
         intents = [
             "discover",
             *[
@@ -862,17 +879,20 @@ async def _respond(
             and url_intent != "enrich"
             and _is_interrogative(message)
         )
-        if not defer_to_classifier and get_capability(
-            _INTENT_TO_CAPABILITY[url_intent]
-        ) is not None:
-            intents = [
-                url_intent,
-                *[
-                    i
-                    for i in intents
-                    if i not in (url_intent, "question", "ambiguous")
-                ],
-            ]
+        if not defer_to_classifier:
+            url_cap = get_capability(_INTENT_TO_CAPABILITY[url_intent])
+            if url_cap is None and url_intent == "discover":
+                # URL-bearing mint-new must not fall through to /ask in OSS.
+                return _hosted_only_web_ingest_answer()
+            if url_cap is not None:
+                intents = [
+                    url_intent,
+                    *[
+                        i
+                        for i in intents
+                        if i not in (url_intent, "question", "ambiguous")
+                    ],
+                ]
 
     # A read-only question is terminal and does not compose with actions.
     if "question" in intents:
@@ -904,6 +924,8 @@ async def _respond(
     ]
     available = [(i, c) for i, c in available if c is not None]
     if not available:
+        if actionable[0] == "discover":
+            return _hosted_only_web_ingest_answer()
         return {
             "kind": "clarify",
             "question": (
@@ -1411,10 +1433,10 @@ def register_default_capabilities() -> None:
     register_capability(EnrichCapability(normalize=normalize))
     register_capability(DedupCapability())
     register_capability(OntologyCapability())
-    # Web discovery: registered in OSS so the "discover" intent routes, but
-    # DORMANT until a downstream deployment registers a web-source provider —
-    # plan() returns a plain "not enabled" answer when none is registered.
-    register_capability(WebIngestCapability())
+    # Web discovery ingest (`web_ingest` / "discover") is premium. Hosted
+    # registers it via ``infona.web_sources.plugin``. OSS does not ship the
+    # capability module. The intent name stays so a premium register_capability
+    # is enough — no OSS import of the class.
     # Subscribe / standing alert (ONTA-235): registered in OSS so the "subscribe"
     # intent routes and the persona can set a recurring, subscribe-able alert ONCE.
     # It persists a `notify` Schedule through the shared schedule store (the same
@@ -1427,7 +1449,7 @@ def register_default_capabilities() -> None:
     #
     # OPEN-WEB RETRIEVAL IS OUT OF OSS SCOPE (ONTA-293, decided 2026-07-29). OSS
     # deliberately registers NO page fetcher and NO web-source provider, so this
-    # capability is dormant here exactly like WebIngestCapability above. It is
+    # capability is dormant here (no default fetcher). It is
     # still REGISTERED so the "research" intent routes and can explain itself —
     # a dormant capability that says "hand me the content instead" is a signpost,
     # not a dead button.
