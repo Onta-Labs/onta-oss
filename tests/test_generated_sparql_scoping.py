@@ -761,7 +761,23 @@ def test_every_generated_sparql_execution_site_is_guarded():
 
     from infona_client.nlp import pipeline as pipeline_mod
 
-    confined, unconfined = _scan_execution_sites(inspect.getsource(pipeline_mod))
+    nlp_dir = PKG / "nlp" if "PKG" in dir() else None
+    sources = [inspect.getsource(pipeline_mod)]
+    # After the pipeline.py extract, store-call sites live in pipeline_*.py
+    # siblings. Scan them too so the deny-by-default guard does not shrink.
+    try:
+        from pathlib import Path
+
+        nlp = Path(pipeline_mod.__file__).resolve().parent
+        for sib in sorted(nlp.glob("pipeline_*.py")):
+            sources.append(sib.read_text())
+    except Exception:
+        pass
+    confined, unconfined = [], []
+    for src in sources:
+        c, u = _scan_execution_sites(src)
+        confined.extend(c)
+        unconfined.extend(u)
     assert not unconfined, (
         "unconfined SPARQL execution in nlp/pipeline.py:\n"
         + "\n".join(unconfined)
