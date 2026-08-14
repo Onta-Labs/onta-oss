@@ -171,3 +171,74 @@ async def test_openrouter_payload_reasoning_budget_and_cerebras_order():
     assert body.get("max_tokens", 0) >= 4096
     assert body.get("provider", {}).get("order") == ["Cerebras"]
     assert captured["timeout"] >= 60
+
+
+def test_openrouter_maps_bare_cerebras_slug():
+    pipe = pipeline_mod.NLQueryPipeline.__new__(pipeline_mod.NLQueryPipeline)
+    pipe._query_provider = "cerebras"
+    pipe._query_model = "gpt-oss-120b"
+    assert (
+        pipe._openrouter_cypher_model_id(prefer_non_reasoning=False)
+        == "openai/gpt-oss-120b"
+    )
+    assert (
+        pipe._openrouter_cypher_model_id(prefer_non_reasoning=True)
+        == "google/gemini-2.5-flash"
+    )
+
+
+@pytest.mark.asyncio
+async def test_cerebras_to_openrouter_recovery_uses_valid_slug_and_non_reasoning():
+    """prefer_fallback must not send bare gpt-oss-120b to OpenRouter."""
+    pipe = pipeline_mod.NLQueryPipeline.__new__(pipeline_mod.NLQueryPipeline)
+    pipe._openrouter_key = "sk-or-test"
+    pipe._cerebras_key = "csk-test"
+    pipe._query_provider = "cerebras"
+    pipe._query_model = "gpt-oss-120b"
+    pipe.anthropic = None
+
+    captured: dict = {}
+
+    class _Resp:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"cypher":"RETURN 2","explanation":"x","functions_needed":[]}'
+                        }
+                    }
+                ],
+                "usage": {},
+                "model": "google/gemini-2.5-flash",
+            }
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, url, headers=None, json=None):
+            captured["json"] = json
+            return _Resp()
+
+    with patch("httpx.AsyncClient", _Client):
+        out = await pipe._try_llm_cypher(
+            "q",
+            "Type: X",
+            tenant_id="t",
+            kg_name="k",
+            prefer_fallback=True,
+        )
+    assert out is not None
+    assert out["cypher"] == "RETURN 2"
+    assert captured["json"]["model"] == "google/gemini-2.5-flash"
+    assert "gpt-oss" not in captured["json"]["model"]

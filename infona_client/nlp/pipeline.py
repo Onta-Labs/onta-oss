@@ -2379,13 +2379,15 @@ class NLQueryPipeline:
         )
         try:
             if prefer_fallback:
-                # Tier-2 length recovery: leave the reasoning provider.
-                if self._openrouter_key and self._query_provider != "openrouter":
-                    return await self._generate_cypher_via_openrouter(prompt)
+                # Tier-2 length recovery: leave the *reasoning* model for a
+                # non-reasoning OpenRouter (or Anthropic) path so think-budget
+                # exhaustion does not loop forever on gpt-oss.
+                if self._openrouter_key:
+                    return await self._generate_cypher_via_openrouter(
+                        prompt, prefer_non_reasoning=True
+                    )
                 if getattr(self, "anthropic", None) is not None:
                     return await self._generate_cypher_via_anthropic(prompt)
-                if self._openrouter_key:
-                    return await self._generate_cypher_via_openrouter(prompt)
             # Happy path: do NOT pass max_completion_tokens so the call is
             # byte-identical when no length recovery is in play (tests pin this).
             cerebras_kw = {}
@@ -2404,18 +2406,41 @@ class NLQueryPipeline:
             logger.warning("cypher_llm_generation_failed", exc_info=True)
             return None
 
-    async def _generate_cypher_via_openrouter(self, prompt: str) -> dict:
+    def _openrouter_cypher_model_id(
+        self, *, prefer_non_reasoning: bool = False
+    ) -> str:
+        """Return an OpenRouter-valid model slug for the Cypher path.
+
+        Direct Cerebras uses bare ``gpt-oss-120b``; OpenRouter needs
+        ``openai/gpt-oss-120b``. When this method is used as *tier-2*
+        length recovery (``prefer_fallback``), prefer a non-reasoning
+        OpenRouter model so think-budget exhaustion has an escape hatch.
+        """
+        if prefer_non_reasoning:
+            return os.environ.get(
+                "INFONA_QUERY_FALLBACK_MODEL", "google/gemini-2.5-flash"
+            )
+        model = (self._query_model or "").strip()
+        if self._query_provider == "openrouter" and model:
+            return model
+        # Map bare Cerebras / short slugs onto OpenRouter ids.
+        if model in ("gpt-oss-120b", "openai/gpt-oss-120b") or "gpt-oss-120b" in model:
+            return "openai/gpt-oss-120b"
+        if model.startswith("openai/") or model.startswith("google/") or "/" in model:
+            return model
+        if model:
+            # Unknown bare slug — still try OpenRouter openai/ prefix for oss.
+            return f"openai/{model}" if not model.startswith("openai/") else model
+        return "openai/gpt-oss-120b"
+
+    async def _generate_cypher_via_openrouter(
+        self, prompt: str, *, prefer_non_reasoning: bool = False
+    ) -> dict:
         openrouter_url = f"{OPENROUTER_BASE}/chat/completions"
         assert_online_url(openrouter_url, purpose="query Cypher LLM (openrouter)")
-        model = (
-            self._query_model
-            if self._query_provider == "openrouter"
-            else self._query_model or "openai/gpt-oss-120b"
+        model = self._openrouter_cypher_model_id(
+            prefer_non_reasoning=prefer_non_reasoning
         )
-        # Prefer OpenRouter model when this path is the recovery fallback from
-        # another provider; keep gpt-oss reasoning default rather than flash.
-        if self._query_provider != "openrouter" and not self._query_model:
-            model = "openai/gpt-oss-120b"
         body: dict = {
             "model": model,
             "messages": [
