@@ -284,18 +284,25 @@ Isolation (HARD — never invent scope values):
 - NEVER invent or guess `$tenant_id` / `$kg` values — the session injects them.
 
 Key rules:
+- **BUILD, do not guess.** Use Graph build notes (live entity counts) and \
+populated schema leaves first. Prefer types with count > 0 that match the \
+question; never default to empty pollution types (e.g. Product/Book shells from \
+other KGs) when a populated type fits.
 - Parameterize user filters: string/number needles as `$param`, not concatenated.
 - Prefer `count(*)` with an alias: `RETURN count(*) AS n`.
 - Return human-readable fields (`name`, literal values) not only internal ids \
 when the question asks for entities.
 - Type filters: prefer `$type_names` lists (subclass-expanded) over a single \
-hardcoded leaf when hierarchy is relevant.
+hardcoded leaf when hierarchy is relevant — but only types that hold data in \
+THIS kg unless the question forces otherwise.
 - "[no instances]": a type, attribute, or relationship marked empty in the schema \
 is still valid — generate a correct scoped query; zero rows is an honest answer. \
 Prefer UNMARKED (populated) attributes and relationships for planning when the \
 question does not require a specific declared-empty leaf. Instance-populated \
 leaves are listed first in each type block; declared-but-empty leaves trail them.
-- Only use type names and attribute keys that appear in the ontology schema.
+- Only use type names and attribute keys that appear in the ontology schema or \
+Graph build notes.
+- Filtered aggregates: constrain entities first, then SUM/AVG/COUNT the measure.
 - Success is correct *answers*, not SPARQL look-alikes.
 
 If similar working examples are provided, follow their helper / Cypher SHAPE closely. \
@@ -370,6 +377,7 @@ def build_cypher_generation_prompt(
 {examples_section}{grounding_section}{error_section}
 User question: {question}
 
-Compose a read-only Cypher answer using semantic helpers when possible \
+BUILD a read-only Cypher answer from the Graph build notes + ontology above \
+(do not invent empty types). Prefer semantic helpers when possible \
 (entities_of_type, literal_values, related_entities, …). Do not translate SPARQL. \
 Scope every MATCH with {{tenant_id: $tenant_id, kg: $kg}}."""
