@@ -1727,14 +1727,15 @@ def test_mcp_view_ontology_targets_canonical_types_route():
     _assert_own_markers_present(str(r.json()), owner="A", required=(A_TYPE_DESC,))
     _assert_no_peer_markers(str(r.json()), peer="B")
 
-    mcp_index = (
+    mcp_src = (
         Path(__file__).resolve().parent.parent
         / "packages"
         / "mcp"
         / "src"
-        / "index.ts"
     )
-    src = mcp_index.read_text(encoding="utf-8")
+    src = "\n".join(
+        p.read_text(encoding="utf-8") for p in sorted(mcp_src.glob("*.ts"))
+    )
     assert "view_ontology" in src
     assert "ontologyTypes" in src
 

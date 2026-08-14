@@ -29,13 +29,13 @@ os.environ.setdefault("INFONA_NEPTUNE_ENDPOINT", "http://fake:8182")
 HEADERS = {"X-API-Key": "test-key"}
 TENANT = "test-tenant"
 
-_MCP_INDEX = (
-    Path(__file__).resolve().parent.parent
-    / "packages"
-    / "mcp"
-    / "src"
-    / "index.ts"
+_MCP_SRC = (
+    Path(__file__).resolve().parent.parent / "packages" / "mcp" / "src"
 )
+
+
+def _mcp_src() -> str:
+    return "\n".join(p.read_text() for p in sorted(_MCP_SRC.glob("*.ts")))
 
 
 def test_create_kg_tool_target_exists(client, mock_neptune, auth_headers):
@@ -190,7 +190,7 @@ def test_mcp_batch_apply_tool_rides_the_canonical_route_via_sdk():
     ONE canonical `/ontology/apply/batch` route) — not a hand-rolled fetch or a
     client-side loop over the single-apply tool. Asserted from the TS source so
     it holds with no npm build in CI."""
-    src = _MCP_INDEX.read_text()
+    src = _mcp_src()
     assert 'registerTool(\n  "apply_ontology_changes"' in src, (
         "the batch apply_ontology_changes tool must be registered"
     )
@@ -221,7 +221,7 @@ def _mcp_list_jobs_categories() -> set[str]:
     """Parse the `JOB_CATEGORIES` runtime array the MCP `list_jobs` tool enum is
     built from, straight out of the TypeScript source. Deliberately reads the SOURCE
     (not a built artifact) so this guard runs with no npm build in CI."""
-    src = _MCP_INDEX.read_text()
+    src = _mcp_src()
     m = re.search(r"const\s+JOB_CATEGORIES\s*=\s*\[(.*?)\]\s*as\s+const", src, re.DOTALL)
     assert m, "could not find JOB_CATEGORIES array in the MCP index.ts"
     return set(re.findall(r'"([a-z_]+)"', m.group(1)))
