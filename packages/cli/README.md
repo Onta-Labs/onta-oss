@@ -206,7 +206,7 @@ infona ingest --text "Alice works at Acme" --kg my-data
 
 # Ask questions
 infona ask "How many companies?" --kg my-data
-infona ask "Top 5 deals" --kg my-data --debug
+infona ask "Top 5 deals" --kg my-data --debug   # Cypher + latency breakdown
 
 # Ontology + clear
 infona ontology types

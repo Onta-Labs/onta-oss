@@ -24,6 +24,7 @@ import {
   renderListResult,
   resolveRoots,
 } from "./workspace.js";
+import { formatAskQueryDump } from "./askQueryDump.js";
 
 const VERSION = "0.1.0";
 
@@ -180,7 +181,6 @@ server.registerTool(
         (data.answer != null ? String(data.answer) : "No answer");
       const explanation =
         typeof data.explanation === "string" ? data.explanation : "";
-      const sparql = typeof data.sparql === "string" ? data.sparql : "";
       const runId =
         (typeof data.run_id === "string" && data.run_id) ||
         (typeof data.job_id === "string" && data.job_id) ||
@@ -188,14 +188,15 @@ server.registerTool(
       const citations = Array.isArray(data.citations) ? data.citations : [];
 
       // Surface provenance fields the UI (and the model) need for expandable
-      // citations / SPARQL / query id. Previously only answer+explanation were
-      // returned, so agents silently dropped SPARQL and run_id.
+      // citations / Cypher / query id. Previously only answer+explanation were
+      // returned, so agents silently dropped the query body and run_id.
       const lines: string[] = [];
       if (narrative) lines.push(narrative.trim());
       lines.push(`Answer: ${answer}`);
       if (explanation) lines.push(`Explanation: ${explanation}`);
       if (runId) lines.push(`run_id: ${runId}`);
-      if (sparql) lines.push(`\nSPARQL:\n${sparql}`);
+      const queryDump = formatAskQueryDump(data);
+      if (queryDump) lines.push(queryDump);
       if (citations.length) {
         lines.push("\nCitations:");
         for (const c of citations) {
@@ -1230,7 +1231,8 @@ function describeAgentResult(r: AgentResult): string {
         (typeof r.job_id === "string" && r.job_id) ||
         "";
       if (runId) lines.push(`run_id: ${runId}`);
-      if (r.sparql) lines.push(`\nSPARQL:\n${String(r.sparql)}`);
+      const queryDump = formatAskQueryDump(r);
+      if (queryDump) lines.push(queryDump);
       const citations = Array.isArray(r.citations) ? r.citations : [];
       if (citations.length) {
         lines.push("\nCitations:");
