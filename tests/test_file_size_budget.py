@@ -50,7 +50,6 @@ SCAN_SPECS: tuple[tuple[str, str], ...] = (
 # descope). Do not raise a number. Lower or delete an entry after an extract.
 OVERSIZE_ALLOWLIST: dict[str, int] = {
     "infona_client/agent/capabilities/ontology_cap.py": 588,
-    "infona_client/agent/planner.py": 1463,
     "infona_client/api/routes/actions.py": 713,
     "infona_client/api/routes/explore_schema.py": 554,
     "infona_client/api/routes/grep.py": 649,
@@ -64,7 +63,6 @@ OVERSIZE_ALLOWLIST: dict[str, int] = {
     "infona_client/auth/workspace_store.py": 1067,
     "infona_client/enrichment/executor.py": 2811,
     "infona_client/enrichment/models.py": 596,
-    "infona_client/eval.py": 1857,
     "infona_client/graph/explore_store.py": 975,
     "infona_client/graph/global_ontology.py": 877,
     "infona_client/graph/kg_writer.py": 1565,
