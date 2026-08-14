@@ -1275,6 +1275,51 @@ class NLQueryPipeline:
                 full_ontology_loaded = True
         timing["ontology_fetch_ms"] = round((time.time() - t0) * 1000, 1)
 
+        # Schema-valid allowlist: prefer live GraphStore catalog + instance-
+        # populated leaves for THIS tenant+kg. Ontology text is fallback only
+        # when the store probe fails (sparse text must not reject real
+        # unit_cost / located_at / has_* inventory that vis+export show).
+        schema_inventory = None
+        if store is not None and tenant_id and kg_name:
+            try:
+                from infona_client.nlp.schema_valid_cypher import (
+                    inventory_from_graph_store,
+                )
+
+                schema_inventory = await inventory_from_graph_store(
+                    store,
+                    tenant_id=tenant_id,
+                    kg=kg_name,
+                    # Full KG inventory — not semantic top-K alone — so
+                    # schema-valid does not thrash on out-of-window leaves.
+                    type_names=None,
+                )
+                if schema_inventory is not None and not schema_inventory.empty:
+                    timing["schema_valid_inventory_source"] = "graph_store"
+                    timing["schema_valid_inventory_rels"] = float(
+                        len(schema_inventory.relationship_leaves)
+                    )
+                    timing["schema_valid_inventory_attrs"] = float(
+                        len(schema_inventory.attribute_leaves)
+                    )
+            except Exception:
+                logger.debug(
+                    "schema_valid_inventory_probe_failed",
+                    exc_info=True,
+                )
+                schema_inventory = None
+        if schema_inventory is None or schema_inventory.empty:
+            if ontology:
+                from infona_client.nlp.schema_valid_cypher import (
+                    OntologyLeafInventory,
+                )
+
+                schema_inventory = OntologyLeafInventory.from_ontology(ontology)
+                timing["schema_valid_inventory_source"] = "ontology_text"
+            else:
+                schema_inventory = None
+                timing["schema_valid_inventory_source"] = "empty"
+
         # Attribute-alias map (ADR 0002 §7) — leaf renames for Cypher property keys.
         alias_map: dict[str, str] = {}
         if self._aliases_enabled:
@@ -1789,13 +1834,15 @@ class NLQueryPipeline:
 
                     # Schema-valid predicates: free-form must not invent
                     # relationship types / attr leaves (HAS_OFFERED_IN vs
-                    # offered_in → OFFERED_IN). Runs after integrity so we
-                    # feed a single regenerate loop with corrective feedback.
+                    # offered_in → OFFERED_IN). Prefer precomputed GraphStore
+                    # inventory (catalog + populated leaves); ontology text
+                    # only when store probe failed. Post-gen gate only.
                     schema_res = check_schema_valid_cypher(
                         cypher_raw,
                         ontology or "",
                         params=params,
                         template=gen.get("template"),
+                        inventory=schema_inventory,
                     )
                     timing.update(schema_res.to_timing())
                     if not schema_res.ok:
