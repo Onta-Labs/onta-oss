@@ -261,9 +261,8 @@ async def test_ctx_urls_with_enrich_verb_routes_to_enrich(monkeypatch):
 @pytest.mark.asyncio
 async def test_url_without_enrich_verb_routes_to_discover(monkeypatch):
     """'add companies from https://x' carries a URL + a NON-enrich verb → the
-    guard routes to discovery (a NEW set of records, Rail A). With no URL-capable
-    provider registered in OSS, discover degrades to a clear 'not enabled' answer
-    — proof it handled the turn (and was not answered as a plain question)."""
+    guard routes to discovery (a NEW set of records, Rail A). OSS does not ship
+    web-ingest, so the turn is a hosted-only answer — not a plain /ask."""
     _stub_classifier(monkeypatch, "question")
 
     from infona_client.agent.capabilities.query import QueryCapability
@@ -279,7 +278,7 @@ async def test_url_without_enrich_verb_routes_to_discover(monkeypatch):
     )
     assert out.get("answer") != "SHOULD_NOT_RUN"  # not the read-only path
     body = f"{out.get('narrative', '')} {out.get('answer', '')}".lower()
-    assert "enabled" in body  # routed to discovery (degrades to not-enabled in OSS)
+    assert "oss" in body or "hosted" in body or "not included" in body
 
 
 @pytest.mark.asyncio
@@ -367,7 +366,7 @@ async def test_attached_ctx_urls_route_even_in_question_form(monkeypatch):
     )
     assert out.get("answer") != "SHOULD_NOT_RUN"  # not the read-only path
     body = f"{out.get('narrative', '')} {out.get('answer', '')}".lower()
-    assert "enabled" in body  # routed to discovery (degrades to not-enabled in OSS)
+    assert "oss" in body or "hosted" in body or "not included" in body
 
 
 # --------------------------------------------------------------------------- #

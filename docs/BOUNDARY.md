@@ -36,6 +36,7 @@ Wikidata and other free adapters that do not need open-web scrape still work.
 | Capability | Why not OSS |
 |------------|-------------|
 | Managed API keys Infona provisions and bills | Definition of premium |
+| **Web-discovery ingest** (find records on the web and mint entities) | Hosted decision layer — OSS is bring-your-own data/retrieval |
 | Open-web enrichment ladder (paid scrape / search) | Cost + abuse surface |
 | Curated **Enhanced** ontology content (layer B) | Product content |
 | Production Clerk auth packaging | Hosted identity |
