@@ -1160,8 +1160,9 @@ class NLQueryPipeline:
 
         # ---- Ontology context (populated GraphStore → semantic → sparql) ----
         # Planning truth is instance-populated schema for THIS KG (declared-empty
-        # edges demoted). Semantic retrieval selects which types matter when the
+        # edges demoted). Semantic retrieval ranks extra declared types when the
         # catalog is large, and is the fallback text when GraphStore has no rows.
+        # It must not hide a type that has instances in THIS kg.
         ontology = ""
         type_names: list[str] = []
         ontology_source = "full"
@@ -1218,6 +1219,27 @@ class NLQueryPipeline:
             except Exception:
                 pass
 
+        # Semantic top-K is ranking / extra context, not a license to hide
+        # THIS-KG populated types. Sibling-ingest leftovers (empty
+        # BenchIdentifier / KitIdentifier) can outrank Product; if we pass
+        # those names as a hard GraphStore filter, Product is dropped from
+        # the planning prompt and the model invents prop_key=price.
+        populated_type_names: list[str] = (
+            sorted(kg_active_types) if kg_active_types else []
+        )
+        from infona_client.nlp.planning_schema import resolve_planning_type_scope
+
+        plan_scope = resolve_planning_type_scope(
+            semantic_names=semantic_type_names,
+            populated_names=populated_type_names,
+        )
+        scope_type_names = (
+            list(plan_scope.type_names)
+            if plan_scope.type_names is not None
+            else None
+        )
+        force_populated = list(plan_scope.force_include) or None
+
         if store is not None:
             try:
                 ontology, type_names = await ontology_from_graph_store(
@@ -1225,9 +1247,8 @@ class NLQueryPipeline:
                     tenant_id=tenant_id,
                     kg=kg_name,
                     prefer_populated=True,
-                    # Scope to semantic top-K when available (anti-pollution);
-                    # full catalog when embeddings are cold.
-                    type_names=semantic_type_names,
+                    type_names=scope_type_names,
+                    force_include=force_populated,
                 )
                 if ontology:
                     ontology_source = (
@@ -1274,6 +1295,12 @@ class NLQueryPipeline:
             if ontology_source != "graph_store_populated" or not semantic_type_names:
                 full_ontology_loaded = True
         timing["ontology_fetch_ms"] = round((time.time() - t0) * 1000, 1)
+        # Visible RCA: which types the prompt saw vs retrieve vs THIS-KG live.
+        timing["ontology_type_names"] = ", ".join(type_names or [])[:400]
+        timing["semantic_type_names"] = ", ".join(semantic_type_names or [])[:400]
+        timing["populated_type_names"] = ", ".join(populated_type_names)[:400]
+        if plan_scope.ignored_semantic:
+            timing["ontology_semantic_ignored"] = 1.0
 
         # Schema-valid allowlist: prefer live GraphStore catalog + instance-
         # populated leaves for THIS tenant+kg. Ontology text is fallback only
@@ -1577,6 +1604,9 @@ class NLQueryPipeline:
                         for b in (dim_binds or [])[:12]
                     ],
                     populated_types=list(populated_types_for_coverage or [])[:20],
+                    ontology_type_names=list(type_names or [])[:40],
+                    semantic_type_names=list(semantic_type_names or [])[:40],
+                    populated_type_names=list(populated_type_names)[:40],
                     query_model=f"{self._query_provider}:{self._query_model}",
                 )
             except Exception:
@@ -2464,6 +2494,10 @@ class NLQueryPipeline:
                                 "query_confidence",
                                 "attempts",
                                 "total_ms",
+                                "ontology_type_names",
+                                "semantic_type_names",
+                                "populated_type_names",
+                                "ontology_semantic_ignored",
                             )
                             if k in timing
                         },

@@ -2058,8 +2058,11 @@ async def ontology_from_graph_store(
     but not in the catalog) are first-class primary context.
 
     ``type_names`` optionally scopes the text to a semantic top-K (plus 1-hop
-    relationship neighbours from inventory). Empty types are capped via
-    ``max_empty_types`` to reduce tenant-ontology pollution in per-KG /ask.
+    relationship neighbours from inventory). Instance-populated types in THIS
+    kg are always kept even when they miss that top-K; if the requested names
+    have zero overlap with the live inventory, the semantic/caller scope is
+    ignored. Empty types are capped via ``max_empty_types`` to reduce
+    tenant-ontology pollution in per-KG /ask.
 
     Returns ``("", [])`` on any failure so the pipeline can fall back.
     """
@@ -2144,8 +2147,17 @@ async def ontology_from_graph_store(
 
         # Optional semantic / caller type filter + 1-hop neighbour expansion
         # via *populated* relationship ranges (planning truth, not dead edges).
+        # Semantic/caller names rank and may add extra declared types; they
+        # must NEVER hide a type that has instances in THIS kg. Zero overlap
+        # with the live inventory means the retrieve hit leftover empty types
+        # from another ingest — ignore that scope.
         if wanted:
-            expand = set(wanted) | set(force)
+            live = {t.name for t in planning if t.entity_count > 0}
+            overlap = wanted & live
+            if live and not overlap:
+                expand = set(force) | live
+            else:
+                expand = set(wanted) | set(force) | live
             for t in planning:
                 if t.name not in expand:
                     continue
