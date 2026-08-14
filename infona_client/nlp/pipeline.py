@@ -1364,6 +1364,9 @@ class NLQueryPipeline:
         # Unique dim-registry binds for post-gen coverage (leaf+value required).
         # Initialized outside the try so coverage gates always see a defined list.
         dim_binds: list = []
+        # Live inventory for zero-instance / pollution-type coverage gate.
+        build_ctx = None
+        populated_types_for_coverage: tuple[str, ...] | None = None
         try:
             from infona_client.nlp.ontology_subgraph_match import (
                 format_grounding_for_prompt,
@@ -1416,12 +1419,16 @@ class NLQueryPipeline:
                         )[:200]
                     if build_ctx.populated_type_names:
                         populated_for_numeric = list(build_ctx.populated_type_names)
+                        # Zero-instance pollution gate (#local high-conf empty).
+                        populated_types_for_coverage = build_ctx.populated_type_names
             except Exception:
                 logger.debug("query_build_context_failed", exc_info=True)
                 build_text = ""
                 build_ctx = None
             if not populated_for_numeric and kg_active_types:
                 populated_for_numeric = sorted(kg_active_types)
+            if populated_types_for_coverage is None and populated_for_numeric:
+                populated_types_for_coverage = tuple(populated_for_numeric)
             # Optional ONTA-537 mention index + precomputed query embedding
             # when the ask path already has them (best-effort; hermetic without).
             _rctx = get_resolve_context()
@@ -1811,6 +1818,7 @@ class NLQueryPipeline:
                             template=gen.get("template"),
                             integrity_reason=filt_reason,
                             dim_binds=dim_binds,
+                            populated_types=populated_types_for_coverage,
                         )
                         timing.update(cov_fail.to_timing())
                         if attempt < max_attempts - 1:
@@ -1870,6 +1878,7 @@ class NLQueryPipeline:
                             template=gen.get("template"),
                             schema_reason=schema_res.reason,
                             dim_binds=dim_binds,
+                            populated_types=populated_types_for_coverage,
                         )
                         timing.update(cov_schema.to_timing())
                         if attempt < max_attempts - 1:
@@ -1909,6 +1918,7 @@ class NLQueryPipeline:
                         params=params,
                         template=gen.get("template"),
                         dim_binds=dim_binds,
+                        populated_types=populated_types_for_coverage,
                     )
                     timing.update(cov.to_timing())
                     if not cov.ok and cov.fail_closed:
@@ -1918,10 +1928,13 @@ class NLQueryPipeline:
                         if attempt < max_attempts - 1:
                             last_was_enum_filter_mismatch = True
                             timing["query_constraint_coverage_retry"] = 1.0
+                            if cov.empty_plan_types:
+                                timing["query_zero_instance_type_retry"] = 1.0
                             logger.info(
                                 "query_constraint_coverage_retry",
                                 reason=(cov.reason or "")[:200],
                                 unbound=list(cov.unbound_tokens)[:8],
+                                empty_plan_types=list(cov.empty_plan_types)[:8],
                                 question=question,
                                 attempt=attempt,
                             )
