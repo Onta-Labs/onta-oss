@@ -221,4 +221,5 @@ Local models (Ollama / vLLM) via OpenAI-compatible endpoints are possible if you
 ## License
 
 Apache 2.0 — [LICENSE](LICENSE), [NOTICE](NOTICE).  
-Contributions: [CLA.md](CLA.md), [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions: [CLA.md](CLA.md), [CONTRIBUTING.md](CONTRIBUTING.md).  
+Coding agents / AI contributors: **[AGENTS.md](AGENTS.md)**.
