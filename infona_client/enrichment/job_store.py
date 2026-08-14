@@ -24,6 +24,7 @@ class JobStore(Protocol):
     async def update(self, job: EnrichJob) -> None: ...
     async def list_for_tenant(self, tenant_id: str) -> list[JobSummary]: ...
     async def delete(self, job_id: str) -> None: ...
+    async def delete_for_tenant(self, tenant_id: str) -> int: ...
 
 
 class InMemoryJobStore:
@@ -59,6 +60,14 @@ class InMemoryJobStore:
     async def delete(self, job_id: str) -> None:
         async with self._lock:
             self._jobs.pop(job_id, None)
+
+    async def delete_for_tenant(self, tenant_id: str) -> int:
+        """Hard-delete every job for ``tenant_id``. Returns the number removed."""
+        async with self._lock:
+            ids = [jid for jid, j in self._jobs.items() if j.tenant_id == tenant_id]
+            for jid in ids:
+                self._jobs.pop(jid, None)
+        return len(ids)
 
 
 class PostgresJobStore:
@@ -210,6 +219,21 @@ class PostgresJobStore:
             await conn.execute(
                 f"DELETE FROM {self._TABLE} WHERE id = $1", job_id
             )
+
+    async def delete_for_tenant(self, tenant_id: str) -> int:
+        """Hard-delete every job for ``tenant_id``. Returns the number removed."""
+        pool = await self._ensure_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute(
+                f"DELETE FROM {self._TABLE} WHERE tenant_id = $1", tenant_id
+            )
+        # asyncpg returns e.g. "DELETE 3"; parse the count when present.
+        if isinstance(result, str) and result.startswith("DELETE "):
+            try:
+                return int(result.split()[-1])
+            except ValueError:
+                return 0
+        return 0
 
 
 _store: Optional[InMemoryJobStore] = None
