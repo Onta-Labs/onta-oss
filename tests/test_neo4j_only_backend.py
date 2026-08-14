@@ -338,8 +338,8 @@ def test_select_entity_uris_body_never_calls_neptune_query():
     start = src.index("    async def select_entity_uris(")
     rest = src[start + 1 :]
     m = re.search(r"\n    (?:async )?def ", rest)
-    assert m, "could not bound select_entity_uris()"
-    body = rest[: m.start()]
+    # Last method on the class: bound at EOF (pipeline extract left it last).
+    body = rest[: m.start()] if m else rest
     code_only = "\n".join(
         line.split("#", 1)[0]
         for line in body.splitlines()
