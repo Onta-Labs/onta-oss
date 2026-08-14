@@ -1160,8 +1160,9 @@ class NLQueryPipeline:
 
         # ---- Ontology context (populated GraphStore → semantic → sparql) ----
         # Planning truth is instance-populated schema for THIS KG (declared-empty
-        # edges demoted). Semantic retrieval selects which types matter when the
+        # edges demoted). Semantic retrieval ranks extra declared types when the
         # catalog is large, and is the fallback text when GraphStore has no rows.
+        # It must not hide a type that has instances in THIS kg.
         ontology = ""
         type_names: list[str] = []
         ontology_source = "full"
@@ -1218,6 +1219,27 @@ class NLQueryPipeline:
             except Exception:
                 pass
 
+        # Semantic top-K is ranking / extra context, not a license to hide
+        # THIS-KG populated types. Sibling-ingest leftovers (empty
+        # BenchIdentifier / KitIdentifier) can outrank Product; if we pass
+        # those names as a hard GraphStore filter, Product is dropped from
+        # the planning prompt and the model invents prop_key=price.
+        populated_type_names: list[str] = (
+            sorted(kg_active_types) if kg_active_types else []
+        )
+        from infona_client.nlp.planning_schema import resolve_planning_type_scope
+
+        plan_scope = resolve_planning_type_scope(
+            semantic_names=semantic_type_names,
+            populated_names=populated_type_names,
+        )
+        scope_type_names = (
+            list(plan_scope.type_names)
+            if plan_scope.type_names is not None
+            else None
+        )
+        force_populated = list(plan_scope.force_include) or None
+
         if store is not None:
             try:
                 ontology, type_names = await ontology_from_graph_store(
@@ -1225,9 +1247,8 @@ class NLQueryPipeline:
                     tenant_id=tenant_id,
                     kg=kg_name,
                     prefer_populated=True,
-                    # Scope to semantic top-K when available (anti-pollution);
-                    # full catalog when embeddings are cold.
-                    type_names=semantic_type_names,
+                    type_names=scope_type_names,
+                    force_include=force_populated,
                 )
                 if ontology:
                     ontology_source = (
@@ -1274,6 +1295,57 @@ class NLQueryPipeline:
             if ontology_source != "graph_store_populated" or not semantic_type_names:
                 full_ontology_loaded = True
         timing["ontology_fetch_ms"] = round((time.time() - t0) * 1000, 1)
+        # Visible RCA: which types the prompt saw vs retrieve vs THIS-KG live.
+        timing["ontology_type_names"] = ", ".join(type_names or [])[:400]
+        timing["semantic_type_names"] = ", ".join(semantic_type_names or [])[:400]
+        timing["populated_type_names"] = ", ".join(populated_type_names)[:400]
+        if plan_scope.ignored_semantic:
+            timing["ontology_semantic_ignored"] = 1.0
+
+        # Schema-valid allowlist: prefer live GraphStore catalog + instance-
+        # populated leaves for THIS tenant+kg. Ontology text is fallback only
+        # when the store probe fails (sparse text must not reject real
+        # unit_cost / located_at / has_* inventory that vis+export show).
+        schema_inventory = None
+        if store is not None and tenant_id and kg_name:
+            try:
+                from infona_client.nlp.schema_valid_cypher import (
+                    inventory_from_graph_store,
+                )
+
+                schema_inventory = await inventory_from_graph_store(
+                    store,
+                    tenant_id=tenant_id,
+                    kg=kg_name,
+                    # Full KG inventory — not semantic top-K alone — so
+                    # schema-valid does not thrash on out-of-window leaves.
+                    type_names=None,
+                )
+                if schema_inventory is not None and not schema_inventory.empty:
+                    timing["schema_valid_inventory_source"] = "graph_store"
+                    timing["schema_valid_inventory_rels"] = float(
+                        len(schema_inventory.relationship_leaves)
+                    )
+                    timing["schema_valid_inventory_attrs"] = float(
+                        len(schema_inventory.attribute_leaves)
+                    )
+            except Exception:
+                logger.debug(
+                    "schema_valid_inventory_probe_failed",
+                    exc_info=True,
+                )
+                schema_inventory = None
+        if schema_inventory is None or schema_inventory.empty:
+            if ontology:
+                from infona_client.nlp.schema_valid_cypher import (
+                    OntologyLeafInventory,
+                )
+
+                schema_inventory = OntologyLeafInventory.from_ontology(ontology)
+                timing["schema_valid_inventory_source"] = "ontology_text"
+            else:
+                schema_inventory = None
+                timing["schema_valid_inventory_source"] = "empty"
 
         # Attribute-alias map (ADR 0002 §7) — leaf renames for Cypher property keys.
         alias_map: dict[str, str] = {}
@@ -1319,6 +1391,12 @@ class NLQueryPipeline:
         # Unique dim-registry binds for post-gen coverage (leaf+value required).
         # Initialized outside the try so coverage gates always see a defined list.
         dim_binds: list = []
+        # Live inventory for zero-instance / pollution-type coverage gate.
+        build_ctx = None
+        populated_types_for_coverage: tuple[str, ...] | None = None
+        # Money leaf hard-bind (probe / numeric plan → params after gen).
+        money_leaf_bound: str | None = None
+        money_cue_bound: str | None = None
         try:
             from infona_client.nlp.ontology_subgraph_match import (
                 format_grounding_for_prompt,
@@ -1342,6 +1420,100 @@ class NLQueryPipeline:
                 )
 
                 names_for_ground = extract_type_names_from_ontology(ontology) or None
+            # Live GraphStore inventory first — scopes money leaf ranking to
+            # types populated in THIS KG (anti tuition_usd pollution).
+            build_text = ""
+            build_ctx = None
+            populated_for_numeric: list[str] | None = None
+            try:
+                from infona_client.nlp.query_build import (
+                    collect_query_build_context,
+                    format_query_build_for_prompt,
+                )
+
+                build_ctx = await collect_query_build_context(
+                    store,
+                    tenant_id=tenant_id,
+                    kg=kg_name,
+                    question=question,
+                )
+                build_text = format_query_build_for_prompt(build_ctx)
+                if build_ctx is not None and build_ctx.types:
+                    timing["query_build"] = "present"
+                    timing["query_build_types"] = float(
+                        len(build_ctx.populated_type_names)
+                    )
+                    if build_ctx.question_type_hits:
+                        timing["query_build_type_hits"] = ", ".join(
+                            build_ctx.question_type_hits
+                        )[:200]
+                    # Vague “how many records?” + ≥2 live types → ask, don’t guess.
+                    try:
+                        from infona_client.nlp.ask_process_log import log_ask_event
+                        from infona_client.nlp.query_ambiguity import (
+                            ambiguous_count_needs_clarify,
+                            format_type_count_clarification,
+                        )
+
+                        if ambiguous_count_needs_clarify(
+                            question, build_ctx.types
+                        ):
+                            clarify = format_type_count_clarification(
+                                build_ctx.types
+                            )
+                            timing["query_ambiguity_clarify"] = 1.0
+                            timing["query_confidence"] = "low"
+                            timing["query_confidence_reason"] = (
+                                "ambiguous count: multiple populated types, "
+                                "question did not name one"
+                            )
+                            log_ask_event(
+                                "ask_clarify",
+                                question=question,
+                                tenant_id=tenant_id,
+                                kg=kg_name,
+                                reason="ambiguous_count",
+                                populated_types=list(
+                                    build_ctx.populated_type_names
+                                )[:20],
+                                answer=clarify,
+                            )
+                            timing.update(token_ledger.totals_for_timing())
+                            return NLResult(
+                                answer=clarify,
+                                sparql="",
+                                explanation="clarification: ambiguous count",
+                                ontology=ontology,
+                                timing={
+                                    **timing,
+                                    "total_ms": round(
+                                        (time.time() - t0) * 1000, 1
+                                    ),
+                                    "attempts": 0,
+                                },
+                                token_usage=token_ledger.to_list(),
+                                query_confidence="low",
+                                query_confidence_reason=str(
+                                    timing["query_confidence_reason"]
+                                ),
+                                clarification_prompt=clarify,
+                            )
+                    except Exception:
+                        logger.debug(
+                            "query_ambiguity_check_failed", exc_info=True
+                        )
+                    if build_ctx.populated_type_names:
+                        populated_for_numeric = list(build_ctx.populated_type_names)
+                        # Zero-instance pollution gate (#local high-conf empty).
+                        populated_types_for_coverage = build_ctx.populated_type_names
+            except Exception:
+                logger.debug("query_build_context_failed", exc_info=True)
+                build_text = ""
+                build_ctx = None
+            if not populated_for_numeric and kg_active_types:
+                populated_for_numeric = sorted(kg_active_types)
+            if populated_types_for_coverage is None and populated_for_numeric:
+                populated_types_for_coverage = tuple(populated_for_numeric)
             # Optional ONTA-537 mention index + precomputed query embedding
             # when the ask path already has them (best-effort; hermetic without).
             _rctx = get_resolve_context()
@@ -1371,20 +1543,31 @@ class NLQueryPipeline:
                 type_names=names_for_ground,
                 mention_index=_midx,
                 query_embedding=_qemb,
+                populated_types=populated_for_numeric,
             )
             num_text = format_numeric_grounding_for_prompt(num_plan)
             if num_plan is not None:
                 timing["numeric_grounding_confidence"] = num_plan.confidence
                 if num_plan.prop_key:
                     timing["numeric_grounding_prop"] = num_plan.prop_key
+                # Hard-bind only unique resolve — never probe[0] guess (#378).
+                if (
+                    getattr(num_plan, "confidence", "") == "unique"
+                    and num_plan.prop_key
+                ):
+                    money_leaf_bound = num_plan.prop_key
                 if num_plan.template:
                     timing["numeric_grounding_template"] = num_plan.template
             # Low-cardinality dim registry: known enums + entity dims as
             # prompt context only (always-LLM; never short-circuits Cypher).
             # Structured unique binds also feed post-gen constraint coverage.
             dim_text = ""
+            dim_registry_obj = None
             try:
-                from infona_client.nlp.dim_registry import planning_dim_context
+                from infona_client.nlp.dim_registry import (
+                    get_cached_dim_registry,
+                    planning_dim_context,
+                )
 
                 dim_text, dim_binds = await planning_dim_context(
                     store,
@@ -1399,41 +1582,94 @@ class NLQueryPipeline:
                     timing["dim_bound_leaves"] = ", ".join(
                         getattr(b.dim, "leaf", "") for b in dim_binds
                     )[:200]
+                try:
+                    dim_registry_obj = get_cached_dim_registry(
+                        tenant_id, kg_name
+                    )
+                except Exception:
+                    dim_registry_obj = None
             except Exception:
                 logger.debug("dim_registry_grounding_failed", exc_info=True)
                 dim_text = ""
                 dim_binds = []
-            # Live GraphStore inventory: *build* Cypher from populated types
-            # (anti-pollution / no pure guess against empty Product shells).
-            build_text = ""
+            # Cheap read-only probe: dim values + money leaf candidates.
+            # Merged into grounding before LLM (always-LLM; never short-circuit).
+            probe_text = ""
             try:
-                from infona_client.nlp.query_build import (
-                    collect_query_build_context,
-                    format_query_build_for_prompt,
-                )
+                from infona_client.nlp.query_probe import build_probe_context
 
-                build_ctx = await collect_query_build_context(
+                probe_ctx = await build_probe_context(
                     store,
                     tenant_id=tenant_id,
                     kg=kg_name,
                     question=question,
+                    ontology_summary=ontology or "",
+                    registry=dim_registry_obj,
+                    binds=dim_binds,
+                    populated_types=populated_for_numeric,
+                    build_ctx=build_ctx,
+                    type_hint=(
+                        build_ctx.question_type_hits[0]
+                        if build_ctx is not None and build_ctx.question_type_hits
+                        else None
+                    ),
                 )
-                build_text = format_query_build_for_prompt(build_ctx)
-                if build_ctx is not None and build_ctx.types:
-                    timing["query_build"] = "present"
-                    timing["query_build_types"] = float(
-                        len(build_ctx.populated_type_names)
+                # Prefer money + dim-values sections (build already in build_text).
+                probe_bits = [
+                    probe_ctx.dim_values_text or "",
+                    probe_ctx.money_text or "",
+                ]
+                probe_text = "\n\n".join(
+                    b.strip() for b in probe_bits if b and b.strip()
+                )
+                if probe_text:
+                    timing["query_probe"] = "present"
+                if probe_ctx.extra.get("dim_values_present"):
+                    timing["dim_values_present"] = 1.0
+                if probe_ctx.money_candidates:
+                    timing["money_leaf_candidates"] = float(
+                        len(probe_ctx.money_candidates)
                     )
-                    if build_ctx.question_type_hits:
-                        timing["query_build_type_hits"] = ", ".join(
-                            build_ctx.question_type_hits
-                        )[:200]
+                    top = probe_ctx.money_candidates[0]
+                    timing["money_leaf_top"] = top.leaf
+                    # Prompt-only: do not hard-bind probe ranking.
+                    if probe_ctx.money_cue:
+                        timing["money_cue"] = probe_ctx.money_cue
+                        money_cue_bound = probe_ctx.money_cue
             except Exception:
-                logger.debug("query_build_context_failed", exc_info=True)
-                build_text = ""
+                logger.debug("query_probe_failed", exc_info=True)
+                probe_text = ""
+            # Order: build inventory, dim values/money probe, subgraph,
+            # numeric plan, dim registry binds.
             grounding_text = merge_grounding_texts(
-                build_text, loc_text, num_text, dim_text
+                build_text, probe_text, loc_text, num_text, dim_text
             )
+            # Structured ask process log (input + grounding spine).
+            try:
+                from infona_client.nlp.ask_process_log import log_ask_event
+
+                log_ask_event(
+                    "ask_grounding",
+                    question=question,
+                    tenant_id=tenant_id,
+                    kg=kg_name,
+                    ontology_source=ontology_source,
+                    ontology=(ontology or "")[:4000],
+                    grounding_text=(grounding_text or "")[:4000],
+                    money_leaf_bound=money_leaf_bound,
+                    money_cue=money_cue_bound,
+                    dim_binds=[
+                        f"{getattr(b, 'token', '')}->{getattr(getattr(b, 'dim', None), 'leaf', '')}"
+                        for b in (dim_binds or [])[:12]
+                    ],
+                    populated_types=list(populated_types_for_coverage or [])[:20],
+                    ontology_type_names=list(type_names or [])[:40],
+                    semantic_type_names=list(semantic_type_names or [])[:40],
+                    populated_type_names=list(populated_type_names)[:40],
+                    query_model=f"{self._query_provider}:{self._query_model}",
+                )
+            except Exception:
+                pass
         except Exception:
             logger.debug("ontology_subgraph_grounding_failed", exc_info=True)
             grounding_text = ""
@@ -1530,12 +1766,18 @@ class NLQueryPipeline:
                                         mention_index=_midx_esc,
                                         query_embedding=_qemb_esc,
                                     )
+                                    pop_esc = (
+                                        list(kg_active_types)
+                                        if kg_active_types
+                                        else None
+                                    )
                                     num_esc = ground_numeric_plan(
                                         question,
                                         ontology,
                                         type_names=names_esc,
                                         mention_index=_midx_esc,
                                         query_embedding=_qemb_esc,
+                                        populated_types=pop_esc,
                                     )
                                     dim_esc = ""
                                     try:
@@ -1560,24 +1802,76 @@ class NLQueryPipeline:
                                     except Exception:
                                         dim_esc = ""
                                     build_esc = ""
+                                    build_ctx_esc = None
                                     try:
                                         from infona_client.nlp.query_build import (
                                             collect_query_build_context,
                                             format_query_build_for_prompt,
                                         )
 
-                                        build_esc = format_query_build_for_prompt(
-                                            await collect_query_build_context(
-                                                store,
-                                                tenant_id=tenant_id,
-                                                kg=kg_name,
-                                                question=question,
-                                            )
+                                        build_ctx_esc = await collect_query_build_context(
+                                            store,
+                                            tenant_id=tenant_id,
+                                            kg=kg_name,
+                                            question=question,
                                         )
+                                        build_esc = format_query_build_for_prompt(
+                                            build_ctx_esc
+                                        )
+                                        if (
+                                            build_ctx_esc is not None
+                                            and build_ctx_esc.populated_type_names
+                                        ):
+                                            populated_types_for_coverage = (
+                                                build_ctx_esc.populated_type_names
+                                            )
                                     except Exception:
                                         build_esc = ""
+                                    probe_esc = ""
+                                    try:
+                                        from infona_client.nlp.dim_registry import (
+                                            get_cached_dim_registry,
+                                        )
+                                        from infona_client.nlp.query_probe import (
+                                            build_probe_context,
+                                        )
+
+                                        reg_esc = get_cached_dim_registry(
+                                            tenant_id, kg_name
+                                        )
+                                        pop_for_probe = (
+                                            list(populated_types_for_coverage)
+                                            if populated_types_for_coverage
+                                            else pop_esc
+                                        )
+                                        pctx = await build_probe_context(
+                                            store,
+                                            tenant_id=tenant_id,
+                                            kg=kg_name,
+                                            question=question,
+                                            ontology_summary=ontology or "",
+                                            registry=reg_esc,
+                                            binds=dim_binds,
+                                            populated_types=pop_for_probe,
+                                            build_ctx=build_ctx_esc,
+                                        )
+                                        probe_esc = "\n\n".join(
+                                            b.strip()
+                                            for b in (
+                                                pctx.dim_values_text,
+                                                pctx.money_text,
+                                            )
+                                            if b and b.strip()
+                                        )
+                                        if pctx.money_candidates:
+                                            timing["money_leaf_candidates"] = float(
+                                                len(pctx.money_candidates)
+                                            )
+                                    except Exception:
+                                        probe_esc = ""
                                     grounding_text = merge_grounding_texts(
                                         build_esc,
+                                        probe_esc,
                                         format_grounding_for_prompt(grounded_esc),
                                         format_numeric_grounding_for_prompt(num_esc),
                                         dim_esc,
@@ -1646,6 +1940,63 @@ class NLQueryPipeline:
                 last_gen = gen
                 cypher_raw = gen.get("cypher") or gen.get("sparql") or ""
                 params = dict(gen.get("params") or {})
+                # Hard-bind money leaf so "cost"/"price" cannot execute as bare
+                # $cost_prop with wrong name → high-conf empty sum.
+                if money_leaf_bound:
+                    try:
+                        from infona_client.nlp.ask_process_log import (
+                            apply_money_leaf_params,
+                            log_ask_event,
+                        )
+
+                        before = dict(params)
+                        params = apply_money_leaf_params(
+                            params,
+                            money_leaf=money_leaf_bound,
+                            money_cue=money_cue_bound,
+                        )
+                        timing["money_leaf_hard_bound"] = money_leaf_bound
+                        log_ask_event(
+                            "ask_gen_attempt",
+                            attempt=attempt,
+                            question=question,
+                            tenant_id=tenant_id,
+                            kg=kg_name,
+                            cypher=cypher_raw,
+                            params_before=before,
+                            params_after=params,
+                            explanation=explanation,
+                            money_leaf_bound=money_leaf_bound,
+                            template=gen.get("template"),
+                        )
+                    except Exception:
+                        from infona_client.nlp.ask_process_log import (
+                            apply_money_leaf_params,
+                        )
+
+                        params = apply_money_leaf_params(
+                            params,
+                            money_leaf=money_leaf_bound,
+                            money_cue=money_cue_bound,
+                        )
+                        timing["money_leaf_hard_bound"] = money_leaf_bound
+                else:
+                    try:
+                        from infona_client.nlp.ask_process_log import log_ask_event
+
+                        log_ask_event(
+                            "ask_gen_attempt",
+                            attempt=attempt,
+                            question=question,
+                            tenant_id=tenant_id,
+                            kg=kg_name,
+                            cypher=cypher_raw,
+                            params=params,
+                            explanation=gen.get("explanation") or "",
+                            template=gen.get("template"),
+                        )
+                    except Exception:
+                        pass
                 last_params = params
                 explanation = gen.get("explanation") or explanation
                 functions_needed = gen.get("functions_needed") or functions_needed
@@ -1752,6 +2103,7 @@ class NLQueryPipeline:
                             template=gen.get("template"),
                             integrity_reason=filt_reason,
                             dim_binds=dim_binds,
+                            populated_types=populated_types_for_coverage,
                         )
                         timing.update(cov_fail.to_timing())
                         if attempt < max_attempts - 1:
@@ -1789,13 +2141,15 @@ class NLQueryPipeline:
 
                     # Schema-valid predicates: free-form must not invent
                     # relationship types / attr leaves (HAS_OFFERED_IN vs
-                    # offered_in → OFFERED_IN). Runs after integrity so we
-                    # feed a single regenerate loop with corrective feedback.
+                    # offered_in → OFFERED_IN). Prefer precomputed GraphStore
+                    # inventory (catalog + populated leaves); ontology text
+                    # only when store probe failed. Post-gen gate only.
                     schema_res = check_schema_valid_cypher(
                         cypher_raw,
                         ontology or "",
                         params=params,
                         template=gen.get("template"),
+                        inventory=schema_inventory,
                     )
                     timing.update(schema_res.to_timing())
                     if not schema_res.ok:
@@ -1809,6 +2163,7 @@ class NLQueryPipeline:
                             template=gen.get("template"),
                             schema_reason=schema_res.reason,
                             dim_binds=dim_binds,
+                            populated_types=populated_types_for_coverage,
                         )
                         timing.update(cov_schema.to_timing())
                         if attempt < max_attempts - 1:
@@ -1848,6 +2203,7 @@ class NLQueryPipeline:
                         params=params,
                         template=gen.get("template"),
                         dim_binds=dim_binds,
+                        populated_types=populated_types_for_coverage,
                     )
                     timing.update(cov.to_timing())
                     if not cov.ok and cov.fail_closed:
@@ -1857,10 +2213,13 @@ class NLQueryPipeline:
                         if attempt < max_attempts - 1:
                             last_was_enum_filter_mismatch = True
                             timing["query_constraint_coverage_retry"] = 1.0
+                            if cov.empty_plan_types:
+                                timing["query_zero_instance_type_retry"] = 1.0
                             logger.info(
                                 "query_constraint_coverage_retry",
                                 reason=(cov.reason or "")[:200],
                                 unbound=list(cov.unbound_tokens)[:8],
+                                empty_plan_types=list(cov.empty_plan_types)[:8],
                                 question=question,
                                 attempt=attempt,
                             )
@@ -2168,6 +2527,42 @@ class NLQueryPipeline:
                         q_clarify = cov_ok.clarification_prompt or ""
                     except Exception:
                         pass
+                try:
+                    from infona_client.nlp.ask_process_log import log_ask_event
+
+                    log_ask_event(
+                        "ask_result",
+                        question=question,
+                        tenant_id=tenant_id,
+                        kg=kg_name,
+                        answer=(answer or "")[:1500],
+                        cypher=cypher,
+                        params=last_params,
+                        rows=len(bindings),
+                        query_confidence=q_conf,
+                        query_confidence_reason=q_conf_reason,
+                        money_leaf_bound=money_leaf_bound,
+                        timing={
+                            k: timing.get(k)
+                            for k in (
+                                "query_probe",
+                                "money_leaf_top",
+                                "money_leaf_hard_bound",
+                                "numeric_grounding_prop",
+                                "dim_values_present",
+                                "query_confidence",
+                                "attempts",
+                                "total_ms",
+                                "ontology_type_names",
+                                "semantic_type_names",
+                                "populated_type_names",
+                                "ontology_semantic_ignored",
+                            )
+                            if k in timing
+                        },
+                    )
+                except Exception:
+                    pass
                 return NLResult(
                     answer=answer,
                     sparql=cypher,

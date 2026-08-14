@@ -27,6 +27,11 @@ NO_INSTANCES_MARK = "[no instances]"
 # the cap (caller already chose those types).
 DEFAULT_MAX_EMPTY_TYPES = 12
 
+# Cap how many THIS-KG populated types we force into the /ask planning
+# ontology when a workspace is huge. Typical KGs have a handful of live
+# types; 80 is well above that while still bounding prompt size.
+DEFAULT_MAX_FORCE_POPULATED = 80
+
 
 @dataclass(frozen=True, slots=True)
 class PlanningSlot:
@@ -39,6 +44,8 @@ class PlanningSlot:
     prop_key: str | None = None
     populated: bool = False
     count: int = 0
+    # Short catalog description (query-gen synonym aid); empty when unknown.
+    description: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +57,22 @@ class PlanningType:
     description: str = ""
     parent_type: str | None = None
     slots: tuple[PlanningSlot, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class PlanningTypeScope:
+    """Resolved /ask planning type filter.
+
+    ``type_names`` is the optional GraphStore scope (``None`` = no filter /
+    full catalog). ``force_include`` is the THIS-KG populated set that must
+    never be dropped by a semantic top-K filter. ``ignored_semantic`` is True
+    when semantic hits had zero overlap with populated types and were
+    discarded as a hard scope.
+    """
+
+    type_names: tuple[str, ...] | None
+    force_include: tuple[str, ...]
+    ignored_semantic: bool = False
 
 
 def _leaf(obj: Any, *keys: str) -> str:
@@ -102,6 +125,7 @@ def merge_declared_and_populated(
         range_type = _leaf(a, "range_type") or None
         datatype = _leaf(a, "datatype") or None
         prop_key = _leaf(a, "prop_key") or name
+        desc = _leaf(a, "description") or ""
         if kind == "relationship" or range_type:
             kind = "relationship"
         else:
@@ -116,6 +140,7 @@ def merge_declared_and_populated(
             prop_key=prop_key,
             populated=bool(default_declared_populated),
             count=0,
+            description=desc,
         )
 
     for a in populated_literals or ():
@@ -135,6 +160,9 @@ def merge_declared_and_populated(
             prop_key=(prev.prop_key if prev else None) or name,
             populated=True,
             count=count,
+            description=(prev.description if prev else "")
+            or _leaf(a, "description")
+            or "",
         )
 
     for r in populated_relationships or ():
@@ -157,6 +185,9 @@ def merge_declared_and_populated(
             prop_key=(prev.prop_key if prev else None) or name,
             populated=True,
             count=count,
+            description=(prev.description if prev else "")
+            or _leaf(r, "description")
+            or "",
         )
 
     def _sort_key(s: PlanningSlot) -> tuple:
@@ -199,6 +230,97 @@ def build_planning_type(
     )
 
 
+def _unique_names(names: Iterable[str] | None) -> tuple[str, ...]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for n in names or ():
+        s = str(n).strip() if n is not None else ""
+        if not s or s in seen:
+            continue
+        seen.add(s)
+        out.append(s)
+    return tuple(out)
+
+
+def _cap_populated_names(
+    populated: Sequence[str],
+    *,
+    prefer: Iterable[str] | None = None,
+    cap: int = DEFAULT_MAX_FORCE_POPULATED,
+) -> tuple[str, ...]:
+    """Keep all populated types up to ``cap``; prefer semantic-overlapping first."""
+    names = [n for n in populated if n]
+    limit = int(cap) if cap is not None else DEFAULT_MAX_FORCE_POPULATED
+    if limit <= 0 or len(names) <= limit:
+        return tuple(names)
+    pref = {n for n in (prefer or ()) if n}
+    head = [n for n in names if n in pref]
+    tail = [n for n in names if n not in pref]
+    picked = head[:limit]
+    if len(picked) < limit:
+        picked.extend(tail[: limit - len(picked)])
+    return tuple(picked)
+
+
+def resolve_planning_type_scope(
+    *,
+    semantic_names: Iterable[str] | None = None,
+    populated_names: Iterable[str] | None = None,
+    max_populated: int = DEFAULT_MAX_FORCE_POPULATED,
+) -> PlanningTypeScope:
+    """Semantic top-K ranks; populated THIS-KG types are never dropped.
+
+    Embeddings retrieve tenant-wide type chunks. Sibling-ingest leftovers
+    (empty ``BenchIdentifier`` / ``KitIdentifier``) can outrank the live type
+    that actually holds the data (``Product``). Using that top-K as a *hard*
+    GraphStore filter hides the live type from the planning prompt.
+
+    Rules:
+    * If THIS KG has populated types, they are always ``force_include``.
+    * Semantic names are extra context (may include empty declared types).
+    * If semantic hits have **zero overlap** with populated types, ignore
+      semantic scope and plan on the populated set.
+    * If there are no populated types, keep the existing semantic / catalog
+      fallback (``type_names=semantic``, no force-include).
+    """
+    semantic = _unique_names(semantic_names)
+    populated = _cap_populated_names(
+        _unique_names(populated_names),
+        prefer=semantic,
+        cap=max_populated,
+    )
+
+    if not populated:
+        return PlanningTypeScope(
+            type_names=semantic or None,
+            force_include=(),
+            ignored_semantic=False,
+        )
+
+    overlap = set(semantic) & set(populated)
+    if semantic and not overlap:
+        return PlanningTypeScope(
+            type_names=populated,
+            force_include=populated,
+            ignored_semantic=True,
+        )
+
+    if semantic:
+        # Populated first, then extra semantic (may be empty declared types).
+        scope = _unique_names((*populated, *semantic))
+        return PlanningTypeScope(
+            type_names=scope,
+            force_include=populated,
+            ignored_semantic=False,
+        )
+
+    return PlanningTypeScope(
+        type_names=None,
+        force_include=populated,
+        ignored_semantic=False,
+    )
+
+
 def order_planning_types(
     types: Sequence[PlanningType],
     *,
@@ -231,13 +353,18 @@ def format_planning_slot(slot: PlanningSlot) -> str:
     """One Cypher-oriented slot line (matches format_schema_types_for_cypher)."""
     prop_key = slot.prop_key or slot.name
     mark = f" {NO_INSTANCES_MARK}" if not slot.populated else ""
+    # Short description helps synonym resolution (cost→assay_cost, price→list_price).
+    desc = (slot.description or "").strip().replace("\n", " ")
+    if len(desc) > 120:
+        desc = desc[:117].rstrip() + "..."
+    desc_bit = f" — {desc}" if desc else ""
     if slot.kind == "relationship" or slot.range_type:
         return (
             f"  - {slot.name} -> {slot.range_type or '?'} "
-            f"(relationship, key={prop_key}){mark}"
+            f"(relationship, key={prop_key}){mark}{desc_bit}"
         )
     dtype = slot.datatype or "string"
-    return f"  - {slot.name}: {dtype} (literal, key={prop_key}){mark}"
+    return f"  - {slot.name}: {dtype} (literal, key={prop_key}){mark}{desc_bit}"
 
 
 def format_planning_type(ptype: PlanningType) -> str:
@@ -387,9 +514,11 @@ def planning_types_from_schema_and_summaries(
 
 __all__ = [
     "DEFAULT_MAX_EMPTY_TYPES",
+    "DEFAULT_MAX_FORCE_POPULATED",
     "NO_INSTANCES_MARK",
     "PlanningSlot",
     "PlanningType",
+    "PlanningTypeScope",
     "build_planning_type",
     "format_planning_ontology",
     "format_planning_slot",
@@ -397,4 +526,5 @@ __all__ = [
     "merge_declared_and_populated",
     "order_planning_types",
     "planning_types_from_schema_and_summaries",
+    "resolve_planning_type_scope",
 ]

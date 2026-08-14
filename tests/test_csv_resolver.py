@@ -1108,7 +1108,8 @@ class TestV2RefuteTemplates:
         templates plus the ADR 0004 drift template (#7)."""
         for name in (
             "KEY DROPS ROWS",
-            "DIMENSION AS LITERAL",
+            "FRANKENSTEIN / MERGED DIMENSION TYPE",
+            "MEASURE STRIPPED",
             "COLUMN-NAMED EDGE",
             "KEYLESS ENTITY",
             "DUPLICATE/DEAD ATTR",
@@ -1116,9 +1117,8 @@ class TestV2RefuteTemplates:
             "SPARSE / MIS-DOMAINED EDGE",
         ):
             assert name in REFUTE_SYSTEM
-        # The drift template is numbered 7 and stays domain-free (structural
-        # wording: coverage / source type / predicate — no domain nouns).
-        assert "7. SPARSE / MIS-DOMAINED EDGE" in REFUTE_SYSTEM
+        # Drift template stays domain-free (coverage / source type / predicate).
+        assert "SPARSE / MIS-DOMAINED EDGE" in REFUTE_SYSTEM
 
     @pytest.mark.asyncio
     async def test_t1_key_drops_rows_corrected_to_composite(self, monkeypatch):
@@ -2347,24 +2347,23 @@ class TestWideTableInference:
 
 
 class TestSchemaInferenceModel:
-    """Schema inference must default to a FAST model, decoupled from the
-    heavyweight reasoning primary.
+    """Schema inference defaults to a strong OpenRouter reasoning model
+    (``openai/gpt-5.6-luna``), decoupled from ``PRIMARY_MODEL``.
 
-    Its cost is fixed per file (three sequential passes; row ingest is LLM-free),
-    so it dominates a small upload's latency. A regression once let it inherit
-    PRIMARY_MODEL (Opus) via ``INFONA_EXTRACT_MODEL``'s default, so a 24-row CSV
-    paid ~3× an Opus round-trip stuck at "0 of ~24". These lock the fast default
-    and the decoupling in.
+    Shape quality (no frankenstein types; measures stay on the owner) dominates
+    later /ask reliability. The dedicated ``INFONA_CSV_SCHEMA_MODEL`` knob keeps
+    this path independent of ``INFONA_LLM_MODEL`` / extract roles.
     """
 
-    def test_defaults_to_fast_model(self):
-        # No env override in CI → the class attr computed at import is the fast
-        # default (the same model research/enrichment extraction default to).
-        assert CSVResolver.SCHEMA_MODEL_DEFAULT == "google/gemini-2.5-flash"
-        assert CSVResolver.EXTRACT_MODEL == "google/gemini-2.5-flash"
+    def test_defaults_to_reasoning_schema_model(self):
+        # No env override in CI → strong OpenRouter reasoning model for shape
+        # quality (anti-frankenstein promotion), not Flash-speed guesses.
+        assert CSVResolver.SCHEMA_MODEL_DEFAULT == "openai/gpt-5.6-luna"
+        assert CSVResolver.EXTRACT_MODEL == "openai/gpt-5.6-luna"
+        assert "gpt-5.6-luna" in CSVResolver.EXTRACT_MODEL
 
     def test_decoupled_from_reasoning_primary(self):
-        # The bug: schema inference tracking PRIMARY_MODEL (Opus). It must not.
+        # Schema model is its own knob — must not silently track PRIMARY_MODEL.
         from infona_client.resolver.llm_router import PRIMARY_MODEL
 
         assert CSVResolver.EXTRACT_MODEL != PRIMARY_MODEL
@@ -2373,7 +2372,7 @@ class TestSchemaInferenceModel:
     @pytest.mark.asyncio
     async def test_openrouter_pass_routes_to_the_schema_model(self, monkeypatch):
         # Every v2 pass ships through _chat_openrouter → openrouter_chat; assert
-        # the model it sends is the (fast) schema model, not the primary.
+        # the model it sends is the schema model, not the primary.
         captured: dict[str, object] = {}
 
         async def fake_openrouter_chat(api_key, system, user, *, model=None, **kw):
@@ -2383,7 +2382,7 @@ class TestSchemaInferenceModel:
         monkeypatch.setattr(csv_resolver, "openrouter_chat", fake_openrouter_chat)
         resolver = CSVResolver(client=None, openrouter_key="sk-test")
         await resolver._chat_openrouter(REASON_SYSTEM, "hi", temperature=0.0)
-        assert captured["model"] == CSVResolver.EXTRACT_MODEL == "google/gemini-2.5-flash"
+        assert captured["model"] == CSVResolver.EXTRACT_MODEL == "openai/gpt-5.6-luna"
 
     def test_env_override_respected(self, monkeypatch):
         # Ops can still pin the model via the dedicated knob (re-read at import).

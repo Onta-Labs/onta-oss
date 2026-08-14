@@ -253,7 +253,42 @@ _STATUS_VALUE_ALLOW = frozenset(
         "published",
         "enabled",
         "disabled",
+        "ready",
+        "available",
+        "unavailable",
+        "online",
+        "offline",
+        "failed",
+        "success",
+        "running",
+        "stopped",
+        "paused",
+        "complete",
+        "completed",
+        "approved",
+        "rejected",
+        "queued",
     }
+)
+
+# Free status/value words (closed vocab) appearing anywhere in the question —
+# catches "total cost of ready widgets in DockA" where "ready" is not after a
+# for/in/where prep.
+_STATUSISH_FREE_RE = re.compile(
+    r"(?ix)\b(?P<tok>"
+    + "|".join(sorted(_STATUS_VALUE_ALLOW, key=len, reverse=True))
+    + r")\b"
+)
+
+# Code-like identifiers (DockA, ZoneB12, T2) often used as zone/region values.
+# Keep short CamelCase (DockA) so long type names (SynthWidget) are not
+# mistaken for filter values — registry binds still catch multi-word labels.
+_CODE_TOKEN_RE = re.compile(
+    r"\b(?P<tok>"
+    r"[A-Z][a-z]{1,8}[A-Z][a-z]{0,3}[0-9]{0,4}"  # DockA, ZoneB2 (not SynthWidget)
+    r"|[A-Za-z]{1,6}[0-9]+[A-Za-z0-9]{0,4}"  # alnum: Zone12, T2b
+    r"|[A-Z]{2,6}[0-9]+"  # ALLCAPS+digits: SKU1
+    r")\b"
 )
 
 # After "for/in/…", drop measure-ish heads when they look like the aggregate
@@ -423,6 +458,14 @@ def extract_filter_tokens(question: str) -> list[str]:
             continue
         _add(f"{label} {m.group('num')}", allow_measure_head=True)
 
+    # Status-ish free words (ready/active/…) anywhere — multi-filter class.
+    for m in _STATUSISH_FREE_RE.finditer(q):
+        _add(m.group("tok"), allow_measure_head=True)
+
+    # Code-like CamelCase / alnum ids (DockA, Zone12) as dim values.
+    for m in _CODE_TOKEN_RE.finditer(q):
+        _add(m.group("tok"), allow_measure_head=True)
+
     return out
 
 
@@ -469,12 +512,76 @@ def _aggregate_ops(question: str) -> list[str]:
     return ops
 
 
+# Trailing type-ish noise that rides along filter values:
+# "ready tests" / "ready lots" → value is still just "ready".
+_TYPE_TRAILER_RE = re.compile(
+    r"(?ix)\s+\b(?:"
+    r"tests?|lots?|bins?|panels?|assays?|products?|items?|records?|"
+    r"entities|rows?|offerings?|sessions?|courses?|goods?|crates?|"
+    r"trays?|parts?|assets?|units?"
+    r")\b\s*$"
+)
+
+
+def collapse_filter_tokens(tokens: list[str] | tuple[str, ...]) -> list[str]:
+    """Collapse redundant filter tokens for multi-filter counting.
+
+    Fixes false multi-filter: ``['ready tests', 'ready']`` → ``['ready']`` so a
+    single-dim ready SUM is not fail-closed as multi-filter intent.
+    """
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for raw in tokens or ():
+        tok = _normalize_token(str(raw))
+        if not tok:
+            continue
+        # Strip trailing type words: "ready tests" → "ready"
+        stripped = _TYPE_TRAILER_RE.sub("", tok).strip()
+        if stripped:
+            tok = stripped
+        key = tok.lower()
+        if key in seen or _is_stop_token(tok):
+            continue
+        seen.add(key)
+        cleaned.append(tok)
+    # Drop token if another token is a proper substring of it (or vice versa)
+    # when one is a single word value contained in a longer phrase.
+    if len(cleaned) < 2:
+        return cleaned
+    keep: list[str] = []
+    lows = [t.lower() for t in cleaned]
+    for i, t in enumerate(cleaned):
+        li = lows[i]
+        subsumed = False
+        for j, other in enumerate(cleaned):
+            if i == j:
+                continue
+            lj = lows[j]
+            # "ready" inside "status ready" / longer phrase → keep shorter value
+            if li != lj and (li in lj.split() or lj in li.split()):
+                # Prefer the shorter token as the value.
+                if len(li) > len(lj):
+                    subsumed = True
+                    break
+        if not subsumed:
+            keep.append(t)
+    # Final dedupe
+    out: list[str] = []
+    seen2: set[str] = set()
+    for t in keep:
+        k = t.lower()
+        if k not in seen2:
+            seen2.add(k)
+            out.append(t)
+    return out
+
+
 def sketch_query_intent(question: str) -> QueryIntentSketch:
     """Build a pure intent sketch for coverage / confidence gates."""
     q = (question or "").strip()
     has_agg = question_has_aggregate_intent(q)
     has_filt = question_has_filter_intent(q)
-    tokens = extract_filter_tokens(q)
+    tokens = collapse_filter_tokens(extract_filter_tokens(q))
     measures = extract_measure_prop_candidates(q)
     # If we found free filter tokens, treat as filter intent even when the
     # integrity cue regex missed (e.g. bare "North" after an unusual cue).
@@ -492,6 +599,7 @@ def sketch_query_intent(question: str) -> QueryIntentSketch:
 
 __all__ = [
     "QueryIntentSketch",
+    "collapse_filter_tokens",
     "extract_filter_tokens",
     "extract_measure_prop_candidates",
     "question_has_aggregate_intent",
