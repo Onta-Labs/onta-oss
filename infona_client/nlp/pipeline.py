@@ -1447,6 +1447,61 @@ class NLQueryPipeline:
                         timing["query_build_type_hits"] = ", ".join(
                             build_ctx.question_type_hits
                         )[:200]
+                    # Vague “how many records?” + ≥2 live types → ask, don’t guess.
+                    try:
+                        from infona_client.nlp.ask_process_log import log_ask_event
+                        from infona_client.nlp.query_ambiguity import (
+                            ambiguous_count_needs_clarify,
+                            format_type_count_clarification,
+                        )
+
+                        if ambiguous_count_needs_clarify(
+                            question, build_ctx.types
+                        ):
+                            clarify = format_type_count_clarification(
+                                build_ctx.types
+                            )
+                            timing["query_ambiguity_clarify"] = 1.0
+                            timing["query_confidence"] = "low"
+                            timing["query_confidence_reason"] = (
+                                "ambiguous count: multiple populated types, "
+                                "question did not name one"
+                            )
+                            log_ask_event(
+                                "ask_clarify",
+                                question=question,
+                                tenant_id=tenant_id,
+                                kg=kg_name,
+                                reason="ambiguous_count",
+                                populated_types=list(
+                                    build_ctx.populated_type_names
+                                )[:20],
+                                answer=clarify,
+                            )
+                            timing.update(token_ledger.totals_for_timing())
+                            return NLResult(
+                                answer=clarify,
+                                sparql="",
+                                explanation="clarification: ambiguous count",
+                                ontology=ontology,
+                                timing={
+                                    **timing,
+                                    "total_ms": round(
+                                        (time.time() - t0) * 1000, 1
+                                    ),
+                                    "attempts": 0,
+                                },
+                                token_usage=token_ledger.to_list(),
+                                query_confidence="low",
+                                query_confidence_reason=str(
+                                    timing["query_confidence_reason"]
+                                ),
+                                clarification_prompt=clarify,
+                            )
+                    except Exception:
+                        logger.debug(
+                            "query_ambiguity_check_failed", exc_info=True
+                        )
                     if build_ctx.populated_type_names:
                         populated_for_numeric = list(build_ctx.populated_type_names)
                         # Zero-instance pollution gate (#local high-conf empty).
