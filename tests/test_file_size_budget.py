@@ -83,7 +83,6 @@ OVERSIZE_ALLOWLIST: dict[str, int] = {
     "infona_client/nlp/numeric_plan_grounding.py": 793,
     "infona_client/nlp/ontology_embeddings.py": 900,
     "infona_client/nlp/ontology_mention_index.py": 972,
-    "infona_client/nlp/ontology_subgraph_match.py": 1623,
     "infona_client/nlp/query_constraint_coverage.py": 1315,
     "infona_client/nlp/query_intent.py": 607,
     "infona_client/nlp/schema_valid_cypher.py": 859,
@@ -277,6 +276,7 @@ def test_allowlist_is_deny_by_default():
     assert "infona_client/agent/capabilities/web_ingest_cap.py" not in OVERSIZE_ALLOWLIST
     assert "infona_client/resolver/schema_resolver.py" not in OVERSIZE_ALLOWLIST
     assert "infona_client/nlp/pipeline.py" not in OVERSIZE_ALLOWLIST
+    assert "infona_client/nlp/ontology_subgraph_match.py" not in OVERSIZE_ALLOWLIST
     assert all(n > NEW_FILE_HARD_CAP for n in OVERSIZE_ALLOWLIST.values())
 
 
