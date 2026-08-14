@@ -704,3 +704,149 @@ def test_multi_word_unit_cost_fixture_and_mention():
     assert plan is not None
     assert plan.prop_key == "unit_cost"
     assert plan.mention == "unit_cost"  # not unit_cost_is
+
+
+# ---------------------------------------------------------------------------
+# 6. KG-scoped money resolve (tenant pollution: tuition_usd vs list_price)
+# ---------------------------------------------------------------------------
+# Persona b81a4a P4: Pottery KG has list_price; shared tenant ontology still
+# declares empty Course/Seminar shells with tuition_usd. Bare "price under N"
+# must ground to the leaf on *populated* types in THIS KG — never tuition_usd
+# from an empty pollution type. Synthetic leaves only (anti-overfit).
+
+POLLUTED_TENANT_ONTO = (
+    "Type: SynthCourse [no instances]\n"
+    "  Attributes: title, tuition_usd\n"
+    "  Relationships: taught_by\n"
+    "Type: SynthItem (14 entities)\n"
+    "  Attributes: sku, list_price, glaze\n"
+    "  Relationships: made_by\n"
+)
+
+# Dash-literal catalog form (GraphStore planning schema).
+POLLUTED_DASH_ONTO = (
+    "Type: SynthCourse [no instances]\n"
+    "  - title: string (literal)\n"
+    "  - tuition_usd: float (literal, key=tuition_usd)\n"
+    "Type: SynthItem (14 entities)\n"
+    "  - sku: string (literal)\n"
+    "  - list_price: float (literal, key=list_price)\n"
+    "  - glaze: string (literal)\n"
+)
+
+
+def test_price_prefers_list_price_on_populated_type_not_tuition():
+    """NL 'price' + polluted tenant onto → list_price (populated), not tuition_usd."""
+    r = resolve_numeric_attr(
+        "price",
+        type_name=None,
+        ontology_summary=POLLUTED_TENANT_ONTO,
+        money_family=True,
+    )
+    assert r.confidence == "unique", r.explanation
+    assert r.prop_key == "list_price"
+    assert r.prop_key != "tuition_usd"
+    assert any(
+        c.leaf == "list_price" and "populated_type" in c.reasons
+        for c in r.candidates
+    )
+
+    # Explicit inventory filter (query-build / active types) without relying on
+    # ontology (N entities) marks alone.
+    r2 = resolve_numeric_attr(
+        "price",
+        type_name=None,
+        ontology_summary=(
+            "Type: SynthCourse\n"
+            "  Attributes: tuition_usd\n"
+            "Type: SynthItem\n"
+            "  Attributes: list_price\n"
+        ),
+        money_family=True,
+        populated_types=["SynthItem"],
+    )
+    assert r2.confidence == "unique"
+    assert r2.prop_key == "list_price"
+
+    # Type-scoped on the live type still unique.
+    r3 = resolve_numeric_attr(
+        "price",
+        type_name="SynthItem",
+        ontology_summary=POLLUTED_DASH_ONTO,
+        money_family=True,
+        populated_types=["SynthItem"],
+    )
+    assert r3.confidence == "unique"
+    assert r3.prop_key == "list_price"
+
+
+def test_ground_price_under_scopes_to_populated_kg_types():
+    """'price under 20' grounds to SynthItem.list_price, not SynthCourse.tuition_usd."""
+    for onto in (POLLUTED_TENANT_ONTO, POLLUTED_DASH_ONTO):
+        for question in (
+            "price under 20",
+            "items with price under 20",
+            "list price under 20",
+        ):
+            plan = ground_numeric_plan(
+                question,
+                onto,
+                type_names=["SynthCourse", "SynthItem"],
+            )
+            assert plan is not None, (question, onto[:40])
+            assert plan.confidence == "unique", (question, plan.explanation)
+            assert plan.prop_key == "list_price", (question, plan.prop_key, plan.explanation)
+            assert plan.subject_type == "SynthItem", (question, plan.subject_type)
+            assert plan.op == "lt"
+            assert plan.threshold == 20.0
+
+    # Explicit populated_types filter when ontology lacks (N entities) marks.
+    bare = (
+        "Type: SynthCourse\n"
+        "  Attributes: tuition_usd\n"
+        "Type: SynthItem\n"
+        "  Attributes: list_price\n"
+    )
+    plan = ground_numeric_plan(
+        "price under 20",
+        bare,
+        type_names=["SynthCourse", "SynthItem"],
+        populated_types=["SynthItem"],
+    )
+    assert plan is not None
+    assert plan.confidence == "unique"
+    assert plan.prop_key == "list_price"
+    assert plan.subject_type == "SynthItem"
+
+    # Fail closed: do not silently pick empty tuition_usd when only pollution
+    # types are marked empty and inventory says no populated money type.
+    plan_none = ground_numeric_plan(
+        "price under 20",
+        bare,
+        type_names=["SynthCourse", "SynthItem"],
+        populated_types=["SynthUnrelated"],  # no money leaf on inventory
+    )
+    # No unique grounding to pollution leaf — ambiguous/none or no plan.
+    if plan_none is not None:
+        assert plan_none.prop_key != "tuition_usd" or plan_none.confidence != "unique"
+
+
+def test_money_resolve_still_unique_without_population_marks():
+    """Regression: single-type ontologies without population marks still resolve."""
+    r = resolve_numeric_attr(
+        "price",
+        type_name="Widget",
+        ontology_summary=UNIT_COST_ONLY,
+        money_family=True,
+    )
+    assert r.confidence == "unique"
+    assert r.prop_key == "unit_cost"
+
+    plan = ground_numeric_plan(
+        "widgets cost less than 15",
+        UNIT_COST_ONLY,
+        type_names=["Widget"],
+    )
+    assert plan is not None
+    assert plan.prop_key == "unit_cost"
+    assert plan.confidence == "unique"

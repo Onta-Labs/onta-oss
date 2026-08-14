@@ -27,6 +27,8 @@ from infona_client.nlp.cypher_generate import (
 )
 from infona_client.nlp.numeric_attr_resolve import (
     is_money_nl_cue,
+    known_empty_types,
+    normalize_populated_types,
     resolve_numeric_attr,
 )
 
@@ -163,18 +165,23 @@ def ground_numeric_plan(
     type_names: list[str] | None = None,
     mention_index: Any | None = None,
     query_embedding: Sequence[float] | None = None,
+    populated_types: Sequence[str] | None = None,
 ) -> GroundedNumericPlan | None:
     """Ground a numeric compare or aggregate plan from NL + ontology.
 
     Returns ``None`` when the question is not a numeric shape. Returns a plan
     with ``confidence="ambiguous"`` / ``"none"`` when prop resolve fails closed
     (still useful prompt context). Never emits executable free-form Cypher.
+
+    ``populated_types`` scopes money leaf ranking to types that have instances
+    in the active KG (or ontology ``(N entities)`` marks when omitted).
     """
     q = _TRAILING_PUNCT_RE.sub("", (question or "").strip())
     if not q or not (ontology_summary or "").strip():
         return None
 
     names = type_names or extract_type_names_from_ontology(ontology_summary) or None
+    pop = list(populated_types) if populated_types else None
 
     # Prefer aggregate first when both could match ("average price of widgets")
     agg = _try_ground_agg(
@@ -183,6 +190,7 @@ def ground_numeric_plan(
         type_names=names,
         mention_index=mention_index,
         query_embedding=query_embedding,
+        populated_types=pop,
     )
     if agg is not None:
         return agg
@@ -193,6 +201,7 @@ def ground_numeric_plan(
         type_names=names,
         mention_index=mention_index,
         query_embedding=query_embedding,
+        populated_types=pop,
     )
     return cmp_plan
 
@@ -220,11 +229,20 @@ def _resolve_sole_money_type(
     mention: str,
     mention_index: Any | None,
     query_embedding: Sequence[float] | None,
+    populated_types: Sequence[str] | None = None,
 ) -> str | None:
-    """When NL omits a type, pick the sole type that uniquely resolves a money leaf."""
+    """When NL omits a type, pick the sole type that uniquely resolves a money leaf.
+
+    Prefer types populated in the active KG. Tenant pollution often leaves empty
+    Course/Seminar shells with ``tuition_usd`` beside a live Item with
+    ``list_price`` — both uniquely resolve bare ``price``; without population
+    ranking this returns None (or the wrong sole type when inventory is skewed).
+    """
     names = type_names or extract_type_names_from_ontology(ontology_summary) or []
     if not names:
         return None
+    pop_set = normalize_populated_types(populated_types, ontology_summary)
+    empty_set = known_empty_types(ontology_summary)
     winners: list[str] = []
     for tn in names:
         r = resolve_numeric_attr(
@@ -234,12 +252,44 @@ def _resolve_sole_money_type(
             mention_index=mention_index,
             query_embedding=query_embedding,
             money_family=True,
+            populated_types=populated_types,
         )
         if r.confidence == "unique" and r.prop_key:
             winners.append(tn)
-    if len(winners) == 1:
-        return winners[0]
-    return None
+    if not winners:
+        return None
+
+    def _prefer(cands: list[str]) -> str | None:
+        if len(cands) == 1:
+            return cands[0]
+        return None
+
+    # 1) Explicit / derived populated types win when unique among winners.
+    if pop_set:
+        pop_winners = [w for w in winners if w in pop_set]
+        sole = _prefer(pop_winners)
+        if sole is not None:
+            return sole
+        if pop_winners:
+            # Multiple populated money types — fail closed (ambiguous).
+            return None
+        # Populated inventory known but no money winner among them: do not
+        # fall through to empty pollution types.
+        if any(w in empty_set for w in winners) or empty_set:
+            return None
+
+    # 2) Drop known-empty winners when any non-empty / unknown remains.
+    if empty_set:
+        non_empty = [w for w in winners if w not in empty_set]
+        sole = _prefer(non_empty)
+        if sole is not None:
+            return sole
+        if non_empty:
+            return None
+        # All winners empty → fail closed rather than ground pollution.
+        return None
+
+    return _prefer(winners)
 
 
 # Type-less money compare: "unit cost under 10" / "price under 10" (no type word).
@@ -265,6 +315,7 @@ def _try_ground_compare(
     type_names: list[str] | None,
     mention_index: Any | None,
     query_embedding: Sequence[float] | None,
+    populated_types: Sequence[str] | None = None,
 ) -> GroundedNumericPlan | None:
     # Prefer type-less multi-word money ("unit cost under 10") so the bare
     # "cost" token is not stolen as a verb with label="unit".
@@ -279,6 +330,7 @@ def _try_ground_compare(
             mention=prop_mention,
             mention_index=mention_index,
             query_embedding=query_embedding,
+            populated_types=populated_types,
         )
         if matched is not None:
             return _finish_compare(
@@ -291,6 +343,7 @@ def _try_ground_compare(
                 mention_index=mention_index,
                 query_embedding=query_embedding,
                 money=True,
+                populated_types=populated_types,
             )
         # Fall through — typed regex may still recover with an explicit type.
 
@@ -334,6 +387,7 @@ def _try_ground_compare(
                 mention=prop_soft,
                 mention_index=mention_index,
                 query_embedding=query_embedding,
+                populated_types=populated_types,
             )
             if matched is None:
                 return None
@@ -363,6 +417,7 @@ def _try_ground_compare(
             mention_index=mention_index,
             query_embedding=query_embedding,
             money=True,
+            populated_types=populated_types,
         )
 
     label = (m.group("label") or "").strip()
@@ -416,6 +471,7 @@ def _try_ground_compare(
             mention=prop_mention or _MONEY_MENTION_DEFAULT,
             mention_index=mention_index,
             query_embedding=query_embedding,
+            populated_types=populated_types,
         )
     if matched is None:
         return None
@@ -430,6 +486,7 @@ def _try_ground_compare(
         mention_index=mention_index,
         query_embedding=query_embedding,
         money=money,
+        populated_types=populated_types,
     )
 
 
@@ -444,6 +501,7 @@ def _finish_compare(
     mention_index: Any | None,
     query_embedding: Sequence[float] | None,
     money: bool,
+    populated_types: Sequence[str] | None = None,
 ) -> GroundedNumericPlan:
     op = _CMP_OP_MAP.get(op_raw)
     if op is None:
@@ -464,6 +522,7 @@ def _finish_compare(
             mention_index=mention_index,
             query_embedding=query_embedding,
             money_family=True,
+            populated_types=populated_types,
         )
     else:
         # Explicit prop from NL — still type-scoped
@@ -474,6 +533,7 @@ def _finish_compare(
             mention_index=mention_index,
             query_embedding=query_embedding,
             money_family=False,
+            populated_types=populated_types,
         )
         # Exact prop word may still be the leaf even if not money
         if resolved.confidence != "unique":
@@ -539,6 +599,7 @@ def _try_ground_agg(
     type_names: list[str] | None,
     mention_index: Any | None,
     query_embedding: Sequence[float] | None,
+    populated_types: Sequence[str] | None = None,
 ) -> GroundedNumericPlan | None:
     m = _NUMERIC_AGG_RE.match(q)
     if not m:
@@ -591,6 +652,7 @@ def _try_ground_agg(
         mention_index=mention_index,
         query_embedding=query_embedding,
         money_family=money or is_money_nl_cue(mention),
+        populated_types=populated_types,
     )
     # If explicit prop declared on type, prefer exact even when family weak
     if prop_mention and resolved.confidence != "unique":

@@ -284,6 +284,112 @@ def test_build_clarification_prompt_general():
 
 
 # ---------------------------------------------------------------------------
+# Zero-instance / pollution primary types (live inventory)
+# ---------------------------------------------------------------------------
+
+
+def test_zero_instance_pollution_type_fail_closed():
+    """Cypher uses empty Product while question matches populated Widget → low."""
+    r = check_constraint_coverage(
+        "sum unit_qty of active widgets",
+        FILTERED_SUM,
+        params={
+            "type_names": ["Product"],  # empty pollution type
+            "prop_key": "unit_qty",
+            "prop_value": "active",
+        },
+        populated_types=["Widget", "SynthGadget"],  # Widget=12, Product not present
+        type_counts={"Widget": 12, "SynthGadget": 3, "Product": 0},
+    )
+    assert not r.ok
+    assert r.fail_closed
+    assert r.confidence == "low"
+    assert "Product" in r.empty_plan_types
+    assert "Widget" in r.matched_populated_types
+    assert "0 entities" in (r.reason or "") or "zero" in (r.reason or "").lower()
+    # Feedback lists populated alternatives for regenerate.
+    fb = coverage_feedback(r, previous_cypher=FILTERED_SUM)
+    assert "Widget" in fb
+    assert "Product" in fb or "zero-instance" in fb.lower()
+    ans = fail_closed_answer(r)
+    assert "Could not answer" in ans
+    assert "Widget" in ans
+
+
+def test_populated_primary_type_with_filter_stays_high():
+    """Cypher uses Widget (populated) with dimension filter → high (ok)."""
+    r = check_constraint_coverage(
+        "sum unit_qty of active widgets",
+        FILTERED_SUM,
+        params={
+            "type_names": ["Widget"],
+            "prop_key": "unit_qty",
+            "prop_value": "active",
+        },
+        populated_types=["Widget", "SynthGadget"],
+        type_counts={"Widget": 12, "Product": 0},
+    )
+    assert r.ok
+    assert not r.fail_closed
+    assert r.confidence == "high"
+    assert r.empty_plan_types == ()
+
+
+def test_zero_instance_without_inventory_skips_gate():
+    """Without populated_types, pollution gate is inactive (legacy path)."""
+    r = check_constraint_coverage(
+        "sum unit_qty of active widgets",
+        FILTERED_SUM,
+        params={
+            "type_names": ["Product"],
+            "prop_key": "unit_qty",
+            "prop_value": "active",
+        },
+    )
+    # Dim filter present + filter intent → high under pre-inventory rules.
+    assert r.ok
+    assert r.confidence == "high"
+    assert r.empty_plan_types == ()
+
+
+def test_zero_instance_no_question_type_match_skips_hard_fail():
+    """Empty plan type but question does not match any populated type → no gate."""
+    r = check_constraint_coverage(
+        "sum unit_qty for North",  # no Widget/Gadget type cue
+        FILTERED_SUM,
+        params={
+            "type_names": ["Product"],
+            "prop_key": "unit_qty",
+            "prop_value": "North",
+        },
+        populated_types=["Widget", "SynthGadget"],
+        type_counts={"Widget": 12, "SynthGadget": 3, "Product": 0},
+    )
+    # No alternative type match → do not fail closed on population alone.
+    assert r.empty_plan_types == ()
+    assert r.ok
+    assert r.confidence == "high"
+
+
+def test_mixed_populated_and_empty_plan_types_ok():
+    """If any primary type is populated, inventory gate does not fail-close."""
+    r = check_constraint_coverage(
+        "sum unit_qty of widgets",
+        FILTERED_SUM,
+        params={
+            "type_names": ["Widget", "Product"],
+            "prop_key": "unit_qty",
+            "prop_value": "North",
+        },
+        populated_types=["Widget"],
+        type_counts={"Widget": 12, "Product": 0},
+    )
+    assert r.ok
+    assert not r.fail_closed
+    assert r.confidence == "high"
+
+
+# ---------------------------------------------------------------------------
 # Pipeline integration
 # ---------------------------------------------------------------------------
 
@@ -333,6 +439,78 @@ async def test_pipeline_retries_then_fail_closes_unfiltered_aggregate():
     assert result.timing.get("rows") in (None, 0) or "rows" not in result.timing
     # Clarification surfaced.
     assert result.clarification_prompt or "field" in result.answer.lower()
+
+
+@pytest.mark.asyncio
+async def test_pipeline_fail_closes_zero_instance_pollution_type(monkeypatch):
+    """Inventory Widget=12 Product=0; plan uses Product only → fail-closed low conf."""
+    from infona_client.nlp.query_build import QueryBuildContext, TypePopulation
+
+    store = MemoryGraphStore()
+    neptune = MagicMock()
+    neptune.query = AsyncMock(side_effect=AssertionError("no sparql"))
+    pipe = NLQueryPipeline(neptune, anthropic_key="test-key", graph_store=store)
+    pipe._fetch_ontology = AsyncMock(return_value=SYN_ONTO)  # type: ignore[method-assign]
+
+    async def fake_build(*_a, **_k):
+        return QueryBuildContext(
+            types=(
+                TypePopulation("Widget", 12),
+                TypePopulation("SynthGadget", 3),
+            ),
+            question_type_hits=("Widget",),
+            total_entities=15,
+        )
+
+    monkeypatch.setattr(
+        "infona_client.nlp.query_build.collect_query_build_context",
+        fake_build,
+    )
+
+    calls: list[str] = []
+
+    async def fake_llm(question, ontology, **kw):
+        calls.append(kw.get("error_feedback") or "")
+        # Looks "covered" (has dim filter) but wrong empty primary type.
+        return {
+            "cypher": FILTERED_SUM,
+            "params": {
+                "type_names": ["Product"],
+                "prop_key": "unit_qty",
+                "prop_value": "active",
+            },
+            "explanation": "sum on empty Product",
+            "functions_needed": [],
+        }
+
+    pipe._try_llm_cypher = fake_llm  # type: ignore[method-assign]
+    pipe._rephrase_via_openrouter = AsyncMock(return_value=None)  # type: ignore[method-assign]
+    pipe._execute_confined_cypher = AsyncMock(  # type: ignore[method-assign]
+        side_effect=AssertionError("must not execute zero-instance plan")
+    )
+
+    result = await pipe.ask(
+        "sum unit_qty of active widgets",
+        graph_uri=f"{IRI_BASE}/graphs/demo-tenant",
+        instance_graph=f"{IRI_BASE}/graphs/demo-tenant/kg/syn-widgets",
+        use_cypher=True,
+    )
+
+    assert len(calls) == 3
+    assert any(
+        "zero-instance" in (fb or "").lower()
+        or "POPULATED" in (fb or "")
+        or "Widget" in (fb or "")
+        for fb in calls[1:]
+    )
+    assert result.timing.get("query_constraint_coverage_reject") == 1.0
+    assert result.timing.get("query_zero_instance_type") == 1.0
+    assert result.query_confidence == "low"
+    assert "Could not answer" in result.answer
+    assert "Widget" in (result.answer or "") or "Product" in (
+        result.query_confidence_reason or ""
+    )
+    pipe._execute_confined_cypher.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -123,9 +123,16 @@ MULTI-ENTITY output (the usual case) — return:
   role-distinct relationships — NEVER merge them into one.
 
 SINGLE-ENTITY output — ONLY when the row describes one thing (a product catalog,
-a transactions ledger, a lab result, a sensor reading): OMIT `entities` and
-`relationships`, return entity_type + columns with exactly one column = type_id.
-Do not invent entities for a genuinely flat row.
+a transactions ledger, a lab result, a sensor reading, an inventory line): OMIT
+`entities` and `relationships`, return entity_type + columns with exactly one
+column = type_id. Do not invent entities for a genuinely flat row.
+
+HARD — no weird types on flat analytics rows:
+- Keep numeric measures (cost, price, seats, tuition, qty, unit_cost, list_price, …)
+  as attributes on the primary type — never as their own type.
+- Do not invent compound types that merge two independent columns (BayStatus, etc.).
+- Prefer short status/bay/genre tags as attributes unless they clearly name a shared
+  real-world entity with its own id-like column cluster.
 
 Type naming & reuse: the user message lists the tenant's EXISTING ontology
 types. Reuse one ONLY when your entity is genuinely the SAME real-world concept
@@ -217,9 +224,26 @@ evidence, not from column names. Apply these domain-independent rules:
 ENTITY DECOMPOSITION
 - Columns that travel together (mutual functional dependency) and include an id-like member describe ONE
   entity; a code column paired with its label/title column are the SAME entity (code = its key, title = its label).
-- A column with low card_ratio that repeats across rows (distinct far below row count) is a DIMENSION: a shared
-  entity referenced by many rows. Model it as its own entity + an edge, NOT a literal attribute.
 - A near-unique, free-text column is a literal attribute of the row's primary entity.
+
+NO FRANKENSTEIN TYPES (hard — analytics CSVs break without this)
+- Prefer a FLAT primary entity when one row is one fact (inventory line, assay, offering,
+  product listing): id + measures + category columns as attributes unless a dimension is
+  clearly a real-world shared thing with its own life (Author of many books, Country, Vendor).
+- NEVER invent a compound / merged type that glues TWO independent columns into one type
+  (e.g. BayStatus for bay+status, TermCampus for term+campus, ReadyPanel for ready+panel).
+  Independent dims stay SEPARATE types with SEPARATE edges, or stay LITERAL attributes on
+  the primary entity.
+- NEVER invent pseudo-types whose only job is packing measures (PricingTier named "20_800",
+  CostStatus, etc.). Numeric measure columns (cost, price, seats, tuition, qty, amount,
+  weight, unit_cost, list_price, assay_cost, …) MUST remain literal attributes on the
+  primary owner entity with numeric datatype — do not promote them away.
+- If you promote a low-card dimension, give it ONE simple name (Bay, Status, Term, Genre)
+  and ONE clean edge from the primary (has_bay, has_status, offered_in, …). One column →
+  at most one simple type — never mash two columns into one target type.
+- A column with low card_ratio that repeats MAY be a dimension entity + edge, OR a literal
+  enum attribute on the primary. Prefer the literal when the values are short status/label
+  tags and there are no other columns describing that dimension.
 
 KEYS (row conservation is mandatory)
 - An entity key must be a column that is BOTH ~100% complete AND unique.
@@ -296,12 +320,20 @@ REFUTE_SYSTEM = """\
 You are an adversarial schema reviewer. Given a profile and a proposed schema, TRY TO BREAK it
 using only these structural failure templates (no domain knowledge):
 1. KEY DROPS ROWS — any entity keyed on a column with completeness < 0.99.
-2. DIMENSION AS LITERAL — any column with card_ratio < 0.5 that repeats, modeled as a literal attribute instead of an entity/edge.
-3. COLUMN-NAMED EDGE — any relationship predicate equal to a source column name rather than a relation/verb.
-4. KEYLESS ENTITY — any entity with no stable key strategy.
-5. DUPLICATE/DEAD ATTR — near-duplicate attribute names, or attributes over an all-empty column.
-6. LOST KEY — a key column not also emitted as an attribute.
-7. SPARSE / MIS-DOMAINED EDGE — a relationship whose coverage on its declared source type is below the support floor (few of that type's rows populate it), OR that reuses a predicate which holds at high coverage on a sibling source type but is attached here at low coverage to a different source type. Either way the edge is not a type-level property of its declared domain.
+2. FRANKENSTEIN / MERGED DIMENSION TYPE — a single type or edge that glues two independent
+   columns (e.g. bay+status → BayStatus, term+campus mashed together). Correct by splitting
+   into separate simple types/edges OR literal attributes on the primary — never one compound type.
+3. MEASURE STRIPPED — a numeric measure column (cost, price, seats, tuition, qty, amount,
+   weight, unit_cost, list_price, …) modeled only as a promoted tier/entity name or missing
+   as a numeric attribute on the primary owner. Correct by restoring the measure as a literal
+   float/integer attribute on the primary entity.
+4. COLUMN-NAMED EDGE — any relationship predicate equal to a source column name rather than a relation/verb.
+5. KEYLESS ENTITY — any entity with no stable key strategy.
+6. DUPLICATE/DEAD ATTR — near-duplicate attribute names, or attributes over an all-empty column.
+7. LOST KEY — a key column not also emitted as an attribute.
+8. SPARSE / MIS-DOMAINED EDGE — a relationship whose coverage on its declared source type is below the support floor (few of that type's rows populate it), OR that reuses a predicate which holds at high coverage on a sibling source type but is attached here at low coverage to a different source type. Either way the edge is not a type-level property of its declared domain.
+9. USELESS PSEUDO-TYPE — a type whose instances are only free-text tags or empty shells with no
+   identity beyond a label, when keeping the column as a literal on the primary would be clearer.
 List every violation as {template, location, evidence, severity}. Then output a CORRECTED schema JSON in the
 same shape as the input. If nothing is wrong, return violations:[] and echo the schema. JSON only:
 {"violations":[...], "corrected": {...}}"""
@@ -408,9 +440,11 @@ MAX_INFERENCE_COLUMNS = int(os.environ.get("INFONA_CSV_MAX_INFERENCE_COLUMNS", "
 # COMPLETE passes still echo the (whole) schema, so even with chunked REASON
 # they need headroom proportional to the column count — bounded so we never
 # request an absurd budget from the provider.
-_V2_BASE_MAX_TOKENS = 4096
+# Reasoning models (gpt-5.6-luna) spend output budget on think + JSON schema;
+# 4096 was enough for Flash but truncates long REASON/REFUTE answers.
+_V2_BASE_MAX_TOKENS = 8192
 _V2_MAX_TOKENS_CAP = 32768
-_V2_TOKENS_PER_COLUMN = 80
+_V2_TOKENS_PER_COLUMN = 100
 
 # Bound on concurrent column-assignment chunk calls in the wide path.
 _WIDE_CHUNK_CONCURRENCY = 5
@@ -531,21 +565,13 @@ columns JSON now."""
 class CSVResolver:
     # Schema inference is a STRUCTURED tagging task (map columns → ontology
     # roles), run as up to THREE sequential passes — REASON → adversarial
-    # REFUTE → COMPLETE (ADR 0003) — whose whole design is to make a fast, cheap
-    # model reliable, not to lean on a heavyweight reasoner. Its cost is FIXED
-    # per file (LLM-free row ingest follows), so it dominates a small upload's
-    # latency: a 24-row CSV pays the full 3-pass cost before the first record
-    # lands. Inheriting PRIMARY_MODEL (→ Opus) therefore made even a tiny file
-    # feel stuck at "0 of ~24" for ~3× an Opus round-trip. Default to a fast
-    # model instead — the SAME choice the research and enrichment extractors
-    # already make (google/gemini-2.5-flash; _build_mapping below even carries
-    # a Flash-specific quirk workaround). This restores the pre-OpenRouter-
-    # convergence default (a fast model) but behind its OWN env knob, so it is
-    # decoupled from BOTH the reasoning primary (INFONA_LLM_MODEL) and the
-    # entity-extraction knob (INFONA_EXTRACT_MODEL) — bumping either can never
-    # again silently drag schema inference back onto a slow model. Ops override
-    # via INFONA_CSV_SCHEMA_MODEL; the OpenRouter fallback chain still applies.
-    SCHEMA_MODEL_DEFAULT = "google/gemini-2.5-flash"
+    # REFUTE → COMPLETE (ADR 0003). Shape quality (no frankenstein types, keep
+    # measures on the owner row) dominates upload latency: a wrong schema
+    # poisons every later /ask. Default to a strong OpenRouter **reasoning**
+    # model so promotion decisions are deliberate, not Flash-speed guesses.
+    # Decoupled from INFONA_LLM_MODEL and INFONA_EXTRACT_MODEL — override via
+    # INFONA_CSV_SCHEMA_MODEL only. OpenRouter fallback chain still applies.
+    SCHEMA_MODEL_DEFAULT = "openai/gpt-5.6-luna"
     EXTRACT_MODEL = os.environ.get("INFONA_CSV_SCHEMA_MODEL", SCHEMA_MODEL_DEFAULT)
     EXTRACT_PROVIDER = os.environ.get("INFONA_EXTRACT_PROVIDER", "openrouter")
     # Anthropic-SDK offline fallback (used only when no OpenRouter key is set) —
@@ -1295,7 +1321,8 @@ class CSVResolver:
             model=self.EXTRACT_MODEL,
             temperature=temperature,
             max_tokens=max_tokens,
-            timeout=60,
+            # Reasoning models need headroom for think + full schema JSON.
+            timeout=float(os.environ.get("INFONA_CSV_SCHEMA_TIMEOUT_S", "180")),
         )
         return json.loads(_strip_code_fences(text))
 

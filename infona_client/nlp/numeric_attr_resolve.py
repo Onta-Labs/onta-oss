@@ -29,6 +29,11 @@ from typing import Any, Sequence
 # Cosine / score thresholds (aligned with ontology_mention_index spirit).
 MIN_ACCEPT_SCORE = 0.42
 AMBIGUITY_MARGIN = 0.04
+# Prefer leaves hosted on types that have instances in THIS KG over tenant
+# pollution types (e.g. list_price on populated SynthItem vs tuition_usd on
+# empty SynthCourse). Must clear AMBIGUITY_MARGIN when family scores tie.
+POPULATED_TYPE_BOOST = 0.08
+EMPTY_TYPE_ONLY_PENALTY = 0.06
 
 # Safe property / attr keys only (never interpolate free text into Cypher).
 _SAFE_PROP_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -341,6 +346,120 @@ def literal_leaves_for_type(
     return _literal_leaves_from_section(section)
 
 
+def _type_activity_map(ontology_summary: str) -> dict[str, int]:
+    """Type leaf → instance-count hint from ontology text (best-effort)."""
+    try:
+        from infona_client.nlp.cypher_generate import (
+            extract_type_activity_from_ontology,
+        )
+
+        return dict(extract_type_activity_from_ontology(ontology_summary or "") or {})
+    except Exception:  # noqa: BLE001 — hermetic without cypher_generate edge cases
+        return {}
+
+
+def normalize_populated_types(
+    populated_types: Sequence[str] | None,
+    ontology_summary: str = "",
+) -> set[str]:
+    """Normalize an explicit populated-type set, or derive from ontology marks.
+
+    Ontology marks: ``Type: X (N entities)`` → populated when N>0;
+    ``Type: X [no instances]`` → empty. Bare ``Type: X`` is unknown (not
+    treated as populated). Explicit ``populated_types`` always wins when
+    non-empty.
+    """
+    if populated_types:
+        out = {str(t).strip() for t in populated_types if str(t).strip()}
+        if out:
+            return out
+    activity = _type_activity_map(ontology_summary)
+    return {name for name, count in activity.items() if count > 0}
+
+
+def known_empty_types(ontology_summary: str) -> set[str]:
+    """Types marked empty in ontology text (``[no instances]`` or 0 entities)."""
+    activity = _type_activity_map(ontology_summary)
+    return {name for name, count in activity.items() if count == 0}
+
+
+def leaf_host_types(leaf: str, ontology_summary: str) -> list[str]:
+    """Type names whose section declares ``leaf`` (declaration order)."""
+    if not leaf or not (ontology_summary or "").strip():
+        return []
+    try:
+        from infona_client.nlp.cypher_generate import extract_type_names_from_ontology
+    except Exception:  # noqa: BLE001
+        return []
+    target = normalize_leaf_key(leaf)
+    if not target:
+        return []
+    hosts: list[str] = []
+    for tn in extract_type_names_from_ontology(ontology_summary):
+        for L in literal_leaves_for_type(tn, ontology_summary):
+            if normalize_leaf_key(L) == target:
+                hosts.append(tn)
+                break
+    return hosts
+
+
+def _apply_population_rank(
+    scored: list[ScoredLeaf],
+    *,
+    ontology_summary: str,
+    type_name: str | None,
+    populated_types: set[str],
+    empty_types: set[str],
+) -> list[ScoredLeaf]:
+    """Boost leaves hosted on populated KG types; demote empty-type-only leaves.
+
+    When ``type_name`` is set the candidate set is already type-scoped — still
+    apply a mild demotion if that type is known-empty *and* the leaf is also
+    declared on a populated type elsewhere (cross-type ranking callers use
+    type_name=None; type-scoped resolve mostly leaves scores alone unless the
+    sole host type is empty pollution).
+    """
+    if not scored or (not populated_types and not empty_types):
+        return scored
+    out: list[ScoredLeaf] = []
+    for s in scored:
+        hosts = leaf_host_types(s.leaf, ontology_summary)
+        if type_name:
+            # Type-scoped: host list should include type_name; population of
+            # *this* type only matters when we can demote empty pollution.
+            on_pop = bool(populated_types) and (
+                type_name in populated_types
+                or any(h in populated_types for h in hosts)
+            )
+            only_empty = (
+                bool(empty_types)
+                and bool(hosts)
+                and all(h in empty_types for h in hosts)
+                and type_name in empty_types
+            )
+        else:
+            on_pop = bool(populated_types) and any(
+                h in populated_types for h in hosts
+            )
+            only_empty = (
+                bool(empty_types)
+                and bool(hosts)
+                and all(h in empty_types for h in hosts)
+            )
+        score = s.score
+        reasons = list(s.reasons)
+        if on_pop:
+            score = min(1.0, score + POPULATED_TYPE_BOOST)
+            if "populated_type" not in reasons:
+                reasons.append("populated_type")
+        elif only_empty:
+            score = max(0.0, score - EMPTY_TYPE_ONLY_PENALTY)
+            if "empty_type_only" not in reasons:
+                reasons.append("empty_type_only")
+        out.append(ScoredLeaf(leaf=s.leaf, score=score, reasons=tuple(reasons)))
+    return out
+
+
 @dataclass
 class ScoredLeaf:
     leaf: str
@@ -422,11 +541,38 @@ def _score_leaf_against_mention(
                 family_boost = 0.74
             if l_norm in ("price", "cost", "has_price", "has_cost"):
                 family_boost = 0.78
+            # Stem alignment: bare "cost" prefers *cost* leaves; bare "price"
+            # prefers *price* leaves (list_price over unit_cost; assay_cost
+            # over tuition when both cost-shaped). Cross-stem synonym is
+            # weaker so populated-type ranking can still break ties.
+            if m_toks <= {"cost", "costs", "costing"} or m_norm in {
+                "cost",
+                "costs",
+                "costing",
+            }:
+                if "cost" in l_toks:
+                    family_boost = max(family_boost, 0.86)
+                    reasons.append("cost_stem")
+                elif "price" in l_toks or "tuition" in l_toks:
+                    family_boost = min(family_boost, 0.70)
+                    reasons.append("cost_to_price_synonym")
+            if m_toks <= {"price", "prices", "priced"} or m_norm in {
+                "price",
+                "prices",
+                "priced",
+            }:
+                if "price" in l_toks:
+                    family_boost = max(family_boost, 0.86)
+                    reasons.append("price_stem")
+                elif "cost" in l_toks or "tuition" in l_toks:
+                    family_boost = min(family_boost, 0.70)
+                    reasons.append("price_to_cost_synonym")
             # When mention is specifically "price" and leaf is unit_cost, keep
             # high but below exact price.
             if money_mention and money_leaf:
                 score = max(score, family_boost)
-                reasons.append("money_family")
+                if "money_family" not in reasons:
+                    reasons.append("money_family")
         elif money_mention and not money_leaf:
             # Mention is money-ish but leaf is not — do not boost.
             pass
@@ -525,12 +671,18 @@ def resolve_numeric_attr(
     query_embedding: Sequence[float] | None = None,
     money_family: bool = False,
     prefer_money: bool | None = None,
+    populated_types: Sequence[str] | None = None,
 ) -> NumericAttrResolve:
     """Resolve the best literal numeric leaf on ``type_name`` for ``mention``.
 
     When ``money_family`` / ``prefer_money`` is true (or the mention is a money
     NL cue), only money-ish leaves are considered as family fallbacks — but an
     exact leaf match always wins even if not money-shaped.
+
+    ``populated_types`` (or ontology ``(N entities)`` / ``[no instances]`` marks)
+    ranks money leaves on *this* KG's live types above tenant-ontology pollution
+    leaves on empty types (list_price on populated SynthItem beats tuition_usd
+    on empty SynthCourse for NL ``price``).
     """
     mention = (mention or "").strip()
     if not mention:
@@ -555,6 +707,9 @@ def resolve_numeric_attr(
             confidence="none",
             explanation="no literal leaves on type",
         )
+
+    pop_set = normalize_populated_types(populated_types, ontology_summary)
+    empty_set = known_empty_types(ontology_summary)
 
     scored: list[ScoredLeaf] = []
     for leaf in leaves:
@@ -587,6 +742,15 @@ def resolve_numeric_attr(
     # When prefer money and we have no mention-specific scores, rank money leaves.
     if prefer and not scored:
         money_leaves = [L for L in leaves if is_money_family_leaf(L)]
+        # Prefer money leaves hosted on populated types when inventory known.
+        if pop_set and not type_name:
+            pop_first = [
+                L
+                for L in money_leaves
+                if any(h in pop_set for h in leaf_host_types(L, ontology_summary))
+            ]
+            if pop_first:
+                money_leaves = pop_first + [L for L in money_leaves if L not in pop_first]
         for i, leaf in enumerate(money_leaves):
             # Stable priority: price-like compounds > bare amount
             base = 0.70 - 0.01 * i
@@ -614,6 +778,15 @@ def resolve_numeric_attr(
             confidence="none",
             explanation="no candidate leaves scored",
         )
+
+    # KG-scope ranking: prefer leaves on populated types in THIS knowledge graph.
+    scored = _apply_population_rank(
+        scored,
+        ontology_summary=ontology_summary,
+        type_name=type_name,
+        populated_types=pop_set,
+        empty_types=empty_set,
+    )
 
     scored.sort(key=lambda s: (-s.score, s.leaf.lower()))
     top = scored[0]
@@ -658,6 +831,7 @@ def resolve_cost_prop(
     mention: str = "price",
     mention_index: Any | None = None,
     query_embedding: Sequence[float] | None = None,
+    populated_types: Sequence[str] | None = None,
 ) -> str | None:
     """Type-scoped money prop resolve — upgrade over fixed candidate list scan.
 
@@ -671,6 +845,7 @@ def resolve_cost_prop(
         mention_index=mention_index,
         query_embedding=query_embedding,
         money_family=True,
+        populated_types=populated_types,
     )
     if r.confidence == "unique" and r.prop_key:
         return r.prop_key
@@ -679,14 +854,19 @@ def resolve_cost_prop(
 
 __all__ = [
     "AMBIGUITY_MARGIN",
+    "EMPTY_TYPE_ONLY_PENALTY",
     "MIN_ACCEPT_SCORE",
+    "POPULATED_TYPE_BOOST",
     "NumericAttrResolve",
     "ScoredLeaf",
     "is_money_family_leaf",
     "is_money_nl_cue",
+    "known_empty_types",
+    "leaf_host_types",
     "leaf_tokens",
     "literal_leaves_for_type",
     "normalize_leaf_key",
+    "normalize_populated_types",
     "resolve_cost_prop",
     "resolve_numeric_attr",
 ]
