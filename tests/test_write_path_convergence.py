@@ -486,7 +486,13 @@ def test_semantic_index_writers_use_shared_seams():
     )
 
     # The reconciler: same extractor + protocol writes + the ONE embed client.
-    rec_src = inspect.getsource(reconciler_mod)
+    # After the extract the calls live on siblings; scan the whole package.
+    rec_dir = pathlib.Path(reconciler_mod.__file__).parent
+    rec_src = "\n".join(
+        p.read_text()
+        for p in sorted(rec_dir.glob("reconciler*.py"))
+        if p.is_file()
+    )
     assert _calls(rec_src, "extract_semantic_chunks"), (
         "the reconciler must re-extract via extract_semantic_chunks — a private "
         "chunker would fork the content_hash contract"
