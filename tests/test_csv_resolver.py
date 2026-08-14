@@ -1015,6 +1015,42 @@ class TestInferSchemaV2:
         assert flat.entities is None and flat.violations == []
 
 
+def test_build_mapping_accepts_multi_entity_payload():
+    """Legacy / fallback ``_build_mapping`` must construct EntitySpec objects.
+
+    The #392 extract left ``EntitySpec`` / ``EntityRelationSpec`` as runtime
+    names in ``csv_llm.py`` without importing them. Default v2 hides this;
+    a multi-entity legacy payload (or the v2→legacy rescue) NameError'd.
+    """
+    resolver = CSVResolver(client=None, openrouter_key="")
+    mapping = resolver._build_mapping(
+        {
+            "entity_type": "Reservation",
+            "columns": [
+                {
+                    "column_name": "res_id",
+                    "role": "type_id",
+                    "datatype": "string",
+                }
+            ],
+            "entities": [
+                {
+                    "name": "res",
+                    "type_name": "Reservation",
+                    "id_column": "res_id",
+                }
+            ],
+            "relationships": [
+                {"subject": "res", "predicate": "at", "object": "res"}
+            ],
+        }
+    )
+    assert mapping.entities is not None
+    assert mapping.entities[0].type_name == "Reservation"
+    assert mapping.relationships is not None
+    assert mapping.relationships[0].predicate == "at"
+
+
 class TestInferSchemaV2Retry:
     """Per-call retry-at-0.3 contract on the v2 path (mirrors the legacy
     contract the /ingest/csv/schema 422 guidance depends on)."""
