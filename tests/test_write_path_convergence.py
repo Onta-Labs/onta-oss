@@ -432,13 +432,21 @@ def test_dedupe_writers_use_shared_refresh():
         )
 
 
+def _kg_writer_package_src() -> str:
+    """Facade + sibling sources — the write path is split, not forked."""
+    graph = pathlib.Path(infona_client.__file__).parent / "graph"
+    return "\n".join(
+        p.read_text()
+        for p in sorted(graph.glob("kg_writer*.py"))
+        if p.is_file()
+    )
+
+
 def test_shared_writer_is_the_single_housekeeping_owner():
     """Sanity: the shared writer itself is the one place embed/cache-invalidate/
     recompute AND the removal primitives live, so delegating to it actually
     centralizes the behavior."""
-    import infona_client.graph.kg_writer as kg_writer_mod
-
-    src = inspect.getsource(kg_writer_mod)
+    src = _kg_writer_package_src()
     assert _calls(src, "batched_insert_triples"), "insert_facts must batch"
     assert "embed_types" in src
     assert "invalidate_cache" in src
@@ -464,12 +472,11 @@ def test_shared_writer_is_the_single_housekeeping_owner():
 
 def test_semantic_index_writers_use_shared_seams():
     """ONTA-181 drift guard for the semantic-index write hook + reconciler."""
-    import infona_client.graph.kg_writer as kg_writer_mod
     import infona_client.semantic.reconciler as reconciler_mod
 
     # The write hook (kg_writer._index_semantic) chunks via the shared extractor
     # and writes via the protocol — no bespoke chunker/hasher, no direct rows.
-    kg_src = inspect.getsource(kg_writer_mod)
+    kg_src = _kg_writer_package_src()
     assert _calls(kg_src, "extract_semantic_chunks"), (
         "the kg_writer semantic hook must chunk via semantic.extract."
         "extract_semantic_chunks (one chunking/hashing contract)"
