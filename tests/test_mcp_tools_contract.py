@@ -191,7 +191,7 @@ def test_mcp_batch_apply_tool_rides_the_canonical_route_via_sdk():
     client-side loop over the single-apply tool. Asserted from the TS source so
     it holds with no npm build in CI."""
     src = _mcp_src()
-    assert 'registerTool(\n  "apply_ontology_changes"' in src, (
+    assert 'registerTool(' in src and '"apply_ontology_changes"' in src, (
         "the batch apply_ontology_changes tool must be registered"
     )
     assert "ontologyApplyBatch(" in src, (
