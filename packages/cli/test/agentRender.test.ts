@@ -15,12 +15,12 @@ function collect(result: AgentResult): string {
 }
 
 describe("renderAgentResult — answer", () => {
-  it("renders the narrative, SPARQL, and a rows table without throwing", () => {
+  it("renders the narrative, Cypher, and a rows table without throwing", () => {
     const out = collect({
       kind: "answer",
       answer: "There are 42 people.",
       narrative: "I found 42 people in the graph.",
-      sparql: "SELECT (COUNT(?p) AS ?n) WHERE { ?p a :Person }",
+      cypher: "MATCH (e:Entity) RETURN count(*) AS n",
       columns: ["name", "age"],
       rows: [
         { name: "Ada", age: "36" },
@@ -28,17 +28,43 @@ describe("renderAgentResult — answer", () => {
       ],
     });
     expect(out).toContain("I found 42 people in the graph.");
-    expect(out).toContain("SPARQL");
-    expect(out).toContain("SELECT (COUNT(?p) AS ?n)");
+    expect(out).toContain("Cypher");
+    expect(out).not.toContain("SPARQL");
+    expect(out).toContain("MATCH (e:Entity) RETURN count(*) AS n");
     // table header + cells
     expect(out).toContain("name");
     expect(out).toContain("Ada");
     expect(out).toContain("Alan");
   });
 
-  it("falls back to `answer` when no narrative, and omits SPARQL/table when absent", () => {
+  it("prefers `cypher` over the compat `sparql` field and still labels Cypher", () => {
+    const out = collect({
+      kind: "answer",
+      answer: "ok",
+      cypher: "MATCH (e:Entity) RETURN count(*) AS n",
+      sparql: "SELECT (COUNT(?p) AS ?n) WHERE { ?p a :Person }",
+    });
+    expect(out).toContain("Cypher");
+    expect(out).toContain("MATCH (e:Entity) RETURN count(*) AS n");
+    expect(out).not.toContain("SPARQL");
+    expect(out).not.toContain("SELECT");
+  });
+
+  it("falls back to the compat `sparql` field when `cypher` is absent", () => {
+    const out = collect({
+      kind: "answer",
+      answer: "ok",
+      sparql: "MATCH (e:Entity) RETURN count(*) AS n",
+    });
+    expect(out).toContain("Cypher");
+    expect(out).toContain("MATCH (e:Entity) RETURN count(*) AS n");
+    expect(out).not.toContain("SPARQL");
+  });
+
+  it("falls back to `answer` when no narrative, and omits Cypher/table when absent", () => {
     const out = collect({ kind: "answer", answer: "Plain answer." });
     expect(out).toContain("Plain answer.");
+    expect(out).not.toContain("Cypher");
     expect(out).not.toContain("SPARQL");
   });
 
