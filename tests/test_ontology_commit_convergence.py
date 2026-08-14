@@ -150,6 +150,22 @@ def test_production_writers_call_commit_ontology():
             if "commit_ontology" not in sib:
                 missing.append(rel)
             continue
+        if rel == "semantic/reconciler.py":
+            sib = "\n".join(
+                p.read_text()
+                for p in sorted((_PKG_ROOT / "semantic").glob("reconciler*.py"))
+            )
+            if "commit_ontology" not in sib:
+                missing.append(rel)
+            continue
+        if rel == "api/routes/ontology.py":
+            sib = "\n".join(
+                p.read_text()
+                for p in sorted((_PKG_ROOT / "api" / "routes").glob("ontology*.py"))
+            )
+            if "commit_ontology" not in sib:
+                missing.append(rel)
+            continue
         if "commit_ontology" not in src:
             missing.append(rel)
     assert not missing, (
