@@ -117,6 +117,24 @@ _ALLOWLIST: dict[str, str] = {
     "workspace_invites.py::accept_invite": "invitee-scoped: the RECIPIENT accepts their own invite; requiring write would make a reader invite un-acceptable.",
     "workspace_invites.py::decline_invite": "invitee-scoped: the RECIPIENT declines their own invite.",
     "workspace_invites.py::accept_invite_by_token": "invitee-scoped: token-bearing accept of one's own invite.",
+    # --- User-scoped API sources: identity, not workspace write ----------------
+    "user_api_sources.py::create_user_api_source": (
+        "user-scoped: /v1/me/api-sources mutates the CALLER's own catalog "
+        "(owner_subject), not a workspace graph. Auth is _require_subject "
+        "(signed-in user or static-key fingerprint). A workspace reader must "
+        "still be able to register a source they own; requiring tenant write "
+        "would conflate two isolation axes. Tenant-custom CRUD stays on "
+        "require_tenant_write."
+    ),
+    "user_api_sources.py::update_user_api_source": (
+        "user-scoped: PATCH /v1/me/api-sources/{slug} edits the CALLER's own "
+        "row (get/delete are subject-keyed; no cross-user path). Same gate as "
+        "create — _require_subject, not workspace write."
+    ),
+    "user_api_sources.py::delete_user_api_source": (
+        "user-scoped: DELETE /v1/me/api-sources/{slug} removes the CALLER's "
+        "own row + user:{subject} secrets. Subject-isolated; not tenant data."
+    ),
 }
 
 

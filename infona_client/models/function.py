@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class FunctionTier(str, Enum):
@@ -30,12 +30,21 @@ class FunctionRegister(BaseModel):
             "path-shaped 'x/<Type>' → Enhanced; Public is refused (ONTA-400)."
         ),
     )
-    endpoint_url: str = Field(description="HTTPS endpoint for the function")
+    endpoint_url: str = Field(
+        description="HTTPS URL or Lambda function ARN (arn:aws:lambda:…)"
+    )
     description: str = ""
     #: Optional explicit layer. When omitted, inferred from ``entity_type``.
     #: ``"public"`` is always refused. ``"enhanced"`` is operator-only on the
     #: HTTP route (workspace ordinary writes stay on Tenant).
     layer: Optional[Literal["tenant", "enhanced", "public"]] = None
+
+    @field_validator("endpoint_url")
+    @classmethod
+    def _validate_endpoint_url(cls, value: str) -> str:
+        from infona_client.functions.endpoint import validate_function_endpoint
+
+        return validate_function_endpoint(value)
 
 
 class FunctionResult(BaseModel):

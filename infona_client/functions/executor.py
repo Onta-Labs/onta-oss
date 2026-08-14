@@ -5,6 +5,7 @@ import boto3
 import httpx
 
 from infona_client.config import settings
+from infona_client.functions.endpoint import is_lambda_arn
 from infona_client.models.function import FunctionRef, FunctionResult, FunctionTier
 
 
@@ -44,6 +45,14 @@ class FunctionExecutor:
     async def _invoke_tier2(self, endpoint_url: str, payload: dict, headers: dict | None = None) -> dict:
         if not endpoint_url:
             raise ValueError("Tier 2 function requires an endpoint URL")
+        if is_lambda_arn(endpoint_url):
+            response = self.lambda_client.invoke(
+                FunctionName=endpoint_url,
+                InvocationType="RequestResponse",
+                Payload=json.dumps(payload),
+            )
+            response_payload = response["Payload"].read()
+            return json.loads(response_payload)
         response = await self._http_client.post(endpoint_url, json=payload, headers=headers)
         response.raise_for_status()
         return response.json()
