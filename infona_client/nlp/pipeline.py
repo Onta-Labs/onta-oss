@@ -1550,6 +1550,11 @@ class NLQueryPipeline:
                 timing["numeric_grounding_confidence"] = num_plan.confidence
                 if num_plan.prop_key:
                     timing["numeric_grounding_prop"] = num_plan.prop_key
+                # Hard-bind only unique resolve — never probe[0] guess (#378).
+                if (
+                    getattr(num_plan, "confidence", "") == "unique"
+                    and num_plan.prop_key
+                ):
                     money_leaf_bound = num_plan.prop_key
                 if num_plan.template:
                     timing["numeric_grounding_template"] = num_plan.template
@@ -1627,8 +1632,7 @@ class NLQueryPipeline:
                     )
                     top = probe_ctx.money_candidates[0]
                     timing["money_leaf_top"] = top.leaf
-                    if not money_leaf_bound:
-                        money_leaf_bound = top.leaf
+                    # Prompt-only: do not hard-bind probe ranking.
                     if probe_ctx.money_cue:
                         timing["money_cue"] = probe_ctx.money_cue
                         money_cue_bound = probe_ctx.money_cue

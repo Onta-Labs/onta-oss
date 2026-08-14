@@ -13,27 +13,37 @@ import re
 from typing import Sequence
 
 from infona_client.nlp.query_build import TypePopulation, match_question_types
-from infona_client.nlp.query_intent import question_has_aggregate_intent
+from infona_client.nlp.query_intent import extract_filter_tokens
 
-# Underspecified count heads — not domain types.
+# Underspecified count heads — not domain types. Keep tight: do not fire on
+# "data"/"stuff"/"ones" inside other questions (SUM/AVG/filtered counts).
 _VAGUE_COUNT_NOUN_RE = re.compile(
-    r"(?ix)\b(?:"
-    r"records?|rows?|items?|things?|entities|entries|"
-    r"ones?|objects?|nodes?|data|stuff"
-    r")\b"
+    r"(?ix)\b(?:records?|rows?|items?|things?|entities|entries)\b"
 )
 
-_HOW_MANY_RE = re.compile(r"(?ix)\b(?:how\s+many|count|number\s+of|total\s+number)\b")
+_HOW_MANY_RE = re.compile(r"(?ix)\b(?:how\s+many|count|number\s+of)\b")
+
+# Filter / compare cues: these are not bare "which type?" asks.
+_CONSTRAINT_RE = re.compile(
+    r"(?ix)\b(?:"
+    r"under|over|above|below|less|greater|at\s+least|at\s+most|"
+    r"where|with|having|status|named|equals?|ready"
+    r")\b|[<>=]"
+)
 
 
 def question_is_vague_count(question: str) -> bool:
-    """True for underspecified cardinality asks (records/rows/items…)."""
+    """True for *bare* underspecified cardinality asks (records/rows/items)."""
     q = (question or "").strip()
     if not q:
         return False
-    if not (_HOW_MANY_RE.search(q) or question_has_aggregate_intent(q)):
+    if not _HOW_MANY_RE.search(q):
         return False
-    return bool(_VAGUE_COUNT_NOUN_RE.search(q))
+    if not _VAGUE_COUNT_NOUN_RE.search(q):
+        return False
+    if _CONSTRAINT_RE.search(q):
+        return False
+    return True
 
 
 def ambiguous_count_needs_clarify(
@@ -45,6 +55,8 @@ def ambiguous_count_needs_clarify(
     if len(pops) < 2:
         return False
     if not question_is_vague_count(question):
+        return False
+    if extract_filter_tokens(question):
         return False
     hits = match_question_types(question, pops)
     return len(hits) == 0

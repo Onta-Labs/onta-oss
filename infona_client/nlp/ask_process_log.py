@@ -83,10 +83,11 @@ def apply_money_leaf_params(
     money_leaf: str | None,
     money_cue: str | None = None,
 ) -> dict[str, Any]:
-    """Force resolved money leaf into Cypher params (hard bind).
+    """Rewrite *existing* bare synonym params to a unique resolved leaf.
 
-    Overrides bare synonyms (cost/price/tuition) and fills common free-form
-    param names the LLM invents (``cost_prop``, ``cost_prop_key``, …).
+    Only keys already present in ``params`` are touched. Does not invent
+    ``$prop`` / ``$cost_prop`` the plan never used. Does not pick a leaf
+    when resolve was ambiguous — caller must pass a unique ``money_leaf``.
     """
     out = dict(params or {})
     leaf = (money_leaf or "").strip()
@@ -109,17 +110,19 @@ def apply_money_leaf_params(
         "cost_prop_key",
         "price_prop",
         "measure_prop",
-        "prop",
     )
+    rewritten = False
     for k in keys:
+        if k not in out:
+            continue
         cur = out.get(k)
         if cur is None or str(cur).strip().lower() in bare:
             out[k] = leaf
-    if "prop_key" not in out:
-        out["prop_key"] = leaf
-    if money_cue:
-        out.setdefault("_money_cue", money_cue)
-    out["_money_leaf_bound"] = leaf
+            rewritten = True
+    if rewritten:
+        if money_cue:
+            out.setdefault("_money_cue", money_cue)
+        out["_money_leaf_bound"] = leaf
     return out
 
 

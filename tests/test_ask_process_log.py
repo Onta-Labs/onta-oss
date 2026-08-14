@@ -14,14 +14,16 @@ def test_apply_money_leaf_overrides_bare_cost():
         money_cue="cost",
     )
     assert p["cost_prop"] == "assay_cost"
-    assert p["prop_key"] == "assay_cost"
+    assert p["ready_prop"] == "ready"
+    assert "prop_key" not in p  # do not invent unused keys
     assert p["_money_leaf_bound"] == "assay_cost"
 
 
-def test_apply_money_leaf_fills_missing_prop_key():
+def test_apply_money_leaf_does_not_invent_keys():
     p = apply_money_leaf_params({}, money_leaf="list_price")
-    assert p["prop_key"] == "list_price"
-    assert p["cost_prop"] == "list_price"
+    assert "prop_key" not in p
+    assert "cost_prop" not in p
+    assert "_money_leaf_bound" not in p
 
 
 def test_collapse_ready_tests_false_multi():

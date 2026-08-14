@@ -22,6 +22,9 @@ def test_vague_count_nouns():
     assert question_is_vague_count("how many items in the graph")
     assert not question_is_vague_count("How many SynthWidget are there?")
     assert not question_is_vague_count("sum unit_cost for ready")
+    assert not question_is_vague_count("how many items under 20")
+    assert not question_is_vague_count("count the rows where status is ready")
+    assert not question_is_vague_count("what's the total amount of data")
 
 
 def test_clarify_when_vague_and_multi_type():
@@ -32,6 +35,13 @@ def test_clarify_when_vague_and_multi_type():
 def test_no_clarify_when_type_named():
     assert not ambiguous_count_needs_clarify("How many SynthWidget?", _POPS)
     assert not ambiguous_count_needs_clarify("count synthwidgets", _POPS)
+
+
+def test_no_clarify_filtered_or_numeric_asks():
+    assert not ambiguous_count_needs_clarify("how many items under 20", _POPS)
+    assert not ambiguous_count_needs_clarify(
+        "count the rows where status is ready", _POPS
+    )
 
 
 def test_no_clarify_single_populated_type():

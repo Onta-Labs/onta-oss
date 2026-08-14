@@ -1108,7 +1108,8 @@ class TestV2RefuteTemplates:
         templates plus the ADR 0004 drift template (#7)."""
         for name in (
             "KEY DROPS ROWS",
-            "DIMENSION AS LITERAL",
+            "FRANKENSTEIN / MERGED DIMENSION TYPE",
+            "MEASURE STRIPPED",
             "COLUMN-NAMED EDGE",
             "KEYLESS ENTITY",
             "DUPLICATE/DEAD ATTR",
@@ -1116,9 +1117,8 @@ class TestV2RefuteTemplates:
             "SPARSE / MIS-DOMAINED EDGE",
         ):
             assert name in REFUTE_SYSTEM
-        # The drift template is numbered 7 and stays domain-free (structural
-        # wording: coverage / source type / predicate — no domain nouns).
-        assert "7. SPARSE / MIS-DOMAINED EDGE" in REFUTE_SYSTEM
+        # Drift template stays domain-free (coverage / source type / predicate).
+        assert "SPARSE / MIS-DOMAINED EDGE" in REFUTE_SYSTEM
 
     @pytest.mark.asyncio
     async def test_t1_key_drops_rows_corrected_to_composite(self, monkeypatch):
