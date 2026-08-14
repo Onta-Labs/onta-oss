@@ -22,6 +22,11 @@ from infona_client.api.routes.explore_common import (
     _to_float,
     _to_int,
 )
+from infona_client.graph.iri import ENTITY_URI_PREFIX, ONTO_PRED_PREFIX
+from infona_client.graph.predicates import (
+    companion_leaves as _companion_leaves,
+    is_internal_predicate as _is_internal_predicate,
+)
 from infona_client.api.routes.explore_resolve import _resolve_layered_type
 from infona_client.auth.api_keys import TenantContext, get_tenant
 from infona_client.graph.ontology_queries import type_uri

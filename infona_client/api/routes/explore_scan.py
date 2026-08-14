@@ -27,6 +27,9 @@ from infona_client.api.routes.explore_common import (
     _from_graphs,
     _stats_graph_uri,
     _target_from_entity_uri,
+    _to_int,
+    _type_leaf,
+    logger,
 )
 from infona_client.graph.iri import ENTITY_URI_PREFIX, TYPE_URI_PREFIX
 from infona_client.graph.parser import parse_sparql_results

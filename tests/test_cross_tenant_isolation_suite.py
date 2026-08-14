@@ -1697,7 +1697,11 @@ def test_planted_summary_cache_collision_is_caught():
     assert production_key[0] == TENANT_A
     # The broken 2-tuple must never be what get_type_summary looks up —
     # which is (tenant.tenant_id, kg_name, type_name). Prove via source.
-    src = Path(explore_routes.__file__).read_text(encoding="utf-8")
+    explore_dir = Path(explore_routes.__file__).resolve().parent
+    src = "\n".join(
+        p.read_text(encoding="utf-8")
+        for p in sorted(explore_dir.glob("explore*.py"))
+    )
     assert "cache_key = (tenant.tenant_id, kg_name, type_name)" in src
     # Looking up with the production key does NOT hit the broken key.
     assert explore_routes._summary_cache.get(production_key) is None
@@ -1737,14 +1741,16 @@ def test_mcp_view_ontology_targets_canonical_types_route():
 
 def test_cli_ontology_types_targets_canonical_route():
     """CLI ``ontology types`` uses the same GET /ontology/types the suite pins."""
-    cli = (
+    cli_src = (
         Path(__file__).resolve().parent.parent
         / "packages"
         / "cli"
         / "src"
-        / "client.ts"
     )
-    src = cli.read_text(encoding="utf-8")
+    src = "\n".join(
+        p.read_text(encoding="utf-8")
+        for p in sorted(cli_src.glob("client*.ts"))
+    )
     assert "ontologyTypes" in src
     assert "/ontology/types" in src
 

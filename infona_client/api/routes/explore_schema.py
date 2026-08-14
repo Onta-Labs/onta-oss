@@ -21,16 +21,22 @@ from infona_client.api.routes.explore_common import (
     _DRIFT_RECORDED_AT,
     _DRIFT_SOURCE_COUNT,
     _DRIFT_SUPPORT,
+    _LAYER_TYPE_NAMESPACES,
     _SCHEMA_COVERAGE_NOTE,
+    _assemble_summary,
     _dedupe_undirected,
     _drift_history_graph_uri,
+    _host,
     _is_sparql_client_type,
     _retired_sparql_client,
     _sorted_slots,
     _to_float,
     _to_int,
     _type_leaf,
+    logger,
 )
+from infona_client.graph.layers import type_namespace
+from infona_client.graph.predicates import ATTR_META_SUFFIXES
 from infona_client.api.routes.explore_edges import (
     _live_edge_scan,
     _live_edge_scan_drift,
@@ -470,7 +476,7 @@ async def recompute_stats(
     the stats action rather than a writer of instance data — says nothing about
     who may trigger it.
     """
-    schedule_recompute(client, tenant.tenant_id, kg_name)
+    _host().schedule_recompute(client, tenant.tenant_id, kg_name)
     return {"status": "scheduled", "kg": kg_name}
 
 

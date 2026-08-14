@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from fastapi import Depends, Query
@@ -15,7 +16,8 @@ from infona_client.api.routes.explore_common import RDF_TYPE, RDFS, _esc, _from_
 from infona_client.auth.access import require_tenant_write
 from infona_client.auth.api_keys import TenantContext, get_tenant
 from infona_client.graph.entitlement import layer_stack_for
-from infona_client.graph.iri import TYPE_URI_PREFIX
+from infona_client.graph.iri import ENTITY_URI_PREFIX, TYPE_URI_PREFIX
+from infona_client.graph.predicates import is_internal_predicate as _is_internal_predicate
 from infona_client.graph.kg_writer import refresh_after_write
 from infona_client.graph.layers import fetch_types_by_layer, layer_type_uri
 from infona_client.graph.parser import parse_sparql_results
