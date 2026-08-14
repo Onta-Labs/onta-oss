@@ -66,6 +66,7 @@ from infona_client.enrichment.extraction import coerce_url_attribute_value
 from infona_client.enrichment.tiers import get_chain
 from infona_client.graph.client import NeptuneClient
 from infona_client.graph.kg_writer import (
+    delete_facts,
     insert_facts,
     refresh_after_write,
 )
@@ -450,6 +451,50 @@ def _infer_datatype_from_values(values: list[str]) -> str:
     if all(t is not None for t in iri_types) and len(set(iri_types)) == 1:
         return iri_types[0]  # bare <TypeName> → types/<TypeName> range
     return "string"
+
+
+# Org-valued enrich leaves. Values look like strings ("Hoffmann-La Roche") so
+# `_infer_datatype_from_values` would stamp xsd:string; the instance should be
+# an onto/<leaf> edge to a Company (or Organization) node. Prefer a type that
+# already exists in the tenant catalog; otherwise mint Company.
+_ORG_ATTR_LEAVES = frozenset(
+    {
+        "lead_sponsor",
+        "sponsor",
+        "sponsor_name",
+        "lead_sponsor_name",
+    }
+)
+_ORG_TYPE_PREFERENCE = ("Company", "Organization", "Sponsor")
+
+
+def _infer_relationship_target(
+    attr_name: str, declared_types: list[str] | None = None
+) -> str | None:
+    """If this attribute should be a relationship, return the target type leaf.
+
+    Used when values are plain labels (org names), not entity IRIs. Does not
+    fire for status/phase/nct_id — only org-like leaves or an exact type-name
+    match (``company`` → existing ``Company``).
+    """
+    leaf = (attr_name or "").strip()
+    if not leaf:
+        return None
+    by_lower = {n.lower(): n for n in (declared_types or []) if n}
+    low = leaf.lower()
+    if low in by_lower:
+        return by_lower[low]
+    for prefix in ("lead_", "primary_", "parent_"):
+        if low.startswith(prefix):
+            rest = low[len(prefix) :]
+            if rest in by_lower:
+                return by_lower[rest]
+    if low in _ORG_ATTR_LEAVES or low.endswith("_sponsor"):
+        for cand in _ORG_TYPE_PREFERENCE:
+            if cand.lower() in by_lower:
+                return by_lower[cand.lower()]
+        return "Company"
+    return None
 
 
 def _safe_iri(uri: str) -> bool:
@@ -1415,7 +1460,10 @@ class EnrichmentExecutor:
                 # literal (`"92"^^xsd:integer`) now matches the declared range,
                 # instead of a bare `xsd:string` literal the typed NL filters miss.
                 resolved_datatypes = await self._declare_attributes(
-                    tenant_id, job.type_name, applied_attr_values
+                    tenant_id,
+                    job.type_name,
+                    applied_attr_values,
+                    kg_name=job.kg_name,
                 )
                 # Canonical companion-provenance-GRAPH records (F1) for every applied
                 # fill, dated from the verdict — flowed through the shared
@@ -2313,12 +2361,23 @@ class EnrichmentExecutor:
         typed correctly, and a previously-untyped string slot can be upgraded)."""
         inferred = _infer_datatype_from_values(values)
         del onto_graph  # catalog-only; SPARQL range query is retired (ONTA-527)
-        if not tenant_id:
+        declared_type_names: list[str] = []
+        if inferred not in PRIMITIVE_TYPES:
             return inferred
+        if not tenant_id:
+            return _infer_relationship_target(attr_name) or inferred
         try:
-            from infona_client.graph.ontology_catalog import list_attributes
+            from infona_client.graph.ontology_catalog import list_attributes, list_types
             from infona_client.graph.store import GraphConfigError
 
+            try:
+                declared_type_names = [
+                    t.name
+                    for t in await list_types(tenant_id=tenant_id, layer="tenant")
+                    if getattr(t, "name", None)
+                ]
+            except Exception:  # noqa: BLE001 — type list is advisory
+                declared_type_names = []
             attrs = await list_attributes(
                 tenant_id=tenant_id, type_name=type_name, layer="tenant"
             )
@@ -2328,24 +2387,35 @@ class EnrichmentExecutor:
                     return match.range_type
                 if match.datatype and match.datatype != "string":
                     return match.datatype
-            return inferred
+            # Existing string (or no declaration) can UPGRADE to a relationship
+            # when the leaf is org-valued (lead_sponsor → Company). Values are
+            # labels, so inferred is "string".
+            return (
+                _infer_relationship_target(attr_name, declared_type_names)
+                or inferred
+            )
         except GraphConfigError:
             logger.error(
                 "enrich_declare_range_no_store",
                 type_name=type_name,
                 attr=attr_name,
             )
-            return inferred
+            return _infer_relationship_target(attr_name, declared_type_names) or inferred
         except Exception:  # noqa: BLE001 — never fail a write over a range read
             logger.exception(
                 "enrich_declare_range_catalog_failed",
                 type_name=type_name,
                 attr=attr_name,
             )
-            return inferred
+            return _infer_relationship_target(attr_name, declared_type_names) or inferred
 
     async def _declare_attributes(
-        self, tenant_id: str, type_name: str, attr_values: dict[str, list[str]]
+        self,
+        tenant_id: str,
+        type_name: str,
+        attr_values: dict[str, list[str]],
+        *,
+        kg_name: str | None = None,
     ) -> dict[str, str]:
         """Upsert each enrichment-applied attribute's ontology declaration into the
         TENANT (ontology) graph so it becomes first-class schema. Reuses the same
@@ -2377,18 +2447,133 @@ class EnrichmentExecutor:
                 onto_graph, type_name, name, values, tenant_id=tenant_id
             )
             resolved[name] = datatype
-            await commit_ontology(
-                self._neptune,
-                onto_graph,
-                [OntologyMutation(
-                    op=OntologyOpKind.UPSERT_ATTRIBUTE,
-                    type_name=type_name,
-                    slot_name=name,
-                    datatype=datatype,
-                    description=ENRICH_ATTR_DESCRIPTION,
-                )],
-            )
+            if datatype not in PRIMITIVE_TYPES:
+                await commit_ontology(
+                    self._neptune,
+                    onto_graph,
+                    [
+                        OntologyMutation(
+                            op=OntologyOpKind.UPSERT_TYPE,
+                            type_name=datatype,
+                        ),
+                        OntologyMutation(
+                            op=OntologyOpKind.UPSERT_RELATIONSHIP,
+                            type_name=type_name,
+                            slot_name=name,
+                            target_type=datatype,
+                            description=ENRICH_ATTR_DESCRIPTION,
+                        ),
+                    ],
+                )
+                if kg_name:
+                    await self._promote_literal_attr_to_nodes(
+                        tenant_id,
+                        kg_name,
+                        type_name,
+                        name,
+                        datatype,
+                        extra_values=values,
+                    )
+            else:
+                await commit_ontology(
+                    self._neptune,
+                    onto_graph,
+                    [OntologyMutation(
+                        op=OntologyOpKind.UPSERT_ATTRIBUTE,
+                        type_name=type_name,
+                        slot_name=name,
+                        datatype=datatype,
+                        description=ENRICH_ATTR_DESCRIPTION,
+                    )],
+                )
         return resolved
+
+    async def _promote_literal_attr_to_nodes(
+        self,
+        tenant_id: str,
+        kg_name: str,
+        type_name: str,
+        attr_name: str,
+        target_type: str,
+        *,
+        extra_values: list[str] | None = None,
+    ) -> None:
+        """Turn already-written string values of ``attr_name`` into target nodes.
+
+        Job c7c2c7d2 wrote ``lead_sponsor`` as attrs/lead_sponsor literals.
+        After we flip the declaration to a Company relationship, those
+        literals must become ``onto/lead_sponsor`` edges + Company nodes or
+        Explorer keeps showing a string column. GraphStore-only — no SPARQL.
+        """
+        del extra_values  # values ride the subsequent insert_facts path
+        try:
+            from infona_client.graph.explore_store import (
+                get_entity_detail,
+                list_entities_by_type,
+            )
+            from infona_client.graph.ontology_queries import attr_uri as _attr_iri
+            from infona_client.graph.store import GraphConfigError
+        except Exception:  # noqa: BLE001
+            return
+        try:
+            page = await list_entities_by_type(
+                tenant_id=tenant_id,
+                kg_name=kg_name,
+                type_name=type_name,
+                limit=200,
+            )
+        except GraphConfigError:
+            return
+        except Exception:
+            logger.warning(
+                "enrich_promote_list_failed",
+                type_name=type_name,
+                attr=attr_name,
+                exc_info=True,
+            )
+            return
+        if page is None or not page.entities:
+            return
+        store = resolve_optional_graph_store()
+        graph_uri = kg_graph_uri(tenant_id, kg_name)
+        lit_pred = _attr_iri(type_name, attr_name)
+        triples: list[tuple[str, str, str]] = []
+        clear: list[tuple[str, str, None]] = []
+        for ent in page.entities:
+            try:
+                detail = await get_entity_detail(
+                    tenant_id=tenant_id, kg_name=kg_name, entity_id=ent.id
+                )
+            except Exception:
+                continue
+            if detail is None:
+                continue
+            raw = (detail.properties or {}).get(attr_name)
+            if raw is None or raw == "":
+                continue
+            if isinstance(raw, (list, tuple)):
+                labels = [str(x) for x in raw if x]
+            else:
+                labels = [str(raw)]
+            for label in labels:
+                if label.startswith("http://") or label.startswith("https://"):
+                    continue
+                triples.extend(
+                    self._instance_triples_for_value(
+                        ent.id, type_name, attr_name, label, target_type
+                    )
+                )
+                clear.append((ent.id, lit_pred, None))
+        if triples:
+            await insert_facts(self._neptune, graph_uri, triples, store=store)
+        if clear:
+            await delete_facts(
+                self._neptune,
+                graph_uri,
+                triples=clear,
+                reason="enrich:promote_literal_to_node",
+                store=store,
+            )
 
     @staticmethod
     def _instance_triples_for_value(
@@ -2541,7 +2726,10 @@ class EnrichmentExecutor:
             # SAME datatype the attribute is DECLARED with (P1 fix): the stored
             # literal matches the declared range instead of a bare xsd:string.
             resolved_datatypes = await self._declare_attributes(
-                job.tenant_id, job.type_name, applied_attr_values
+                job.tenant_id,
+                job.type_name,
+                applied_attr_values,
+                kg_name=job.kg_name,
             )
             # Build the instance triples USING that map: primitives route through
             # validate_triple (typed literal, or a skip on a non-conforming value);
