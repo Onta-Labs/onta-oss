@@ -131,13 +131,25 @@ def test_production_writers_call_commit_ontology():
         "api/routes/lambda_functions.py",
         "agent/capabilities/ontology_cap.py",
         "enrichment/executor.py",
+        "enrichment/executor_declare.py",
         "normalization/execute.py",
         "semantic/reconciler.py",
         "graph/attr_meta_migration.py",
     ]
     missing = []
     for rel in must_call:
-        src = (_PKG_ROOT / rel).read_text()
+        path = _PKG_ROOT / rel
+        src = path.read_text() if path.exists() else ""
+        if rel == "enrichment/executor.py":
+            # After the extract the call lives on a sibling; the facade
+            # still re-exports names but may not mention commit_ontology.
+            sib = "\n".join(
+                p.read_text()
+                for p in sorted((_PKG_ROOT / "enrichment").glob("executor*.py"))
+            )
+            if "commit_ontology" not in sib:
+                missing.append(rel)
+            continue
         if "commit_ontology" not in src:
             missing.append(rel)
     assert not missing, (
