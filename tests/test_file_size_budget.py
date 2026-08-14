@@ -49,7 +49,6 @@ SCAN_SPECS: tuple[tuple[str, str], ...] = (
 # ratchet landed (regenerated after #387–#393 extracts + #390 web-ingest
 # descope). Do not raise a number. Lower or delete an entry after an extract.
 OVERSIZE_ALLOWLIST: dict[str, int] = {
-    "infona_client/agent/capabilities/enrich_cap.py": 2020,
     "infona_client/agent/capabilities/ontology_cap.py": 588,
     "infona_client/agent/planner.py": 1463,
     "infona_client/api/routes/actions.py": 713,
@@ -281,7 +280,7 @@ def test_allowlist_is_deny_by_default():
     # Sanity: we actually pinned remaining mega-files, not an empty map.
     # Extracted facades (#387–#392) and deleted web_ingest_cap (#390) stay off.
     assert "infona_client/enrichment/executor.py" in OVERSIZE_ALLOWLIST
-    assert "infona_client/agent/capabilities/enrich_cap.py" in OVERSIZE_ALLOWLIST
+    assert "infona_client/agent/capabilities/enrich_cap.py" not in OVERSIZE_ALLOWLIST
     assert "tests/test_enrichment.py" in OVERSIZE_ALLOWLIST
     assert "infona_client/agent/capabilities/web_ingest_cap.py" not in OVERSIZE_ALLOWLIST
     assert "infona_client/resolver/schema_resolver.py" not in OVERSIZE_ALLOWLIST
