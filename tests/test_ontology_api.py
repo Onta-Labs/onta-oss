@@ -191,6 +191,30 @@ def test_add_attributes(client, auth_headers, mock_neptune, store):
     mock_neptune.update.assert_not_called()
 
 
+def test_delete_attribute(client, auth_headers, mock_neptune, store):
+    _seed_type(store, "ClinicalTrial")
+    _seed_attr(store, "ClinicalTrial", "lead_sponsor", datatype="string")
+    _seed_attr(store, "ClinicalTrial", "nct_id", datatype="string")
+    assert ("ClinicalTrial", "lead_sponsor") in _catalog_attrs(store)
+
+    gone = client.delete(
+        f"/graphs/{TENANT}/ontology/types/ClinicalTrial/attributes/lead_sponsor",
+        headers=auth_headers,
+    )
+    assert gone.status_code == 200
+    assert gone.json()["deleted"] is True
+    attrs = _catalog_attrs(store)
+    assert ("ClinicalTrial", "lead_sponsor") not in attrs
+    assert ("ClinicalTrial", "nct_id") in attrs
+
+    missing = client.delete(
+        f"/graphs/{TENANT}/ontology/types/ClinicalTrial/attributes/lead_sponsor",
+        headers=auth_headers,
+    )
+    assert missing.status_code == 404
+    mock_neptune.update.assert_not_called()
+
+
 def test_add_subtype(client, auth_headers, mock_neptune, store):
     _seed_type(store, "Place")
     response = client.post(
