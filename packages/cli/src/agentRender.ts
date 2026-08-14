@@ -196,10 +196,12 @@ function renderAnswer(
   const narrative = str(r.narrative) ?? str(r.answer) ?? "No answer.";
   write("\n  " + narrative + "\n");
 
-  const sparql = str(r.sparql);
-  if (sparql) {
-    write("\n  " + pen.dim("SPARQL") + "\n");
-    write(indent(pen.dim(sparql), "    ") + "\n");
+  // Product query language is Cypher. HTTP/NLResult still names the compat
+  // field `sparql` — do not rename it; prefer `cypher` when the server sends both.
+  const query = str(r.cypher) ?? str(r.sparql);
+  if (query) {
+    write("\n  " + pen.dim("Cypher") + "\n");
+    write(indent(pen.dim(query), "    ") + "\n");
   }
 
   const rows = asArray(r.rows);
@@ -310,7 +312,7 @@ function renderError(
 
 /**
  * Render one agent turn to the terminal. Dispatches on `result.kind`:
- *  - `answer`  → narrative, optional SPARQL (dim), optional rows table.
+ *  - `answer`  → narrative, optional Cypher (dim), optional rows table.
  *  - `clarify` → the clarifying question.
  *  - `plan`    → each step (capability → action, confidence, cost, rationale)
  *                plus the plan_id.
