@@ -30,6 +30,7 @@ describe("MCP ask query dump chrome", () => {
     expect(formatAskQueryDump({})).toBe("");
     expect(formatAskQueryDump({ sparql: "" })).toBe("");
     expect(formatAskQueryDump({ cypher: 1, sparql: null })).toBe("");
+    expect(formatAskQueryDump(undefined)).toBe("");
   });
 
   it("index.ts uses the helper and has no SPARQL: dump header", () => {
