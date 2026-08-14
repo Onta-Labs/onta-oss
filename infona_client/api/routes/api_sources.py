@@ -33,16 +33,21 @@ from pydantic import BaseModel, Field
 
 from infona_client.api_registry import (
     LAYER_TENANT_CUSTOM,
+    LAYER_USER_CUSTOM,
     RegistryApiSource,
     TenantApiSource,
+    effective_owner_subject,
     get_api_source_catalog,
     get_secret_cipher,
     invalidate_tenant_catalog,
     load_tenant_custom_catalog,
+    load_user_custom_catalog,
     make_secret_resolver,
     make_tenant_api_source_store,
     make_tenant_secret_store,
+    make_user_api_source_store,
     store_secret,
+    user_secret_scope,
     validate_tenant_spec,
 )
 from infona_client.api_registry.secret_store import secret_aad  # noqa: F401 (documented seam)
@@ -67,12 +72,12 @@ class ApiSourceSummary(BaseModel):
     title: str
     publisher: str
     description: str
-    layer: str  # "global_public" | "global_enhanced" | "tenant_custom"
+    layer: str  # "global_public" | "global_enhanced" | "user_custom" | "tenant_custom"
     authority_level: str
     entity_kinds: list[str]
     attributes: list[str]
     enabled: bool
-    editable: bool  # true only for tenant_custom
+    editable: bool  # true for tenant_custom and user_custom
     has_secret: bool
 
 
@@ -141,11 +146,20 @@ def _secret_store():
 
 
 async def _summary(
-    spec: ApiSourceSpec, tenant_id: str, *, has_secret: Optional[bool] = None
+    spec: ApiSourceSpec,
+    tenant_id: str,
+    *,
+    has_secret: Optional[bool] = None,
+    subject: Optional[str] = None,
 ) -> ApiSourceSummary:
-    editable = spec.layer == LAYER_TENANT_CUSTOM
+    editable = spec.layer in (LAYER_TENANT_CUSTOM, LAYER_USER_CUSTOM)
     if has_secret is None:
-        has_secret = await _has_stored_secret(tenant_id, spec) if editable else False
+        if spec.layer == LAYER_USER_CUSTOM and subject:
+            has_secret = await _has_stored_secret(user_secret_scope(subject), spec)
+        elif spec.layer == LAYER_TENANT_CUSTOM:
+            has_secret = await _has_stored_secret(tenant_id, spec)
+        else:
+            has_secret = False
     return ApiSourceSummary(
         slug=spec.slug,
         title=spec.title,
@@ -258,13 +272,21 @@ async def list_api_sources(
 
     The gate is on VISIBILITY only; the discovery / enrichment rails still
     execute every enabled global source for every tenant (they consult the
-    catalog directly, not this route)."""
+    catalog directly, not this route).
+
+    The caller's ``user_custom`` sources (registered once, visible in every
+    workspace they can access) are merged in when the key has an owner
+    subject (Clerk user or a static-key fingerprint)."""
     catalog = await load_tenant_custom_catalog(tenant.tenant_id, _sources_store())
+    subject = effective_owner_subject(tenant.api_key, tenant.subject)
+    if subject:
+        await load_user_custom_catalog(subject, make_user_api_source_store())
+        catalog = get_api_source_catalog(tenant.tenant_id, subject=subject)
     out: list[ApiSourceSummary] = []
     for spec in sorted(catalog.all(), key=lambda s: s.slug):
         if _is_global(spec) and not tenant.is_operator:
             continue  # regular users never see the global catalog
-        out.append(await _summary(spec, tenant.tenant_id))
+        out.append(await _summary(spec, tenant.tenant_id, subject=subject))
     return out
 
 
@@ -279,17 +301,22 @@ async def get_api_source(
     global slug gets a 404 — same as a slug that does not exist — so the route
     never leaks that a global source exists (ONTA-234)."""
     catalog = await load_tenant_custom_catalog(tenant.tenant_id, _sources_store())
+    subject = effective_owner_subject(tenant.api_key, tenant.subject)
+    if subject:
+        await load_user_custom_catalog(subject, make_user_api_source_store())
+        catalog = get_api_source_catalog(tenant.tenant_id, subject=subject)
     spec = catalog.get(slug)
     if spec is None or (_is_global(spec) and not tenant.is_operator):
         raise HTTPException(status_code=404, detail=f"no api source '{slug}'")
-    has_secret = (
-        await _has_stored_secret(tenant.tenant_id, spec)
-        if spec.layer == LAYER_TENANT_CUSTOM
-        else False
-    )
+    if spec.layer == LAYER_USER_CUSTOM and subject:
+        has_secret = await _has_stored_secret(user_secret_scope(subject), spec)
+    elif spec.layer == LAYER_TENANT_CUSTOM:
+        has_secret = await _has_stored_secret(tenant.tenant_id, spec)
+    else:
+        has_secret = False
     body = _redacted_spec_dict(spec)
     body["has_secret"] = has_secret
-    body["editable"] = spec.layer == LAYER_TENANT_CUSTOM
+    body["editable"] = spec.layer in (LAYER_TENANT_CUSTOM, LAYER_USER_CUSTOM)
     return body
 
 

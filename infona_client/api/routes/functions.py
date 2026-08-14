@@ -34,9 +34,21 @@ from infona_client.graph.queries import (
     resolve_function_attachment,
     tenant_graph_uri,
 )
+from infona_client.functions.store import StoredFunction, make_function_store
 from infona_client.models.function import FunctionRef, FunctionRegister, FunctionTier
 
 router = APIRouter()
+
+
+def _stored_to_ref(rec: StoredFunction) -> FunctionRef:
+    return FunctionRef(
+        name=rec.name,
+        entity_type=rec.entity_type,
+        endpoint_url=rec.endpoint_url,
+        description=rec.description,
+        tier=FunctionTier.CUSTOM,
+        layer=rec.layer or "tenant",
+    )
 
 
 def _layer_from_body(body: FunctionRegister) -> Layer | None:
@@ -116,8 +128,24 @@ async def register_function(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    await client.update(sparql)
+    # Neo4j has no SPARQL update. Persist via the swappable function store
+    # first so a register is never a 500 on the only product backend; then
+    # best-effort SPARQL for residual / hermetic FakeNeptune tests.
     bare_type = type_uri.rsplit("/", 1)[-1]
+    await make_function_store().upsert(
+        StoredFunction(
+            tenant_id=tenant.tenant_id,
+            name=body.name,
+            entity_type=bare_type,
+            endpoint_url=body.endpoint_url,
+            description=body.description,
+            layer=resolved_layer.value,
+        )
+    )
+    try:
+        await client.update(sparql)
+    except Exception:
+        pass
     return {
         "registered": body.name,
         "entity_type": bare_type,
@@ -141,17 +169,27 @@ async def list_functions(
     cannot discover them by listing functions.
     """
     graph_uri = tenant_graph_uri(tenant.tenant_id)
-    sparql = list_functions_query(graph_uri, entity_type)
-    raw = await client.query(sparql)
-    _, bindings = parse_sparql_results(raw)
-    return [
-        FunctionRef(
-            name=row.get("name", ""),
-            entity_type=row.get("type", "").split("/")[-1],
-            endpoint_url=row.get("endpoint"),
-            description=row.get("desc", ""),
-            tier=FunctionTier.CUSTOM,
-            layer=Layer.TENANT.value,
-        )
-        for row in bindings
-    ]
+    stored = await make_function_store().list_for_tenant(
+        tenant.tenant_id, entity_type=entity_type
+    )
+    by_key: dict[tuple[str, str], FunctionRef] = {
+        (rec.entity_type.casefold(), rec.name.casefold()): _stored_to_ref(rec)
+        for rec in stored
+    }
+    try:
+        sparql = list_functions_query(graph_uri, entity_type)
+        raw = await client.query(sparql)
+        _, bindings = parse_sparql_results(raw)
+        for row in bindings:
+            ref = FunctionRef(
+                name=row.get("name", ""),
+                entity_type=row.get("type", "").split("/")[-1],
+                endpoint_url=row.get("endpoint"),
+                description=row.get("desc", ""),
+                tier=FunctionTier.CUSTOM,
+                layer=Layer.TENANT.value,
+            )
+            by_key.setdefault((ref.entity_type.casefold(), ref.name.casefold()), ref)
+    except Exception:
+        pass
+    return sorted(by_key.values(), key=lambda r: (r.entity_type.casefold(), r.name.casefold()))

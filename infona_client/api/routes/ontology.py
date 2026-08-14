@@ -57,6 +57,7 @@ from infona_client.graph.ontology_snapshots import (
     diff_graphs,
 )
 from infona_client.graph.queries import kg_graph_uri, tenant_graph_uri
+from infona_client.models.function import FunctionRef
 from infona_client.models.ontology import (
     AliasBackfill,
     AliasMapResponse,
@@ -102,23 +103,30 @@ router = APIRouter(prefix="/graphs/{tenant}/ontology")
 _VERDICT_CACHE_PATH = Path("/tmp/infona-verdict-cache.json")
 
 
-async def _workspace_catalog(tenant_id: str):
-    """Tenant-aware API-source catalog for the workspace browser overlay.
+async def _workspace_catalog(tenant_id: str, subject: str | None = None):
+    """Tenant + caller-user API-source catalog for the workspace overlay.
 
-    Loads the caller's ``tenant_custom`` entries from the durable store and
-    merges them onto the global catalog (highest precedence for THIS tenant
-    only). Degrades to ``None`` (global-only / empty overlay) on any failure
-    so a broken source store never sinks the ontology read. Operator
-    ``fetch_global_ontology`` deliberately never takes a tenant catalog —
-    private entries must not leak onto the cross-tenant route.
+    Loads the workspace's ``tenant_custom`` entries and, when ``subject`` is
+    set, that user's ``user_custom`` entries (visible across every workspace
+    they can access). tenant_custom still shadows a same-slug user entry for
+    THIS workspace only. Degrades to ``None`` on any failure so a broken
+    source store never sinks the ontology read. Operator
+    ``fetch_global_ontology`` never takes a tenant/user catalog — private
+    entries must not leak onto the cross-tenant route.
     """
     try:
-        from infona_client.api_registry.catalog import load_tenant_custom_catalog
-        from infona_client.api_registry.store import make_tenant_api_source_store
-
-        return await load_tenant_custom_catalog(
-            tenant_id, make_tenant_api_source_store()
+        from infona_client.api_registry.catalog import (
+            get_api_source_catalog,
+            load_tenant_custom_catalog,
+            load_user_custom_catalog,
         )
+        from infona_client.api_registry.store import make_tenant_api_source_store
+        from infona_client.api_registry.user_store import make_user_api_source_store
+
+        await load_tenant_custom_catalog(tenant_id, make_tenant_api_source_store())
+        if subject:
+            await load_user_custom_catalog(subject, make_user_api_source_store())
+        return get_api_source_catalog(tenant_id, subject=subject)
     except Exception:
         return None
 
@@ -260,6 +268,50 @@ async def _workspace_ontology_store(
         types_by_name.values(),
         key=lambda t: (t.name.lower(), t.layer),
     )
+
+    # Attach sources / skills / functions AFTER the catalog type merge.
+    # ONTA-535 owns types/attrs; these overlays stay on the existing
+    # global_ontology helpers so a store hiccup never blanks the type list.
+    try:
+        from infona_client.api_registry.user_store import effective_owner_subject
+        from infona_client.graph.global_ontology import (
+            _WorkspaceSkillIndex,
+            _build_source_index,
+            _load_tenant_skills,
+        )
+
+        subject = effective_owner_subject(tenant.api_key, tenant.subject)
+        catalog = await _workspace_catalog(tenant.tenant_id, subject)
+        source_idx = await _build_source_index(catalog=catalog)
+        visible = {info.layer for info in layer_infos} | {"tenant"}
+        tenant_skills = await _load_tenant_skills(tenant.tenant_id)
+        skill_idx = _WorkspaceSkillIndex(
+            tenant.tenant_id,
+            visible_layers=visible,
+            tenant_skills=tenant_skills,
+        )
+        fns_by_type: dict[str, list[FunctionRef]] = {}
+        try:
+            from infona_client.functions.store import make_function_store
+
+            for rec in await make_function_store().list_for_tenant(tenant.tenant_id):
+                fns_by_type.setdefault(rec.entity_type.casefold(), []).append(
+                    FunctionRef(
+                        name=rec.name,
+                        entity_type=rec.entity_type,
+                        endpoint_url=rec.endpoint_url,
+                        description=rec.description,
+                        layer=rec.layer or "tenant",
+                    )
+                )
+        except Exception:
+            pass
+        for t in types_out:
+            t.sources = source_idx.for_type(t.name)
+            t.skills = skill_idx.for_type(t.name)
+            t.functions = fns_by_type.get(t.name.casefold(), [])
+    except Exception:
+        pass
 
     return WorkspaceOntologyResponse(
         tenant_id=tenant.tenant_id,

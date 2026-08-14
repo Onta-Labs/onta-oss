@@ -91,13 +91,20 @@ class SkillDetail(SkillSummary):
 
 
 class CreateSkillRequest(BaseModel):
-    slug: str = Field(min_length=1, max_length=64)
+    slug: str = Field(default="", max_length=64)
     type_name: str = Field(min_length=1, max_length=128)
-    body: str = Field(description="The markdown skill body — this IS the skill")
+    body: str = Field(
+        default="",
+        description="The markdown skill body — this IS the skill. Optional when archive_b64 is set.",
+    )
     title: str = ""
     summary: str = ""
     enabled: bool = True
     metadata: dict[str, Any] = Field(default_factory=dict)
+    #: Optional uploaded file (md / txt / zip). Parsed on the same create
+    #: route — no second endpoint. Explicit slug/title/summary/body win.
+    filename: str = ""
+    archive_b64: str = ""
 
 
 class UpdateSkillRequest(BaseModel):
@@ -216,6 +223,51 @@ async def list_skills(
     return out
 
 
+def _fields_from_create(req: CreateSkillRequest) -> dict[str, Any]:
+    """Resolve create fields: optional archive_b64, explicit JSON wins."""
+    parsed: dict[str, Any] = {}
+    if req.archive_b64:
+        import base64
+        import binascii
+
+        from infona_client.skills import parse_skill_upload
+
+        try:
+            raw = base64.b64decode(req.archive_b64, validate=False)
+            parsed = parse_skill_upload(
+                filename=req.filename or "skill.md",
+                data=raw,
+                type_name=req.type_name,
+            )
+        except (ValueError, binascii.Error) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    slug = (req.slug or "").strip() or parsed.get("slug", "")
+    body = req.body if req.body else parsed.get("body", "")
+    title = req.title or parsed.get("title", "")
+    summary = req.summary or parsed.get("summary", "")
+    metadata = dict(parsed.get("metadata") or {})
+    metadata.update(req.metadata or {})
+    if not body:
+        raise HTTPException(
+            status_code=422,
+            detail="skill body is required (send body or archive_b64)",
+        )
+    if not slug:
+        raise HTTPException(
+            status_code=422,
+            detail="skill slug is required (send slug or a named archive)",
+        )
+    return {
+        "slug": slug,
+        "type_name": req.type_name,
+        "body": body,
+        "title": title,
+        "summary": summary,
+        "metadata": metadata,
+    }
+
+
 @router.post("", response_model=SkillDetail, status_code=201)
 async def create_skill(
     req: CreateSkillRequest,
@@ -225,17 +277,21 @@ async def create_skill(
 
     Idempotent on ``(type_name, slug)``: posting the same slug again replaces the
     body and bumps ``version``, so a client that retries cannot fork the skill.
+
+    Optional ``archive_b64`` + ``filename`` parse a markdown file or skill-package
+    zip on this same route (no second endpoint). Explicit JSON fields win.
     """
+    fields = _fields_from_create(req)
     skill = TypeSkill(
-        slug=req.slug,
-        type_name=req.type_name,
-        body=req.body,
-        title=req.title,
-        summary=req.summary,
+        slug=fields["slug"],
+        type_name=fields["type_name"],
+        body=fields["body"],
+        title=fields["title"],
+        summary=fields["summary"],
         layer=Layer.TENANT,
         tenant_id=tenant.tenant_id,
         enabled=req.enabled,
-        metadata=dict(req.metadata or {}),
+        metadata=dict(fields["metadata"] or {}),
     )
     _raise_if_invalid(skill)
     stored = await _store().upsert(skill)
