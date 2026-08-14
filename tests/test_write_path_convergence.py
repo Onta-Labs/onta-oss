@@ -141,8 +141,9 @@ _ALLOWLIST: dict[str, str] = {
     # INSERT strings but never calls neptune.update. Application of those
     # builders is exclusive to graph/ontology_commit.py, enforced by
     # tests/test_ontology_commit_convergence.py.
-    "graph/ontology_queries.py": "ontology SCHEMA SPARQL builder library (ONTA-403) — defines type/attribute/range/comment builders; not itself a writer. Application is exclusive to ontology_commit.py.",
-    "graph/ontology_commit.py": "ontology SCHEMA commit path (ONTA-403) — the one place that applies ontology_queries builders; emits changelog + revision, not instance data.",
+    "graph/ontology_queries.py": "ontology SCHEMA SPARQL builder library (ONTA-403) — defines type/attribute/range/comment builders; not itself a writer. Application is exclusive to ontology_commit_sparql*.py.",
+    "graph/ontology_commit_sparql.py": "ontology SCHEMA commit SPARQL apply path (ONTA-403) — applies ontology_queries builders; emits changelog + revision, not instance data.",
+    "graph/ontology_commit_sparql_ops.py": "ontology SCHEMA commit SPARQL alias/rename/deprecate path (ONTA-403) — applies builders + insert_triples for schema markers, not instance data.",
     "graph/ontology_snapshots.py": "ontology SCHEMA snapshot/diff/restore (ONTA-406) — versions named graphs + RDF release records; not instance data. Copy/clear/drop of schema graphs + insert_triples for release metadata only.",
     "graph/ontology_base_pin.py": "ontology SCHEMA-META workspace base pin (ONTA-405) — CLEAR + insert_triples on per-tenant base-pin companion graph only; not instance data.",
     # ONTA-407b: aliases stay allowlisted with an honest sole-caller justification.
