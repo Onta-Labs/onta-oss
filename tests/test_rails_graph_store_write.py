@@ -124,12 +124,19 @@ def test_schema_resolver_insert_facts_receives_store(memory_store, monkeypatch):
 
 
 def test_schema_resolver_source_wires_store_kwarg():
-    """Source guard: schema_resolver write site passes store= (E7)."""
+    """Source guard: schema_resolver write site passes store= (E7).
+
+    Writes live in the schema_* sibling modules extracted from schema_resolver;
+    scan the orchestrator plus those write-path siblings.
+    """
     import inspect
 
     import infona_client.resolver.schema_resolver as sr
+    import infona_client.resolver.schema_entity_write as sew
+    import infona_client.resolver.schema_entity_insert as sei
+    import infona_client.resolver.schema_ingest_flush as sif
 
-    src = inspect.getsource(sr)
+    src = "\n".join(inspect.getsource(m) for m in (sr, sew, sei, sif))
     assert "resolve_optional_graph_store" in src
     assert "store=resolve_optional_graph_store()" in src
     # Residual instance/rel/provenance writes must not hand-roll SPARQL INSERT
