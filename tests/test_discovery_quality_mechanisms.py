@@ -40,7 +40,6 @@ _PKG_ROOT = pathlib.Path(infona_client.__file__).resolve().parent
 _PIPELINE_DIR = _PKG_ROOT / "pipeline"
 # Ensemble skip / provider-scope paths (R3 wiring lives here; guard both).
 _ENSEMBLE_PATHS = (
-    _PKG_ROOT / "agent" / "capabilities" / "web_ingest_cap.py",
     _PKG_ROOT / "web_sources" / "base.py",
 )
 

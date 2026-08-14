@@ -12,10 +12,8 @@ Here we isolate the fast-path DECISION: drive structured rows through
 calls ``_extract``, and delegates to the deterministic ``ingest_mapped_records``
 seam with a correct fixed mapping (key attribute as type-id, source_url typed
 ``uri``). The deterministic write itself is covered end-to-end over a real store
-by ``test_resolver_key_join``. The web_ingest_cap ROUTING of a structured
-provider to this method lives in ``test_web_ingest_fastpath.py`` (it drives the
-discovery ``execute`` machinery, which must sort after the capture_logs-based
-semantic tests — see that file's note).
+by ``test_resolver_key_join``. Premium web-ingest routing of a structured
+provider to this method lives in ``infona/web_ingest/tests``.
 """
 from __future__ import annotations
 

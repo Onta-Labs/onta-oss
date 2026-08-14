@@ -1,6 +1,6 @@
 """Web-research capability — answer a question FROM THE WEB, cite it, don't store it.
 
-This is the READ-ONLY counterpart to :class:`WebIngestCapability`. Discovery
+This is the READ-ONLY web-research capability. Premium web-discovery ingest
 INGEST creates new graph entities from a query; research ANSWERS a question by
 reading the web and returns a cited answer plus a downloadable table
 (CSV/JSON) — it writes NOTHING to the knowledge graph. Representative ask:

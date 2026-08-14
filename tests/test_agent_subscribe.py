@@ -134,6 +134,33 @@ async def test_subscribe_request_creates_schedule_row(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_subscribe_wins_over_web_discovery_phrasing_in_oss(monkeypatch):
+    """Cadence+alert AND "from the web" must still reach subscribe in OSS.
+
+    The web-discovery guard must not early-return hosted-only and swallow a
+    standing-alert ask just because the payload also mentions minting from the
+    web. Subscribe is registered; web_ingest is not.
+    """
+    _stub_classifier(monkeypatch, "question")
+    store = InMemoryScheduleStore()
+    ctx = _ctx(store)
+
+    out = await asyncio.wait_for(
+        handle(
+            ctx,
+            "Set up a weekly alert to add new companies from the web "
+            "and notify https://example.test/hook.",
+        ),
+        TIMEOUT,
+    )
+    body = f"{out.get('answer', '')} {out.get('narrative', '')}".lower()
+    assert "not included" not in body
+    assert "hosted" not in body
+    assert out["kind"] == "plan"
+    assert out["steps"][0]["capability"] == "subscribe"
+
+
+@pytest.mark.asyncio
 async def test_subscribe_detects_daily_cadence(monkeypatch):
     """Cadence is parsed from the instruction — daily → 86400s interval."""
     _stub_classifier(monkeypatch, "subscribe")

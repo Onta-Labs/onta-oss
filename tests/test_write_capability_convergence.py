@@ -765,22 +765,17 @@ def test_reader_cannot_mutate_a_kg_through_the_agent(reader_client):
 
 
 def test_reader_cannot_ingest_through_the_agent(reader_client):
-    """Same escalation for the web-ingest capability (mints new entities)."""
-    from infona_client.agent.capabilities.web_ingest_cap import WebIngestCapability
-
+    """Unknown/premium mutating step names still 403 at confirm (no OSS import)."""
     _save_plan("plan-reader-ingest", "web_ingest", "ingest")
-    spy = AsyncMock(return_value={"status": "queued"})
-    with patch.object(WebIngestCapability, "execute", spy):
-        resp = reader_client.post(
-            f"/graphs/{_READER_TENANT}/agent",
-            json={
-                "message": "",
-                "context": {"kg_name": "kg"},
-                "confirm": {"plan_id": "plan-reader-ingest"},
-            },
-        )
+    resp = reader_client.post(
+        f"/graphs/{_READER_TENANT}/agent",
+        json={
+            "message": "",
+            "context": {"kg_name": "kg"},
+            "confirm": {"plan_id": "plan-reader-ingest"},
+        },
+    )
     assert resp.status_code == 403, resp.text
-    assert spy.await_count == 0
 
 
 def test_reader_is_refused_before_a_mutating_plan_is_even_persisted(reader_client):
