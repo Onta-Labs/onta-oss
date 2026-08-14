@@ -356,9 +356,9 @@ async def test_discovery_beats_enrich_keyword_on_empty_graph(monkeypatch):
     """ONTA-244 — a clearly-new-data ask that leads with "discover" (and even
     contains the word "enrich") routes to DISCOVERY, not enrich. The classifier
     WRONGLY word-triggers "enrich" (the message says "then enrich each…"); the
-    widened deterministic web-discovery guard must override it. With no web-source
-    provider registered in OSS the discover rail degrades to a clear "not enabled"
-    answer — proof the turn routed to discovery, not into an empty enrich loop.
+    widened deterministic web-discovery guard must override it. OSS does not
+    ship web-ingest, so the turn is a hosted-only answer — proof it routed
+    away from enrich (and did not fall through to /ask).
     Asserts on the CAPABILITY that ran, not on any field token."""
     _stub_classifier(monkeypatch, "enrich")  # the mis-classification
 

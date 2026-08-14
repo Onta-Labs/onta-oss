@@ -791,12 +791,12 @@ async def _respond(
     # "enrich" here: on a mint-new-records ask the entities do not exist yet, so an
     # enrich pass in the SAME turn would match 0 and premature-clarify (the
     # enrich-plan-order-1 short-circuit that beat discovery). Discovery mints them
-    # first; enriching the fresh entities is a natural follow-up turn. Only when
-    # the discover capability is registered (premium). OSS returns a hosted-only
-    # answer instead of falling through to /ask.
+    # first; enriching the fresh entities is a natural follow-up turn.
+    # Always rewrite intents here (even if web_ingest is unregistered) so later
+    # guards — subscribe, URL, refresh — still run. The hosted-only answer is
+    # emitted later if discover is the only unresolved intent. An early return
+    # would swallow a cadence+alert "from the web" subscribe ask in OSS.
     if _is_web_discovery_request(message):
-        if get_capability(_INTENT_TO_CAPABILITY["discover"]) is None:
-            return _hosted_only_web_ingest_answer()
         intents = [
             "discover",
             *[
