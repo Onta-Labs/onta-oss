@@ -2285,13 +2285,13 @@ class NLQueryPipeline:
                     )
                     timing["cypher_exec_path"] = exec_path
                     timing[
-                        f"neptune_exec_ms{f'_retry{attempt}' if attempt > 0 else ''}"
+                        f"cypher_exec_ms{f'_retry{attempt}' if attempt > 0 else ''}"
                     ] = round((time.time() - t_exec) * 1000, 1)
                 except GraphQueryError as exc:
                     scrubbed = scrub_cypher_error(str(exc))
                     last_error = scrubbed
                     timing[
-                        f"neptune_exec_ms{f'_retry{attempt}' if attempt > 0 else ''}"
+                        f"cypher_exec_ms{f'_retry{attempt}' if attempt > 0 else ''}"
                     ] = round((time.time() - t_exec) * 1000, 1)
                     if attempt >= max_attempts - 1:
                         timing.update(token_ledger.totals_for_timing())
