@@ -172,7 +172,7 @@ async def test_real_shared_resolver_interleaved_is_isolated():
 # --------------------------------------------------------------------------- #
 @pytest.mark.asyncio
 async def test_real_perrun_resolvers_interleaved_is_isolated():
-    """The web_ingest_cap pattern: one resolver PER sub-query, all sharing a single
+    """The premium web-ingest pattern: one resolver PER sub-query, all sharing a single
     ontology-write lock, interleaved over one store. Each writes only its own
     workspace's graphs → zero cross-workspace leakage."""
     n = PyoxiNeptune()

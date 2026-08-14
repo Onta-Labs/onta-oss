@@ -12,10 +12,10 @@ could not see. This suite proves the fix:
 * the 429 policy: a single/occasional 429 is a transient (retry); only a
   SUSTAINED streak escalates to a run-level halt;
 * the ``/api/v1/key`` balance helper diagnoses remaining credits (mocked httpx);
-* **the acceptance bar** — an injected 402 in the LLM extraction call layer during
-  a DISCOVERY (and an ENRICHMENT) run yields a terminal ``failed`` run whose reason
-  names provider exhaustion AND a manifest showing partial coverage (completed vs
-  dropped), NOT a stuck spinner and NOT a silent success.
+* **the acceptance bar** — an injected 402 during an ENRICHMENT run yields a
+  terminal ``failed`` run whose reason names provider exhaustion AND a manifest
+  showing partial coverage. Discovery-run acceptance lives in premium
+  ``infona/web_ingest/tests``.
 """
 
 from __future__ import annotations
@@ -301,192 +301,6 @@ async def test_key_status_402_on_diagnosis_raises_billing_error(monkeypatch):
 
 
 # --------------------------------------------------------------------------- #
-# 4. ACCEPTANCE — a 402 in the extraction (LLM) call layer halts a DISCOVERY run
-#    to terminal FAILED with a provider-exhaustion reason + a partial-coverage
-#    manifest. Reuses the proven ONTA-201 discovery harness.
-# --------------------------------------------------------------------------- #
-from infona_client.agent.capabilities import web_ingest_cap  # noqa: E402
-from infona_client.agent.capabilities.web_ingest_cap import (  # noqa: E402
-    WebIngestCapability,
-)
-from infona_client.agent.registry import AgentContext  # noqa: E402
-from infona_client.enrichment.job_store import InMemoryJobStore  # noqa: E402
-from infona_client.enrichment.models import JobStatus  # noqa: E402
-from infona_client.resolver.models import (  # noqa: E402
-    ExtractedEntity,
-    ExtractionResult,
-    IngestResult,
-)
-from infona_client.resolver.schema_resolver import SchemaResolver  # noqa: E402
-from infona_client.web_sources import (  # noqa: E402
-    DiscoverResult,
-    register_web_source,
-    reset_web_sources,
-)
-
-
-ROWS = [
-    # 2+ char names so the ONTA-393 A1 validators (which drop a length<2 key cell as
-    # chrome) keep these synthetic rows — the test is about halt/coverage, not names.
-    {"name": "aa", "context_length": "1"},
-    {"name": "bb", "context_length": "2"},
-]
-
-SPEC = {
-    "entity_type": "OpenRouterModel",
-    "key_attribute": "name",
-    "query": "OpenRouter models",
-    "confirmed_attributes": ["context_length"],
-    "suggested_attributes": ["context_length"],
-    # Two sub-queries: the first lands rows, the second hits the 402.
-    "subqueries": ["OpenRouter models A", "OpenRouter models B"],
-}
-
-
-class _TwoPageProvider:
-    """First sub-query returns 2 rows; second returns 2 DISTINCT rows (so they
-    survive cross-batch dedupe and reach a second ingest, where the 402 fires)."""
-
-    def __init__(self):
-        self.name = "fake"
-        self.is_paid = False
-        self.cost_per_call = 0.0
-        self.discover_calls = 0
-        self._page = 0
-
-    async def discover(self, query, *, sample, max_rows, hint_columns, context, urls=None):
-        self.discover_calls += 1
-        if sample:
-            page = ROWS[:2]
-        else:
-            page = (
-                ROWS[:2]
-                if self._page == 0
-                else [{"name": "ee", "context_length": "5"}, {"name": "ff", "context_length": "6"}]
-            )
-            self._page += 1
-        if hint_columns:
-            page = [{c: r.get(c, "unknown") for c in hint_columns} for r in page]
-        return DiscoverResult(
-            rows=page,
-            provenance={},
-            sources=["https://openrouter.ai/models"],
-            estimated_total=4,
-            is_partial=sample,
-        )
-
-
-@pytest.fixture(autouse=True)
-def _reset_sources():
-    reset_web_sources()
-    yield
-    reset_web_sources()
-
-
-def _patch_preview(monkeypatch):
-    async def fake_fetch_ontology(self, graph_uri):
-        return {}, {}
-
-    async def fake_extract(self, content, content_type, existing=None):
-        return ExtractionResult(
-            entities=[
-                ExtractedEntity(type_name="OpenRouterModel", id=r["name"], attributes=[])
-                for r in ROWS[:2]
-            ],
-            relationships=[],
-        )
-
-    monkeypatch.setattr(SchemaResolver, "_fetch_ontology", fake_fetch_ontology)
-    monkeypatch.setattr(SchemaResolver, "_extract", fake_extract)
-
-
-def _ctx_with_store(store) -> AgentContext:
-    return AgentContext(
-        tenant_id="demo-tenant",
-        kg_name="models",
-        neptune=MagicMock(),
-        anthropic_key="sk-ant-test",
-        openrouter_key="",
-        extras={"prior_clarify_count": 0, "enrichment_job_store": store},
-    )
-
-
-async def test_injected_402_halts_discovery_run_with_partial_coverage_manifest(monkeypatch):
-    """THE ACCEPTANCE BAR. Inject an ``LLMBillingError`` (the exact typed error
-    ``openrouter_chat`` raises on a real 402) into the extraction/ingest LLM call
-    layer AFTER the first batch lands. Assert the run is terminal ``failed``, the
-    reason names provider exhaustion, and the A9 manifest records partial coverage
-    (completed vs dropped) — not a stuck spinner, not a silent success."""
-    provider = _TwoPageProvider()
-    register_web_source(provider)
-    _patch_preview(monkeypatch)
-
-    LANDED = 2  # the first sub-query ingests 2 rows before the 402 hits
-
-    async def landing_then_402(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
-        # The LLM extraction call inside ingest: the first batch extracts cleanly;
-        # the second is refused with 402 Payment Required (credits exhausted).
-        if not hasattr(landing_then_402, "_n"):
-            landing_then_402._n = 0
-        landing_then_402._n += 1
-        if landing_then_402._n == 1:
-            rows = json.loads(content)
-            return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
-        raise LLMBillingError(
-            "LLM extraction backend returned 402 Payment Required — check the "
-            "OpenRouter account balance (the prepaid account is likely at $0)."
-        )
-
-    monkeypatch.setattr(SchemaResolver, "ingest", landing_then_402)
-
-    spawned: dict = {}
-    monkeypatch.setattr(
-        web_ingest_cap,
-        "_spawn",
-        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
-    )
-
-    store = InMemoryJobStore()
-    cap = WebIngestCapability()
-    step = (await cap.plan(_ctx_with_store(store), "list of OpenRouter models", parsed=SPEC))[0]
-    ack = await cap.execute(_ctx_with_store(store), step)
-    await spawned["task"]
-
-    job = await store.get(ack["job_id"])
-
-    # (1) TERMINAL failed — not stuck running, not a silent applied/complete.
-    assert job.status == JobStatus.failed
-    assert JobStatus.failed.is_terminal()
-
-    # (2) A9 manifest exists, is terminal, and names PROVIDER EXHAUSTION.
-    m = job.manifest
-    assert m is not None
-    assert m.state is RunState.failed
-    assert m.state.is_terminal()
-    assert m.halt_reason_kind is HaltReasonKind.billing
-    assert m.halt_reason_kind.is_provider_exhaustion
-    reason = (m.halt_reason or "").lower()
-    assert "provider exhaustion" in reason
-    assert "402 payment required" in reason
-    # The user-visible reason is also mirrored onto the job for the UI.
-    assert "402 Payment Required" in (job.error or "")
-
-    # (3) PARTIAL COVERAGE — completed vs dropped. N of M completed before halt.
-    cov = m.coverage()
-    assert isinstance(cov, RunCoverage)
-    assert m.completed == LANDED
-    assert cov.completed == LANDED
-    assert cov.dropped > 0  # the unfilled planned remainder was dropped
-    assert cov.complete is False
-    assert cov.total >= cov.completed + cov.dropped
-    assert f"{LANDED} of" in cov.summary
-
-    # Fail-fast: the second sub-query's discover still ran (2 pages), but the run
-    # aborted at the second ingest — no third batch was attempted.
-    assert provider.discover_calls == 2
-
-
-# --------------------------------------------------------------------------- #
 # 5. ACCEPTANCE (enrichment) — a 402 in the lookup (LLM) layer halts an
 #    ENRICHMENT run to terminal FAILED + a provider-exhaustion manifest.
 # --------------------------------------------------------------------------- #
@@ -494,10 +308,12 @@ from datetime import datetime, timezone  # noqa: E402
 
 from infona_client.enrichment.cache import EnrichmentCache  # noqa: E402
 from infona_client.enrichment.executor import EnrichmentExecutor  # noqa: E402
+from infona_client.enrichment.job_store import InMemoryJobStore  # noqa: E402
 from infona_client.enrichment.models import (  # noqa: E402
     ConflictPolicy,
     EnrichJob,
     EnrichmentTier,
+    JobStatus,
 )
 
 

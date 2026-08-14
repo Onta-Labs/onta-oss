@@ -295,10 +295,9 @@ async def test_explicit_web_request_forces_discover_over_question(monkeypatch):
     )
     # Did NOT fall through to the read-only query path.
     assert out.get("answer") != "SHOULD_NOT_RUN"
-    # With no web-source provider registered in OSS, the discover capability
-    # answers with a clear "not enabled" message — proof it handled the turn.
+    # OSS no longer ships web-ingest — honest hosted-only answer, not /ask.
     body = f"{out.get('narrative', '')} {out.get('answer', '')}".lower()
-    assert "enabled" in body
+    assert "oss" in body or "hosted" in body or "not included" in body
 
 
 @pytest.mark.asyncio
@@ -315,7 +314,7 @@ async def test_explicit_web_request_overrides_ambiguous(monkeypatch):
         and "clarify what you'd like" in out.get("question", "").lower()
     )
     body = f"{out.get('narrative', '')} {out.get('answer', '')}".lower()
-    assert "enabled" in body  # routed to discovery (degrades to not-enabled in OSS)
+    assert "oss" in body or "hosted" in body or "not included" in body
 
 
 @pytest.mark.asyncio
@@ -357,9 +356,9 @@ async def test_discovery_beats_enrich_keyword_on_empty_graph(monkeypatch):
     """ONTA-244 — a clearly-new-data ask that leads with "discover" (and even
     contains the word "enrich") routes to DISCOVERY, not enrich. The classifier
     WRONGLY word-triggers "enrich" (the message says "then enrich each…"); the
-    widened deterministic web-discovery guard must override it. With no web-source
-    provider registered in OSS the discover rail degrades to a clear "not enabled"
-    answer — proof the turn routed to discovery, not into an empty enrich loop.
+    widened deterministic web-discovery guard must override it. OSS does not
+    ship web-ingest, so the turn is a hosted-only answer — proof it routed
+    away from enrich (and did not fall through to /ask).
     Asserts on the CAPABILITY that ran, not on any field token."""
     _stub_classifier(monkeypatch, "enrich")  # the mis-classification
 
@@ -382,10 +381,10 @@ async def test_discovery_beats_enrich_keyword_on_empty_graph(monkeypatch):
         ),
         TIMEOUT,
     )
-    # Routed to DISCOVERY (degrades to not-enabled in OSS), not the enrich clarify.
+    # Routed away from enrich (hosted-only discover answer in OSS).
     assert out.get("question") != "ENRICH_RAN"
     body = f"{out.get('narrative', '')} {out.get('answer', '')} {out.get('question', '')}".lower()
-    assert "enabled" in body
+    assert "oss" in body or "hosted" in body or "not included" in body
 
 
 @pytest.mark.asyncio
@@ -889,9 +888,9 @@ async def test_refresh_guard_defers_to_web_discovery(monkeypatch):
         handle(_ctx(), "refresh our data — pull new Gizmos from the web"),
         TIMEOUT,
     )
-    # Routed to DISCOVERY (degrades to not-enabled in OSS), not the enrich rail.
+    # Routed to DISCOVERY (hosted-only answer in OSS), not the enrich rail.
     body = f"{out.get('narrative', '')} {out.get('answer', '')}".lower()
-    assert "enabled" in body
+    assert "oss" in body or "hosted" in body or "not included" in body
 
 
 @pytest.mark.asyncio
@@ -1996,6 +1995,13 @@ def test_dedup_capability_is_registered_by_default():
     assert "dedup" in names
     cap = get_capability("dedup")
     assert isinstance(cap, DedupCapability)
+
+
+def test_web_ingest_is_not_registered_by_default():
+    """Web-discovery ingest is premium. OSS must not ship or register it."""
+    names = {c.name for c in get_capabilities()}
+    assert "web_ingest" not in names
+    assert get_capability("web_ingest") is None
 
 
 class _TypedNeptune(FakeNeptune):
@@ -3316,7 +3322,7 @@ class _ScopeCap:
     capability's own parameter extraction.
     """
 
-    def __init__(self, name: str, steps=None):
+    def __init__(self, name: str, steps=None, kg_scope_policy=None):
         from infona_client.agent.kg_scope import scope_policy
 
         self.name = name
@@ -3325,7 +3331,13 @@ class _ScopeCap:
         self._steps = steps
         # Inherit the policy the REAL capability of this name declares, so these
         # tests exercise the shipped declarations, not one the test invented.
-        self.kg_scope_policy = scope_policy(get_capability(name))
+        # Premium-only names (``web_ingest``) are not registered in OSS, so the
+        # caller must pass the hosted declaration explicitly.
+        self.kg_scope_policy = (
+            kg_scope_policy
+            if kg_scope_policy is not None
+            else scope_policy(get_capability(name))
+        )
 
     def describe(self) -> str:
         return f"recording {self.name}"
@@ -3389,7 +3401,9 @@ async def test_missing_kg_does_not_refuse_the_create_capable_discovery_rail(
     new graph), so it plans, but the probe verdict is handed to the capability
     so the plan card can SAY the graph will be created."""
     _stub_classifier(monkeypatch, "discover")
-    cap = _ScopeCap("web_ingest")
+    from infona_client.agent.kg_scope import SCOPE_CREATE
+
+    cap = _ScopeCap("web_ingest", kg_scope_policy=SCOPE_CREATE)
     register_capability(cap)
 
     ctx = _ctx_kg(KGStateNeptune(registered=False, has_data=False, others=["imdb"]))
@@ -3638,7 +3652,9 @@ async def test_mixed_create_and_require_turn_names_the_actual_split(monkeypatch)
         return json.dumps({"intents": ["discover", "clean"], "clarify": ""})
 
     monkeypatch.setattr(planner_mod, "openrouter_chat", fake_chat)
-    discover = _ScopeCap("web_ingest")
+    from infona_client.agent.kg_scope import SCOPE_CREATE
+
+    discover = _ScopeCap("web_ingest", kg_scope_policy=SCOPE_CREATE)
     clean = _ScopeCap("normalize")
     register_capability(discover)
     register_capability(clean)
