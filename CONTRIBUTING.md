@@ -125,6 +125,16 @@ packages/
 - snake_case for functions and variables, PascalCase for classes
 - No print statements in library code, use structlog
 - Keep functions short. If it needs a comment explaining what it does, it's too long.
+- **File budget:** new `infona_client` / `packages` / `tests` source files stay
+  around 500 lines (hard cap **550**). Existing oversized files are pinned by
+  `tests/test_file_size_budget.py` and must not grow — extract a seam instead
+  of adding to a 2k+ module. See [AGENTS.md](AGENTS.md).
+
+## Coding agents
+
+[AGENTS.md](AGENTS.md) is the contract for coding agents and AI-assisted
+contributors (boundary, file budget, write/retrieval convergence, always-LLM
+`/ask`). Humans should follow the same rules.
 
 ## Making Changes
 
