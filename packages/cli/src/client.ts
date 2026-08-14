@@ -406,6 +406,10 @@ export class Client {
   pJobs(query?: string): string {
     return `${this.base()}/jobs${query ?? ""}`;
   }
+  /** @internal Single unified job (`DELETE /graphs/{tenant}/jobs/{id}`). */
+  pJob(jobId: string): string {
+    return `${this.base()}/jobs/${encodeURIComponent(jobId)}`;
+  }
   /** @internal Per-tenant API-usage report (requests / latency / cost,
    *  day-aligned series + breakdowns). Optional `?days=` is baked into `query`. */
   pUsage(query?: string): string {
@@ -1194,6 +1198,26 @@ export class Client {
       15_000,
     );
     return Array.isArray(data) ? (data as JobSummary[]) : [];
+  }
+
+  /** Hard-delete every job for this tenant (`DELETE /graphs/{tenant}/jobs`). */
+  async purgeJobs(): Promise<{ deleted: number }> {
+    return this.request<{ deleted: number }>(
+      "DELETE",
+      this.pJobs(),
+      undefined,
+      30_000,
+    );
+  }
+
+  /** Hard-delete one job (`DELETE /graphs/{tenant}/jobs/{id}`). */
+  async deleteJob(jobId: string): Promise<{ deleted: boolean; job_id: string }> {
+    return this.request<{ deleted: boolean; job_id: string }>(
+      "DELETE",
+      this.pJob(jobId),
+      undefined,
+      15_000,
+    );
   }
 
   /**
@@ -2359,6 +2383,16 @@ export class RawApi {
       ? `?category=${encodeURIComponent(opts.category)}`
       : "";
     return this.client.requestRaw("GET", this.client.pJobs(qs), init);
+  }
+
+  /** `DELETE /graphs/{tenant}/jobs` — hard-delete every job for the tenant. */
+  purgeJobs(init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("DELETE", this.client.pJobs(), init);
+  }
+
+  /** `DELETE /graphs/{tenant}/jobs/{id}` — hard-delete one job. */
+  deleteJob(jobId: string, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("DELETE", this.client.pJob(jobId), init);
   }
 
   /** `GET /graphs/{tenant}/usage?days` — per-tenant API-usage report

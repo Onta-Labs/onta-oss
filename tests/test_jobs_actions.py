@@ -143,6 +143,24 @@ def test_inmemory_list_for_tenant_newest_first():
     assert [s.id for s in summaries] == ["new", "mid", "old"]
 
 
+def test_inmemory_delete_for_tenant_is_tenant_scoped():
+    store = InMemoryJobStore()
+
+    async def run():
+        await store.create(_make_job(job_id="keep", tenant_id="other"))
+        await store.create(_make_job(job_id="gone-1", tenant_id="test-tenant"))
+        await store.create(_make_job(job_id="gone-2", tenant_id="test-tenant"))
+        n = await store.delete_for_tenant("test-tenant")
+        remaining = await store.list_for_tenant("test-tenant")
+        other = await store.list_for_tenant("other")
+        return n, remaining, other
+
+    n, remaining, other = asyncio.run(run())
+    assert n == 2
+    assert remaining == []
+    assert [s.id for s in other] == ["keep"]
+
+
 # ---------------------------------------------------------------------------
 # PostgresJobStore — no real DB, asyncpg.create_pool monkeypatched
 # ---------------------------------------------------------------------------
@@ -292,6 +310,34 @@ def test_postgres_store_update_and_delete(monkeypatch):
     assert delete[2] == ("job-1",)
 
 
+def test_postgres_store_delete_for_tenant(monkeypatch):
+    rec: list[tuple] = []
+    conn = _FakeConn(rec)
+
+    async def execute_with_count(sql, *params):
+        rec.append(("execute", sql, params))
+        if "DELETE FROM infona_jobs" in sql and "tenant_id" in sql:
+            return "DELETE 4"
+        return "OK"
+
+    conn.execute = execute_with_count  # type: ignore[method-assign]
+    _patch_asyncpg(monkeypatch, conn)
+
+    async def run():
+        store = PostgresJobStore(dsn="postgresql://fake/db")
+        n = await store.delete_for_tenant("test-tenant")
+        assert n == 4
+
+    asyncio.run(run())
+
+    delete = next(
+        r for r in rec
+        if r[0] == "execute" and "DELETE FROM infona_jobs" in r[1]
+        and "tenant_id" in r[1]
+    )
+    assert delete[2] == ("test-tenant",)
+
+
 @pytest.mark.integration
 def test_postgres_store_real_db():
     """Optional real-DB smoke test; skipped unless INFONA_DATABASE_URL is set."""
@@ -357,6 +403,39 @@ def test_unified_jobs_list_and_category_filter(client, auth_headers):
     assert r2.status_code == 200
     ids2 = {j["id"] for j in r2.json()}
     assert ids2 == {"d1"}
+
+
+def test_unified_jobs_purge_tenant_and_single(client, auth_headers):
+    _seed(_make_job(job_id="keep", tenant_id="other-tenant"))
+    _seed(_make_job(job_id="gone-a", tenant_id="test-tenant"))
+    _seed(_make_job(job_id="gone-b", tenant_id="test-tenant"))
+
+    one = client.delete(
+        "/graphs/test-tenant/jobs/gone-a", headers=auth_headers
+    )
+    assert one.status_code == 200
+    assert one.json() == {"deleted": True, "job_id": "gone-a"}
+    assert {j["id"] for j in client.get(
+        "/graphs/test-tenant/jobs", headers=auth_headers
+    ).json()} == {"gone-b"}
+
+    missing = client.delete(
+        "/graphs/test-tenant/jobs/keep", headers=auth_headers
+    )
+    assert missing.status_code == 404
+
+    purged = client.delete("/graphs/test-tenant/jobs", headers=auth_headers)
+    assert purged.status_code == 200
+    assert purged.json() == {"deleted": 1}
+    assert client.get(
+        "/graphs/test-tenant/jobs", headers=auth_headers
+    ).json() == []
+
+    # Other tenant's job is untouched (and not listable on this tenant).
+    from infona_client.enrichment.job_store import get_job_store
+
+    leftover = asyncio.run(get_job_store().get("keep"))
+    assert leftover is not None and leftover.tenant_id == "other-tenant"
 
 
 def test_unified_jobs_list_newest_first(client, auth_headers):
