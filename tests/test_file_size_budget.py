@@ -62,7 +62,6 @@ OVERSIZE_ALLOWLIST: dict[str, int] = {
     "infona_client/api_registry/enrichment.py": 556,
     "infona_client/api_registry/spec.py": 898,
     "infona_client/auth/workspace_store.py": 1067,
-    "infona_client/enrichment/executor.py": 2811,
     "infona_client/enrichment/models.py": 596,
     "infona_client/eval.py": 1857,
     "infona_client/graph/explore_store.py": 975,
@@ -279,7 +278,7 @@ def test_allowlist_is_deny_by_default():
     assert SOFT_CAP < NEW_FILE_HARD_CAP
     # Sanity: we actually pinned remaining mega-files, not an empty map.
     # Extracted facades (#387–#392) and deleted web_ingest_cap (#390) stay off.
-    assert "infona_client/enrichment/executor.py" in OVERSIZE_ALLOWLIST
+    assert "infona_client/enrichment/executor.py" not in OVERSIZE_ALLOWLIST
     assert "infona_client/agent/capabilities/enrich_cap.py" not in OVERSIZE_ALLOWLIST
     assert "tests/test_enrichment.py" in OVERSIZE_ALLOWLIST
     assert "infona_client/agent/capabilities/web_ingest_cap.py" not in OVERSIZE_ALLOWLIST
