@@ -193,7 +193,7 @@ Interactive docs: [http://localhost:8000/docs](http://localhost:8000/docs).
 ```bash
 export OPENROUTER_API_KEY=sk-or-...   # also accepted as INFONA_OPENROUTER_API_KEY
 export INFONA_QUERY_PROVIDER=openrouter
-export INFONA_QUERY_MODEL=google/gemini-2.5-flash
+export INFONA_QUERY_MODEL=openai/gpt-oss-120b   # default reasoning model
 ```
 
 With an OpenRouter key present, OSS **auto-embeds ontology types** as the catalog

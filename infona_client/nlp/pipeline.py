@@ -243,28 +243,59 @@ def _default_query_provider() -> str:
 
 
 def _default_query_model(provider: str | None = None) -> str:
+    """Default NL→Cypher model.
+
+    OpenRouter OSS default is OpenAI **gpt-oss-120b** (reasoning / thinking
+    model; often served via Cerebras on OpenRouter). Override with
+    ``INFONA_QUERY_MODEL``. Direct Cerebras provider uses the bare slug.
+    """
     explicit = os.environ.get("INFONA_QUERY_MODEL")
     if explicit:
         return explicit
     prov = (provider or _default_query_provider()).lower()
     if prov == "openrouter":
-        return "google/gemini-2.5-flash"
-    return "llama3.1-8b"
+        return "openai/gpt-oss-120b"
+    if prov == "cerebras":
+        return "gpt-oss-120b"
+    return "gpt-oss-120b"
+
+
+def _is_reasoning_query_model(model: str | None) -> bool:
+    """True for models that spend tokens on chain-of-thought before JSON."""
+    m = (model or "").lower()
+    if not m:
+        return False
+    return any(
+        tok in m
+        for tok in (
+            "gpt-oss",
+            "o1",
+            "o3",
+            "o4",
+            "reasoning",
+            "thinking",
+            "deepseek-r1",
+            "r1-",
+        )
+    )
 
 
 DEFAULT_QUERY_MODEL = _default_query_model()
 DEFAULT_QUERY_PROVIDER = _default_query_provider()  # cerebras, openrouter, or anthropic
 
-# Reasoning-budget recovery for the Cerebras SPARQL-gen path (persona-eval RCA).
-# gpt-oss-120b is a reasoning model; on a hard question it can spend its ENTIRE
-# `max_completion_tokens` (the default 2048) on reasoning and return
-# `finish_reason == "length"` with NO answer content. Replaying at the same
-# budget just truncates again, so the retry loop escalates: attempt-1 retries the
-# Cerebras path with this bigger budget (leaving room for the answer AFTER
-# reasoning), and a second consecutive length-truncation falls back to the
-# non-reasoning OpenRouter/Anthropic JSON path entirely.
+# Reasoning-budget recovery for gpt-oss-120b (and similar). The model can spend
+# its ENTIRE max_completion_tokens on reasoning and return finish_reason=length
+# with NO answer content. Retry with a bigger budget; then optionally fall back
+# to a non-reasoning path.
 CEREBRAS_LENGTH_RECOVERY_TOKENS = int(
     os.environ.get("INFONA_QUERY_LENGTH_RECOVERY_TOKENS", "6144")
+)
+# OpenRouter reasoning models need headroom for think + JSON Cypher answer.
+OPENROUTER_REASONING_MAX_TOKENS = int(
+    os.environ.get("INFONA_QUERY_OPENROUTER_MAX_TOKENS", "8192")
+)
+OPENROUTER_QUERY_TIMEOUT_S = float(
+    os.environ.get("INFONA_QUERY_OPENROUTER_TIMEOUT_S", "120")
 )
 
 
@@ -1372,7 +1403,37 @@ class NLQueryPipeline:
                 logger.debug("dim_registry_grounding_failed", exc_info=True)
                 dim_text = ""
                 dim_binds = []
-            grounding_text = merge_grounding_texts(loc_text, num_text, dim_text)
+            # Live GraphStore inventory: *build* Cypher from populated types
+            # (anti-pollution / no pure guess against empty Product shells).
+            build_text = ""
+            try:
+                from infona_client.nlp.query_build import (
+                    collect_query_build_context,
+                    format_query_build_for_prompt,
+                )
+
+                build_ctx = await collect_query_build_context(
+                    store,
+                    tenant_id=tenant_id,
+                    kg=kg_name,
+                    question=question,
+                )
+                build_text = format_query_build_for_prompt(build_ctx)
+                if build_ctx is not None and build_ctx.types:
+                    timing["query_build"] = "present"
+                    timing["query_build_types"] = float(
+                        len(build_ctx.populated_type_names)
+                    )
+                    if build_ctx.question_type_hits:
+                        timing["query_build_type_hits"] = ", ".join(
+                            build_ctx.question_type_hits
+                        )[:200]
+            except Exception:
+                logger.debug("query_build_context_failed", exc_info=True)
+                build_text = ""
+            grounding_text = merge_grounding_texts(
+                build_text, loc_text, num_text, dim_text
+            )
         except Exception:
             logger.debug("ontology_subgraph_grounding_failed", exc_info=True)
             grounding_text = ""
@@ -1498,7 +1559,25 @@ class NLQueryPipeline:
                                             )[:200]
                                     except Exception:
                                         dim_esc = ""
+                                    build_esc = ""
+                                    try:
+                                        from infona_client.nlp.query_build import (
+                                            collect_query_build_context,
+                                            format_query_build_for_prompt,
+                                        )
+
+                                        build_esc = format_query_build_for_prompt(
+                                            await collect_query_build_context(
+                                                store,
+                                                tenant_id=tenant_id,
+                                                kg=kg_name,
+                                                question=question,
+                                            )
+                                        )
+                                    except Exception:
+                                        build_esc = ""
                                     grounding_text = merge_grounding_texts(
+                                        build_esc,
                                         format_grounding_for_prompt(grounded_esc),
                                         format_numeric_grounding_for_prompt(num_esc),
                                         dim_esc,
@@ -2328,35 +2407,76 @@ class NLQueryPipeline:
     async def _generate_cypher_via_openrouter(self, prompt: str) -> dict:
         openrouter_url = f"{OPENROUTER_BASE}/chat/completions"
         assert_online_url(openrouter_url, purpose="query Cypher LLM (openrouter)")
-        async with httpx.AsyncClient(timeout=30) as client:
+        model = (
+            self._query_model
+            if self._query_provider == "openrouter"
+            else self._query_model or "openai/gpt-oss-120b"
+        )
+        # Prefer OpenRouter model when this path is the recovery fallback from
+        # another provider; keep gpt-oss reasoning default rather than flash.
+        if self._query_provider != "openrouter" and not self._query_model:
+            model = "openai/gpt-oss-120b"
+        body: dict = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": CYPHER_GENERATION_SYSTEM},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0,
+            "response_format": {"type": "json_object"},
+        }
+        # Reasoning models (gpt-oss-120b etc.) need a large output budget so
+        # chain-of-thought does not starve the JSON answer.
+        if _is_reasoning_query_model(model):
+            body["max_tokens"] = OPENROUTER_REASONING_MAX_TOKENS
+            # Prefer Cerebras for openai/gpt-oss-* when OpenRouter hosts it
+            # (thinking model + high throughput). Fallbacks allowed.
+            if "gpt-oss" in model.lower():
+                body["provider"] = {
+                    "order": ["Cerebras"],
+                    "allow_fallbacks": True,
+                }
+        timeout_s = (
+            OPENROUTER_QUERY_TIMEOUT_S
+            if _is_reasoning_query_model(model)
+            else 60.0
+        )
+        async with httpx.AsyncClient(timeout=timeout_s) as client:
             res = await client.post(
                 openrouter_url,
                 headers={
                     "Authorization": f"Bearer {self._openrouter_key}",
                     "Content-Type": "application/json",
                 },
-                json={
-                    "model": self._query_model
-                    if self._query_provider == "openrouter"
-                    else "google/gemini-2.5-flash",
-                    "messages": [
-                        {"role": "system", "content": CYPHER_GENERATION_SYSTEM},
-                        {"role": "user", "content": prompt},
-                    ],
-                    "temperature": 0,
-                    "response_format": {"type": "json_object"},
-                },
+                json=body,
             )
             res.raise_for_status()
             data = res.json()
             content = _require_message_content(data, "openrouter")
-            parsed = json.loads(content) if isinstance(content, str) else content
+            # Reasoning models sometimes wrap JSON in fences or prefix prose.
+            if isinstance(content, str):
+                stripped = content.strip()
+                if stripped.startswith("```"):
+                    lines = [
+                        ln
+                        for ln in stripped.split("\n")
+                        if not ln.strip().startswith("```")
+                    ]
+                    stripped = "\n".join(lines)
+                # Salvage first JSON object if model emitted think-text first.
+                if stripped and not stripped.lstrip().startswith("{"):
+                    brace = stripped.find("{")
+                    if brace >= 0:
+                        stripped = stripped[brace:]
+                parsed = json.loads(stripped)
+            else:
+                parsed = content
             if "cypher" not in parsed and "sparql" in parsed:
                 parsed["cypher"] = parsed["sparql"]
             return attach_usage(
                 parsed,
                 usage=data.get("usage") if isinstance(data, dict) else None,
-                model=self._query_model,
+                model=model,
                 provider="openrouter",
                 response_model=(data.get("model") if isinstance(data, dict) else None)
                 or "",
