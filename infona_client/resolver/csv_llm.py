@@ -17,7 +17,13 @@ import structlog
 from infona_client.resolver.csv_helpers import _strip_code_fences
 from infona_client.resolver.csv_mapping import _V2_BASE_MAX_TOKENS
 from infona_client.resolver.csv_prompts import CSV_SCHEMA_SYSTEM
-from infona_client.resolver.models import ColumnMapping, ColumnRole, CSVSchemaMapping
+from infona_client.resolver.models import (
+    ColumnMapping,
+    ColumnRole,
+    CSVSchemaMapping,
+    EntityRelationSpec,
+    EntitySpec,
+)
 
 logger = structlog.stdlib.get_logger("infona.resolver.csv")
 
