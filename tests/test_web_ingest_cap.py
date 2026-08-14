@@ -2833,8 +2833,14 @@ def test_web_ingest_cap_skip_uses_provider_accepts_only():
     """
     import inspect
     import re
+    from pathlib import Path
 
-    src = inspect.getsource(web_ingest_cap)
+    pkg = Path(web_ingest_cap.__file__).parent
+    src = "".join(
+        p.read_text()
+        for p in pkg.glob("web_ingest*.py")
+        if not p.name.endswith(".orig")
+    )
     assert "provider_accepts" in src
     assert 'reason="out_of_scope"' in src or "reason='out_of_scope'" in src
     bad = re.findall(
