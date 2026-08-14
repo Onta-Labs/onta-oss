@@ -18,16 +18,20 @@ from __future__ import annotations
 
 from .catalog import (
     ApiSourceCatalog,
+    LAYER_USER_CUSTOM,
     get_api_source_catalog,
     invalidate_tenant_catalog,
+    invalidate_user_catalog,
     load_catalog_dir,
     load_tenant_custom_catalog,
+    load_user_custom_catalog,
     make_api_source_catalog,
     register_api_source_layer,
     registered_layers,
     reset_api_source_catalog,
     reset_api_source_layers,
     set_tenant_custom_specs,
+    set_user_custom_specs,
 )
 from .catalog_audit import audit_catalog, format_markdown
 from .coverage_index import (
@@ -85,6 +89,16 @@ from .store import (
     reset_tenant_api_source_store,
     validate_tenant_spec,
 )
+from .user_store import (
+    InMemoryUserApiSourceStore,
+    PostgresUserApiSourceStore,
+    UserApiSource,
+    UserApiSourceStore,
+    effective_owner_subject,
+    make_user_api_source_store,
+    reset_user_api_source_store,
+    user_secret_scope,
+)
 from .router import (
     MODE_API_ONLY,
     MODE_API_PLUS_WEB,
@@ -120,9 +134,13 @@ __all__ = [
     "make_api_source_catalog",
     "get_api_source_catalog",
     "load_tenant_custom_catalog",
+    "load_user_custom_catalog",
     "set_tenant_custom_specs",
+    "set_user_custom_specs",
     "invalidate_tenant_catalog",
+    "invalidate_user_catalog",
     "reset_api_source_catalog",
+    "LAYER_USER_CUSTOM",
     "register_api_source_layer",
     "registered_layers",
     "reset_api_source_layers",
@@ -135,6 +153,15 @@ __all__ = [
     "reset_tenant_api_source_store",
     "validate_tenant_spec",
     "LAYER_TENANT_CUSTOM",
+    # user-custom store
+    "UserApiSource",
+    "UserApiSourceStore",
+    "InMemoryUserApiSourceStore",
+    "PostgresUserApiSourceStore",
+    "make_user_api_source_store",
+    "reset_user_api_source_store",
+    "user_secret_scope",
+    "effective_owner_subject",
     # secret cipher + encrypted secret store (ONTA-2xx Child 2)
     "SecretCipher",
     "SecretCipherError",
