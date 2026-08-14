@@ -16,8 +16,8 @@ describe("ask -d user-visible chrome", () => {
     expect(ASK_DEBUG_HELP).not.toMatch(/Neptune/i);
   });
 
-  it("cli.ts wires ASK_DEBUG_HELP onto ask -d", () => {
-    const src = readFileSync(join(here, "../src/cli.ts"), "utf8");
+  it("cliQuery.ts wires ASK_DEBUG_HELP onto ask -d", () => {
+    const src = readFileSync(join(here, "../src/cliQuery.ts"), "utf8");
     expect(src).toContain("ASK_DEBUG_HELP");
     expect(src).toContain("formatAskDebug");
     expect(src).not.toMatch(/Show SPARQL and latency breakdown/);

@@ -33,9 +33,12 @@ describe("MCP ask query dump chrome", () => {
     expect(formatAskQueryDump(undefined)).toBe("");
   });
 
-  it("index.ts uses the helper and has no SPARQL: dump header", () => {
-    const src = readFileSync(join(here, "../src/index.ts"), "utf8");
-    expect(src).toContain("formatAskQueryDump");
-    expect(src).not.toMatch(/\\nSPARQL:/);
+  it("ask/agent tools use the helper and have no SPARQL: dump header", () => {
+    const query = readFileSync(join(here, "../src/mcpQuery.ts"), "utf8");
+    const agent = readFileSync(join(here, "../src/mcpAgent.ts"), "utf8");
+    expect(query).toContain("formatAskQueryDump");
+    expect(agent).toContain("formatAskQueryDump");
+    expect(query).not.toMatch(/\\nSPARQL:/);
+    expect(agent).not.toMatch(/\\nSPARQL:/);
   });
 });
