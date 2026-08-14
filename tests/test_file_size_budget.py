@@ -92,7 +92,6 @@ OVERSIZE_ALLOWLIST: dict[str, int] = {
     "infona_client/research/types.py": 613,
     "infona_client/resolver/attribute_resolver.py": 609,
     "infona_client/resolver/governance.py": 803,
-    "infona_client/resolver/models.py": 1179,
     "infona_client/resolver/ontology_resolver.py": 710,
     "infona_client/semantic/postgres.py": 1057,
     "packages/cli/src/connect.ts": 630,
@@ -270,6 +269,7 @@ def test_allowlist_is_deny_by_default():
     assert "tests/test_enrichment.py" in OVERSIZE_ALLOWLIST
     assert "infona_client/agent/capabilities/web_ingest_cap.py" not in OVERSIZE_ALLOWLIST
     assert "infona_client/resolver/schema_resolver.py" not in OVERSIZE_ALLOWLIST
+    assert "infona_client/resolver/models.py" not in OVERSIZE_ALLOWLIST
     assert "infona_client/nlp/pipeline.py" not in OVERSIZE_ALLOWLIST
     assert "infona_client/nlp/ontology_subgraph_match.py" not in OVERSIZE_ALLOWLIST
     assert "infona_client/semantic/reconciler.py" not in OVERSIZE_ALLOWLIST
