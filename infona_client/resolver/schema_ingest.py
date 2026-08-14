@@ -427,7 +427,7 @@ class SchemaIngestMixin:
             # old path called ``await self._neptune.update(delete_batch_query(...))``
             # — a dead SPARQL client on Neo4j-only that either ConnectError'd
             # (masking the original failure) or silently no-op'd. Do not call
-            # NeptuneClient.update here; re-raise the original ingest failure.
+            # SPARQL HTTP update here; re-raise the original ingest failure.
             # Partial writes for this batch_id may remain until a GraphStore
             # batch-rollback lands; never claim rollback succeeded via SPARQL.
             _sr.logger.info(

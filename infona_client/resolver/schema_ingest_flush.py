@@ -322,7 +322,7 @@ class SchemaIngestFlushMixin:
                 exc_info=True,
             )
             # instance_graph resolved once at method top (ONTA-268 call-local).
-            # ONTA-528: no NeptuneClient.update / SPARQL delete_batch — see
+            # ONTA-528: no SPARQL HTTP update / delete_batch — see
             # the extract-path rollback note above.
             _sr.logger.info(
                 "csv_batch_rollback_skipped",

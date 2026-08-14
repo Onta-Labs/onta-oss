@@ -515,7 +515,7 @@ class SchemaEntityInsertMixin:
             else:
                 # Legacy path: insert per-entity via shared write. Callers without
                 # a collector (direct unit tests / older entry points) stay on
-                # insert_facts — never NeptuneClient.update / SPARQL INSERT.
+                # insert_facts — never SPARQL HTTP update / INSERT.
                 instance_graph = (
                     instance_graph if instance_graph is not None
                     else getattr(self, "_instance_graph", graph_uri)
