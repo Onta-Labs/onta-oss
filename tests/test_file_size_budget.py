@@ -56,7 +56,6 @@ OVERSIZE_ALLOWLIST: dict[str, int] = {
     "infona_client/api/routes/ingest.py": 592,
     "infona_client/api/routes/knowledge_graphs.py": 1160,
     "infona_client/api/routes/lambda_functions.py": 709,
-    "infona_client/api/routes/ontology.py": 1462,
     "infona_client/api/routes/workspace_invites.py": 726,
     "infona_client/api_registry/enrichment.py": 556,
     "infona_client/api_registry/spec.py": 898,
@@ -99,7 +98,6 @@ OVERSIZE_ALLOWLIST: dict[str, int] = {
     "infona_client/resolver/models.py": 1179,
     "infona_client/resolver/ontology_resolver.py": 710,
     "infona_client/semantic/postgres.py": 1057,
-    "infona_client/semantic/reconciler.py": 1484,
     "packages/cli/src/connect.ts": 630,
     "packages/cli/test/connectWizard.test.ts": 688,
     "packages/cli/test/raw.test.ts": 824,
@@ -277,6 +275,8 @@ def test_allowlist_is_deny_by_default():
     assert "infona_client/resolver/schema_resolver.py" not in OVERSIZE_ALLOWLIST
     assert "infona_client/nlp/pipeline.py" not in OVERSIZE_ALLOWLIST
     assert "infona_client/nlp/ontology_subgraph_match.py" not in OVERSIZE_ALLOWLIST
+    assert "infona_client/semantic/reconciler.py" not in OVERSIZE_ALLOWLIST
+    assert "infona_client/api/routes/ontology.py" not in OVERSIZE_ALLOWLIST
     assert all(n > NEW_FILE_HARD_CAP for n in OVERSIZE_ALLOWLIST.values())
 
 
