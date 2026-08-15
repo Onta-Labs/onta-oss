@@ -263,8 +263,8 @@ class NLQueryPipeline(
         # store is gone, so the SPARQL branch is retired fail-closed rather
         # than quietly POSTing at a dead endpoint. The generator helpers
         # (``_generate_sparql`` etc.) remain for unit tests that call them
-        # directly and for residual inventory — see
-        # docs/onta-534-neptune-purge-residual.md.
+        # directly and for residual inventory. Do not delete NeptuneClient
+        # in drive-by cleanup.
         if neo4j_ask_enabled(explicit=use_cypher):
             return await self._ask_cypher(
                 question,

@@ -415,7 +415,7 @@ Instead of teaching the LLM "use CONTAINS for entity names" (abstract), it shows
 a real query that uses that pattern (concrete). The LLM adapts the shape to the
 current ontology.
 
-- **Storage:** `eval_reports/example_bank.jsonl` with embedded question vectors
+- **Storage:** `infona_client/nlp/data/example_bank.jsonl` with embedded question vectors
 - **Model:** `openai/text-embedding-3-small` (1536 dims, same as ontology embeddings)
 - **Cap:** 500 examples max (balanced across KGs)
 - **Source:** `eval_reports/finetune_pairs.jsonl` — deduped correct (question, SPARQL) pairs;
@@ -477,7 +477,7 @@ run eval → correct pairs saved → bank loaded, pairs merged in, saved
 ```
 
 **It is a MERGE, not a regenerate.** This matters more than it sounds.
-`eval_reports/example_bank.jsonl` is committed, shared state;
+`infona_client/nlp/data/example_bank.jsonl` is committed, shared state;
 `finetune_pairs.jsonl` is gitignored and machine-local. Until the infona-oss#280
 follow-up, the rebuild constructed an `ExampleBank`, never `load()`ed it, and
 `save()`d — and

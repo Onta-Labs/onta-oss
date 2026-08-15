@@ -4,7 +4,7 @@
 2026-08-11; ``INFONA_GRAPH_BACKEND`` only accepts ``neo4j`` and raises otherwise
 (ONTA-527). This module remains because residual read rails (Explorer dual arms,
 ontology, QC) and hermetic tests still type-hint or call it. It may shrink,
-never grow — see ``docs/onta-534-neptune-purge-residual.md`` and the ratchet in
+never grow — see the residual-importer ratchet in
 ``tests/test_neo4j_only_backend.py``.
 
 Product NL ``/ask`` no longer executes SPARQL (ONTA-534). Prefer GraphStore /

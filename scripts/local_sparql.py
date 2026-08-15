@@ -3,8 +3,8 @@
 **Status:** Legacy only. Production and OSS product paths are Neo4j-only
 (ONTA-527 / ONTA-534). ``INFONA_GRAPH_BACKEND=fuseki`` raises
 ``GraphConfigError`` at process start. Prefer ``docker compose up neo4j`` and
-``INFONA_GRAPH_BACKEND=neo4j`` (or unset). Residual inventory:
-``docs/onta-534-neptune-purge-residual.md``.
+``INFONA_GRAPH_BACKEND=neo4j`` (or unset). Residual inventory lives in
+``tests/test_neo4j_only_backend.py`` (``_RESIDUAL_NEPTUNE_IMPORTERS``).
 
 Wraps an embedded pyoxigraph Store behind the three HTTP paths the
 ``fuseki`` backend of NeptuneClient expects (/ds/query, /ds/update,
