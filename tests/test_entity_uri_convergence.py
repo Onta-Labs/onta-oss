@@ -36,7 +36,6 @@ import tokenize
 
 import infona_client
 import infona_client.enrichment.executor as executor_mod
-import infona_client.normalization.execute as normalization_mod
 import infona_client.resolver.csv_resolver as csv_resolver_mod
 import infona_client.resolver.schema_resolver as schema_resolver_mod
 from infona_client.graph.ontology_queries import _safe_id, entity_uri
@@ -198,10 +197,24 @@ def test_csv_resolver_imports_shared_safe_id():
     assert _calls(src, "_safe_id"), "csv_resolver still slugs ids — must call the shared _safe_id"
 
 
+def _normalization_execute_src() -> str:
+    """Facade + sibling sources — execute is split, not forked."""
+    norm = pathlib.Path(infona_client.__file__).parent / "normalization"
+    return "\n".join(
+        p.read_text()
+        for p in sorted(norm.glob("execute*.py"))
+        if p.is_file()
+    )
+
+
 def test_normalization_atom_uri_uses_shared_entity_uri():
     """Normalization mints atomic-value nodes through the shared ``entity_uri`` so an
-    atom's IRI is byte-identical to the composite's (COG-118), with no ``_slug`` twin."""
-    src = inspect.getsource(normalization_mod)
+    atom's IRI is byte-identical to the composite's (COG-118), with no ``_slug`` twin.
+
+    Scan the facade plus ``execute_*.py`` siblings so an extract cannot hide a
+    reintroduced sanitizer / inline mint.
+    """
+    src = _normalization_execute_src()
     assert _calls(src, "entity_uri"), "normalization _atom_uri must mint via the shared entity_uri"
     assert "def _slug" not in src, (
         "normalization reintroduced a _slug id-sanitizer twin — mint via "
