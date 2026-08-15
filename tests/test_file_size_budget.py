@@ -54,7 +54,6 @@ OVERSIZE_ALLOWLIST: dict[str, int] = {
     "infona_client/api/routes/explore_schema.py": 554,
     "infona_client/api/routes/grep.py": 649,
     "infona_client/api/routes/ingest.py": 592,
-    "infona_client/api/routes/knowledge_graphs.py": 1160,
     "infona_client/api/routes/lambda_functions.py": 709,
     "infona_client/api/routes/workspace_invites.py": 726,
     "infona_client/api_registry/enrichment.py": 556,
@@ -277,6 +276,7 @@ def test_allowlist_is_deny_by_default():
     assert "infona_client/graph/rdfs_helpers.py" not in OVERSIZE_ALLOWLIST
     assert "infona_client/nlp/query_constraint_coverage.py" not in OVERSIZE_ALLOWLIST
     assert "infona_client/pipeline/mutations.py" not in OVERSIZE_ALLOWLIST
+    assert "infona_client/api/routes/knowledge_graphs.py" not in OVERSIZE_ALLOWLIST
     assert all(n > NEW_FILE_HARD_CAP for n in OVERSIZE_ALLOWLIST.values())
 
 
