@@ -58,8 +58,8 @@ This is a ratchet, not a rewrite. Remaining mega-files
 follow-up PRs. `web_ingest_cap.py` left OSS in #390 (hosted in the private
 parent). Extracted facades (`schema_resolver.py`, `pipeline.py`,
 `memory_store.py`, `explore.py`, `csv_resolver.py`, `cypher_generate.py`,
-`client.ts`, `cli.ts`, `shell.ts`, `packages/mcp/src/index.ts`) must stay
-small — do not re-inflate them.
+`resolver/models.py`, `client.ts`, `cli.ts`, `shell.ts`,
+`packages/mcp/src/index.ts`) must stay small — do not re-inflate them.
 
 ## Convergence (do not fork these)
 
