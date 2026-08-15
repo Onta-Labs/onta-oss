@@ -32,8 +32,7 @@ This package must import **on its own**. Hard rules:
   infra live in the **private parent**, not here.
 - Product graph path is **Neo4j-only** (Cypher / GraphStore). Neptune / SPARQL
   HTTP is residual quarantine. `NeptuneClient` is still imported — do **not**
-  delete it in drive-by cleanup. See
-  [docs/onta-534-neptune-purge-residual.md](docs/onta-534-neptune-purge-residual.md).
+  delete it in drive-by cleanup.
 
 Enforced by `scripts/check_boundary.sh` and
 `tests/test_api_registry_byok_guard.py`.

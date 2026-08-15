@@ -24,6 +24,9 @@ repo must be OSS-safe.
 - Infona Explorer web app, AWS/SAM infra, deploy workflows
 - Entitlement / billing / rate-limit logic
 - Advanced ER tooling (review-queue UI, embedding matchers, active learning)
+- Eval / paper artifacts (`eval_holdout_v2/`, `eval_reports/`) — local-only
+  (gitignored). The public freeze lives in
+  [structure-once-query-cheaply](https://github.com/infona-ai/structure-once-query-cheaply).
 
 The canonical, fuller table with reasoning lives in the parent repo at
 [`docs/oss_proprietary_boundary.md`](https://github.com/infona-ai/infona/blob/main/docs/oss_proprietary_boundary.md).

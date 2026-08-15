@@ -45,10 +45,8 @@ Hard rules:
    ValueHistory port lands.
 
 Residual SPARQL reads (Explorer aggregates, ontology reads, QC invariants) are
-still in-tree awaiting their GraphStore ports — see
-[onta-534-neptune-purge-residual.md](./onta-534-neptune-purge-residual.md)
-and the parent-repo historical map
-`docs/plans/neo4j-sparql-inventory.md`. They may shrink, never grow.
+still in-tree awaiting their GraphStore ports. They may shrink, never grow.
+The parent-repo historical map is `docs/plans/neo4j-sparql-inventory.md`.
 **NL→SPARQL production `/ask` is retired** (ONTA-534); only Cypher remains.
 
 CI: hermetic MemoryGraphStore / golden / isolation tests always run; live
@@ -292,8 +290,7 @@ the RDF-semantic model** and execute via GraphStore. `neo4j_ask_enabled()` no
 longer consults the env. Explicit `use_cypher=False` is **fail-closed**
 (ONTA-534): it raises `SparqlAskPathRetired` instead of running SPARQL against
 a decommissioned store. Residual NeptuneClient call sites (Explorer dual arms,
-ontology, QC) are inventoried in
-[onta-534-neptune-purge-residual.md](./onta-534-neptune-purge-residual.md).
+ontology, QC) stay imported — do not delete them in drive-by cleanup.
 
 **Quality bar:** answers are measured by the **golden-query suite** (expected
 answer sets vs gold) — **not** by SPARQL string match or SPARQL↔Cypher text
@@ -345,7 +342,7 @@ Neo4j `/ask` uses **Cypher few-shots**, never SPARQL bodies:
    non-empty `cypher` field.
 2. `format_examples_for_prompt(..., language="cypher")` skips SPARQL-only rows
    and rewrites any literal `tenant_id`/`kg` to `$tenant_id`/`$kg`.
-3. The committed bank (`eval_reports/example_bank.jsonl`) carries ADR 0013
+3. The committed bank (`infona_client/nlp/data/example_bank.jsonl`) carries ADR 0013
    Cypher on open-data questions (imdb, events-sf, coffee, video-games, cfpb)
    plus a small synthetic shape set — **no spider-bench / eval-mh**.
 

@@ -2,7 +2,7 @@
 
 Follow-up to infona-oss#280, from an independent review of it.
 
-``eval_reports/example_bank.jsonl`` is committed, shared state: it is the file in
+``infona_client/nlp/data/example_bank.jsonl`` is committed, shared state: it is the file in
 git, and the file an OSS checkout / local dev / CI feeds into every ``/ask``
 few-shot prompt. (Two things it is NOT: the copy the parent's Dockerfile bakes
 into the image is the PARENT's own 507-entry file, which this rebuild writes

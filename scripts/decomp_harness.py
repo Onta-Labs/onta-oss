@@ -3,7 +3,7 @@
 **Status:** Requires a local SPARQL endpoint (``scripts/local_sparql.py`` /
 Fuseki). Product graph backend is Neo4j-only; this harness is migration /
 archaeology tooling, not a supported product path. See
-``docs/onta-534-neptune-purge-residual.md``.
+``tests/test_neo4j_only_backend.py`` (``_RESIDUAL_NEPTUNE_IMPORTERS``).
 
 Ingests deliberately "trappy" rows through SchemaResolver under one or more
 extraction POLICIES, reads the resulting ontology back via SPARQL, and scores it
