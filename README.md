@@ -22,10 +22,10 @@
 </p>
 
 <p align="center">
-  <img src="docs/graph-hero.jpg" alt="Oncology trial graph. AstraZeneca lights a path through AURORA-3 into NSCLC."/>
+  <img src="docs/readme/hero.png" alt="The product loop: an English question, the Cypher it compiles to, and the exact answer — over a graph of sponsors, trials, drugs, and indications where AstraZeneca lights a path through AURORA-3 into NSCLC."/>
 </p>
 
-<p align="center"><em>A field-medical / CI agent’s graph: sponsors, trials, drugs, indications. The path is the answer — AstraZeneca → AURORA-3 → NSCLC.</em></p>
+<p align="center"><em>The whole loop in one frame: English in, Cypher on the populated graph, one exact row out.</em></p>
 
 You're building a vertical agent. The hard part isn't the model — it's the messy table behind it. Infona **structures** it: types, relationships, a real graph. Then `/ask` compiles the question to Cypher and runs it.
 
@@ -40,17 +40,17 @@ That's the whole product loop. Schema once. Query cheaply.
 
 ## See it happen
 
-Ingest is one LLM call for the *shape*, then a deterministic write of every row. The graph grows as entities land:
+Ingest is one LLM call for the *shape*, then a deterministic write of every row. You review the inferred schema before anything is written, and the graph assembles tier by tier as rows land:
 
-![infona ingest turning trials.csv into Trial, Sponsor, Drug, Indication nodes](docs/demo-ingest.svg)
+![infona ingest inferring a schema from trials.csv, then writing Trial, Sponsor, Drug, Indication nodes into the graph](docs/readme/demo-ingest.svg)
 
-Then the agent queries the graph instead of grepping the file. The path lights hop by hop — schematic of the plan `/ask` compiles, not a captured debug dump:
+Then the agent queries the graph instead of grepping the file. The path lights hop by hop as the Cypher compiles — a schematic of the plan `/ask` builds (`--debug` shows the real one), not a captured dump:
 
-![infona ask lighting AstraZeneca → AURORA-3 → NSCLC](docs/demo-ask.svg)
+![infona ask compiling English to Cypher and lighting AstraZeneca → AURORA-3 → NSCLC](docs/readme/demo-ask.svg)
 
 The CSV said AstraZeneca runs AURORA-3, and AURORA-3 is NSCLC / Tagrisso. Those are instance edges (`onto/runs`, `onto/indication`). Re-ask tomorrow and the same nodes answer. `examples/trials.csv` is a 16-row oncology sample (8 sponsors, 11 drugs, 7 indications) — public program names, synthetic `TRIAL-*` IDs, no patient data.
 
-The looping SVGs are generated (no JS) from [`scripts/render_readme_demos.py`](scripts/render_readme_demos.py).
+The looping SVGs are generated (no JS, no video) from [`scripts/render_readme_demos.py`](scripts/render_readme_demos.py); the hero still comes from [`scripts/render_readme_hero.py`](scripts/render_readme_hero.py). Same node and edge data in all three.
 
 ---
 
