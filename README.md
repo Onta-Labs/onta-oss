@@ -179,7 +179,7 @@ With an OpenRouter key, OSS auto-embeds ontology types as the catalog grows (and
 - Writes: `insert_facts` / `refresh_after_write` (one write path)
 - Instance relationships: `https://graph.infona.ai/onto/<leaf>`
 
-[docs/BOUNDARY.md](docs/BOUNDARY.md) is current. [ARCHITECTURE.md](ARCHITECTURE.md) is a historical SPARQL-era write-up.
+[docs/BOUNDARY.md](docs/BOUNDARY.md) is current.
 
 ---
 
