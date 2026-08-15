@@ -38,7 +38,7 @@ Ingest is one LLM call for the *shape*, then a deterministic write of every row.
 
 ![infona ingest turning bookstore.csv into Book, Author, Genre nodes](docs/demo-ingest.svg)
 
-Then you query the graph instead of grepping the file. The path lights hop by hop — same Cypher Infona just ran:
+Then you query the graph instead of grepping the file. The path lights hop by hop — schematic of the plan `/ask` compiles, not a captured debug dump:
 
 ![infona ask lighting the Orwell → 1984 → Dystopian path](docs/demo-ask.svg)
 
