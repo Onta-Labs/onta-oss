@@ -126,7 +126,8 @@ _M3b = re.compile(
 # never trip the scan — a stronger property than being allowlisted, and
 # ``test_allowlist_entries_are_live`` keeps them out): ``graph/kg_writer.py`` (the
 # converged write path — uses batched_insert/delete_triples + rewrite_subject_update)
-# and ``graph/provenance.py`` (returns triple lists, no SPARQL string construction).
+# and ``graph/provenance.py`` / ``graph/provenance_*.py`` (return triple lists
+# or SELECT readers, no SPARQL write-string construction).
 _ALLOWLIST: dict[str, str] = {
     # Residual SPARQL value-history companion inside the converged writer
     # (pre-Neo4j history port). Instance inserts go through _insert_facts_store /
