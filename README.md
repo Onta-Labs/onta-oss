@@ -22,7 +22,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/readme/hero.png" alt="The product loop: an English question, the Cypher it compiles to, and the exact answer — over a graph of sponsors, trials, drugs, and indications where AstraZeneca lights a path through AURORA-3 into NSCLC."/>
+  <img src="docs/readme/hero.png" alt="The product loop: an English question, the Cypher it compiles to, and the exact answer — over a graph of sponsors, trials, drugs, and indications where AstraZeneca lights a path through FLAURA2 into NSCLC."/>
 </p>
 
 <p align="center"><em>The whole loop in one frame: English in, Cypher on the populated graph, one exact row out.</em></p>
@@ -44,13 +44,13 @@ Ingest is one LLM call for the *shape*, then a deterministic write of every row.
 
 ![infona ingest inferring a schema from trials.csv, then writing Trial, Sponsor, Drug, Indication nodes into the graph](docs/readme/demo-ingest.svg)
 
-Then the agent queries the graph instead of grepping the file. The path lights hop by hop as the Cypher compiles — a schematic of the plan `/ask` builds (`--debug` shows the real one), not a captured dump:
+Then the agent asks the landscape question a flat file makes painful — every match lights as its clause compiles. A schematic of the plan `/ask` builds (`--debug` shows the real one), not a captured dump:
 
-![infona ask compiling English to Cypher and lighting AstraZeneca → AURORA-3 → NSCLC](docs/readme/demo-ask.svg)
+![infona ask compiling English to Cypher and lighting three sponsor paths — FLAURA2, MARIPOSA, CROWN — into NSCLC](docs/readme/demo-ask.svg)
 
-The CSV said AstraZeneca runs AURORA-3, and AURORA-3 is NSCLC / Tagrisso. Those are instance edges (`onto/runs`, `onto/indication`). Re-ask tomorrow and the same nodes answer. `examples/trials.csv` is a 16-row oncology sample (8 sponsors, 11 drugs, 7 indications) — public program names, synthetic `TRIAL-*` IDs, no patient data.
+Three sponsors converge on NSCLC because the CSV says so: those are instance edges (`onto/runs`, `onto/indication`), and re-asking tomorrow lights the same nodes. `examples/trials.csv` is a 16-row oncology sample (8 sponsors, 11 drugs, 7 indications) — public program names, synthetic `TRIAL-*` IDs, no patient data.
 
-The looping SVGs are generated (no JS, no video) from [`scripts/render_readme_demos.py`](scripts/render_readme_demos.py); the hero still comes from [`scripts/render_readme_hero.py`](scripts/render_readme_hero.py). Same node and edge data in all three.
+The looping SVGs are generated (no JS, no video) from [`scripts/render_readme_demos.py`](scripts/render_readme_demos.py); the hero still comes from [`scripts/render_readme_hero.py`](scripts/render_readme_hero.py). Same node and edge data in every asset.
 
 ---
 
@@ -114,6 +114,10 @@ Local Neo4j notes: [docs/neo4j-local.md](docs/neo4j-local.md). Import path is `i
 ---
 
 ## MCP (agents)
+
+This layer is built to be called by *your* agent, not just a human at a CLI. Same `ask`, same graph, same exact rows — arriving as a tool result instead of terminal output:
+
+![A field-medical agent calling infona.ask over MCP and grounding its briefing in 3 exact rows](docs/readme/demo-mcp.svg)
 
 ```json
 {
