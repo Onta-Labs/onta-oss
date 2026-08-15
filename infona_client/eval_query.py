@@ -75,7 +75,7 @@ class QueryEvaluator:
     ) -> QueryScore:
         """Generate questions, execute them, and judge the answers.
 
-        Performance design decisions (see ARCHITECTURE.md):
+        Performance design decisions:
           - Question caching: saves ~30-60s on re-runs by skipping LLM question
             generation and ground truth computation. Cache key: kg_name + num_questions.
           - Fast judge: compares answers programmatically (numeric tolerance ±2% for

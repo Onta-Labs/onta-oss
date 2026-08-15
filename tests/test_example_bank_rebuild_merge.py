@@ -32,7 +32,7 @@ Merge needs three things to hold, and each has a test below:
    ``(question, graph_uri)``, so a namespace rename (``graph.infona.ai`` ->
    ``graph.infona.ai``, 2026-04-27) appends a SECOND pair for the same question
    instead of replacing the first. First-wins kept the stale one. That was the
-   first of the three reasons ``ARCHITECTURE.md`` gave for why this loop could
+   first of the three reasons this loop historically could
    not heal a stale entry; the other two (the rebuild cannot reach the shipped
    bank, production never rebuilds) are untouched and still hold, which is why
    ``tests/test_example_bank_namespace.py`` and the parent's
