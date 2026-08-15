@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from infona_client.graph.client import NeptuneClient
+from typing import Any
+
 from infona_client.graph.iri import ONTO_PRED_PREFIX
 from infona_client.normalization.execute_helpers import (
     ATTRS_INFIX,
@@ -13,7 +14,7 @@ from infona_client.normalization.execute_helpers import (
 )
 
 
-async def _strip_emoji(neptune: NeptuneClient, kg_graph: str, rule) -> tuple[dict, list[str]]:
+async def _strip_emoji(neptune: Any, kg_graph: str, rule) -> tuple[dict, list[str]]:
     """Strip emoji/junk from this predicate's literals; rewrite only what changed.
 
     Selects every ``attrs/<leaf>`` (or ``onto/<leaf>``) literal for the

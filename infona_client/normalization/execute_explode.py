@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from infona_client.graph.client import NeptuneClient
+from typing import Any
+
 from infona_client.graph.iri import ENTITY_URI_PREFIX, ONTO_PRED_PREFIX
 from infona_client.graph.ontology_queries import attr_uri, type_uri
 from infona_client.normalization.execute_helpers import (
@@ -22,7 +23,7 @@ from infona_client.normalization.execute_helpers import (
 
 
 async def _explode_relationship(
-    neptune: NeptuneClient,
+    neptune: Any,
     kg_graph: str,
     onto_graph: str,
     domain_type: str,
@@ -156,7 +157,7 @@ async def _explode_relationship(
 
 
 async def _composite_target_types(
-    neptune: NeptuneClient,
+    neptune: Any,
     onto_graph: str,
     domain_type: str,
     pred_leaf: str,
@@ -205,7 +206,7 @@ async def _composite_target_types(
 
 
 async def _range_target_types(
-    neptune: NeptuneClient, onto_graph: str, domain_type: str, pred_leaf: str
+    neptune: Any, onto_graph: str, domain_type: str, pred_leaf: str
 ) -> set[str]:
     """Read the predicate's ``rdfs:range`` from the ontology → its target type(s).
 
@@ -241,7 +242,7 @@ async def _range_target_types(
 
 
 async def _sweep_orphan_composites(
-    neptune: NeptuneClient,
+    neptune: Any,
     kg_graph: str,
     onto_pred: str,
     attr_pred_suffix: str,
@@ -319,7 +320,7 @@ async def _sweep_orphan_composites(
     return dropped
 
 async def _explode_literal(
-    neptune: NeptuneClient, kg_graph: str, pred_leaf: str, delimiters: list[str]
+    neptune: Any, kg_graph: str, pred_leaf: str, delimiters: list[str]
 ) -> tuple[dict, list[str]]:
     """Split packed attribute literals into N atomic literals.
 

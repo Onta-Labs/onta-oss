@@ -454,11 +454,12 @@ def test_normalization_insert_delete_receive_store(memory_store, monkeypatch):
 
 
 def test_normalization_source_wires_store_kwarg():
-    import inspect
+    from pathlib import Path
 
-    import infona_client.normalization.execute as nx
+    import infona_client.normalization as norm_pkg
 
-    src = inspect.getsource(nx)
+    root = Path(norm_pkg.__file__).resolve().parent
+    src = "\n".join(p.read_text() for p in sorted(root.glob("execute*.py")))
     assert "resolve_optional_graph_store" in src
     assert "store=store" in src
 

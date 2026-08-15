@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from infona_client.graph.client import NeptuneClient
+from typing import Any
+
 from infona_client.graph.iri import ONTO_PRED_PREFIX
 from infona_client.graph.ontology_queries import attr_uri, type_uri
 from infona_client.models.ontology import OntologyMutation, OntologyOpKind
@@ -19,7 +20,7 @@ from infona_client.normalization.execute_helpers import (
 
 
 async def _promote_to_node(
-    neptune: NeptuneClient, kg_graph: str, onto_graph: str, rule
+    neptune: Any, kg_graph: str, onto_graph: str, rule
 ) -> tuple[dict, list[str]]:
     """Promote a literal-valued attribute into entity NODES (``promote_to_node``).
 
