@@ -1,9 +1,12 @@
 <p align="center">
-  <img src="docs/logo.svg" alt="Infona" width="360"/>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/infona-lockup-reverse-tight.png">
+    <img src="docs/brand/infona-lockup-ink-tight.png" alt="Infona" width="240">
+  </picture>
 </p>
 
 <p align="center">
-  <strong>Turn a CSV into a knowledge graph you can actually query.</strong><br/>
+  <strong>The context graph your vertical agent actually queries.</strong><br/>
   One LLM pass infers the schema. Every row maps deterministically.<br/>
   Ask in English. Get an exact answer from <strong>Cypher on Neo4j</strong> — not a vibe.
 </p>
@@ -16,16 +19,16 @@
 </p>
 
 <p align="center">
-  <img src="docs/graph-hero.jpg" alt="The shipped bookstore example as a knowledge graph. Orwell lights a path through 1984 into Dystopian."/>
+  <img src="docs/graph-hero.jpg" alt="Oncology trial graph. AstraZeneca lights a path through AURORA-3 into NSCLC."/>
 </p>
 
-<p align="center"><em>Bookstore as a context graph: authors, titles, genres. The amber path is the answer, not a highlight reel.</em></p>
+<p align="center"><em>A field-medical / CI agent’s graph: sponsors, trials, drugs, indications. The path is the answer — AstraZeneca → AURORA-3 → NSCLC.</em></p>
 
-Drop a table in. Infona doesn't summarize it. It **structures** it: types, relationships, a real graph. Then `/ask` compiles your question to Cypher and runs it.
+You're building a vertical agent. The hard part isn't the model — it's the messy table behind it. Infona **structures** it: types, relationships, a real graph. Then `/ask` compiles the question to Cypher and runs it.
 
 ```bash
-infona ingest examples/bookstore.csv --kg bookstore
-infona ask "Orwell to Dystopian?" --kg bookstore
+infona ingest examples/trials.csv --kg trials
+infona ask "Which Phase 3 NSCLC trials is AstraZeneca running?" --kg trials
 ```
 
 That's the whole product loop. Schema once. Query cheaply.
@@ -36,13 +39,13 @@ That's the whole product loop. Schema once. Query cheaply.
 
 Ingest is one LLM call for the *shape*, then a deterministic write of every row. The graph grows as entities land:
 
-![infona ingest turning bookstore.csv into Book, Author, Genre nodes](docs/demo-ingest.svg)
+![infona ingest turning trials.csv into Trial, Sponsor, Drug, Indication nodes](docs/demo-ingest.svg)
 
-Then you query the graph instead of grepping the file. The path lights hop by hop — schematic of the plan `/ask` compiles, not a captured debug dump:
+Then the agent queries the graph instead of grepping the file. The path lights hop by hop — schematic of the plan `/ask` compiles, not a captured debug dump:
 
-![infona ask lighting the Orwell → 1984 → Dystopian path](docs/demo-ask.svg)
+![infona ask lighting AstraZeneca → AURORA-3 → NSCLC](docs/demo-ask.svg)
 
-What that animation is showing — the CSV said Orwell wrote *1984*, and *1984* is Dystopian. Those are instance edges on `onto/wrote` and `onto/genre`. Re-ask tomorrow and the same nodes answer.
+The CSV said AstraZeneca runs AURORA-3, and AURORA-3 is NSCLC / Tagrisso. Those are instance edges (`onto/runs`, `onto/indication`). Re-ask tomorrow and the same nodes answer. `examples/trials.csv` is a 16-row oncology sample (8 sponsors, 11 drugs, 7 indications) — public program names, synthetic `TRIAL-*` IDs, no patient data.
 
 The looping SVGs are generated (no JS) from [`scripts/render_readme_demos.py`](scripts/render_readme_demos.py).
 
@@ -54,7 +57,7 @@ The looping SVGs are generated (no JS) from [`scripts/render_readme_demos.py`](s
 |---|---|
 | **Schema from one pass** | Luna (or your configured model) sees the file once. Types, attributes, relationships. No per-row LLM. |
 | **Deterministic rows** | Every cell maps through that schema. Re-ingest is idempotent. |
-| **A real graph** | Neo4j. Authors, books, genres are nodes — not columns you `JOIN` by hand. |
+| **A real graph** | Neo4j. Sponsors, trials, drugs, indications are nodes — not columns you `JOIN` by hand. |
 | **Ask → Cypher** | Always-LLM Cypher. Grounded on the *populated* ontology, fail-closed when the plan is a silent wrong total. |
 | **CLI + MCP + HTTP** | Same canonical routes. `infona`, `@infona-ai/mcp`, `/graphs/{tenant}/ask`. |
 | **Export** | JSON or CSV back out. The graph is yours. |
@@ -96,9 +99,9 @@ In another shell:
 
 ```bash
 ./scripts/oss_setup.sh        # writes ~/.infona/config.json for local open-access
-infona ingest examples/bookstore.csv --kg bookstore
-infona ask "How many dystopian books are there?" --kg bookstore
-infona export --kg bookstore -f json -o bookstore.json
+infona ingest examples/trials.csv --kg trials
+infona ask "Which Phase 3 NSCLC trials is AstraZeneca running?" --kg trials
+infona export --kg trials -f json -o trials.json
 ```
 
 `./scripts/oss_setup.sh` (or `infona init --local`) is the one-shot local connect. After that, bare `infona` works. `--local` is a one-off flag and does not rewrite config.
