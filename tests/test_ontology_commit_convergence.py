@@ -39,7 +39,7 @@ _BUILDERS = (
 # Modules permitted to *call* a builder. ontology_queries defines them;
 # ontology_commit* is the single application path (facade + SPARQL siblings).
 _ALLOWLIST: dict[str, str] = {
-    "graph/ontology_queries.py": "defines the SPARQL builders",
+    "graph/ontology_queries_mutate.py": "defines the SPARQL builders (extracted sibling of ontology_queries)",
     "graph/ontology_commit_sparql.py": (
         "SPARQL apply-one / upsert sibling of the ONE commit path (ONTA-403)"
     ),
