@@ -492,12 +492,13 @@ def write_ask() -> str:
     parts.append(cursor(TX + 21 * ADV, y, tg + 0.010, tc, dur))
     out([("Cypher:", FG)], tc, dy=1.6)
     out([("MATCH ", CY_KW), ("(s:", OUT_FG), ("Sponsor", C_SPONSOR), (" {name: ", OUT_FG), ("'AstraZeneca'", CY_STR), ("})", OUT_FG)], tc + 0.030, dy=1.3)
-    out([("      -[:", OUT_FG), ("runs", CY_KW), ("]->(t:", OUT_FG), ("Trial", C_TRIAL), (" {phase: ", OUT_FG), ("'Phase 3'", CY_STR), ("})", OUT_FG)], tc + 0.060)
-    out([("      -[:", OUT_FG), ("indication", CY_KW), ("]->(i:", OUT_FG), ("Indication", C_IND), (" {name: ", OUT_FG), ("'NSCLC'", CY_STR), ("})", OUT_FG)], tc + 0.090)
-    out([("RETURN", CY_KW), (" t.trial, t.status, t.enrollment", OUT_FG)], tc + 0.120)
+    out([("      -[:", OUT_FG), ("runs", CY_KW), ("]->(t:", OUT_FG), ("Trial", C_TRIAL), (" {phase: ", OUT_FG), ("'Phase 3'", CY_STR), (",", OUT_FG)], tc + 0.055)
+    out([("                          status: ", OUT_FG), ("'Active'", CY_STR), ("})", OUT_FG)], tc + 0.080)
+    out([("      -[:", OUT_FG), ("indication", CY_KW), ("]->(i:", OUT_FG), ("Indication", C_IND), (" {name: ", OUT_FG), ("'NSCLC'", CY_STR), ("})", OUT_FG)], tc + 0.105)
+    out([("RETURN", CY_KW), (" t.trial, t.status, t.enrollment", OUT_FG)], tc + 0.130)
 
     # exact answer
-    ta = tc + 0.210
+    ta = tc + 0.220
     out([("A: ", ACCENT), ("One — ", FG), ("AURORA-3", ACCENT), (", the only active Phase 3", FG)], ta, dy=1.7)
     out([("   NSCLC trial AstraZeneca is running:", FG)], ta + 0.012)
     out([("   osimertinib (Tagrisso) · first-line · 557 enrolled", OUT_FG)], ta + 0.024)
