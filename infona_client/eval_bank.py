@@ -29,7 +29,7 @@ async def rebuild_example_bank(
     **This is a merge, not a regenerate.** It used to be neither, by accident:
     the bank object was built and ``save()``d without ever being
     ``load()``ed, and ``save()`` writes ``self._examples`` wholesale -- so the
-    committed ``eval_reports/example_bank.jsonl``, shared state in git, was
+    committed ``infona_client/nlp/data/example_bank.jsonl``, shared state in git, was
     REPLACED by whatever ``eval_reports/finetune_pairs.jsonl`` happened to hold
     on the machine that ran the eval. That file is gitignored and machine-local,
     so a dev evaluating one KG and committing the result silently shrank the

@@ -152,7 +152,7 @@ def test_public_sparql_routes_hold_no_store_client():
 # are follow-up work to ONTA-527 / ONTA-534 — they are NOT sanctioned, just not
 # yet gone. NL→SPARQL production /ask is already fail-closed (ONTA-534).
 # Nothing may be ADDED here; delete an entry when its module is ported.
-# Inventory: docs/onta-534-neptune-purge-residual.md
+# Inventory: this set is the residual map (may shrink, never grow).
 _RESIDUAL_NEPTUNE_IMPORTERS = {
     "agent/registry.py",
     "api/app.py",

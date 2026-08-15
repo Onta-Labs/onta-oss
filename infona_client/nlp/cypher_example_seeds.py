@@ -1,6 +1,6 @@
 """Committed Cypher few-shot seeds for the Neo4j ask path (ONTA-539).
 
-The example bank remains a single JSONL (``eval_reports/example_bank.jsonl``).
+The example bank remains a single JSONL (``infona_client/nlp/data/example_bank.jsonl``).
 These seeds **populate** the optional ``Example.cypher`` field with ADR 0013
 shapes — they are not a second bank stack.
 
