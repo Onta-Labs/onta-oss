@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <strong>The context graph your vertical agent actually queries.</strong><br/>
+  <strong>The knowledge layer your vertical agent actually queries.</strong><br/>
   One LLM pass infers the schema. Every row maps deterministically.<br/>
   Ask in English. Get an exact answer from <strong>Cypher on Neo4j</strong> — not a vibe.
 </p>
@@ -65,7 +65,7 @@ The looping SVGs are generated (no JS) from [`scripts/render_readme_demos.py`](s
 | **CLI + MCP + HTTP** | Same canonical routes. `infona`, `@infona-ai/mcp`, `/graphs/{tenant}/ask`. |
 | **Export** | JSON or CSV back out. The graph is yours. |
 
-Not a vector index. Not "chat with your CSV." A context graph you can count on.
+Not a vector index. Not "chat with your CSV." A knowledge layer you can count on.
 
 ---
 
