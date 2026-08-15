@@ -155,7 +155,8 @@ _ALLOWLIST: dict[str, str] = {
     "resolver/governance.py": "audit / changelog / governance-provenance graphs — not instance data (ADR 0007 allowlist).",
     # Derived / admin escape hatches with their own lifecycle.
     "resolver/functions.py": "derived computed-function value store (ADR 0002 §6 / ADR 0001 rule 6) — regenerable /derived/ values with their own atomic replace + TTL/invalidate lifecycle, never asserted facts.",
-    "api/routes/knowledge_graphs.py": "KG-lifecycle admin (create/delete KG, triple-count metadata) — graph lifecycle, not instance-fact writing (ADR 0007 allowlist: whole-graph admin ops).",
+    "api/routes/knowledge_graphs_common.py": "KG-lifecycle admin (create/delete KG, triple-count metadata) — graph lifecycle, not instance-fact writing (ADR 0007 allowlist: whole-graph admin ops).",
+    "api/routes/knowledge_graphs_delete.py": "KG-lifecycle admin (create/delete KG, triple-count metadata) — graph lifecycle, not instance-fact writing (ADR 0007 allowlist: whole-graph admin ops).",
 }
 
 # Cypher-era allowlist (E3): modules that may emit Entity/ProvEvent CREATE|MERGE
