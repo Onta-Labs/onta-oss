@@ -27,8 +27,8 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "docs" / "readme" / "hero.png"
 
 CSS_W, CSS_H = 1520, 640
-PATH_EDGES = {("AstraZeneca", "AURORA-3"), ("AURORA-3", "NSCLC")}
-PATH_NODES = {"AstraZeneca", "AURORA-3", "NSCLC"}
+PATH_EDGES = {("AstraZeneca", "FLAURA2"), ("FLAURA2", "NSCLC")}
+PATH_NODES = {"AstraZeneca", "FLAURA2", "NSCLC"}
 
 # demo graph pane is x 452..940, y 44..430 — remap into the 900x620 graph svg
 SX, SY = 1.60, 1.42
@@ -76,8 +76,8 @@ def graph_svg() -> str:
                 f'stroke="{ACCENT}" stroke-linecap="round" {extra}/>'
             )
 
-    for label, (a, b), dy in (("runs", ("AstraZeneca", "AURORA-3"), -14),
-                              ("indication", ("AURORA-3", "NSCLC"), -14)):
+    for label, (a, b), dy in (("runs", ("AstraZeneca", "FLAURA2"), -14),
+                              ("indication", ("FLAURA2", "NSCLC"), -14)):
         (ax, ay), (bx, by) = m(a), m(b)
         parts.append(
             f'<text x="{(ax + bx) / 2:.0f}" y="{(ay + by) / 2 + dy:.0f}" font-size="13" '
@@ -184,7 +184,7 @@ def html() -> str:
     </div>
     <div class="joint"></div>
     <div class="card ans">
-      <div class="a1"><span class="hl">AURORA-3</span> — Phase 3 · Active</div>
+      <div class="a1"><span class="hl">FLAURA2</span> — Phase 3 · Active</div>
       <div class="a2">osimertinib (Tagrisso) · first-line · 557 enrolled</div>
       <div class="a3"><span class="okc">1 row</span> · an exact answer from the graph — not a vibe</div>
     </div>

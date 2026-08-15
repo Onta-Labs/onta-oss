@@ -1,5 +1,5 @@
 trial_id,trial,phase,status,sponsor,drug,brand,target,indication,setting,site,enrollment,start_year
-TRIAL-AURORA3,AURORA-3,Phase 3,Active,AstraZeneca,osimertinib,Tagrisso,EGFR,NSCLC,first-line,Memorial Sloan Kettering,557,2020
+TRIAL-FLAURA2,FLAURA2,Phase 3,Active,AstraZeneca,osimertinib,Tagrisso,EGFR,NSCLC,first-line,Memorial Sloan Kettering,557,2019
 TRIAL-CASPIAN,CASPIAN,Phase 3,Completed,AstraZeneca,durvalumab,Imfinzi,PD-L1,SCLC,first-line,Mayo Clinic,805,2017
 TRIAL-FLAURA,FLAURA,Phase 3,Completed,AstraZeneca,osimertinib,Tagrisso,EGFR,NSCLC,first-line,Dana-Farber,556,2014
 TRIAL-KN189,KEYNOTE-189,Phase 3,Completed,Merck,pembrolizumab,Keytruda,PD-1,NSCLC,first-line,Dana-Farber,616,2016

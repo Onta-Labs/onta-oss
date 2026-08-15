@@ -188,63 +188,72 @@ def frame(dur: float, aria: str, bar_right: str) -> str:
 # ---------------------------------------------------------------------------
 
 SPONSORS = {
-    "BMS": (494, 96),
-    "AstraZeneca": (500, 156),
-    "Merck": (496, 238),
-    "Roche": (508, 306),
-    "Pfizer": (500, 370),
+    "BMS": (494, 92),
+    "AstraZeneca": (500, 152),
+    "Merck": (496, 220),
+    "Roche": (508, 282),
+    "J&J": (500, 342),
+    "Pfizer": (496, 398),
 }
 TRIALS = {
     "CheckMate-9ER": (662, 72),
-    "AURORA-3": (650, 132),
-    "FLAURA": (628, 194),
-    "KEYNOTE-189": (658, 252),
-    "KEYNOTE-522": (634, 310),
-    "IMpower150": (646, 358),
-    "CROWN": (664, 404),
+    "FLAURA2": (650, 132),
+    "FLAURA": (628, 192),
+    "KEYNOTE-189": (658, 248),
+    "MARIPOSA": (644, 302),
+    "IMpower150": (648, 354),
+    "CROWN": (662, 404),
 }
 DRUGS = {
-    "Opdivo": (795, 96),
-    "Tagrisso": (786, 176),
-    "Keytruda": (794, 268),
-    "Tecentriq": (780, 340),
+    "Opdivo": (795, 84),
+    "Tagrisso": (786, 170),
+    "Keytruda": (796, 284),
+    "Rybrevant": (784, 320),
+    "Tecentriq": (778, 362),
+    "Lorbrena": (792, 404),
 }
 INDICATIONS = {
     "RCC": (900, 76),
     "NSCLC": (892, 152),
-    "TNBC": (898, 272),
 }
-LABEL_ABOVE = {"IMpower150", "CROWN", "TNBC"}
+LABEL_ABOVE = {"CROWN"}
 EXTRA_DOTS = [  # the graph is bigger than the labels we draw
-    (C_SPONSOR, 489, 52), (C_SPONSOR, 511, 404),
-    (C_TRIAL, 625, 56), (C_DRUG, 799, 388), (C_DRUG, 779, 54),
-    (C_IND, 888, 336), (C_IND, 903, 390),
+    (C_SPONSOR, 489, 52),
+    (C_TRIAL, 625, 56), (C_DRUG, 779, 54),
+    (C_IND, 898, 262), (C_IND, 886, 336), (C_IND, 903, 390),
 ]
 
 RUNS = [  # sponsor -> trial (all true in trials.csv)
     ("BMS", "CheckMate-9ER"),
-    ("AstraZeneca", "AURORA-3"),
+    ("AstraZeneca", "FLAURA2"),
     ("AstraZeneca", "FLAURA"),
     ("Merck", "KEYNOTE-189"),
-    ("Merck", "KEYNOTE-522"),
     ("Roche", "IMpower150"),
+    ("J&J", "MARIPOSA"),
     ("Pfizer", "CROWN"),
 ]
 STUDIES = [  # trial -> drug (brand names)
     ("CheckMate-9ER", "Opdivo"),
-    ("AURORA-3", "Tagrisso"),
+    ("FLAURA2", "Tagrisso"),
     ("FLAURA", "Tagrisso"),
     ("KEYNOTE-189", "Keytruda"),
-    ("KEYNOTE-522", "Keytruda"),
+    ("MARIPOSA", "Rybrevant"),
     ("IMpower150", "Tecentriq"),
+    ("CROWN", "Lorbrena"),
 ]
-INDICATION_OF = [  # trial -> indication (visual subset; IMpower150/CROWN
-    ("CheckMate-9ER", "RCC"),  # also hit NSCLC but those chords cross the
-    ("AURORA-3", "NSCLC"),  # drug tier, so we leave them to the dots)
-    ("FLAURA", "NSCLC"),
+INDICATION_OF = [  # trial -> indication (visual subset; FLAURA and
+    ("CheckMate-9ER", "RCC"),  # IMpower150 also hit NSCLC but those chords
+    ("FLAURA2", "NSCLC"),  # cross the drug tier, so we leave them out)
     ("KEYNOTE-189", "NSCLC"),
-    ("KEYNOTE-522", "TNBC"),
+    ("MARIPOSA", "NSCLC"),
+    ("CROWN", "NSCLC"),
 ]
+
+# The landscape question's three matches — lit in the ask demo, and the
+# spine of the hero (which lights only the AstraZeneca chain).
+PATH_RUNS = [("AstraZeneca", "FLAURA2"), ("J&J", "MARIPOSA"), ("Pfizer", "CROWN")]
+PATH_IND = [("FLAURA2", "NSCLC"), ("MARIPOSA", "NSCLC"), ("CROWN", "NSCLC")]
+PATH_STUDIES = [("FLAURA2", "Tagrisso"), ("MARIPOSA", "Rybrevant"), ("CROWN", "Lorbrena")]
 
 POS = {**SPONSORS, **TRIALS, **DRUGS, **INDICATIONS}
 COLOR = (
@@ -363,7 +372,7 @@ def write_ingest() -> str:
     out([("Proposed schema", FG), ("  (profiled 16 of 16 rows)", DIM)], t0, dy=1.6, weight="600")
     out([("Entities & keys", FG)], t0 + 0.020, dy=1.4, weight="600")
     out([("  • ", DIM), ("Trial", C_TRIAL), ("  key: trial_id", DIM), ("  (0.98)", FAINT)], t0 + 0.035)
-    out([("      [attr] ", FAINT), ("phase · status · enrollment", OUT_FG), (" [int]", FAINT)], t0 + 0.050)
+    out([("      [attr] ", FAINT), ("phase · status · target · enrollment", OUT_FG), (" [int]", FAINT)], t0 + 0.050)
     out([("      [edge] ", FAINT), ("sponsor → ", OUT_FG), ("Sponsor", C_SPONSOR), ("   drug → ", OUT_FG), ("Drug", C_DRUG)], t0 + 0.065)
     out([("      [edge] ", FAINT), ("indication → ", OUT_FG), ("Indication", C_IND)], t0 + 0.080)
     out([("  • ", DIM), ("Sponsor", C_SPONSOR), (" · ", DIM), ("Drug", C_DRUG), (" · ", DIM), ("Indication", C_IND), (" · ", DIM), ("Site", OUT_FG), ("  key: name", DIM)], t0 + 0.095)
@@ -431,41 +440,42 @@ def write_ingest() -> str:
 
 
 # ---------------------------------------------------------------------------
-# demo-ask — English in, Cypher on the populated graph, exact answer out.
+# demo-ask — English in, Cypher on the populated graph, exact answers out.
+# The landscape question: three sponsor paths converge on NSCLC.
 # ---------------------------------------------------------------------------
 
 def write_ask() -> str:
     dur = 16.0
-    parts = [frame(dur, "infona ask compiling English to Cypher and lighting the answer path",
+    parts = [frame(dur, "infona ask compiling English to Cypher and lighting three sponsor paths into NSCLC",
                    "kg: trials · neo4j")]
 
-    # The populated graph is already there — ask queries it. It dims when
-    # the match starts so the answer path carries the pane.
-    dim_at = 0.364  # == p1 below
+    lit_nodes = {"AstraZeneca", "J&J", "Pfizer", "FLAURA2", "MARIPOSA",
+                 "CROWN", "NSCLC", "Tagrisso", "Rybrevant", "Lorbrena"}
+    lit_edges = set(PATH_RUNS + PATH_IND + PATH_STUDIES)
+
+    # Everything the query does NOT match dims when matching starts.
+    dim_at = 0.358  # == pa below
     parts.append(f'<g opacity="0">'
                  f'<animate attributeName="opacity" values="0;0.85;0.85;0.38;0.38;0" '
                  f'keyTimes="0;0.03;{dim_at - 0.01:.4f};{dim_at + 0.05:.4f};{END};1" '
                  f'dur="{dur}s" repeatCount="indefinite"/>')
     parts.append(headers(None, dur))
     for a, b in RUNS + STUDIES + INDICATION_OF:
-        if (a, b) not in (("AstraZeneca", "AURORA-3"), ("AURORA-3", "NSCLC")):
+        if (a, b) not in lit_edges:
             parts.append(static_edge(a, b))
     for name in POS:
-        if name not in ("AstraZeneca", "AURORA-3", "NSCLC"):
+        if name not in lit_nodes:
             parts.append(node(name, None, dur))
     for c, x, yy in EXTRA_DOTS:
         parts.append(dot(c, x, yy, None, dur))
     parts.append("</g>")
 
-    # dim base state for the three path nodes (lit later)
+    # Base state of the elements the query will light.
     parts.append(f'<g opacity="0">'
                  f'<animate attributeName="opacity" values="0;0.85;0.85;0" '
                  f'keyTimes="0;0.03;{END};1" dur="{dur}s" repeatCount="indefinite"/>'
-                 + static_edge("AstraZeneca", "AURORA-3")
-                 + static_edge("AURORA-3", "NSCLC")
-                 + node("AstraZeneca", None, dur)
-                 + node("AURORA-3", None, dur)
-                 + node("NSCLC", None, dur)
+                 + "".join(static_edge(a, b) for a, b in lit_edges)
+                 + "".join(node(n, None, dur) for n in lit_nodes)
                  + "</g>")
 
     # ---- terminal ----
@@ -474,7 +484,7 @@ def write_ask() -> str:
     c1, t = typed(TX + 2 * ADV, y, "infona ask --kg trials --debug \\", 0.030, dur, cps=40)
     parts.append(c1)
     y += LH
-    c2, t = typed(TX + 2 * ADV, y, '"Which Phase 3 NSCLC trials is AstraZeneca running?"', t + 0.008, dur, cps=40)
+    c2, t = typed(TX + 2 * ADV, y, '"Which sponsors have active first-line NSCLC trials?"', t + 0.008, dur, cps=40)
     parts.append(c2)
 
     def out(rows, t, dy=1.0):
@@ -483,7 +493,7 @@ def write_ask() -> str:
         parts.append(line(TX, y, rows, t, dur))
         return t
 
-    out([("Q: Which Phase 3 NSCLC trials is AstraZeneca running?", DIM)], t + 0.020, dy=1.5)
+    out([("Q: Which sponsors have active first-line NSCLC trials?", DIM)], t + 0.020, dy=1.5)
     tg = t + 0.035
     out([("Generating answer...", DIM)], tg)
 
@@ -491,63 +501,173 @@ def write_ask() -> str:
     tc = tg + 0.115  # the LLM call is the slow part — let it breathe
     parts.append(cursor(TX + 21 * ADV, y, tg + 0.010, tc, dur))
     out([("Cypher:", FG)], tc, dy=1.6)
-    out([("MATCH ", CY_KW), ("(s:", OUT_FG), ("Sponsor", C_SPONSOR), (" {name: ", OUT_FG), ("'AstraZeneca'", CY_STR), ("})", OUT_FG)], tc + 0.030, dy=1.3)
-    out([("      -[:", OUT_FG), ("runs", CY_KW), ("]->(t:", OUT_FG), ("Trial", C_TRIAL), (" {phase: ", OUT_FG), ("'Phase 3'", CY_STR), (",", OUT_FG)], tc + 0.055)
-    out([("                          status: ", OUT_FG), ("'Active'", CY_STR), ("})", OUT_FG)], tc + 0.080)
-    out([("      -[:", OUT_FG), ("indication", CY_KW), ("]->(i:", OUT_FG), ("Indication", C_IND), (" {name: ", OUT_FG), ("'NSCLC'", CY_STR), ("})", OUT_FG)], tc + 0.105)
-    out([("RETURN", CY_KW), (" t.trial, t.status, t.enrollment", OUT_FG)], tc + 0.130)
+    out([("MATCH ", CY_KW), ("(s:", OUT_FG), ("Sponsor", C_SPONSOR), (")-[:", OUT_FG), ("runs", CY_KW), ("]->(t:", OUT_FG), ("Trial", C_TRIAL), (")", OUT_FG)], tc + 0.030, dy=1.3)
+    out([("      -[:", OUT_FG), ("indication", CY_KW), ("]->(i:", OUT_FG), ("Indication", C_IND), (" {name: ", OUT_FG), ("'NSCLC'", CY_STR), ("})", OUT_FG)], tc + 0.055)
+    out([("WHERE", CY_KW), (" t.status = ", OUT_FG), ("'Active'", CY_STR), (" AND", CY_KW), (" t.setting = ", OUT_FG), ("'first-line'", CY_STR)], tc + 0.080)
+    out([("MATCH ", CY_KW), ("(t)-[:", OUT_FG), ("studies", CY_KW), ("]->(d:", OUT_FG), ("Drug", C_DRUG), (")", OUT_FG)], tc + 0.105)
+    out([("RETURN", CY_KW), (" s.name, t.trial, d.brand", OUT_FG)], tc + 0.130)
 
-    # exact answer
+    # exact answers — one row per sponsor in the landscape
     ta = tc + 0.220
-    out([("A: ", ACCENT), ("One — ", FG), ("AURORA-3", ACCENT), (", the only active Phase 3", FG)], ta, dy=1.7)
-    out([("   NSCLC trial AstraZeneca is running:", FG)], ta + 0.012)
-    out([("   osimertinib (Tagrisso) · first-line · 557 enrolled", OUT_FG)], ta + 0.024)
+    out([("A: ", ACCENT), ("Three — ", FG), ("AstraZeneca", FG), (" (", DIM), ("FLAURA2", ACCENT), (" · Tagrisso),", DIM)], ta, dy=1.7)
+    out([("   Johnson & Johnson", FG), (" (", DIM), ("MARIPOSA", ACCENT), (" · Rybrevant),", DIM)], ta + 0.012)
+    out([("   and Pfizer", FG), (" (", DIM), ("CROWN", ACCENT), (" · Lorbrena).", DIM)], ta + 0.024)
     y += LH * 1.4
-    parts.append(line(TX, y, [("1 row · exact match from kg: trials", DIM)], ta + 0.055, dur))
+    parts.append(line(TX, y, [("3 rows · exact match from kg: trials", DIM)], ta + 0.055, dur))
 
     y += LH * 1.6
     parts.append(line(TX, y, [("$", ACCENT)], ta + 0.09, dur))
     parts.append(cursor(TX + 2 * ADV, y, ta + 0.09, END, dur))
 
-    # ---- graph pane: the path lights hop by hop as the Cypher plans it ----
+    # ---- graph pane: every match lights as its clause compiles ----
     glow = uid("glow")
     parts.append(
         f'<defs><filter id="{glow}" x="-80%" y="-80%" width="260%" height="260%">'
         f'<feGaussianBlur stdDeviation="4"/></filter></defs>'
     )
 
-    def lit_node(name: str, t: float, label_dy: int = 17) -> str:
+    def lit_node(name: str) -> str:
         x, yy = POS[name]
+        ly = yy - 13 if name in LABEL_ABOVE else yy + 17
         return (
-            f'<g opacity="0">{fade(t, dur)}'
             f'<circle cx="{x}" cy="{yy}" r="9" fill="{ACCENT}" opacity="0.45" filter="url(#{glow})"/>'
             f'<circle cx="{x}" cy="{yy}" r="8.5" fill="none" stroke="{ACCENT}" stroke-opacity="0.55"/>'
             f'<circle cx="{x}" cy="{yy}" r="5" fill="{ACCENT}"/>'
-            f'<text x="{x}" y="{yy + label_dy}" font-size="10" font-weight="600" '
-            f'fill="{FG}" text-anchor="middle">{esc(name)}</text></g>'
+            f'<text x="{x}" y="{ly}" font-size="10" font-weight="600" '
+            f'fill="{FG}" text-anchor="middle">{esc(name)}</text>'
         )
 
-    def lit_edge(a: str, b: str, t0: float, t1: float) -> str:
-        under = drawn_edge(a, b, t0, t1, dur, ACCENT, 2.2, pad=11)
-        return f'<g filter="url(#{glow})" opacity="0.5">{under}</g>' + \
-               drawn_edge(a, b, t0, t1, dur, ACCENT, 2.2, pad=11)
+    def lit(markup: str, t: float) -> str:
+        return f'<g opacity="0">{fade(t, dur)}{markup}</g>'
 
-    p1, p2 = tc + 0.045, tc + 0.105  # sync with the MATCH lines printing
-    parts.append(lit_node("AstraZeneca", p1 - 0.012))
-    parts.append(lit_edge("AstraZeneca", "AURORA-3", p1, p1 + 0.035))
-    mx1, my1 = (POS["AstraZeneca"][0] + POS["AURORA-3"][0]) / 2, (POS["AstraZeneca"][1] + POS["AURORA-3"][1]) / 2
+    def lit_edge(a: str, b: str, t0: float, t1: float, width: float = 2.2,
+                 hi: float = 1.0) -> str:
+        under = drawn_edge(a, b, t0, t1, dur, ACCENT, width, pad=11)
+        return (f'<g filter="url(#{glow})" opacity="0.5">{under}</g>'
+                f'<g opacity="{hi}">{under}</g>')
+
+    pa = tc + 0.040  # MATCH (s)-[:runs]->(t)   — the three runs edges
+    pb = tc + 0.075  # -[:indication]-> NSCLC   — converge on the hub
+    pc = tc + 0.115  # MATCH (t)-[:studies]->   — the drug spokes
+    for i, (a, b) in enumerate(PATH_RUNS):
+        parts.append(lit(lit_node(a), pa - 0.012 + i * 0.008))
+        parts.append(lit_edge(a, b, pa + i * 0.008, pa + 0.035 + i * 0.008))
+        parts.append(lit(lit_node(b), pa + 0.040 + i * 0.008))
+    for i, (a, b) in enumerate(PATH_IND):
+        parts.append(lit_edge(a, b, pb + i * 0.008, pb + 0.035 + i * 0.008))
+    parts.append(lit(lit_node("NSCLC"), pb + 0.045))
+    for i, (a, b) in enumerate(PATH_STUDIES):
+        parts.append(lit_edge(a, b, pc + i * 0.008, pc + 0.030 + i * 0.008,
+                              width=1.6, hi=0.65))
+        x, yy = POS[b]
+        parts.append(lit(
+            f'<circle cx="{x}" cy="{yy}" r="8.5" fill="none" stroke="{ACCENT}" '
+            f'stroke-opacity="0.5"/>', pc + 0.030 + i * 0.008))
+
+    mx1, my1 = (POS["AstraZeneca"][0] + POS["FLAURA2"][0]) / 2, (POS["AstraZeneca"][1] + POS["FLAURA2"][1]) / 2
     parts.append(
         f'<text x="{mx1:.0f}" y="{my1 - 8:.0f}" font-size="9" fill="{ACCENT}" '
-        f'text-anchor="middle" opacity="0">runs{fade(p1 + 0.030, dur, hi=0.9)}</text>'
+        f'text-anchor="middle" opacity="0">runs{fade(pa + 0.030, dur, hi=0.9)}</text>'
     )
-    parts.append(lit_node("AURORA-3", p1 + 0.040))
-    parts.append(lit_edge("AURORA-3", "NSCLC", p2, p2 + 0.035))
-    mx2, my2 = (POS["AURORA-3"][0] + POS["NSCLC"][0]) / 2, (POS["AURORA-3"][1] + POS["NSCLC"][1]) / 2
+    mx2, my2 = (POS["FLAURA2"][0] + POS["NSCLC"][0]) / 2, (POS["FLAURA2"][1] + POS["NSCLC"][1]) / 2
     parts.append(
         f'<text x="{mx2:.0f}" y="{my2 - 8:.0f}" font-size="9" fill="{ACCENT}" '
-        f'text-anchor="middle" opacity="0">indication{fade(p2 + 0.030, dur, hi=0.9)}</text>'
+        f'text-anchor="middle" opacity="0">indication{fade(pb + 0.030, dur, hi=0.9)}</text>'
     )
-    parts.append(lit_node("NSCLC", p2 + 0.040))
+
+    parts.append("</svg>")
+    return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# demo-mcp — the same ask, but it's the agent calling, not a human.
+# ---------------------------------------------------------------------------
+
+def write_mcp() -> str:
+    dur = 16.0
+    W_, H_ = 960, 360
+    div = 664
+    parts = [f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W_} {H_}" width="{W_}" height="{H_}" font-family="{MONO}" role="img" aria-label="A field-medical agent calling infona.ask over MCP and grounding its briefing in 3 exact rows">
+<defs>
+  <linearGradient id="bgm" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="{INK_0}"/><stop offset="1" stop-color="{INK_1}"/>
+  </linearGradient>
+</defs>
+<rect x="0.5" y="0.5" width="{W_ - 1}" height="{H_ - 1}" rx="12" fill="url(#bgm)" stroke="{HAIR}"/>
+<path d="M 12.5 0.5 H {W_ - 12.5} A 12 12 0 0 1 {W_ - 0.5} 12.5 V {BAR_H - 0.5} H 0.5 V 12.5 A 12 12 0 0 1 12.5 0.5 Z" fill="{BAR}"/>
+<line x1="0.5" y1="{BAR_H}" x2="{W_ - 0.5}" y2="{BAR_H}" stroke="{HAIR}"/>
+<line x1="{div}" y1="{BAR_H}" x2="{div}" y2="{H_ - 1}" stroke="{HAIR}"/>
+<circle cx="26" cy="{BAR_H / 2}" r="3.5" fill="{ACCENT}"/>
+<text x="37" y="{BAR_H / 2 + 4}" font-size="11.5" fill="{FG}" letter-spacing="0.5">field-medical agent</text>
+<text x="{W_ - 20}" y="{BAR_H / 2 + 4}" font-size="10.5" fill="{DIM}" text-anchor="end">MCP → @infona-ai/mcp</text>
+''']
+
+    y = 64.0
+
+    def row(gutter, gcolor, rows, t, dy=1.0):
+        nonlocal y
+        y += LH * dy
+        if gutter:
+            parts.append(
+                f'<text x="{TX}" y="{y}" font-size="9.5" fill="{gcolor}" '
+                f'letter-spacing="1.2" opacity="0">{esc(gutter)}{fade(t, dur)}</text>'
+            )
+        parts.append(line(TX + 10 * ADV, y, rows, t, dur))
+
+    t0 = 0.05
+    row("USER", DIM, [("Prep me for the thoracic-onc KOL visit —", FG)], t0, dy=0)
+    row("", "", [("what's the first-line NSCLC competitive picture?", FG)], t0 + 0.010)
+
+    t1 = 0.16
+    row("AGENT", ACCENT, [("→ tool call ", DIM), ("infona.ask", ACCENT)], t1, dy=1.7)
+    ty = y + LH
+    q, tq = typed(TX + 10 * ADV, ty, '{ question: "Which sponsors have active', t1 + 0.020, dur, cps=44, fill=OUT_FG)
+    parts.append(q)
+    y = ty
+    q2, tq = typed(TX + 10 * ADV + 13 * ADV, y + LH, 'first-line NSCLC trials?", kg: "trials" }', tq + 0.006, dur, cps=44, fill=OUT_FG)
+    parts.append(q2)
+    y += LH
+
+    t2 = tq + 0.045
+    row("INFONA", OK, [("3 rows · Cypher on kg: trials", DIM)], t2, dy=1.7)
+    rows3 = [
+        [("AstraZeneca", C_SPONSOR), ("        FLAURA2    ", C_TRIAL), ("Tagrisso", C_DRUG)],
+        [("Johnson & Johnson", C_SPONSOR), ("  MARIPOSA   ", C_TRIAL), ("Rybrevant", C_DRUG)],
+        [("Pfizer", C_SPONSOR), ("             CROWN      ", C_TRIAL), ("Lorbrena", C_DRUG)],
+    ]
+    for i, r in enumerate(rows3):
+        row("", "", r, t2 + 0.030 + i * 0.020)
+
+    t3 = t2 + 0.13
+    row("AGENT", ACCENT, [("Three sponsors are active in first-line NSCLC:", FG)], t3, dy=1.7)
+    row("", "", [("AstraZeneca (FLAURA2), J&J (MARIPOSA), Pfizer (CROWN).", FG)], t3 + 0.012)
+    row("", "", [("Grounded in the graph — 3 exact rows, not model memory.", DIM)], t3 + 0.024)
+
+    # right panel — the MCP surface the agent is using
+    px = div + 24
+    parts.append(f'<text x="{px}" y="72" font-size="8.5" fill="{FAINT}" letter-spacing="1.6">MCP SERVER</text>')
+    parts.append(f'<text x="{px}" y="92" font-size="11" fill="{OUT_FG}">@infona-ai/mcp</text>')
+    parts.append(f'<text x="{px}" y="128" font-size="8.5" fill="{FAINT}" letter-spacing="1.6">TOOLS</text>')
+    tools = ["ask", "search", "agent", "ingest_csv", "export_kg", "ontology", "jobs"]
+    ty2 = 150
+    for tool in tools:
+        if tool == "ask":
+            parts.append(
+                f'<rect x="{px - 8}" y="{ty2 - 12}" width="70" height="17" rx="4" '
+                f'fill="{ACCENT}" fill-opacity="0" stroke="{ACCENT}" stroke-opacity="0">'
+                f'<animate attributeName="fill-opacity" values="0;0;0.14;0.14;0" '
+                f'keyTimes="0;{t1 - 0.01:.4f};{t1:.4f};{END};1" dur="{dur}s" repeatCount="indefinite"/>'
+                f'<animate attributeName="stroke-opacity" values="0;0;0.6;0.6;0" '
+                f'keyTimes="0;{t1 - 0.01:.4f};{t1:.4f};{END};1" dur="{dur}s" repeatCount="indefinite"/>'
+                f'</rect>'
+            )
+            parts.append(f'<text x="{px}" y="{ty2}" font-size="11" fill="{FG}">{tool}</text>')
+        else:
+            parts.append(f'<text x="{px}" y="{ty2}" font-size="11" fill="{DIM}">{tool}</text>')
+        ty2 += 24
+    parts.append(
+        f'<text x="{px}" y="{ty2 + 12}" font-size="9.5" fill="{FAINT}">same routes the CLI hits</text>'
+    )
 
     parts.append("</svg>")
     return "\n".join(parts)
@@ -557,8 +677,10 @@ def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "demo-ingest.svg").write_text(write_ingest() + "\n")
     (OUT / "demo-ask.svg").write_text(write_ask() + "\n")
+    (OUT / "demo-mcp.svg").write_text(write_mcp() + "\n")
     print("wrote", OUT / "demo-ingest.svg")
     print("wrote", OUT / "demo-ask.svg")
+    print("wrote", OUT / "demo-mcp.svg")
 
 
 if __name__ == "__main__":
