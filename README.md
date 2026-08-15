@@ -1,159 +1,111 @@
-# Infona (OSS)
+<p align="center">
+  <img src="docs/logo.svg" alt="Infona" width="360"/>
+</p>
 
-Turn any CSV into a **context graph** — a knowledge graph you can query in natural language.
+<p align="center">
+  <strong>Turn a CSV into a knowledge graph you can actually query.</strong><br/>
+  One LLM pass infers the schema. Every row maps deterministically.<br/>
+  Ask in English. Get an exact answer from <strong>Cypher on Neo4j</strong> — not a vibe.
+</p>
 
-**Product:** [infona.ai](https://infona.ai) · **Company:** Infona
+<p align="center">
+  <a href="https://infona.ai">infona.ai</a> ·
+  <a href="docs/BOUNDARY.md">what's free</a> ·
+  <a href="docs/API.md">API</a> ·
+  <a href="https://github.com/infona-ai/structure-once-query-cheaply">paper freeze</a>
+</p>
 
-One LLM call infers the schema. All rows map deterministically. Ask questions; get exact answers backed by **Cypher on Neo4j**.
+<p align="center">
+  <img src="docs/graph-hero.jpg" alt="The shipped bookstore example as a knowledge graph. Orwell lights a path through 1984 into Dystopian."/>
+</p>
 
-This repository is the **OSS product runtime** (Python API, client, Node CLI/MCP). It is **not** the scientific freeze package for *Structure Once, Query Cheaply*.
+<p align="center"><em>Bookstore as a context graph: authors, titles, genres. The amber path is the answer, not a highlight reel.</em></p>
 
-| Package | Where |
-|---------|--------|
-| **Product OSS (this repo)** | Runtime + tests + examples |
-| **Eval-MH paper freeze (public)** | [infona-ai/structure-once-query-cheaply](https://github.com/infona-ai/structure-once-query-cheaply) |
-| **What’s free vs hosted** | **[docs/BOUNDARY.md](docs/BOUNDARY.md)** ← read this first |
+Drop a table in. Infona doesn't summarize it. It **structures** it: types, relationships, a real graph. Then `/ask` compiles your question to Cypher and runs it.
 
-## What’s free / what’s not (30 seconds)
+```bash
+infona ingest examples/bookstore.csv --kg bookstore
+infona ask "Orwell to Dystopian?" --kg bookstore
+```
 
-- **OSS:** ingest, ontology, ask, MCP/CLI/API, export, free sources, BYOK registry, plugin seams.
-- **Bring your own retrieval:** this build **does not** register an open-web page fetcher. Enrichment that needs arbitrary URL fetch will decline unless **you** register a fetcher — or use hosted Infona.
-- **Hosted-only:** managed keys Infona bills, paid web search/scrape ladders, curated Enhanced ontology content, Explorer polish, billing.
+That's the whole product loop. Schema once. Query cheaply.
 
-Full table: [docs/BOUNDARY.md](docs/BOUNDARY.md).
+---
 
-## Quickstart (~10 minutes)
+## See it happen
 
-**Prerequisites:** Docker (for Neo4j) and an LLM API key (OpenRouter recommended). Without both, stop after install — the API will start degraded and graph routes will fail.
+Ingest is one LLM call for the *shape*, then a deterministic write of every row. The graph grows as entities land:
 
-### 1. Install
+![infona ingest turning bookstore.csv into Book, Author, Genre nodes](docs/demo-ingest.svg)
+
+Then you query the graph instead of grepping the file. The path lights hop by hop — same Cypher Infona just ran:
+
+![infona ask lighting the Orwell → 1984 → Dystopian path](docs/demo-ask.svg)
+
+What that animation is showing — the CSV said Orwell wrote *1984*, and *1984* is Dystopian. Those are instance edges on `onto/wrote` and `onto/genre`. Re-ask tomorrow and the same nodes answer.
+
+The looping SVGs are generated (no JS) from [`scripts/render_readme_demos.py`](scripts/render_readme_demos.py).
+
+---
+
+## What you get
+
+| | |
+|---|---|
+| **Schema from one pass** | Luna (or your configured model) sees the file once. Types, attributes, relationships. No per-row LLM. |
+| **Deterministic rows** | Every cell maps through that schema. Re-ingest is idempotent. |
+| **A real graph** | Neo4j. Authors, books, genres are nodes — not columns you `JOIN` by hand. |
+| **Ask → Cypher** | Always-LLM Cypher. Grounded on the *populated* ontology, fail-closed when the plan is a silent wrong total. |
+| **CLI + MCP + HTTP** | Same canonical routes. `infona`, `@infona-ai/mcp`, `/graphs/{tenant}/ask`. |
+| **Export** | JSON or CSV back out. The graph is yours. |
+
+Not a vector index. Not "chat with your CSV." A context graph you can count on.
+
+---
+
+## 10-minute quickstart
+
+**Need:** Docker (Neo4j) and an LLM key (OpenRouter is the honest default). Without both, install still works — graph routes will not.
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-cp .env.example .env
-# Set OPENROUTER_API_KEY=sk-or-... in .env (or Cerebras / Anthropic — see Model Configuration)
-```
+cp .env.example .env          # set OPENROUTER_API_KEY=sk-or-...
 
-> Import path: `infona_client`. Graph IRIs: `https://graph.infona.ai/`.  
-> CLI/MCP: published on npm as `@infona-ai/cli` / `@infona-ai/mcp` with primary
-> bins `infona` / `infona-mcp` (`npm ci && npm run build -w packages/cli`).
-> Compatibility aliases `onta` / `onta-mcp` remain. Prefer `infona`.
-> Python package name is `infona-client` (PyPI not yet published — install from
-> this repo with `pip install -e .`).
-
-### 2. Start Neo4j
-
-```bash
-docker compose up -d
-# Neo4j only. Product rejects non-neo4j INFONA_GRAPH_BACKEND (ONTA-527).
-
+docker compose up -d          # Neo4j only
 export NEO4J_URI=bolt://localhost:7687
 export NEO4J_USER=neo4j
 export NEO4J_PASSWORD=infona-dev-password
-export INFONA_GRAPH_BACKEND=neo4j   # default; explicit is fine
-```
+export INFONA_GRAPH_BACKEND=neo4j
 
-Bootstrap constraints (idempotent; needs the venv from step 1):
-
-```bash
 python - <<'PY'
 import asyncio
 from infona_client.graph.store import get_graph_store
-
 async def main():
     store = get_graph_store()
     print(await store.bootstrap_schema())
     await store.close()
 asyncio.run(main())
 PY
-```
 
-Details: [docs/neo4j-local.md](docs/neo4j-local.md).
-
-### 3. Start the API
-
-```bash
-# set -a exports every assignment so NEO4J_* / OPENROUTER_* reach uvicorn
 set -a && source .env && set +a
-# Wait until Neo4j is healthy: docker compose ps  (STATUS healthy)
 uvicorn infona_client.api.app:create_app --factory --port 8000
 ```
 
-No API key required for local open-access (`INFONA_API_KEYS` empty → tenant `default`).
-
-### 4. Connect the CLI (local open-access)
-
-**Canonical OSS entry** — after the API is healthy, run the one-shot setup script.
-It probes `/health`, confirms open-access, writes `~/.infona/config.json`
-(`apiUrl=http://localhost:8000`, `tenant=default`), and best-effort builds/links
-the CLI when Node is present:
+In another shell:
 
 ```bash
-./scripts/oss_setup.sh
-# equivalent non-interactive CLI:  infona init --local
-```
-
-After that, **bare `infona` works without `--local`**. Re-run configuration any
-time with `infona init` (interactive menu; confirms before overwriting credentials).
-
-> Pure `npm install -g @infona-ai/cli` does **not** force local mode — first run
-> opens a connect wizard (local / browser / API key). Only this repo setup path
-> (or choosing “local” in the wizard) writes the open-access config.
-
-### 5. Ingest, ask, export
-
-```bash
-# After oss_setup.sh — no --local needed:
+./scripts/oss_setup.sh        # writes ~/.infona/config.json for local open-access
 infona ingest examples/bookstore.csv --kg bookstore
-infona ask "How many books are there?" --kg bookstore
-
-# Or one-off without touching config:
-infona --local ingest examples/bookstore.csv --kg bookstore
-infona --local export --kg bookstore -f json -o bookstore.json
-infona --local export --kg bookstore -f csv --type Book -o books.csv
+infona ask "How many dystopian books are there?" --kg bookstore
+infona export --kg bookstore -f json -o bookstore.json
 ```
 
-`--local` is a **one-off flag** (does not rewrite config): targets
-`http://localhost:8000` and tenant **`default`**. Reserved attribute leaves such
-as `name` are rewritten to ontology-safe names (e.g. `display_name`) so Neo4j
-ingest does not 500 on model B2 collisions.
+`./scripts/oss_setup.sh` (or `infona init --local`) is the one-shot local connect. After that, bare `infona` works. `--local` is a one-off flag and does not rewrite config.
 
-HTTP:
+Local Neo4j notes: [docs/neo4j-local.md](docs/neo4j-local.md). Import path is `infona_client`. Graph IRIs live under `https://graph.infona.ai/`.
 
-```bash
-curl -s "http://localhost:8000/graphs/default/kgs/bookstore/export?format=json" | head
-```
-
-## How it works
-
-```
-CSV / JSON / text
-  → schema inference (1 LLM call)
-  → deterministic row mapping
-  → Neo4j knowledge graph (GraphStore / Cypher)
-  → natural language question → Cypher → answer
-```
-
-**Retrieval note:** OSS structures and queries what you put in. Open-web scrape is opt-in (BYOR) or hosted.
-
-## CLI (self-hosted)
-
-```bash
-./scripts/oss_setup.sh            # write local open-access config (once)
-infona                            # shell → uses ~/.infona/config.json
-infona kg list
-infona ingest data.csv --kg my-dataset
-infona ask "How many records?" --kg my-dataset
-infona export --kg my-dataset -f json -o out.json
-infona init                       # re-run connect wizard (confirm before clobber)
-infona --local kg list            # one-off; does not change saved config
-```
-
-Precedence: **flags** (one-off) **> env** (`INFONA_API_URL` / `INFONA_API_KEY`)
-**> config file** **> wizard** when empty.
-
-See [packages/cli/README.md](packages/cli/README.md).
+---
 
 ## MCP (agents)
 
@@ -172,54 +124,57 @@ See [packages/cli/README.md](packages/cli/README.md).
 }
 ```
 
-Tools include `ask`, `search`, `agent`, `ingest_csv`, `export_kg`, KG CRUD, ontology evolve, jobs. See [packages/mcp/README.md](packages/mcp/README.md).
+`ask`, `search`, `agent`, `ingest_csv`, `export_kg`, ontology, jobs — same backend the CLI hits. [packages/mcp/README.md](packages/mcp/README.md).
 
-## API (local)
+---
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| POST | `/graphs/{tenant}/ask` | Natural language query |
-| POST | `/graphs/{tenant}/ingest/csv/schema` | Infer CSV schema |
-| POST | `/graphs/{tenant}/ingest/csv/rows` | Insert rows |
-| GET | `/graphs/{tenant}/kgs` | List graphs |
-| GET | `/graphs/{tenant}/kgs/{kg}/export` | **Export JSON/CSV** |
-| GET | `/graphs/{tenant}/ontology/schema` | Ontology |
-| GET | `/health` | Health |
+## What's free
 
-Interactive docs: [http://localhost:8000/docs](http://localhost:8000/docs).
+- **OSS (this repo):** ingest, ontology, ask, MCP / CLI / HTTP, export, free sources, BYOK registry, plugin seams.
+- **Bring your own retrieval:** OSS registers **no** open-web page fetcher. Enrichment that needs a URL fetch declines unless *you* register one — or you use hosted Infona.
+- **Hosted-only:** managed keys Infona bills, paid search/scrape ladders, curated Enhanced ontology, Explorer, billing.
 
-## Model configuration
+Full table: **[docs/BOUNDARY.md](docs/BOUNDARY.md)**. This repo is the product runtime, not the eval-MH paper freeze ([structure-once-query-cheaply](https://github.com/infona-ai/structure-once-query-cheaply)).
 
-```bash
-export OPENROUTER_API_KEY=sk-or-...   # also accepted as INFONA_OPENROUTER_API_KEY
-export INFONA_QUERY_PROVIDER=openrouter
-export INFONA_QUERY_MODEL=openai/gpt-oss-120b   # default reasoning model
+---
+
+## How it works
+
+```
+CSV / JSON / text
+  → schema inference (1 LLM call)
+  → deterministic row mapping
+  → Neo4j knowledge graph (GraphStore / Cypher)
+  → natural language → Cypher → exact answer
 ```
 
-With an OpenRouter key present, OSS **auto-embeds ontology types** as the catalog
-grows (write-path refresh) and on first `/ask` if the process index is empty.
-Indexes persist under `~/.infona/embeddings/` (override with
-`INFONA_EMBEDDINGS_DIR`) or optional S3 (`INFONA_EMBEDDINGS_S3_BUCKET`). That
-powers semantic type retrieval so large tenant ontologies do not always dump
-into the prompt.
+Ask is always-LLM Cypher. Grounding, probes, and few-shots **inform** the model; they do not replace it. Don't short-circuit production `/ask` with golden strings.
 
-Local models (Ollama / vLLM) via OpenAI-compatible endpoints are possible if you point the query provider at them; document your own setup — the honest default for a first run is an OpenRouter key.
+```bash
+export OPENROUTER_API_KEY=sk-or-...
+export INFONA_QUERY_PROVIDER=openrouter
+export INFONA_QUERY_MODEL=openai/gpt-oss-120b
+```
+
+With an OpenRouter key, OSS auto-embeds ontology types as the catalog grows (and on first `/ask` if the index is empty). Indexes live under `~/.infona/embeddings/`.
+
+---
 
 ## Architecture
 
-**Current product path:** FastAPI + **Neo4j GraphStore (Cypher)**. Edition lines: [docs/BOUNDARY.md](docs/BOUNDARY.md). Local Neo4j: [docs/neo4j-local.md](docs/neo4j-local.md).
+**Product path:** FastAPI + **Neo4j GraphStore (Cypher)**. SPARQL / Neptune are not product backends.
 
-[ARCHITECTURE.md](ARCHITECTURE.md) is a **historical SPARQL/Neptune-era** write-up — useful for background, not the production default. Prefer BOUNDARY + code under `infona_client/graph/` for current behavior.
+- Ingestion: LLM schema → deterministic mapping
+- Query: populated ontology + few-shot bank → Cypher
+- Writes: `insert_facts` / `refresh_after_write` (one write path)
+- Instance relationships: `https://graph.infona.ai/onto/<leaf>`
 
-- **Backend:** FastAPI + Neo4j GraphStore (Cypher)
-- **Ingestion:** LLM schema inference → deterministic mapping
-- **Query:** populated ontology (+ semantic type top‑K when embeddings exist) + few-shot bank → Cypher → answer
-- **SPARQL / Fuseki / Neptune:** removed as product backends (`graph_backend()`
-  rejects them). Residual compose profile / scripts are quarantine-only
-  archaeology — not a supported local path.
+[docs/BOUNDARY.md](docs/BOUNDARY.md) is current. [ARCHITECTURE.md](ARCHITECTURE.md) is a historical SPARQL-era write-up.
+
+---
 
 ## License
 
-Apache 2.0 — [LICENSE](LICENSE), [NOTICE](NOTICE).  
-Contributions: [CLA.md](CLA.md), [CONTRIBUTING.md](CONTRIBUTING.md).  
-Coding agents / AI contributors: **[AGENTS.md](AGENTS.md)**.
+Apache 2.0 — [LICENSE](LICENSE), [NOTICE](NOTICE).
+Contributions: [CLA.md](CLA.md), [CONTRIBUTING.md](CONTRIBUTING.md).
+Agents: **[AGENTS.md](AGENTS.md)**.
