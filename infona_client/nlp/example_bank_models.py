@@ -60,8 +60,9 @@ CYPHER_PATTERN_DETECTORS: list[tuple[str, str]] = [
     ("limit", r"\bLIMIT\b"),
 ]
 
-# Default file paths
-DEFAULT_BANK_PATH = Path(__file__).resolve().parent.parent.parent / "eval_reports" / "example_bank.jsonl"
+# Default file paths. The few-shot bank ships with the package; eval report
+# dumps stay at the repo-root eval_reports/ dir (gitignored, local-only).
+DEFAULT_BANK_PATH = Path(__file__).resolve().parent / "data" / "example_bank.jsonl"
 EVAL_REPORTS_DIR = Path(__file__).resolve().parent.parent.parent / "eval_reports"
 
 # Holdout v2 KG exclusion list (spec §6.1): holdout-v2 KGs must never be

@@ -14,8 +14,12 @@ web/node_modules/
 web/.next/
 web/.env.local
 .env
-eval_reports/*
-!eval_reports/example_bank.jsonl
+
+# Study / eval artifacts — keep local copies, do not ship in OSS.
+# Paper freeze: infona-ai/structure-once-query-cheaply
+# Full holdout: private parent infona repo
+eval_holdout_v2/
+eval_reports/
 
 # Node packages (infona npm SDK + MCP)
 node_modules/
