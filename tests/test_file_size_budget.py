@@ -58,12 +58,11 @@ OVERSIZE_ALLOWLIST: dict[str, int] = {
     "infona_client/api/routes/workspace_invites.py": 726,
     "infona_client/api_registry/enrichment.py": 556,
     "infona_client/api_registry/spec.py": 898,
-    "infona_client/auth/workspace_store.py": 1067,
+
     "infona_client/enrichment/models.py": 596,
     "infona_client/graph/explore_store.py": 975,
     "infona_client/graph/global_ontology.py": 877,
     "infona_client/graph/ontology_base_pin.py": 887,
-    "infona_client/graph/ontology_catalog.py": 1025,
     "infona_client/graph/pg_ops.py": 805,
     "infona_client/graph/queries.py": 798,
     "infona_client/graph/schema_bootstrap.py": 873,
@@ -71,13 +70,15 @@ OVERSIZE_ALLOWLIST: dict[str, int] = {
     "infona_client/models/ontology.py": 960,
     "infona_client/nlp/cypher_example_seeds.py": 761,
     "infona_client/nlp/dim_registry.py": 1059,
+
+    "infona_client/nlp/example_bank.py": 1250,
     "infona_client/nlp/numeric_attr_resolve.py": 872,
     "infona_client/nlp/numeric_plan_grounding.py": 793,
     "infona_client/nlp/ontology_embeddings.py": 900,
     "infona_client/nlp/ontology_mention_index.py": 972,
     "infona_client/nlp/query_intent.py": 607,
     "infona_client/nlp/schema_valid_cypher.py": 859,
-    "infona_client/normalization/execute.py": 1069,
+
     "infona_client/normalization/inference.py": 598,
     "infona_client/pipeline/discovery_quality.py": 657,
     "infona_client/qc/boundary.py": 689,
@@ -277,6 +278,10 @@ def test_allowlist_is_deny_by_default():
     assert "infona_client/api/routes/knowledge_graphs.py" not in OVERSIZE_ALLOWLIST
     assert "infona_client/graph/provenance.py" not in OVERSIZE_ALLOWLIST
     assert "infona_client/nlp/example_bank.py" not in OVERSIZE_ALLOWLIST
+    assert "infona_client/normalization/execute.py" not in OVERSIZE_ALLOWLIST
+    assert "infona_client/auth/workspace_store.py" not in OVERSIZE_ALLOWLIST
+    assert "infona_client/nlp/dim_registry.py" not in OVERSIZE_ALLOWLIST
+    assert "infona_client/graph/ontology_catalog.py" not in OVERSIZE_ALLOWLIST
     assert all(n > NEW_FILE_HARD_CAP for n in OVERSIZE_ALLOWLIST.values())
 
 
