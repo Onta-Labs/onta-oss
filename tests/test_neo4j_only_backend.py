@@ -183,7 +183,6 @@ _RESIDUAL_NEPTUNE_IMPORTERS = {
     "graph/client.py",
     # ONTA-534 slice 2: isinstance gate so GraphStore-first only for real client.
     "graph/kg_status.py",
-    "graph/neo4j_store.py",
     "graph/store.py",
     "nlp/ontology_embeddings.py",
     "nlp/pipeline.py",

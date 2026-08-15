@@ -63,11 +63,8 @@ OVERSIZE_ALLOWLIST: dict[str, int] = {
     "infona_client/enrichment/models.py": 596,
     "infona_client/graph/explore_store.py": 975,
     "infona_client/graph/global_ontology.py": 877,
-    "infona_client/graph/neo4j_store.py": 1181,
     "infona_client/graph/ontology_base_pin.py": 887,
     "infona_client/graph/ontology_catalog.py": 1025,
-    "infona_client/graph/ontology_queries.py": 1312,
-    "infona_client/graph/ontology_snapshots.py": 1421,
     "infona_client/graph/pg_ops.py": 805,
     "infona_client/graph/provenance.py": 1171,
     "infona_client/graph/queries.py": 798,
@@ -277,6 +274,9 @@ def test_allowlist_is_deny_by_default():
     assert "infona_client/nlp/ontology_subgraph_match.py" not in OVERSIZE_ALLOWLIST
     assert "infona_client/semantic/reconciler.py" not in OVERSIZE_ALLOWLIST
     assert "infona_client/api/routes/ontology.py" not in OVERSIZE_ALLOWLIST
+    assert "infona_client/graph/ontology_queries.py" not in OVERSIZE_ALLOWLIST
+    assert "infona_client/graph/ontology_snapshots.py" not in OVERSIZE_ALLOWLIST
+    assert "infona_client/graph/neo4j_store.py" not in OVERSIZE_ALLOWLIST
     assert all(n > NEW_FILE_HARD_CAP for n in OVERSIZE_ALLOWLIST.values())
 
 
