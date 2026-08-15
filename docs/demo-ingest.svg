@@ -1,0 +1,153 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 360" width="900" height="360" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" role="img" aria-label="infona ingest turning a CSV into a live knowledge graph">
+<defs>
+  <linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#0b1020"/>
+    <stop offset="1" stop-color="#12182c"/>
+  </linearGradient>
+</defs>
+<rect x="1" y="1" width="898" height="358" rx="14" fill="url(#bg2)" stroke="#243049" stroke-width="1.5"/>
+<line x1="348" y1="16" x2="348" y2="344" stroke="#243049" stroke-width="1"/>
+<circle cx="28" cy="28" r="4.5" fill="#ff5f56"/>
+<circle cx="46" cy="28" r="4.5" fill="#ffbd2e"/>
+<circle cx="64" cy="28" r="4.5" fill="#27c93f"/>
+<text x="332" y="32" text-anchor="end" font-size="10" fill="#6b7694">infona</text>
+<text x="20" y="70" font-size="11" fill="#6ee7b7" font-weight="600">$</text>
+
+<text x="33.0" y="70" font-size="11" fill="#d7e2f5" opacity="0">i<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.0280;0.0400;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="39.6" y="70" font-size="11" fill="#d7e2f5" opacity="0">n<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.0420;0.0540;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="46.2" y="70" font-size="11" fill="#d7e2f5" opacity="0">f<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.0560;0.0680;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="52.8" y="70" font-size="11" fill="#d7e2f5" opacity="0">o<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.0700;0.0820;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="59.4" y="70" font-size="11" fill="#d7e2f5" opacity="0">n<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.0840;0.0960;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="66.0" y="70" font-size="11" fill="#d7e2f5" opacity="0">a<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.0980;0.1100;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="79.2" y="70" font-size="11" fill="#d7e2f5" opacity="0">i<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.1260;0.1380;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="85.8" y="70" font-size="11" fill="#d7e2f5" opacity="0">n<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.1400;0.1520;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="92.4" y="70" font-size="11" fill="#d7e2f5" opacity="0">g<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.1540;0.1660;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="99.0" y="70" font-size="11" fill="#d7e2f5" opacity="0">e<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.1680;0.1800;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="105.6" y="70" font-size="11" fill="#d7e2f5" opacity="0">s<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.1820;0.1940;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="112.2" y="70" font-size="11" fill="#d7e2f5" opacity="0">t<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.1960;0.2080;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="125.4" y="70" font-size="11" fill="#d7e2f5" opacity="0">-<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.2240;0.2360;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="132.0" y="70" font-size="11" fill="#d7e2f5" opacity="0">-<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.2380;0.2500;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="138.6" y="70" font-size="11" fill="#d7e2f5" opacity="0">k<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.2520;0.2640;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="145.2" y="70" font-size="11" fill="#d7e2f5" opacity="0">g<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.2660;0.2780;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="158.4" y="70" font-size="11" fill="#d7e2f5" opacity="0">b<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.2940;0.3060;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="165.0" y="70" font-size="11" fill="#d7e2f5" opacity="0">o<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.3080;0.3200;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="171.6" y="70" font-size="11" fill="#d7e2f5" opacity="0">o<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.3220;0.3340;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="178.2" y="70" font-size="11" fill="#d7e2f5" opacity="0">k<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.3360;0.3480;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="184.8" y="70" font-size="11" fill="#d7e2f5" opacity="0">s<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.3500;0.3620;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="191.4" y="70" font-size="11" fill="#d7e2f5" opacity="0">t<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.3640;0.3760;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="198.0" y="70" font-size="11" fill="#d7e2f5" opacity="0">o<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.3780;0.3900;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="204.6" y="70" font-size="11" fill="#d7e2f5" opacity="0">r<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.3920;0.4040;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="211.2" y="70" font-size="11" fill="#d7e2f5" opacity="0">e<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.4060;0.4180;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="20" y="88" font-size="11" fill="#6ee7b7" font-weight="600" opacity="0">&gt;<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.1880;0.2000;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="33.0" y="88" font-size="11" fill="#d7e2f5" opacity="0">e<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.1980;0.2100;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="39.6" y="88" font-size="11" fill="#d7e2f5" opacity="0">x<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.2120;0.2240;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="46.2" y="88" font-size="11" fill="#d7e2f5" opacity="0">a<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.2260;0.2380;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="52.8" y="88" font-size="11" fill="#d7e2f5" opacity="0">m<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.2400;0.2520;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="59.4" y="88" font-size="11" fill="#d7e2f5" opacity="0">p<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.2540;0.2660;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="66.0" y="88" font-size="11" fill="#d7e2f5" opacity="0">l<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.2680;0.2800;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="72.6" y="88" font-size="11" fill="#d7e2f5" opacity="0">e<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.2820;0.2940;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="79.2" y="88" font-size="11" fill="#d7e2f5" opacity="0">s<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.2960;0.3080;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="85.8" y="88" font-size="11" fill="#d7e2f5" opacity="0">/<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.3100;0.3220;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="92.4" y="88" font-size="11" fill="#d7e2f5" opacity="0">b<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.3240;0.3360;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="99.0" y="88" font-size="11" fill="#d7e2f5" opacity="0">o<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.3380;0.3500;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="105.6" y="88" font-size="11" fill="#d7e2f5" opacity="0">o<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.3520;0.3640;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="112.2" y="88" font-size="11" fill="#d7e2f5" opacity="0">k<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.3660;0.3780;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="118.8" y="88" font-size="11" fill="#d7e2f5" opacity="0">s<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.3800;0.3920;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="125.4" y="88" font-size="11" fill="#d7e2f5" opacity="0">t<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.3940;0.4060;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="132.0" y="88" font-size="11" fill="#d7e2f5" opacity="0">o<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.4080;0.4200;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="138.6" y="88" font-size="11" fill="#d7e2f5" opacity="0">r<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.4220;0.4340;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="145.2" y="88" font-size="11" fill="#d7e2f5" opacity="0">e<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.4360;0.4480;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="151.8" y="88" font-size="11" fill="#d7e2f5" opacity="0">.<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.4500;0.4620;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="158.4" y="88" font-size="11" fill="#d7e2f5" opacity="0">c<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.4640;0.4760;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="165.0" y="88" font-size="11" fill="#d7e2f5" opacity="0">s<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.4780;0.4900;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="171.6" y="88" font-size="11" fill="#d7e2f5" opacity="0">v<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.4920;0.5040;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="20" y="118" font-size="11" fill="#8eb4ff" opacity="0">schema   1 LLM pass<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.3480;0.3600;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="20" y="136" font-size="11" fill="#d7e2f5" opacity="0">types    Book · Author · Genre · Publisher<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.3880;0.4000;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="20" y="154" font-size="11" fill="#d7e2f5" opacity="0">edges    wrote · genre · published_by<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.4280;0.4400;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="20" y="178" font-size="11" fill="#6ee7b7" opacity="0">rows     20 / 20 mapped deterministically<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.4880;0.5000;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="20" y="202" font-size="11" fill="#f5d27a" opacity="0">graph    20 books · 18 authors · 9 genres<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.5480;0.5600;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="20" y="226" font-size="11" fill="#d7e2f5" opacity="0">store    Neo4j  ·  Cypher ready<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.6080;0.6200;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<text x="20" y="258" font-size="11" fill="#8eb4ff" opacity="0">next     infona ask &quot;...&quot; --kg bookstore<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.6880;0.7000;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<g font-family="ui-sans-serif, system-ui, sans-serif">
+<circle cx="430" cy="250" r="18" fill="#7aa2ff" opacity="0"><animate attributeName="opacity" values="0;0;0.22;0.12;0.12;0" keyTimes="0;0.4100;0.4200;0.4600;0.94;1" dur="12.0s" repeatCount="indefinite"/></circle>
+<circle cx="430" cy="250" r="9" fill="#141a2c" stroke="#7aa2ff" stroke-width="1.6" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.4080;0.4200;0.94;1" dur="12.0s" repeatCount="indefinite"/>
+</circle>
+<text x="430" y="268" font-size="10.5" fill="#d7e2f5" text-anchor="middle" font-weight="600" opacity="0">Orwell<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.4230;0.4350;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<circle cx="560" cy="290" r="18" fill="#7aa2ff" opacity="0"><animate attributeName="opacity" values="0;0;0.22;0.12;0.12;0" keyTimes="0;0.4400;0.4500;0.4900;0.94;1" dur="12.0s" repeatCount="indefinite"/></circle>
+<circle cx="560" cy="290" r="9" fill="#141a2c" stroke="#7aa2ff" stroke-width="1.6" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.4380;0.4500;0.94;1" dur="12.0s" repeatCount="indefinite"/>
+</circle>
+<text x="560" y="308" font-size="10.5" fill="#d7e2f5" text-anchor="middle" font-weight="600" opacity="0">Herbert<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.4530;0.4650;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<circle cx="700" cy="300" r="18" fill="#7aa2ff" opacity="0"><animate attributeName="opacity" values="0;0;0.22;0.12;0.12;0" keyTimes="0;0.4700;0.4800;0.5200;0.94;1" dur="12.0s" repeatCount="indefinite"/></circle>
+<circle cx="700" cy="300" r="9" fill="#141a2c" stroke="#7aa2ff" stroke-width="1.6" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.4680;0.4800;0.94;1" dur="12.0s" repeatCount="indefinite"/>
+</circle>
+<text x="700" y="318" font-size="10.5" fill="#d7e2f5" text-anchor="middle" font-weight="600" opacity="0">Tolkien<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.4830;0.4950;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<circle cx="820" cy="250" r="18" fill="#7aa2ff" opacity="0"><animate attributeName="opacity" values="0;0;0.22;0.12;0.12;0" keyTimes="0;0.5000;0.5100;0.5500;0.94;1" dur="12.0s" repeatCount="indefinite"/></circle>
+<circle cx="820" cy="250" r="9" fill="#141a2c" stroke="#7aa2ff" stroke-width="1.6" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.4980;0.5100;0.94;1" dur="12.0s" repeatCount="indefinite"/>
+</circle>
+<text x="820" y="268" font-size="10.5" fill="#d7e2f5" text-anchor="middle" font-weight="600" opacity="0">Fitzgerald<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.5130;0.5250;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<circle cx="520" cy="80" r="18" fill="#f0b429" opacity="0"><animate attributeName="opacity" values="0;0;0.22;0.12;0.12;0" keyTimes="0;0.5300;0.5400;0.5800;0.94;1" dur="12.0s" repeatCount="indefinite"/></circle>
+<circle cx="520" cy="80" r="10" fill="#141a2c" stroke="#f0b429" stroke-width="1.6" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.5280;0.5400;0.94;1" dur="12.0s" repeatCount="indefinite"/>
+</circle>
+<text x="520" y="98" font-size="10.5" fill="#d7e2f5" text-anchor="middle" font-weight="600" opacity="0">1984<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.5430;0.5550;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<circle cx="640" cy="70" r="18" fill="#f0b429" opacity="0"><animate attributeName="opacity" values="0;0;0.22;0.12;0.12;0" keyTimes="0;0.5550;0.5650;0.6050;0.94;1" dur="12.0s" repeatCount="indefinite"/></circle>
+<circle cx="640" cy="70" r="10" fill="#141a2c" stroke="#f0b429" stroke-width="1.6" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.5530;0.5650;0.94;1" dur="12.0s" repeatCount="indefinite"/>
+</circle>
+<text x="640" y="88" font-size="10.5" fill="#d7e2f5" text-anchor="middle" font-weight="600" opacity="0">Dune<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.5680;0.5800;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<circle cx="760" cy="95" r="18" fill="#f0b429" opacity="0"><animate attributeName="opacity" values="0;0;0.22;0.12;0.12;0" keyTimes="0;0.5800;0.5900;0.6300;0.94;1" dur="12.0s" repeatCount="indefinite"/></circle>
+<circle cx="760" cy="95" r="10" fill="#141a2c" stroke="#f0b429" stroke-width="1.6" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.5780;0.5900;0.94;1" dur="12.0s" repeatCount="indefinite"/>
+</circle>
+<text x="760" y="113" font-size="10.5" fill="#d7e2f5" text-anchor="middle" font-weight="600" opacity="0">Hobbit<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.5930;0.6050;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<circle cx="560" cy="170" r="18" fill="#f0b429" opacity="0"><animate attributeName="opacity" values="0;0;0.22;0.12;0.12;0" keyTimes="0;0.6050;0.6150;0.6550;0.94;1" dur="12.0s" repeatCount="indefinite"/></circle>
+<circle cx="560" cy="170" r="10" fill="#141a2c" stroke="#f0b429" stroke-width="1.6" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.6030;0.6150;0.94;1" dur="12.0s" repeatCount="indefinite"/>
+</circle>
+<text x="560" y="188" font-size="10.5" fill="#d7e2f5" text-anchor="middle" font-weight="600" opacity="0">Gatsby<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.6180;0.6300;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<circle cx="700" cy="165" r="18" fill="#f0b429" opacity="0"><animate attributeName="opacity" values="0;0;0.22;0.12;0.12;0" keyTimes="0;0.6300;0.6400;0.6800;0.94;1" dur="12.0s" repeatCount="indefinite"/></circle>
+<circle cx="700" cy="165" r="10" fill="#141a2c" stroke="#f0b429" stroke-width="1.6" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.6280;0.6400;0.94;1" dur="12.0s" repeatCount="indefinite"/>
+</circle>
+<text x="700" y="183" font-size="10.5" fill="#d7e2f5" text-anchor="middle" font-weight="600" opacity="0">Neuromancer<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.6430;0.6550;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<circle cx="480" cy="40" r="18" fill="#c084fc" opacity="0"><animate attributeName="opacity" values="0;0;0.22;0.12;0.12;0" keyTimes="0;0.6550;0.6650;0.7050;0.94;1" dur="12.0s" repeatCount="indefinite"/></circle>
+<circle cx="480" cy="40" r="8" fill="#141a2c" stroke="#c084fc" stroke-width="1.6" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.6530;0.6650;0.94;1" dur="12.0s" repeatCount="indefinite"/>
+</circle>
+<text x="480" y="56" font-size="10.5" fill="#d7e2f5" text-anchor="middle" font-weight="600" opacity="0">Dystopian<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.6680;0.6800;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<circle cx="820" cy="40" r="18" fill="#c084fc" opacity="0"><animate attributeName="opacity" values="0;0;0.22;0.12;0.12;0" keyTimes="0;0.6850;0.6950;0.7350;0.94;1" dur="12.0s" repeatCount="indefinite"/></circle>
+<circle cx="820" cy="40" r="8" fill="#141a2c" stroke="#c084fc" stroke-width="1.6" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.6830;0.6950;0.94;1" dur="12.0s" repeatCount="indefinite"/>
+</circle>
+<text x="820" y="56" font-size="10.5" fill="#d7e2f5" text-anchor="middle" font-weight="600" opacity="0">Sci-Fi<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.6980;0.7100;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<circle cx="880" cy="160" r="18" fill="#c084fc" opacity="0"><animate attributeName="opacity" values="0;0;0.22;0.12;0.12;0" keyTimes="0;0.7150;0.7250;0.7650;0.94;1" dur="12.0s" repeatCount="indefinite"/></circle>
+<circle cx="880" cy="160" r="8" fill="#141a2c" stroke="#c084fc" stroke-width="1.6" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.7130;0.7250;0.94;1" dur="12.0s" repeatCount="indefinite"/>
+</circle>
+<text x="880" y="176" font-size="10.5" fill="#d7e2f5" text-anchor="middle" font-weight="600" opacity="0">Fantasy<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.7280;0.7400;0.94;1" dur="12.0s" repeatCount="indefinite"/></text>
+<line x1="430" y1="250" x2="520" y2="80" stroke="#5b6b8c" stroke-width="1.4" stroke-linecap="round" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.7080;0.7200;0.94;1" dur="12.0s" repeatCount="indefinite"/>
+</line>
+<line x1="520" y1="80" x2="480" y2="40" stroke="#5b6b8c" stroke-width="1.4" stroke-linecap="round" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.7480;0.7600;0.94;1" dur="12.0s" repeatCount="indefinite"/>
+</line>
+<line x1="560" y1="290" x2="640" y2="70" stroke="#5b6b8c" stroke-width="1.4" stroke-linecap="round" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.7680;0.7800;0.94;1" dur="12.0s" repeatCount="indefinite"/>
+</line>
+<line x1="640" y1="70" x2="820" y2="40" stroke="#5b6b8c" stroke-width="1.4" stroke-linecap="round" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.7980;0.8100;0.94;1" dur="12.0s" repeatCount="indefinite"/>
+</line>
+<line x1="700" y1="300" x2="760" y2="95" stroke="#5b6b8c" stroke-width="1.4" stroke-linecap="round" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.8180;0.8300;0.94;1" dur="12.0s" repeatCount="indefinite"/>
+</line>
+<line x1="760" y1="95" x2="880" y2="160" stroke="#5b6b8c" stroke-width="1.4" stroke-linecap="round" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.8480;0.8600;0.94;1" dur="12.0s" repeatCount="indefinite"/>
+</line>
+<line x1="820" y1="250" x2="560" y2="170" stroke="#5b6b8c" stroke-width="1.4" stroke-linecap="round" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.8680;0.8800;0.94;1" dur="12.0s" repeatCount="indefinite"/>
+</line>
+</g></svg>
