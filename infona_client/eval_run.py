@@ -62,7 +62,7 @@ async def run_full_eval(
       - Concurrent execution: run N questions in parallel (default 10)
       - Question caching: save questions + ground truth to disk, reuse on re-runs
       - Fast judge: programmatic numeric comparison instead of LLM judge
-      See ARCHITECTURE.md for design rationale.
+      See the flags below for the iteration vs. final-validation split.
 
     Args:
         api_url: Infona API base URL.
