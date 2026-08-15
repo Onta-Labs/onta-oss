@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <strong>The context graph your vertical agent actually queries.</strong><br/>
+  <strong>The knowledge layer your vertical agent actually queries.</strong><br/>
   One LLM pass infers the schema. Every row maps deterministically.<br/>
   Ask in English. Get an exact answer from <strong>Cypher on Neo4j</strong> — not a vibe.
 </p>
@@ -14,8 +14,11 @@
 <p align="center">
   <a href="https://infona.ai">infona.ai</a> ·
   <a href="docs/BOUNDARY.md">what's free</a> ·
-  <a href="docs/API.md">API</a> ·
-  <a href="https://github.com/infona-ai/structure-once-query-cheaply">paper freeze</a>
+  <a href="docs/API.md">API</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/infona-ai/infona-oss/stargazers"><img src="https://img.shields.io/github/stars/infona-ai/infona-oss?style=for-the-badge&logo=github&label=Star" alt="Star infona-oss on GitHub"></a>
 </p>
 
 <p align="center">
@@ -62,7 +65,7 @@ The looping SVGs are generated (no JS) from [`scripts/render_readme_demos.py`](s
 | **CLI + MCP + HTTP** | Same canonical routes. `infona`, `@infona-ai/mcp`, `/graphs/{tenant}/ask`. |
 | **Export** | JSON or CSV back out. The graph is yours. |
 
-Not a vector index. Not "chat with your CSV." A context graph you can count on.
+Not a vector index. Not "chat with your CSV." A knowledge layer you can count on.
 
 ---
 
@@ -137,7 +140,7 @@ Local Neo4j notes: [docs/neo4j-local.md](docs/neo4j-local.md). Import path is `i
 - **Bring your own retrieval:** OSS registers **no** open-web page fetcher. Enrichment that needs a URL fetch declines unless *you* register one — or you use hosted Infona.
 - **Hosted-only:** managed keys Infona bills, paid search/scrape ladders, curated Enhanced ontology, Explorer, billing.
 
-Full table: **[docs/BOUNDARY.md](docs/BOUNDARY.md)**. This repo is the product runtime, not the eval-MH paper freeze ([structure-once-query-cheaply](https://github.com/infona-ai/structure-once-query-cheaply)).
+Full table: **[docs/BOUNDARY.md](docs/BOUNDARY.md)**.
 
 ---
 
