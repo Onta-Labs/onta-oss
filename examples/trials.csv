@@ -1,0 +1,17 @@
+trial_id,trial,phase,status,sponsor,drug,brand,target,indication,setting,site,enrollment,start_year
+TRIAL-AURORA3,AURORA-3,Phase 3,Active,AstraZeneca,osimertinib,Tagrisso,EGFR,NSCLC,first-line,Memorial Sloan Kettering,557,2020
+TRIAL-CASPIAN,CASPIAN,Phase 3,Completed,AstraZeneca,durvalumab,Imfinzi,PD-L1,SCLC,first-line,Mayo Clinic,805,2017
+TRIAL-FLAURA,FLAURA,Phase 3,Completed,AstraZeneca,osimertinib,Tagrisso,EGFR,NSCLC,first-line,Dana-Farber,556,2014
+TRIAL-KN189,KEYNOTE-189,Phase 3,Completed,Merck,pembrolizumab,Keytruda,PD-1,NSCLC,first-line,Dana-Farber,616,2016
+TRIAL-KN522,KEYNOTE-522,Phase 3,Completed,Merck,pembrolizumab,Keytruda,PD-1,TNBC,neoadjuvant,MD Anderson,1174,2017
+TRIAL-IMVIGOR011,IMvigor011,Phase 3,Active,Roche,atezolizumab,Tecentriq,PD-L1,urothelial carcinoma,adjuvant,MD Anderson,500,2021
+TRIAL-IMPOWER150,IMpower150,Phase 3,Completed,Roche,atezolizumab,Tecentriq,PD-L1,NSCLC,first-line,Johns Hopkins,1202,2015
+TRIAL-CM9ER,CheckMate-9ER,Phase 3,Completed,Bristol Myers Squibb,nivolumab,Opdivo,PD-1,RCC,first-line,Memorial Sloan Kettering,651,2019
+TRIAL-CM227,CheckMate-227,Phase 3,Completed,Bristol Myers Squibb,nivolumab,Opdivo,PD-1,NSCLC,first-line,Johns Hopkins,1739,2015
+TRIAL-DESTLUNG,DESTINY-Lung01,Phase 2,Completed,Daiichi Sankyo,trastuzumab deruxtecan,Enhertu,HER2,NSCLC,later-line,MD Anderson,181,2018
+TRIAL-DESTBREAST,DESTINY-Breast03,Phase 3,Completed,Daiichi Sankyo,trastuzumab deruxtecan,Enhertu,HER2,HER2+ breast cancer,second-line,UCSF,524,2018
+TRIAL-MARIPOSA,MARIPOSA,Phase 3,Active,Johnson & Johnson,amivantamab,Rybrevant,EGFR-MET,NSCLC,first-line,Dana-Farber,1074,2021
+TRIAL-PALOMA2,PALOMA-2,Phase 3,Completed,Pfizer,palbociclib,Ibrance,CDK4/6,HR+ breast cancer,first-line,Mayo Clinic,666,2013
+TRIAL-MONALEESA2,MONALEESA-2,Phase 3,Completed,Novartis,ribociclib,Kisqali,CDK4/6,HR+ breast cancer,first-line,UCSF,668,2013
+TRIAL-CROWN,CROWN,Phase 3,Active,Pfizer,lorlatinib,Lorbrena,ALK,NSCLC,first-line,Memorial Sloan Kettering,296,2017
+TRIAL-ALEX,ALEX,Phase 3,Completed,Roche,alectinib,Alecensa,ALK,NSCLC,first-line,Johns Hopkins,303,2014
