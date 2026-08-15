@@ -97,20 +97,19 @@ def edge_label(x, y, text, appear, fill="#f0b429"):
 
 
 def write_ask() -> str:
-    cmd1 = "infona ask --kg bookstore"
-    cmd2 = '"Orwell to Dystopian?"'
-    # graph coords (right pane, x>=350)
-    orwell = (430, 210)
-    book = (620, 118)
-    dyst = (800, 210)
-    animal = (620, 300)
-    gatsby = (500, 52)
-    hobbit = (740, 52)
-    dune = (820, 300)
-    austen = (400, 300)
+    cmd1 = "infona ask --kg trials"
+    cmd2 = '"AZ Phase 3 NSCLC?"'
+    az = (430, 210)
+    aurora = (620, 118)
+    nsclc = (800, 210)
+    tagrisso = (620, 300)
+    merck = (500, 52)
+    kn189 = (740, 52)
+    roche = (820, 300)
+    msk = (400, 300)
 
     parts = []
-    parts.append(f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 360" width="900" height="360" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" role="img" aria-label="infona ask lighting a path across the bookstore knowledge graph">
+    parts.append(f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 360" width="900" height="360" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" role="img" aria-label="infona ask lighting AstraZeneca to AURORA-3 to NSCLC">
 <defs>
   <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
     <stop offset="0" stop-color="#0b1020"/>
@@ -134,73 +133,71 @@ def write_ask() -> str:
 
     # answer block
     answers = [
-        (114, "MATCH (a:Author)-[:wrote]->(b:Book)"),
-        (132, "      -[:genre]->(g:Genre)"),
-        (150, "WHERE a.name = 'Orwell'"),
-        (168, "  AND g.name = 'Dystopian'"),
-        (196, "Path  Orwell --wrote--> 1984"),
-        (214, "         --genre--> Dystopian"),
-        (240, "1984   $11.99   1949"),
+        (114, "MATCH (s:Sponsor)-[:runs]->(t:Trial)"),
+        (132, "      -[:indication]->(i:Indication)"),
+        (150, "WHERE s.name = 'AstraZeneca'"),
+        (168, "  AND t.phase = 'Phase 3'"),
+        (186, "  AND i.name = 'NSCLC'"),
+        (212, "Path  AstraZeneca --runs--> AURORA-3"),
+        (230, "         --indication--> NSCLC"),
+        (256, "AURORA-3   Tagrisso   Active"),
+        (274, "FLAURA     Tagrisso   Completed"),
     ]
-    appear = 0.50
+    appear = 0.48
     for y, line in answers:
-        fill = "#8eb4ff" if line.startswith("MATCH") or line.startswith(" ") and "wrote" not in line and "Path" not in line else "#d7e2f5"
+        fill = "#8eb4ff" if line.startswith("MATCH") or line.startswith(" ") and "Path" not in line else "#d7e2f5"
         if line.startswith("Path"):
-            fill = "#f0b429"
-        if line.startswith("1984"):
-            fill = "#f5d27a"
+            fill = "#e85a2b"
+        if line.startswith("AURORA") or line.startswith("FLAURA"):
+            fill = "#f5b183"
         parts.append(
             f'<text x="20" y="{y}" font-size="11" fill="{fill}" opacity="0">{esc(line)}{fade("opacity", appear)}</text>'
         )
-        appear += 0.035
+        appear += 0.03
 
-    # right graph — dim context
     parts.append('<g font-family="ui-sans-serif, system-ui, sans-serif">')
     for n in (
-        dim_node(*gatsby, "Gatsby"),
-        dim_node(*hobbit, "Hobbit"),
-        dim_node(*dune, "Dune"),
-        dim_node(*austen, "Austen"),
-        dim_node(*animal, "Animal Farm", "#4a5568"),
+        dim_node(*merck, "Merck"),
+        dim_node(*kn189, "KEYNOTE-189"),
+        dim_node(*roche, "Roche"),
+        dim_node(*msk, "MSK"),
+        dim_node(*tagrisso, "Tagrisso", "#4a5568"),
     ):
         parts.append(n)
-    # faint context edges
-    parts.append(f'<line x1="{orwell[0]}" y1="{orwell[1]}" x2="{animal[0]}" y2="{animal[1]}" stroke="#2a3348" stroke-width="1"/>')
-    parts.append(f'<line x1="{book[0]}" y1="{book[1]}" x2="{hobbit[0]}" y2="{hobbit[1]}" stroke="#2a3348" stroke-width="1"/>')
+    parts.append(f'<line x1="{az[0]}" y1="{az[1]}" x2="{tagrisso[0]}" y2="{tagrisso[1]}" stroke="#2a3348" stroke-width="1"/>')
+    parts.append(f'<line x1="{aurora[0]}" y1="{aurora[1]}" x2="{kn189[0]}" y2="{kn189[1]}" stroke="#2a3348" stroke-width="1"/>')
 
-    # path lights hop-by-hop after the MATCH appears
-    parts.append(edge(*orwell, *book, 0.58, "#7aa2ff", 2.4))
-    parts.append(edge_label(520, 150, "wrote", 0.60, "#7aa2ff"))
-    parts.append(node(*orwell, "Orwell", "#7aa2ff", 0.56, r=12))
-    parts.append(node(*book, "1984", "#f0b429", 0.64, r=13))
-    parts.append(edge(*book, *dyst, 0.72, "#f0b429", 2.4))
-    parts.append(edge_label(715, 150, "genre", 0.74, "#f0b429"))
-    parts.append(node(*dyst, "Dystopian", "#c084fc", 0.78, r=12))
+    parts.append(edge(*az, *aurora, 0.58, "#7aa2ff", 2.4))
+    parts.append(edge_label(520, 150, "runs", 0.60, "#7aa2ff"))
+    parts.append(node(*az, "AstraZeneca", "#7aa2ff", 0.56, r=12))
+    parts.append(node(*aurora, "AURORA-3", "#e85a2b", 0.64, r=13))
+    parts.append(edge(*aurora, *nsclc, 0.72, "#e85a2b", 2.4))
+    parts.append(edge_label(715, 150, "indication", 0.74, "#e85a2b"))
+    parts.append(node(*nsclc, "NSCLC", "#c084fc", 0.78, r=12))
     parts.append("</g></svg>")
     return "\n".join(parts)
 
 
 def write_ingest() -> str:
-    cmd1 = "infona ingest --kg bookstore"
-    cmd2 = "examples/bookstore.csv"
-    # bloom layout
-    books = [
-        (520, 80, "1984"),
-        (640, 70, "Dune"),
-        (760, 95, "Hobbit"),
-        (560, 170, "Gatsby"),
-        (700, 165, "Neuromancer"),
+    cmd1 = "infona ingest --kg trials"
+    cmd2 = "examples/trials.csv"
+    trials = [
+        (540, 78, "AURORA-3"),
+        (670, 70, "KEYNOTE-189"),
+        (790, 100, "IMvigor011"),
+        (580, 168, "CASPIAN"),
+        (730, 168, "MARIPOSA"),
     ]
-    authors = [
-        (430, 250, "Orwell"),
-        (560, 290, "Herbert"),
-        (700, 300, "Tolkien"),
-        (820, 250, "Fitzgerald"),
+    sponsors = [
+        (420, 250, "AstraZeneca"),
+        (560, 300, "Merck"),
+        (720, 305, "Roche"),
+        (840, 250, "J&J"),
     ]
-    genres = [
-        (480, 40, "Dystopian"),
-        (820, 40, "Sci-Fi"),
-        (880, 160, "Fantasy"),
+    indications = [
+        (470, 38, "NSCLC"),
+        (820, 40, "TNBC"),
+        (880, 165, "RCC"),
     ]
 
     parts = []
@@ -228,12 +225,12 @@ def write_ingest() -> str:
 
     log = [
         (0.36, 118, "#8eb4ff", "schema   1 LLM pass"),
-        (0.40, 136, "#d7e2f5", "types    Book · Author · Genre · Publisher"),
-        (0.44, 154, "#d7e2f5", "edges    wrote · genre · published_by"),
-        (0.50, 178, "#6ee7b7", "rows     20 / 20 mapped deterministically"),
-        (0.56, 202, "#f5d27a", "graph    20 books · 18 authors · 9 genres"),
+        (0.40, 136, "#d7e2f5", "types    Trial · Sponsor · Drug · Indication"),
+        (0.44, 154, "#d7e2f5", "edges    runs · studies · indication"),
+        (0.50, 178, "#6ee7b7", "rows     16 / 16 mapped deterministically"),
+        (0.56, 202, "#f5b183", "graph    16 trials · 8 sponsors · 11 drugs"),
         (0.62, 226, "#d7e2f5", "store    Neo4j  ·  Cypher ready"),
-        (0.70, 258, "#8eb4ff", "next     infona ask \"...\" --kg bookstore"),
+        (0.70, 258, "#8eb4ff", "next     infona ask --kg trials"),
     ]
     for appear, y, fill, line in log:
         parts.append(
@@ -242,25 +239,23 @@ def write_ingest() -> str:
 
     parts.append('<g font-family="ui-sans-serif, system-ui, sans-serif">')
     t = 0.42
-    # authors first (inferred entities), then books, then genres, then edges
-    for x, y, label in authors:
+    for x, y, label in sponsors:
         parts.append(node(x, y, label, "#7aa2ff", t, r=9, label_dy=18))
         t += 0.03
-    for x, y, label in books:
-        parts.append(node(x, y, label, "#f0b429", t, r=10, label_dy=18))
+    for x, y, label in trials:
+        parts.append(node(x, y, label, "#e85a2b", t, r=10, label_dy=18))
         t += 0.025
-    for x, y, label in genres:
+    for x, y, label in indications:
         parts.append(node(x, y, label, "#c084fc", t, r=8, label_dy=16))
         t += 0.03
-    # connecting bloom
     links = [
-        (430, 250, 520, 80, 0.72),   # Orwell-1984
-        (520, 80, 480, 40, 0.76),    # 1984-Dystopian
-        (560, 290, 640, 70, 0.78),   # Herbert-Dune
-        (640, 70, 820, 40, 0.81),    # Dune-SciFi
-        (700, 300, 760, 95, 0.83),   # Tolkien-Hobbit
-        (760, 95, 880, 160, 0.86),   # Hobbit-Fantasy
-        (820, 250, 560, 170, 0.88),  # Fitzgerald-Gatsby
+        (420, 250, 540, 78, 0.72),   # AZ-AURORA
+        (540, 78, 470, 38, 0.76),    # AURORA-NSCLC
+        (560, 300, 670, 70, 0.78),   # Merck-KN189
+        (670, 70, 470, 38, 0.81),    # KN189-NSCLC
+        (720, 305, 790, 100, 0.83),  # Roche-IMvigor
+        (840, 250, 730, 168, 0.86),  # J&J-MARIPOSA
+        (420, 250, 580, 168, 0.88),  # AZ-CASPIAN
     ]
     for x1, y1, x2, y2, appear in links:
         parts.append(edge(x1, y1, x2, y2, appear, "#5b6b8c", 1.4))
