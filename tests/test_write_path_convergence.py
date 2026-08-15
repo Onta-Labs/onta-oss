@@ -391,17 +391,19 @@ def test_ingest_writer_uses_shared_insert_and_refresh():
     )
 
 
-def test_normalization_writer_uses_shared_path():
-    """normalization/execute.py mutates instance data; its inserts go through
-    insert_facts, its removals through delete_facts, and its post-write
-    housekeeping through refresh_after_write — no bespoke batched insert,
-    stats-recompute, or raw delete_triples."""
-    import infona_client.normalization.execute as norm_mod
+def _normalization_execute_src() -> str:
+    """Facade + execute_*.py siblings — the write path is split, not forked."""
+    norm = pathlib.Path(infona_client.__file__).parent / "normalization"
+    return "\n".join(p.read_text() for p in sorted(norm.glob("execute*.py")) if p.is_file())
 
-    src = inspect.getsource(norm_mod)
-    assert _calls(src, "insert_facts"), "normalization must insert via kg_writer.insert_facts"
-    assert _calls(src, "delete_facts"), "normalization must remove via kg_writer.delete_facts"
-    assert _calls(src, "refresh_after_write"), (
+
+def test_normalization_writer_uses_shared_path():
+    """normalization/execute*.py write via insert_facts / delete_facts /
+    refresh_after_write — no bespoke batched insert or raw delete_triples."""
+    src = _normalization_execute_src()
+    assert "insert_facts(" in src, "normalization must insert via kg_writer.insert_facts"
+    assert "delete_facts(" in src, "normalization must remove via kg_writer.delete_facts"
+    assert "refresh_after_write(" in src, (
         "normalization must run housekeeping via kg_writer.refresh_after_write"
     )
     assert not _calls(src, "batched_insert_triples"), (
