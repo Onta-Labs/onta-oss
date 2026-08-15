@@ -177,7 +177,8 @@ def html() -> str:
     <div class="card">
       <div class="k">COMPILED TO CYPHER · KG: TRIALS · NEO4J</div>
       <div class="cy"><span class="kw">MATCH</span> (s:<span class="sp">Sponsor</span> {{name: <span class="s">'AstraZeneca'</span>}})
-      -[:<span class="kw">runs</span>]-&gt;(t:<span class="tr">Trial</span> {{phase: <span class="s">'Phase 3'</span>}})
+      -[:<span class="kw">runs</span>]-&gt;(t:<span class="tr">Trial</span> {{phase: <span class="s">'Phase 3'</span>,
+                          status: <span class="s">'Active'</span>}})
       -[:<span class="kw">indication</span>]-&gt;(i:<span class="in">Indication</span> {{name: <span class="s">'NSCLC'</span>}})
 <span class="kw">RETURN</span> t.trial, t.status, t.enrollment</div>
     </div>
