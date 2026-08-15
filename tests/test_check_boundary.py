@@ -187,7 +187,7 @@ def test_leak_is_rejected(sandbox, relpath, content):
 
 @pytest.mark.parametrize(
     "relpath",
-    ["docs/probe.md", "tests/probe.py", "ARCHITECTURE.md", "CONTRIBUTING.md"],
+    ["docs/probe.md", "tests/probe.py", "README.md", "CONTRIBUTING.md"],
 )
 def test_no_directory_is_exempt_from_the_secret_check(sandbox, relpath):
     """docs/ and tests/ ship in the sdist; a credential there is just as public.
