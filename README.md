@@ -18,6 +18,17 @@
 </p>
 
 <p align="center">
+  <a href="docs/API.md"><img src="https://img.shields.io/badge/docs-API-brightgreen" alt="docs"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-green" alt="Apache-2.0"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.12%2B-blue" alt="Python 3.12+"></a>
+  <a href="https://github.com/astral-sh/uv"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json" alt="uv"></a>
+  <a href="https://pydantic.dev"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/pydantic/pydantic/main/docs/badge/v2.json" alt="Pydantic v2"></a>
+  <a href="docs/neo4j-local.md"><img src="https://img.shields.io/badge/Neo4j-Cypher-008CC1?logo=neo4j&logoColor=white" alt="Neo4j"></a>
+  <a href="https://www.npmjs.com/package/@infona-ai/mcp"><img src="https://img.shields.io/npm/v/@infona-ai/mcp?label=mcp" alt="npm @infona-ai/mcp"></a>
+  <a href="https://github.com/infona-ai/infona-oss/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/infona-ai/infona-oss/test.yml?branch=main&label=tests" alt="tests"></a>
+</p>
+
+<p align="center">
   <a href="https://github.com/infona-ai/infona-oss/stargazers"><img src="https://img.shields.io/github/stars/infona-ai/infona-oss?style=for-the-badge&logo=github&label=Star" alt="Star infona-oss on GitHub"></a>
 </p>
 
