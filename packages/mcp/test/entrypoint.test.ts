@@ -30,16 +30,16 @@ afterEach(() => {
  *  and resolve with the parsed response (or reject on timeout / early exit). */
 function handshake(entry: string): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
+    const env = {
+      ...process.env,
+      // Exact root-README MCP JSON: local OSS, no INFONA_API_KEY.
+      INFONA_API_URL: "http://localhost:8000",
+      INFONA_TENANT: "default",
+    };
+    delete env.INFONA_API_KEY;
     const child = spawn(process.execPath, [entry], {
       stdio: ["pipe", "pipe", "pipe"],
-      // No backend needed: MCP `initialize` is a local handshake. Provide dummy
-      // env so nothing in module init throws on a missing var.
-      env: {
-        ...process.env,
-        INFONA_API_URL: "http://localhost:1",
-        INFONA_API_KEY: "test",
-        INFONA_TENANT: "test",
-      },
+      env,
     });
     let out = "";
     let settled = false;
@@ -105,5 +105,48 @@ describe("stdio entrypoint auto-start", () => {
     expect((res.result as Record<string, unknown>) ?? {}).toMatchObject({
       serverInfo: { name: "infona" },
     });
+  });
+
+  it("exits with a one-liner when hosted URL has no key", async () => {
+    if (!existsSync(distEntry)) {
+      throw new Error(`built entry missing at ${distEntry} — run \`npm run build\` first`);
+    }
+    const emptyHome = mkdtempSync(join(tmpdir(), "infona-mcp-hosted-"));
+    try {
+      const env = {
+        ...process.env,
+        HOME: emptyHome,
+        USERPROFILE: emptyHome,
+        INFONA_API_URL: "https://api.infona.ai",
+      };
+      delete env.INFONA_API_KEY;
+      delete env.INFONA_TENANT;
+      const { code, stderr } = await new Promise<{
+        code: number | null;
+        stderr: string;
+      }>((resolve, reject) => {
+        const child = spawn(process.execPath, [distEntry], {
+          stdio: ["pipe", "pipe", "pipe"],
+          env,
+        });
+        let stderr = "";
+        child.stderr.on("data", (c) => {
+          stderr += c.toString();
+        });
+        const timer = setTimeout(() => {
+          child.kill();
+          reject(new Error("timeout: hosted-without-key process did not exit"));
+        }, 15_000);
+        child.on("exit", (code) => {
+          clearTimeout(timer);
+          resolve({ code, stderr });
+        });
+      });
+      expect(code).toBe(1);
+      expect(stderr).toMatch(/INFONA_API_KEY/);
+      expect(stderr).toMatch(/localhost:8000/);
+    } finally {
+      rmSync(emptyHome, { recursive: true, force: true });
+    }
   });
 });
