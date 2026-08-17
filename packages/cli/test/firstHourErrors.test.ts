@@ -45,7 +45,7 @@ describe("first-hour diagnoses", () => {
 
   it("3. Missing LLM key when calling /ask", () => {
     const api =
-      "Could not answer after 3 attempts. Last error: no generator produced Cypher";
+      "Could not answer after 3 attempts. Last error: No LLM API key configured.";
     const msg = mapFirstHourError({ answer: api });
     expect(msg).toContain(api);
     expect(msg).toContain(MSG_LLM_KEY);

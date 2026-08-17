@@ -44,6 +44,9 @@ fi
 if ! command -v curl >/dev/null 2>&1; then
   die "curl is required to wait for ${HEALTH_URL}"
 fi
+if ! command -v python3 >/dev/null 2>&1; then
+  die "python3 is required to parse ${HEALTH_URL} (need neo4j=true, not just HTTP 200)"
+fi
 
 log "Starting Neo4j + API (docker compose up -d --build)…"
 docker compose up -d --build
@@ -64,8 +67,15 @@ while (( SECONDS < deadline )); do
       "${HEALTH_URL}" 2>"${ERR}" || true
   )"
   [[ -z "${HTTP}" ]] && HTTP="000"
-  if [[ "${HTTP}" == "200" ]]; then
-    ok "API ready (${HEALTH_URL})"
+  if [[ "${HTTP}" == "200" ]] && python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+sys.exit(0 if d.get("neo4j") is True and d.get("status") == "healthy" else 1)
+' < "${BODY}"; then
+    ok "API ready (${HEALTH_URL}, neo4j healthy)"
     break
   fi
   err_txt="$(tr '\n' ' ' < "${ERR}" 2>/dev/null | head -c 240)"
@@ -74,17 +84,30 @@ while (( SECONDS < deadline )); do
   sleep 2
 done
 
-if [[ "${HTTP}" != "200" ]]; then
+if [[ "${HTTP}" != "200" ]] || ! python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+sys.exit(0 if d.get("neo4j") is True and d.get("status") == "healthy" else 1)
+' < "${BODY}"; then
   log "Last error: ${LAST_ERR}"
   docker compose logs --tail 40 api 2>/dev/null || true
-  die "API did not become healthy within ${WAIT_SECS}s (${HEALTH_URL})"
+  die "API/Neo4j did not become healthy within ${WAIT_SECS}s (${HEALTH_URL}; need status=healthy and neo4j=true)"
 fi
 
 "${ROOT}/scripts/oss_setup.sh"
 
+BIN="infona"
+if ! command -v infona >/dev/null 2>&1; then
+  BIN="npx @infona-ai/cli"
+  log "infona not on PATH — using ${BIN} (or: npm i -g @infona-ai/cli)"
+fi
+
 log ""
 ok "Local loop is up. Next:"
-log "  infona ingest examples/trials.csv --kg trials"
-log "  infona ask \"Which Phase 3 NSCLC trials is AstraZeneca running?\" --kg trials"
-log "  infona export --kg trials -f json -o trials.json"
+log "  ${BIN} ingest examples/trials.csv --kg trials"
+log "  ${BIN} ask \"Which Phase 3 NSCLC trials is AstraZeneca running?\" --kg trials"
+log "  ${BIN} export --kg trials -f json -o trials.json"
 log ""

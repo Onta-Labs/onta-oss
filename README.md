@@ -82,17 +82,18 @@ Not a vector index. Not "chat with your CSV." A knowledge layer you can count on
 
 ## 10-minute quickstart
 
-**Need:** Docker and an LLM key (OpenRouter is the honest default). Without the key, ingest still works — `/ask` will not.
+**Need:** Docker, Node 20+ (for the `infona` CLI), and an OpenRouter key. Schema inference and `/ask` both call an LLM — there is no key-free ingest of this CSV.
 
 ```bash
 git clone https://github.com/infona-ai/infona-oss.git && cd infona-oss
 cp .env.example .env          # set OPENROUTER_API_KEY=sk-or-...
+npm i -g @infona-ai/cli       # or use npx @infona-ai/cli in place of infona
 ./scripts/oss_up.sh           # Neo4j + API + local CLI config
 infona ingest examples/trials.csv --kg trials
 infona ask "Which Phase 3 NSCLC trials is AstraZeneca running?" --kg trials
 ```
 
-That question should return **FLAURA2**. `./scripts/oss_up.sh` is the one-shot: compose up, wait for `/health`, write `~/.infona/config.json`. After that, bare `infona` works. `infona init --local` is the same connect without starting Docker.
+That question should return **FLAURA2**. `./scripts/oss_up.sh` is the one-shot: compose up, wait until `/health` reports Neo4j up, write `~/.infona/config.json`. After that, bare `infona` works. `infona init --local` is the same connect without starting Docker.
 
 Python package (library, not the `infona` CLI — that is `@infona-ai/cli`):
 

@@ -33,8 +33,11 @@ def test_oss_up_script_mentions_compose_setup_and_health():
     assert "docker compose up -d --build" in text
     assert "oss_setup.sh" in text
     assert "/health" in text
+    assert "neo4j" in text
+    assert "healthy" in text
     assert ".env.example" in text
     assert "OPENROUTER_API_KEY" in text
+    assert "npx @infona-ai/cli" in text
 
 
 def test_oss_up_script_does_not_open_a_browser():
@@ -45,9 +48,9 @@ def test_oss_up_script_does_not_open_a_browser():
 
 def test_oss_up_script_prints_next_loop_commands():
     text = _read(OSS_UP)
-    assert "infona ingest examples/trials.csv --kg trials" in text
+    assert "ingest examples/trials.csv --kg trials" in text
     assert "AstraZeneca" in text
-    assert "infona export --kg trials" in text
+    assert "export --kg trials" in text
 
 
 def test_dockerfile_exists_and_does_not_copy_env():

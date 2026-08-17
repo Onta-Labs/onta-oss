@@ -100,8 +100,8 @@ library + API.
 git clone https://github.com/infona-ai/infona-oss.git
 cd infona-oss
 
-# Start graph DB
-docker compose up -d
+# Start graph DB only (API is a separate compose service)
+docker compose up -d neo4j
 
 # Install
 python -m venv .venv && source .venv/bin/activate

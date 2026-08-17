@@ -57,14 +57,14 @@ services:
         "--port",
         "8000",
       ]
-    # /health returns 200 even when neo4j is degraded; wait on neo4j healthy first.
+    # HTTP 200 can still mean neo4j=false (degraded). Require a healthy store.
     healthcheck:
       test:
         [
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+          "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health')); raise SystemExit(0 if d.get('neo4j') and d.get('status')=='healthy' else 1)",
         ]
       interval: 5s
       timeout: 5s

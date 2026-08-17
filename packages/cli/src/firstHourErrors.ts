@@ -121,7 +121,8 @@ function isEmptyOrUnknownKg(input: FirstHourInput): boolean {
 
 function isMissingLlmKey(input: FirstHourInput): boolean {
   const text = blob(input);
-  return /no generator produced Cypher|OPENROUTER_API_KEY|no LLM( API)? key|LLM API key|api key is (not set|missing|empty|not configured)|No LLM API key/i.test(
+  // "no generator produced Cypher" is also the always-LLM miss when a key IS set.
+  return /OPENROUTER_API_KEY|no LLM( API)? key|LLM API key|api key is (not set|missing|empty|not configured)|No LLM API key/i.test(
     text,
   );
 }
