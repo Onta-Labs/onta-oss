@@ -27,6 +27,7 @@ from infona_client.auth.api_keys import TenantContext, get_tenant
 from infona_client.graph.client import NeptuneClient
 from infona_client.graph.queries import is_valid_kg_name, require_valid_type_name
 from infona_client.research.types import _csv_safe
+from infona_client.telemetry import record_job
 
 router = APIRouter(prefix="/graphs/{tenant}/kgs")
 
@@ -169,6 +170,7 @@ async def export_kg(
 ):
     """Export KG instance data as JSON or CSV (OSS launch F10)."""
     if not is_valid_kg_name(kg_name):
+        record_job("export", source_type=format, error=422)
         raise HTTPException(status_code=422, detail=f"Invalid kg name: {kg_name!r}")
 
     if type_name:
@@ -210,6 +212,7 @@ async def export_kg(
             f"{_MAX_ROWS})."
         )
 
+    record_job("export", row_count=row_count, source_type=format)
     if format == "csv":
         body = _rows_to_csv(blocks)
         return Response(
