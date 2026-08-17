@@ -47,17 +47,22 @@ path enforces — there is deliberately no entitlement check to duplicate in OSS
 **This is mechanically enforced** (MOE-21). Run the same checks CI runs:
 
 ```bash
-bash scripts/check_boundary.sh      # static: no proprietary imports/hosts/paths/secrets
-bash scripts/check_npm_bundle.sh    # inspect published tarballs for forbidden paths
+bash scripts/check_boundary.sh                 # static: no proprietary imports/hosts/paths/secrets
+bash scripts/check_npm_bundle.sh               # inspect published tarballs for forbidden paths
+python scripts/sync_release_version.py         # fail if cli / mcp / infona-client versions drift
+python scripts/sync_release_version.py --check-published  # fail if npm/PyPI latest disagree
 ```
 
-CI runs `check_boundary.sh` on every PR (`.github/workflows/boundary.yml`).
+CI runs `check_boundary.sh` on every PR (`.github/workflows/boundary.yml`)
+and the in-repo lockstep check on every test job. A daily
+`release-lockstep.yml` run compares latest npm + PyPI.
 `.github/workflows/pypi-publish.yml` bumps **one** version, then publishes
 `@infona-ai/cli`, `@infona-ai/mcp`, and `infona-client` together. PyPI auth
 is the `PYPI_API_TOKEN` repo secret. Re-runs skip versions already on npm
 or PyPI. The job inspects npm and PyPI artifacts (`check_npm_bundle.sh`,
-`check_pypi_bundle.sh`) before any upload. A PR that adds
-`from infona.<anything>` under `infona_client/` or `packages/` fails.
+`check_pypi_bundle.sh`) and refuses to upload (or finish) if the three
+versions drifted. A PR that adds `from infona.<anything>` under
+`infona_client/` or `packages/` fails.
 
 ## Contributor License Agreement (CLA)
 
