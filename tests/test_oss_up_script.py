@@ -39,6 +39,8 @@ def test_oss_up_script_mentions_compose_setup_and_health():
     assert "OPENROUTER_API_KEY" in text
     assert "npx @infona-ai/cli" in text
     assert "port is already allocated" in text
+    assert "address already in use" in text
+    assert "tee " in text
 
 
 def test_oss_up_script_does_not_open_a_browser():
