@@ -1,0 +1,38 @@
+name: Feature request
+description: A gap in OSS ingest, ask, ontology, MCP, or CLI.
+title: "[feat] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check [docs/BOUNDARY.md](https://github.com/infona-ai/infona-oss/blob/main/docs/BOUNDARY.md)
+        first — paid web search, Explorer, billing, and managed keys live in
+        hosted Infona, not this repo.
+
+  - type: textarea
+    id: request
+    attributes:
+      label: What should exist that doesn't
+      description: The capability, not the implementation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: building
+    attributes:
+      label: What are you trying to do with this, and what data are you pointing it at?
+      description: Job to be done plus the table or graph you would load. How we decide what to build.
+      placeholder: |
+        Building a field-medical briefing agent. Pointing Infona at a public
+        trials + drugs CSV (~10k rows) and asking Phase 3 landscape questions.
+    validations:
+      required: false
+
+  - type: textarea
+    id: today
+    attributes:
+      label: What do you do today instead?
+      description: Workaround, or "blocked".
+    validations:
+      required: false
