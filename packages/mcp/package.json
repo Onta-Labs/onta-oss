@@ -1,6 +1,6 @@
 {
   "name": "@infona-ai/mcp",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "description": "Infona MCP server — expose context graph tools to AI agents",
   "type": "module",
   "main": "./dist/index.js",
