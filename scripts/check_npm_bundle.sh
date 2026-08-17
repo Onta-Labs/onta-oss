@@ -8,7 +8,7 @@
 # package.json `files` field, build outputs, or copied assets — this catches
 # them in the actual tarball.
 #
-# Run from npm-publish.yml AFTER `npm run build` so dist/ outputs are included.
+# Run from pypi-publish.yml AFTER `npm run build` so dist/ outputs are included.
 # Exits non-zero (failing the publish job) if a forbidden path is found.
 
 set -uo pipefail

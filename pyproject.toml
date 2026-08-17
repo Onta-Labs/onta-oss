@@ -76,6 +76,14 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["infona_client"]
 
+[tool.hatch.build.targets.sdist]
+include = [
+    "/infona_client",
+    "/README.md",
+    "/LICENSE",
+    "/NOTICE",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

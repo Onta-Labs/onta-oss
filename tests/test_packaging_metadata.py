@@ -1,9 +1,9 @@
-"""Packaging metadata for the public ``infona-client`` git-install path.
+"""Packaging metadata for the public ``infona-client`` PyPI package.
 
 Reads ``pyproject.toml`` only — no network, no wheel build. Guards the
-one-line ``pip install "infona-client @ git+https://github.com/infona-ai/infona-oss.git"``
-story: distribution name, requires-python, repository URL, and hatch wheel
-packages. The TS CLI owns the ``infona`` bin; this package must not claim it.
+``pip install infona-client`` story: distribution name, requires-python,
+repository URL, hatch wheel packages, and a tests-free sdist. The TS CLI
+owns the ``infona`` bin; this package must not claim it.
 """
 
 from __future__ import annotations
@@ -44,6 +44,14 @@ def test_readme_and_classifiers() -> None:
 def test_hatch_wheel_packages_include_infona_client() -> None:
     packages = _pyproject()["tool"]["hatch"]["build"]["targets"]["wheel"]["packages"]
     assert "infona_client" in packages
+
+
+def test_sdist_excludes_tests_and_eval() -> None:
+    include = _pyproject()["tool"]["hatch"]["build"]["targets"]["sdist"]["include"]
+    joined = " ".join(include)
+    assert "infona_client" in joined
+    assert "tests" not in joined
+    assert "eval_holdout" not in joined
 
 
 def test_example_bank_lives_in_package_tree() -> None:
