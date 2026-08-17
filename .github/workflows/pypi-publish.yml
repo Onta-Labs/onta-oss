@@ -1,13 +1,8 @@
 name: Publish
 
 # One version, three packages: @infona-ai/cli, @infona-ai/mcp, infona-client.
-# PyPI uses Trusted Publishing (OIDC). Register a pending publisher on
-# pypi.org before the first run:
-#   project  infona-client
-#   owner    infona-ai
-#   repo     infona-oss
-#   workflow pypi-publish.yml
-#   env      pypi
+# PyPI auth is repo secret PYPI_API_TOKEN. Re-runs are idempotent: already
+# published npm versions are skipped; PyPI skip-existing is on.
 
 on:
   push:
@@ -97,14 +92,28 @@ jobs:
       - name: Publish @infona-ai/cli
         if: steps.skip.outputs.skip != 'true'
         working-directory: packages/cli
-        run: npm publish --access public --provenance
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VER=$(node -p "require('./package.json').version")
+          if npm view "${NAME}@${VER}" version >/dev/null 2>&1; then
+            echo "${NAME}@${VER} already on npm — skipping"
+          else
+            npm publish --access public --provenance
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @infona-ai/mcp
         if: steps.skip.outputs.skip != 'true'
         working-directory: packages/mcp
-        run: npm publish --access public --provenance
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VER=$(node -p "require('./package.json').version")
+          if npm view "${NAME}@${VER}" version >/dev/null 2>&1; then
+            echo "${NAME}@${VER} already on npm — skipping"
+          else
+            npm publish --access public --provenance
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -113,3 +122,5 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true

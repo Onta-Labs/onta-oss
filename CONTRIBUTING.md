@@ -53,12 +53,11 @@ bash scripts/check_npm_bundle.sh    # inspect published tarballs for forbidden p
 
 CI runs `check_boundary.sh` on every PR (`.github/workflows/boundary.yml`).
 `.github/workflows/pypi-publish.yml` bumps **one** version, then publishes
-`@infona-ai/cli`, `@infona-ai/mcp`, and `infona-client` together. The first
-PyPI upload needs a pending Trusted Publisher on pypi.org (`infona-client`,
-workflow `pypi-publish.yml`, environment `pypi`). The job inspects npm and
-PyPI artifacts (`check_npm_bundle.sh`, `check_pypi_bundle.sh`) before any
-upload. A PR that adds `from infona.<anything>` under `infona_client/` or
-`packages/` fails.
+`@infona-ai/cli`, `@infona-ai/mcp`, and `infona-client` together. PyPI auth
+is the `PYPI_API_TOKEN` repo secret. Re-runs skip versions already on npm
+or PyPI. The job inspects npm and PyPI artifacts (`check_npm_bundle.sh`,
+`check_pypi_bundle.sh`) before any upload. A PR that adds
+`from infona.<anything>` under `infona_client/` or `packages/` fails.
 
 ## Contributor License Agreement (CLA)
 
