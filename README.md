@@ -82,45 +82,26 @@ Not a vector index. Not "chat with your CSV." A knowledge layer you can count on
 
 ## 10-minute quickstart
 
-**Need:** Docker (Neo4j) and an LLM key (OpenRouter is the honest default). Without both, install still works — graph routes will not.
+**Need:** Docker, Node 20+ (for the `infona` CLI), and an OpenRouter key. Schema inference and `/ask` both call an LLM — there is no key-free ingest of this CSV.
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+git clone https://github.com/infona-ai/infona-oss.git && cd infona-oss
 cp .env.example .env          # set OPENROUTER_API_KEY=sk-or-...
-
-docker compose up -d          # Neo4j only
-export NEO4J_URI=bolt://localhost:7687
-export NEO4J_USER=neo4j
-export NEO4J_PASSWORD=infona-dev-password
-export INFONA_GRAPH_BACKEND=neo4j
-
-python - <<'PY'
-import asyncio
-from infona_client.graph.store import get_graph_store
-async def main():
-    store = get_graph_store()
-    print(await store.bootstrap_schema())
-    await store.close()
-asyncio.run(main())
-PY
-
-set -a && source .env && set +a
-uvicorn infona_client.api.app:create_app --factory --port 8000
-```
-
-In another shell:
-
-```bash
-./scripts/oss_setup.sh        # writes ~/.infona/config.json for local open-access
+npm i -g @infona-ai/cli       # or use npx @infona-ai/cli in place of infona
+./scripts/oss_up.sh           # Neo4j + API + local CLI config
 infona ingest examples/trials.csv --kg trials
 infona ask "Which Phase 3 NSCLC trials is AstraZeneca running?" --kg trials
-infona export --kg trials -f json -o trials.json
 ```
 
-`./scripts/oss_setup.sh` (or `infona init --local`) is the one-shot local connect. After that, bare `infona` works. `--local` is a one-off flag and does not rewrite config.
+That question should return **FLAURA2**. `./scripts/oss_up.sh` is the one-shot: compose up, wait until `/health` reports Neo4j up, write `~/.infona/config.json`. After that, bare `infona` works. `infona init --local` is the same connect without starting Docker.
 
-Local Neo4j notes: [docs/neo4j-local.md](docs/neo4j-local.md). Import path is `infona_client`. Graph IRIs live under `https://graph.infona.ai/`.
+Python package (library, not the `infona` CLI — that is `@infona-ai/cli`):
+
+```bash
+pip install "infona-client @ git+https://github.com/infona-ai/infona-oss.git"
+```
+
+If something fails, the CLI should name the next command (`./scripts/oss_up.sh`, `docker compose up -d neo4j`, `OPENROUTER_API_KEY`, `infona ingest …`). Local Neo4j notes: [docs/neo4j-local.md](docs/neo4j-local.md). Import path is `infona_client`. Graph IRIs live under `https://graph.infona.ai/`.
 
 ---
 

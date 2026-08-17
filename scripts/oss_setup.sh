@@ -47,9 +47,8 @@ HTTP_HEALTH="$(
     "${API_URL}/health" 2>/dev/null || echo "000"
 )"
 if [[ "${HTTP_HEALTH}" != "200" ]]; then
-  die "Health probe failed (${API_URL}/health → HTTP ${HTTP_HEALTH}). Start the API first:
-    set -a && source .env && set +a
-    uvicorn infona_client.api.app:create_app --factory --port 8000"
+  die "Health probe failed (${API_URL}/health → HTTP ${HTTP_HEALTH}). Start the stack first:
+    ./scripts/oss_up.sh"
 fi
 ok "Health OK (${API_URL}/health)"
 
