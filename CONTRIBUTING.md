@@ -1,5 +1,8 @@
 # Contributing to Infona
 
+Please follow the [Code of Conduct](CODE_OF_CONDUCT.md). To report a
+vulnerability, see [SECURITY.md](SECURITY.md).
+
 ## What can ship here (OSS boundary — read first)
 
 `infona-oss` ships publicly: **npm** (`@infona-ai/cli`, `@infona-ai/mcp`) and
@@ -77,12 +80,13 @@ The CLA bot (`.github/workflows/cla.yml`) blocks merge until every PR
 author has signed, and records signatures in `.github/signatures/cla.json`
 on the `cla-signatures` branch. Comment `recheck` to re-run a stale check.
 
-Why a CLA on an Apache-2.0 repo: it keeps the project able to add license
-options later (commercial licensing, or a different license for a future
-version) without tracking down every past contributor. The trade in your
-favor is written into the CLA itself: anything you contribute stays
-available under Apache-2.0 as released — relicensing can never be
-retroactive — and you keep the copyright to your contribution.
+Why a CLA on an Apache-2.0 repo: inbound contributions must be
+relicensable under Apache-2.0 without a rights gap — a missing grant
+from one author can stall a release. You keep copyright. Released
+Apache-2.0 code stays Apache-2.0; relicensing is never retroactive
+([CLA.md](CLA.md) §3). We will not take your contribution into a
+proprietary fork without a separate agreement. The CLA is not a
+rights-grab for closed relicensing.
 
 ## Dev Setup
 
