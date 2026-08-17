@@ -1,0 +1,50 @@
+name: gitleaks
+
+# ONTA-285 — full-history secret scan. This repo is a monorepo carve-out;
+# HEAD-only lint (scripts/check_boundary.sh) cannot see old blobs.
+#
+# Official gitleaks-action@v3 requires GITLEAKS_LICENSE on GitHub
+# organization repos. infona-ai is an org, so this job runs the same
+# MIT-licensed gitleaks CLI (pinned) instead of the license-gated action.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GITLEAKS_VERSION: "8.30.1"
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          set -euo pipefail
+          curl -sSfL \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /tmp gitleaks
+          sudo install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      # PR gate: commits introduced by the pull request.
+      - name: Scan pull-request commits
+        if: github.event_name == 'pull_request'
+        run: |
+          gitleaks detect --source . --verbose --redact --no-banner \
+            --log-opts="${{ github.event.pull_request.base.sha }}..${{ github.sha }}"
+
+      # Full history on main (and on PRs so the allowlist is proven before merge).
+      - name: Scan full git history
+        run: |
+          gitleaks detect --source . --verbose --redact --no-banner \
+            --log-opts="--all"
