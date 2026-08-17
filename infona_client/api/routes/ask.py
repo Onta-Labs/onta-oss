@@ -22,6 +22,7 @@ from infona_client.graph.queries import kg_graph_uri, tenant_graph_uri
 from infona_client.models.query import NLQuery, NLResult
 from infona_client.nlp.pipeline import NLQueryPipeline
 from infona_client.pipeline.answer_run import record_answer_run
+from infona_client.telemetry import record_job
 
 router = APIRouter()
 
@@ -63,6 +64,7 @@ async def ask_question(
                 kg_name=body.kg_name,
                 available=len(available),
             )
+            record_job("ask", source_type="http", error=404)
             raise HTTPException(
                 status_code=404,
                 detail={
@@ -202,4 +204,10 @@ def _emit_query_executed(
         ok=ok,
         result_count=result_count,
         returned_rows=result_count > 0,
+    )
+    record_job(
+        "ask",
+        row_count=result_count,
+        source_type="http",
+        error=None if ok else "Exception",
     )
