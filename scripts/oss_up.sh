@@ -49,7 +49,18 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 log "Starting Neo4j + API (docker compose up -d --build)…"
-docker compose up -d --build
+COMPOSE_LOG="$(mktemp)"
+if ! docker compose up -d --build 2>&1 | tee "${COMPOSE_LOG}"; then
+  if grep -qiE 'port is already allocated|address already in use|bind: address already in use' "${COMPOSE_LOG}"; then
+    rm -f "${COMPOSE_LOG}"
+    die "A port this stack needs (7474 / 7687 / 8000) is already in use.
+    Stop the other Neo4j or API (docker ps / lsof -iTCP:7687 -sTCP:LISTEN), then re-run.
+    Only if an Infona API is already healthy on :8000, skip compose and run: infona init --local"
+  fi
+  rm -f "${COMPOSE_LOG}"
+  die "docker compose up failed"
+fi
+rm -f "${COMPOSE_LOG}"
 
 BODY="$(mktemp)"
 ERR="$(mktemp)"
