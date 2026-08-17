@@ -4,7 +4,12 @@
 
 `infona-oss` ships publicly: **npm** packages (`@infona-ai/cli`, `@infona-ai/mcp`)
 are published on every release; the **Python** package (`infona-client`) is
-installable from this git repo (`pip install -e .`) until a PyPI publish exists.
+installable from this git repo until a PyPI publish exists:
+
+```bash
+pip install "infona-client @ git+https://github.com/infona-ai/infona-oss.git"
+```
+
 The repo itself is public. **Public publication is a one-way door** — once code
 ships, it's in mirrors, archives, and forks within hours. Everything in this
 repo must be OSS-safe.
@@ -74,6 +79,21 @@ available under Apache-2.0 as released — relicensing can never be
 retroactive — and you keep the copyright to your contribution.
 
 ## Dev Setup
+
+### Users (library install, no clone)
+
+Until the package is on PyPI, install the published import (`infona_client`)
+straight from this repo:
+
+```bash
+pip install "infona-client @ git+https://github.com/infona-ai/infona-oss.git"
+```
+
+Same one-liner with uv: `uv pip install "infona-client @ git+https://github.com/infona-ai/infona-oss.git"`.
+The CLI remains the npm package (`@infona-ai/cli`); this wheel is the Python
+library + API.
+
+### Contributors (editable install)
 
 ```bash
 # Clone

@@ -1,13 +1,14 @@
-# Local graph store for Infona OSS.
+# Local graph store + API for Infona OSS.
 #
 # Product path: Neo4j only (ADR 0012/0013, ONTA-527). graph_backend() rejects
 # non-neo4j values — do not treat the Fuseki profile below as a usable product
 # backend.
 #
-#   docker compose up -d
-#   NEO4J_URI=bolt://localhost:7687
-#   NEO4J_USER=neo4j
-#   NEO4J_PASSWORD=infona-dev-password
+#   ./scripts/oss_up.sh            # one command: Neo4j + API + CLI config
+#   docker compose up -d --build   # containers only
+#
+# API:  http://localhost:8000
+# Bolt: bolt://localhost:7687  (NEO4J_USER=neo4j / NEO4J_PASSWORD=infona-dev-password)
 
 services:
   neo4j:
@@ -27,6 +28,48 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: infona-dev-password
+      INFONA_GRAPH_BACKEND: neo4j
+      # Compose interpolates from host/.env; Settings also reads INFONA_* prefix.
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      INFONA_OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    command:
+      [
+        "uvicorn",
+        "infona_client.api.app:create_app",
+        "--factory",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+      ]
+    # /health returns 200 even when neo4j is degraded; wait on neo4j healthy first.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
 
   # QUARANTINE ONLY (not a supported product path).
   # Residual Fuseki image for migration/QC archaeology that still speaks SPARQL

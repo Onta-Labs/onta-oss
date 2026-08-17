@@ -1,0 +1,25 @@
+# Keep secrets and host junk out of the API image build context.
+.env
+.env.*
+!.env.example
+
+.git
+.github
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.coverage
+htmlcov
+node_modules
+packages
+docs
+tests
+examples
+eval_holdout_v2
+eval_reports
+*.md
+!README.md
+!LICENSE
+!NOTICE

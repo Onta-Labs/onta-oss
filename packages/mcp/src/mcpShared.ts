@@ -74,8 +74,33 @@ void _assertSdkCoversCategories;
 // turns on one thread.
 export const DEFAULT_SESSION_ID = randomUUID();
 
+/** One-liner when a hosted URL is used without a key. Local OSS needs none. */
+export const HOSTED_KEY_REQUIRED =
+  "Hosted Infona requires INFONA_API_KEY. Local OSS uses the README MCP JSON (INFONA_API_URL=http://localhost:8000, INFONA_TENANT=default, no key).";
+
+/** Same localhost / 127.0.0.1 check the SDK uses for open-access defaults. */
+export function isLocalApiUrl(url: string | undefined | null): boolean {
+  if (!url) return false;
+  return /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:|\/|$)/i.test(url);
+}
+
+/**
+ * Local OSS (`INFONA_API_URL=http://localhost:8000`) is open-access — no key.
+ * Hosted URLs without a key fail here so tools/list + first-call errors stay
+ * one line instead of a later 401.
+ */
+export function assertClientAccess(
+  c: Pick<Client, "apiKey" | "baseUrl">,
+): void {
+  if (!c.apiKey && !isLocalApiUrl(c.baseUrl)) {
+    throw new InfonaError(HOSTED_KEY_REQUIRED);
+  }
+}
+
 export function client(): Client {
-  return new Client();
+  const c = new Client();
+  assertClientAccess(c);
+  return c;
 }
 
 export function textResult(text: string) {

@@ -13,6 +13,7 @@ import {
   resolveKg,
   withErrors,
 } from "./cliShared.js";
+import { diagnoseAskResult } from "./firstHourErrors.js";
 
 // ---------------------------------------------------------------------------
 // ask
@@ -34,12 +35,14 @@ program
         process.stdout.write(`Q: ${question}\n`);
         process.stdout.write("Generating answer...\n");
         const t0 = Date.now();
+        const kg = resolveKg(opts.kg);
         const result = await client().ask(question, {
-          kg: resolveKg(opts.kg),
+          kg,
           model: opts.model,
         });
         const roundtripMs = Date.now() - t0;
-        process.stdout.write(`\nA: ${result.answer ?? "No answer"}\n`);
+        const raw = typeof result.answer === "string" ? result.answer : "No answer";
+        process.stdout.write(`\nA: ${diagnoseAskResult(raw, kg)}\n`);
         if (opts.debug) {
           process.stdout.write(
             formatAskDebug(result, { roundtripMs }) + "\n",
