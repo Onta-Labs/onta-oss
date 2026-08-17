@@ -12,7 +12,7 @@ import { registerAgentTools } from "./mcpAgent.js";
 import { registerIngestTools } from "./mcpIngest.js";
 import { registerQueryTools } from "./mcpQuery.js";
 import { registerSchemaTools } from "./mcpSchema.js";
-import { VERSION } from "./mcpShared.js";
+import { client, VERSION } from "./mcpShared.js";
 
 export { searchHandler, grepHandler } from "./mcpQuery.js";
 export {
@@ -44,6 +44,9 @@ registerAgentTools(server);
 // below is (correctly) false there, so it calls main() explicitly. Direct
 // `npx -y @infona-ai/mcp` still auto-starts via the guard.
 export async function main(): Promise<void> {
+  // Resolve env/config now so hosted-without-key dies on stderr before stdio
+  // handshake. Localhost OSS constructs with no INFONA_API_KEY (README JSON).
+  client();
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

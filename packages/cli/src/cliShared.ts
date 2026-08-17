@@ -9,8 +9,9 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
-import { Client, InfonaError } from "./client.js";
+import { Client } from "./client.js";
 import { readConfig } from "./config.js";
+import { formatFirstHourFailure } from "./firstHourErrors.js";
 
 function pkgVersion(): string {
   try {
@@ -59,10 +60,14 @@ export async function withErrors<T>(fn: () => Promise<T>): Promise<T | void> {
   try {
     return await fn();
   } catch (err) {
-    if (err instanceof InfonaError) {
-      fail(`Error: ${err.message}`);
-    }
-    fail(`Error: ${err instanceof Error ? err.message : String(err)}`);
+    const c = client();
+    fail(
+      await formatFirstHourFailure(err, {
+        baseUrl: c.baseUrl,
+        hasApiKey: Boolean(c.apiKey),
+        kg: readConfig().defaultKg,
+      }),
+    );
   }
 }
 

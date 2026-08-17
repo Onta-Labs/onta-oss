@@ -1,8 +1,12 @@
 /** Interactive-shell core commands: ingest, ask, agent, types, kg helpers. */
 import * as readline from "node:readline";
 import { stdout } from "node:process";
-import { Client, InfonaError, type TypeCount } from "./client.js";
+import { Client, type TypeCount } from "./client.js";
 import { renderAgentResult } from "./agentRender.js";
+import {
+  diagnoseAskResult,
+  formatFirstHourFailure,
+} from "./firstHourErrors.js";
 import {
   BOLD,
   CYAN,
@@ -20,6 +24,20 @@ import {
 interface KgInfo {
   name: string;
   triple_count: number;
+}
+
+async function printMapped(
+  client: Client,
+  err: unknown,
+  kg?: string,
+): Promise<void> {
+  printError(
+    await formatFirstHourFailure(err, {
+      baseUrl: client.baseUrl,
+      hasApiKey: Boolean(client.apiKey),
+      kg,
+    }),
+  );
 }
 
 export async function fetchKg(client: Client, name: string): Promise<KgInfo | null> {
@@ -42,9 +60,7 @@ export async function selectKg(
   try {
     kgs = await client.listKgs();
   } catch (err) {
-    printError(
-      `Could not list context graphs: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    await printMapped(client, err);
     return null;
   }
 
@@ -137,8 +153,7 @@ export async function cmdIngest(
       );
     } catch (err) {
       sp.stop();
-      if (err instanceof InfonaError) printError(err.message);
-      else printError(err instanceof Error ? err.message : String(err));
+      await printMapped(client, err, kg);
     }
   }
 }
@@ -160,11 +175,10 @@ export async function cmdAsk(
       (result as { answer?: string }).answer ||
       "No answer generated.";
     stdout.write("\n");
-    stdout.write(`  ${answer}\n`);
+    stdout.write(`  ${diagnoseAskResult(answer, kg)}\n`);
     stdout.write("\n");
   } catch (err) {
-    if (err instanceof InfonaError) printError(err.message);
-    else printError(err instanceof Error ? err.message : String(err));
+    await printMapped(client, err, kg);
   }
 }
 
@@ -197,8 +211,7 @@ export async function cmdAgent(
     result = await client.agent({ message: msg, ...context });
   } catch (err) {
     sp.stop();
-    if (err instanceof InfonaError) printError(err.message);
-    else printError(err instanceof Error ? err.message : String(err));
+    await printMapped(client, err);
     return;
   }
   sp.stop();
@@ -222,8 +235,7 @@ export async function cmdAgent(
       executed = await client.agent({ confirmPlanId: planId, ...context });
     } catch (err) {
       sp2.stop();
-      if (err instanceof InfonaError) printError(err.message);
-      else printError(err instanceof Error ? err.message : String(err));
+      await printMapped(client, err, kg);
       return;
     }
     sp2.stop();
@@ -258,8 +270,7 @@ export async function cmdStatus(client: Client, kg: string): Promise<void> {
     }
     stdout.write("\n");
   } catch (err) {
-    if (err instanceof InfonaError) printError(err.message);
-    else printError(err instanceof Error ? err.message : String(err));
+    await printMapped(client, err);
   }
 }
 
@@ -282,8 +293,7 @@ export async function cmdReset(
     stdout.write(`  ${GREEN}✓${RESET} Graph cleared.\n`);
     return true;
   } catch (err) {
-    if (err instanceof InfonaError) printError(err.message);
-    else printError(err instanceof Error ? err.message : String(err));
+    await printMapped(client, err);
     return false;
   }
 }
@@ -301,8 +311,7 @@ export async function cmdTypes(
     types = await client.typeCounts(kg);
   } catch (err) {
     sp.stop();
-    if (err instanceof InfonaError) printError(err.message);
-    else printError(err instanceof Error ? err.message : String(err));
+    await printMapped(client, err);
     return;
   }
   sp.stop();
@@ -425,8 +434,7 @@ export async function cmdType(
     usage = await client.typeUsage(kg, name, { includeSystem });
   } catch (err) {
     sp.stop();
-    if (err instanceof InfonaError) printError(err.message);
-    else printError(err instanceof Error ? err.message : String(err));
+    await printMapped(client, err);
     return;
   }
   sp.stop();

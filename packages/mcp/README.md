@@ -21,6 +21,8 @@ infona-mcp
 
 ## Claude Desktop / Cursor / Claude Code
 
+Local OSS (no API key):
+
 ```json
 {
   "mcpServers": {
@@ -28,14 +30,15 @@ infona-mcp
       "command": "npx",
       "args": ["-y", "-p", "@infona-ai/mcp", "infona-mcp"],
       "env": {
-        "INFONA_API_KEY": "your-key",
-        "INFONA_API_URL": "https://api.infona.ai",
-        "INFONA_TENANT": "your-workspace-id"
+        "INFONA_API_URL": "http://localhost:8000",
+        "INFONA_TENANT": "default"
       }
     }
   }
 }
 ```
+
+Hosted Infona also needs `INFONA_API_KEY` and your workspace id in `INFONA_TENANT`.
 
 ## Tools exposed
 
@@ -69,9 +72,26 @@ The server registers **19** tools, plus **1 more** (`list_local_files`) when you
 
 ## Environment
 
-- `INFONA_API_KEY` — required
-- `INFONA_API_URL` — default `https://api.infona.ai`
-- `INFONA_TENANT` — default `demo-tenant`
+Local OSS — same JSON as the root README (no `INFONA_API_KEY`):
+
+```json
+{
+  "mcpServers": {
+    "infona": {
+      "command": "npx",
+      "args": ["-y", "-p", "@infona-ai/mcp", "infona-mcp"],
+      "env": {
+        "INFONA_API_URL": "http://localhost:8000",
+        "INFONA_TENANT": "default"
+      }
+    }
+  }
+}
+```
+
+- `INFONA_API_KEY` — required for hosted (`https://api.infona.ai`). Optional for localhost / `127.0.0.1` (open-access OSS).
+- `INFONA_API_URL` — default `https://api.infona.ai`. Local OSS: `http://localhost:8000`.
+- `INFONA_TENANT` — default `demo-tenant` on hosted, `default` on localhost.
 - `INFONA_LOCAL_FILES_DIR`: **optional, unset by default.** An absolute path to one directory (or several, joined by your platform's path separator, max 4) that the agent may LIST. Setting it registers the `list_local_files` tool; leaving it unset means that tool does not exist.
 
 Env vars are **`INFONA_*` only** — there is no `ONTA_*` (or other legacy-prefix) fallback in this package.
@@ -84,7 +104,7 @@ you name a directory, and it is scoped to exactly that directory:
 
 ```json
 "env": {
-  "INFONA_API_KEY": "your-key",
+  "INFONA_API_URL": "http://localhost:8000",
   "INFONA_LOCAL_FILES_DIR": "/Users/you/infona-data"
 }
 ```

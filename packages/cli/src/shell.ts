@@ -40,6 +40,7 @@ import {
   showCommands,
   splitArgs,
 } from "./shellUi.js";
+import { MSG_NEO4J_DOWN, mapFirstHourError } from "./firstHourErrors.js";
 
 export async function runShell(opts: {
   kg?: string;
@@ -116,11 +117,16 @@ export async function runShell(opts: {
   const health = await client.healthCheck();
   if (!health.ok) {
     printError(
-      `Could not reach ${health.url}. Is the server running?` +
-        (opts.local || isLocalhostUrl(client.baseUrl)
-          ? " (local: start the API, or re-run `infona init`)"
-          : " (or run `infona init` to reconfigure)"),
+      mapFirstHourError({
+        message: "ECONNREFUSED",
+        baseUrl: client.baseUrl,
+        hasApiKey: Boolean(client.apiKey),
+      }) ?? `Could not reach ${health.url}.`,
     );
+    return;
+  }
+  if (health.neo4j === false || health.status === "degraded") {
+    printError(MSG_NEO4J_DOWN);
     return;
   }
 

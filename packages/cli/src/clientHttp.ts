@@ -7,6 +7,7 @@ source of truth for backend URLs — RawApi and typed methods share them.
 import { isClerkUserId, readConfig, writeConfig } from "./config.js";
 import { InfonaError, envVar } from "./clientError.js";
 import type { ClientOptions } from "./clientTypes.js";
+import { mapFirstHourError } from "./firstHourErrors.js";
 
 export class ClientHttp {
   apiKey: string | undefined;
@@ -361,8 +362,13 @@ export class ClientHttp {
       if (err instanceof Error && err.name === "AbortError") {
         throw new InfonaError(`Request to ${path} timed out after ${timeoutMs}ms`);
       }
+      const raw = err instanceof Error ? err.message : String(err);
       throw new InfonaError(
-        `Network error contacting ${path}: ${err instanceof Error ? err.message : String(err)}`,
+        mapFirstHourError({
+          message: raw,
+          baseUrl: this.baseUrl,
+          hasApiKey: Boolean(this.apiKey),
+        }) ?? `Network error contacting ${path}: ${raw}`,
       );
     } finally {
       clearTimeout(timer);
@@ -378,13 +384,24 @@ export class ClientHttp {
     ok: boolean;
     requiresAuth: boolean;
     url: string;
+    neo4j?: boolean;
+    status?: string;
   }> {
     const healthUrl = `${this.baseUrl}/health`;
+    let neo4j: boolean | undefined;
+    let hstatus: string | undefined;
     try {
       const res = await fetch(healthUrl, {
         signal: AbortSignal.timeout(5000),
       });
       if (!res.ok) return { ok: false, requiresAuth: false, url: this.baseUrl };
+      try {
+        const data = (await res.json()) as { status?: unknown; neo4j?: unknown };
+        hstatus = typeof data.status === "string" ? data.status : undefined;
+        neo4j = typeof data.neo4j === "boolean" ? data.neo4j : undefined;
+      } catch {
+        // body not JSON — still treat the process as reachable
+      }
     } catch {
       return { ok: false, requiresAuth: false, url: this.baseUrl };
     }
@@ -400,9 +417,11 @@ export class ClientHttp {
         ok: true,
         requiresAuth: res.status === 401,
         url: this.baseUrl,
+        neo4j,
+        status: hstatus,
       };
     } catch {
-      return { ok: true, requiresAuth: true, url: this.baseUrl };
+      return { ok: true, requiresAuth: true, url: this.baseUrl, neo4j, status: hstatus };
     }
   }
 
@@ -439,8 +458,13 @@ export class ClientHttp {
       if (err instanceof Error && err.name === "AbortError") {
         throw new InfonaError(`Request to ${url} timed out after ${timeoutMs}ms`);
       }
+      const raw = err instanceof Error ? err.message : String(err);
       throw new InfonaError(
-        `Network error contacting ${url}: ${err instanceof Error ? err.message : String(err)}`,
+        mapFirstHourError({
+          message: raw,
+          baseUrl: this.baseUrl,
+          hasApiKey: Boolean(this.apiKey),
+        }) ?? `Network error contacting ${url}: ${raw}`,
       );
     }
     clearTimeout(timer);
@@ -464,10 +488,16 @@ export class ClientHttp {
           { status: res.status, body: text },
         );
       }
-      throw new InfonaError(`HTTP ${res.status}: ${text}`, {
-        status: res.status,
-        body: text,
-      });
+      throw new InfonaError(
+        mapFirstHourError({
+          message: `HTTP ${res.status}: ${text}`,
+          status: res.status,
+          body: text,
+          baseUrl: this.baseUrl,
+          hasApiKey: Boolean(this.apiKey),
+        }) ?? `HTTP ${res.status}: ${text}`,
+        { status: res.status, body: text },
+      );
     }
 
     // 204 No Content
