@@ -8,8 +8,16 @@ build-backend = "hatchling.build"
 name = "infona-client"
 version = "0.1.0"
 description = "Infona living context graph (OSS core)"
+readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3 :: Only",
+    "License :: OSI Approved :: Apache Software License",
+    "Framework :: FastAPI",
+]
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
@@ -44,6 +52,12 @@ dependencies = [
     # without it the raw-SPARQL route 503s in production.
     "rdflib>=7.0.0",
 ]
+
+[project.urls]
+Homepage = "https://infona.ai"
+Documentation = "https://github.com/infona-ai/infona-oss/blob/main/docs/BOUNDARY.md"
+Repository = "https://github.com/infona-ai/infona-oss"
+Issues = "https://github.com/infona-ai/infona-oss/issues"
 
 [project.optional-dependencies]
 # Alias kept so `pip install -e ".[neo4j]"` / older docs still work; neo4j is
