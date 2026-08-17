@@ -1,7 +1,7 @@
 {
   "name": "@infona-ai/mcp",
-  "version": "0.1.17",
-  "description": "Infona MCP server — expose context graph tools to AI agents",
+  "version": "0.1.19",
+  "description": "Infona MCP server \u2014 expose context graph tools to AI agents",
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
@@ -44,7 +44,7 @@
     "url": "https://github.com/infona-ai/infona-oss/issues"
   },
   "dependencies": {
-    "@infona-ai/cli": "^0.1.0",
+    "@infona-ai/cli": "0.1.19",
     "@modelcontextprotocol/sdk": "^1.0.4",
     "zod": "^3.23.8"
   },
