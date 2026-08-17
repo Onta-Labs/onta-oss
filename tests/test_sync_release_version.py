@@ -29,9 +29,11 @@ def _run(args: list[str], *, cwd: Path | None = None) -> subprocess.CompletedPro
 def test_script_reports_three_packages() -> None:
     result = _run([])
     out = result.stdout
+    assert result.returncode == 0, result.stderr + out
     assert "@infona-ai/cli=" in out
     assert "@infona-ai/mcp=" in out
     assert "infona-client=" in out
+    assert "DRIFT" not in result.stderr
 
 
 def test_set_writes_the_same_version(tmp_path: Path) -> None:
