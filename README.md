@@ -95,10 +95,10 @@ infona ask "Which Phase 3 NSCLC trials is AstraZeneca running?" --kg trials
 
 That question should return **FLAURA2**. `./scripts/oss_up.sh` is the one-shot: compose up, wait until `/health` reports Neo4j up, write `~/.infona/config.json`. After that, bare `infona` works. `infona init --local` is the same connect without starting Docker.
 
-Python package (library, not the `infona` CLI — that is `@infona-ai/cli`):
+Python package (library, not the `infona` CLI — that is `@infona-ai/cli`). Same version as the npm packages:
 
 ```bash
-pip install "infona-client @ git+https://github.com/infona-ai/infona-oss.git"
+pip install infona-client
 ```
 
 If something fails, the CLI should name the next command (`./scripts/oss_up.sh`, `docker compose up -d neo4j`, `OPENROUTER_API_KEY`, `infona ingest …`). Local Neo4j notes: [docs/neo4j-local.md](docs/neo4j-local.md). Import path is `infona_client`. Graph IRIs live under `https://graph.infona.ai/`.

@@ -2,13 +2,8 @@
 
 ## What can ship here (OSS boundary — read first)
 
-`infona-oss` ships publicly: **npm** packages (`@infona-ai/cli`, `@infona-ai/mcp`)
-are published on every release; the **Python** package (`infona-client`) is
-installable from this git repo until a PyPI publish exists:
-
-```bash
-pip install "infona-client @ git+https://github.com/infona-ai/infona-oss.git"
-```
+`infona-oss` ships publicly: **npm** (`@infona-ai/cli`, `@infona-ai/mcp`) and
+**PyPI** (`infona-client`) publish on the same release with one shared version.
 
 The repo itself is public. **Public publication is a one-way door** — once code
 ships, it's in mirrors, archives, and forks within hours. Everything in this
@@ -56,9 +51,13 @@ bash scripts/check_boundary.sh      # static: no proprietary imports/hosts/paths
 bash scripts/check_npm_bundle.sh    # inspect published tarballs for forbidden paths
 ```
 
-CI runs `check_boundary.sh` on every PR (`.github/workflows/boundary.yml`), and
-the publish workflow runs `check_npm_bundle.sh` before any `npm publish`. A PR
-that adds `from infona.<anything>` under `infona_client/` or `packages/` fails.
+CI runs `check_boundary.sh` on every PR (`.github/workflows/boundary.yml`).
+`.github/workflows/pypi-publish.yml` bumps **one** version, then publishes
+`@infona-ai/cli`, `@infona-ai/mcp`, and `infona-client` together. PyPI auth
+is the `PYPI_API_TOKEN` repo secret. Re-runs skip versions already on npm
+or PyPI. The job inspects npm and PyPI artifacts (`check_npm_bundle.sh`,
+`check_pypi_bundle.sh`) before any upload. A PR that adds
+`from infona.<anything>` under `infona_client/` or `packages/` fails.
 
 ## Contributor License Agreement (CLA)
 
@@ -82,14 +81,14 @@ retroactive — and you keep the copyright to your contribution.
 
 ### Users (library install, no clone)
 
-Until the package is on PyPI, install the published import (`infona_client`)
-straight from this repo:
+`infona-client` publishes to PyPI on the same release as `@infona-ai/cli`
+and `@infona-ai/mcp` (one shared version). Users:
 
 ```bash
-pip install "infona-client @ git+https://github.com/infona-ai/infona-oss.git"
+pip install infona-client
 ```
 
-Same one-liner with uv: `uv pip install "infona-client @ git+https://github.com/infona-ai/infona-oss.git"`.
+Same one-liner with uv: `uv pip install infona-client`.
 The CLI remains the npm package (`@infona-ai/cli`); this wheel is the Python
 library + API.
 
