@@ -1,4 +1,5 @@
 /** ``infona ontology`` / ``infona er`` — same canonical routes as Explorer/MCP. */
+import { formatErRebuild } from "./erRebuildRender.js";
 import { client, fail, program, withErrors } from "./cliShared.js";
 
 // ---------------------------------------------------------------------------
@@ -128,18 +129,7 @@ er.command("rebuild")
   .requiredOption("--kg <name>", "Context graph to rebuild")
   .action(async (opts: { kg: string }) => {
     await withErrors(async () => {
-      process.stdout.write(`Rebuilding entity resolution for ${opts.kg}…\n`);
       const report = await client().erRebuild(opts.kg);
-      const types = (report.types ?? []) as Array<Record<string, unknown>>;
-      for (const t of types) {
-        const name = String(t.type ?? "?").padEnd(16, " ");
-        process.stdout.write(
-          `  ${name} ${t.entities_before} → ${t.entities_after}` +
-            `  (−${t.fragments_absorbed} fragments across ${t.clusters_merged} clusters)\n`,
-        );
-      }
-      process.stdout.write(
-        `Done. ${report.fragments_absorbed_total ?? 0} fragments absorbed.\n`,
-      );
+      process.stdout.write(formatErRebuild(report, opts.kg));
     });
   });
