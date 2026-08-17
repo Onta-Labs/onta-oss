@@ -2,11 +2,9 @@
 #
 # OSS/proprietary boundary guardrail (MOE-21, Layer 1).
 #
-# infona-oss ships publicly: npm packages (@infona-ai/cli, @infona-ai/mcp) are
-# published on release; the Python package (infona-client) is installable from
-# this git repo until a PyPI publish exists; the repo ITSELF is public (so is
-# any future sdist, which hatchling builds from VCS-tracked files, i.e.
-# including tests/ and docs/). Public publication is a one-way door. This
+# infona-oss ships publicly: npm (@infona-ai/cli, @infona-ai/mcp) and PyPI
+# (infona-client) publish on the same release; the repo ITSELF is public.
+# Public publication is a one-way door. This
 # script mechanically enforces that nothing proprietary has leaked. It is run
 # by CI (.github/workflows/boundary.yml) on every PR + push, and locally:
 #
@@ -64,11 +62,11 @@ MARKER='boundary-ok:'
 # is a place a real leak could hide, so justify additions and keep them narrow.
 # Anchored, literal-dot prefixes.
 #
-# The two guard scripts quote host and module-path strings in order to hunt for
-# them, so they are exempt from the INFRA check only — never from the secret or
-# contact checks. They have no reason to contain a credential, and a real key
-# pasted into one would otherwise be invisible.
-ALLOW_INFRA='^scripts/check_(boundary|npm_bundle)\.sh:'
+# The bundle/boundary guards quote host and module-path strings in order to
+# hunt for them, so they are exempt from the INFRA check only — never from
+# the secret or contact checks. They have no reason to contain a credential,
+# and a real key pasted into one would otherwise be invisible.
+ALLOW_INFRA='^scripts/check_(boundary|npm_bundle|pypi_bundle)\.sh:'
 
 # The ER suite tests email normalization, so its fixtures are realistic-looking
 # free-mail addresses that no placeholder list can enumerate. Named FILES, not
