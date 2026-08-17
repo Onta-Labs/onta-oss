@@ -105,6 +105,14 @@ class PipelineAskMixin:
         st.kg_name = kg_name
         st.store = store
 
+        # ONTA-544: no-key / fixture-flag only. When a model is configured
+        # this returns None and /ask stays always-LLM Cypher.
+        from infona_client.nlp.ask_cached_plan import try_cached_plan_ask
+
+        cached = await try_cached_plan_ask(self, st)
+        if cached is not None:
+            return cached
+
         await self._ask_cypher_load_ontology(st)
         early = await self._ask_cypher_ground(st)
         if early is not None:

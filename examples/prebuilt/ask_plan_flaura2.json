@@ -1,0 +1,59 @@
+{
+  "id": "hero-az-phase3-nsclc-active",
+  "question": "Which Phase 3 NSCLC trials is AstraZeneca running?",
+  "kg": "trials",
+  "replay_label": "cached-plan replay — not live inference",
+  "explanation": "Replayed a stored Cypher plan over the prebuilt trials graph (AstraZeneca × Phase 3 × NSCLC × Active). This is not live LLM inference.",
+  "cypher": "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {tenant_id: $tenant_id, kg: $kg})\nWHERE c.name IN $type_names OR c.id IN $type_names\nMATCH (a_s:Assertion {tenant_id: $tenant_id, kg: $kg})-[:SUBJECT]->(e)\nMATCH (a_s)-[:OBJECT]->(sponsor:Entity {tenant_id: $tenant_id, kg: $kg})\nMATCH (a_s)-[:PREDICATE]->(p_s:Property {tenant_id: $tenant_id, kg: $kg})\nWHERE p_s.name = $sponsor_attr AND (\n  toLower(coalesce(sponsor.display_name, '')) = toLower($sponsor_name)\n  OR toLower(coalesce(sponsor.name, '')) = toLower($sponsor_name)\n)\nMATCH (a_i:Assertion {tenant_id: $tenant_id, kg: $kg})-[:SUBJECT]->(e)\nMATCH (a_i)-[:OBJECT]->(ind:Entity {tenant_id: $tenant_id, kg: $kg})\nMATCH (a_i)-[:PREDICATE]->(p_i:Property {tenant_id: $tenant_id, kg: $kg})\nWHERE p_i.name = $indication_attr AND (\n  toLower(coalesce(ind.display_name, '')) = toLower($indication_name)\n  OR toLower(coalesce(ind.name, '')) = toLower($indication_name)\n)\nMATCH (a_p:Assertion {tenant_id: $tenant_id, kg: $kg, subject_id: e.id})-[:PREDICATE]->(p_p:Property {tenant_id: $tenant_id, kg: $kg})\nWHERE p_p.name = $phase_key AND toString(a_p.literal_value) = $phase_value\nMATCH (a_st:Assertion {tenant_id: $tenant_id, kg: $kg, subject_id: e.id})-[:PREDICATE]->(p_st:Property {tenant_id: $tenant_id, kg: $kg})\nWHERE p_st.name = $status_key AND toString(a_st.literal_value) = $status_value\nRETURN DISTINCT e.id AS id, coalesce(e.title, e.name) AS title, e.primary_type AS primary_type\nORDER BY e.id\nLIMIT $limit",
+  "params": {
+    "type_names": ["Trial"],
+    "sponsor_attr": "sponsor",
+    "sponsor_name": "AstraZeneca",
+    "indication_attr": "indication",
+    "indication_name": "NSCLC",
+    "phase_key": "phase",
+    "phase_value": "Phase 3",
+    "status_key": "status",
+    "status_value": "Active",
+    "limit": 25
+  },
+  "steps": [
+    {
+      "template": "related_entity_name_filter",
+      "params": {
+        "type_names": ["Trial"],
+        "rel_attr": "sponsor",
+        "target_name": "AstraZeneca",
+        "limit": 50
+      }
+    },
+    {
+      "template": "related_entity_name_filter",
+      "params": {
+        "type_names": ["Trial"],
+        "rel_attr": "indication",
+        "target_name": "NSCLC",
+        "limit": 50
+      }
+    },
+    {
+      "template": "literal_values",
+      "params": {
+        "type_names": ["Trial"],
+        "prop_key": "phase",
+        "prop_value": "Phase 3",
+        "limit": 50
+      }
+    },
+    {
+      "template": "literal_values",
+      "params": {
+        "type_names": ["Trial"],
+        "prop_key": "status",
+        "prop_value": "Active",
+        "limit": 50
+      }
+    }
+  ],
+  "intersect_on": "id"
+}
