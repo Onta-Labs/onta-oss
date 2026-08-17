@@ -1,0 +1,45 @@
+# ONTA-285 — allowlists for documented false positives only.
+# Full-history `gitleaks detect --log-opts="--all"` is the gate
+# (.github/workflows/gitleaks.yml). Do not add a tree-wide tests/
+# exemption; every entry is a named fixture or a historical FP.
+
+title = "infona-oss"
+
+[extend]
+useDefault = true
+
+# Lines already excused by the OSS boundary self-test marker
+# (scripts/check_boundary.sh). Those are planted fakes.
+[[allowlists]]
+description = "boundary-ok planted fixtures (not live credentials)"
+regexTarget = "line"
+regexes = ['''boundary-ok:''']
+
+# tests/test_api_registry_byok_guard.py — detector self-tests.
+[[allowlists]]
+description = "BYOK guard planted probes (sk-or-v1-abcdef… / abcd1234efgh…)"
+regexes = [
+  '''sk-or-v1-abcdef0123456789''',
+  '''abcd1234efgh5678ijkl9012''',
+]
+
+# tests/test_api_registry_routes.py — Fernet material for the test cipher.
+# Value is base64("passphrase-for-tests"), including the historical
+# OMNIX_SECRETS_KEY rename.
+[[allowlists]]
+description = "Test-only Fernet key: base64 of passphrase-for-tests"
+regexes = ['''cGFzc3BocmFzZS1mb3ItdGVzdHM=''']
+
+# Historical cograph_client/auth/api_keys.py — generic-api-key matched
+# the `api_key` parameter next to `subject=verdict.subject`.
+[[allowlists]]
+description = "generic-api-key FP on _resolve_allowed(..., api_key, subject=)"
+regexTarget = "line"
+regexes = ['''verdict\.tenants, tenant, api_key, subject=verdict\.subject''']
+
+# Removed eval tree (#414). generic-api-key matched CSV column names.
+[[allowlists]]
+description = "eval spec *key_column values (spending_id / outlier_flag_2023)"
+condition = "AND"
+paths = ['''eval_holdout_v2/multitable_specs/medicare-part-d-pricing\.json$''']
+regexes = ['''spending_id''', '''outlier_flag_2023''']
