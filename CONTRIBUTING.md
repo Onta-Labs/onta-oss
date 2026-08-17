@@ -60,8 +60,10 @@ and the in-repo lockstep check on every test job. A daily
 `@infona-ai/cli`, `@infona-ai/mcp`, and `infona-client` together. PyPI auth
 is the `PYPI_API_TOKEN` repo secret. Re-runs skip versions already on npm
 or PyPI. The job inspects npm and PyPI artifacts (`check_npm_bundle.sh`,
-`check_pypi_bundle.sh`) and refuses to upload (or finish) if the three
-versions drifted. A PR that adds `from infona.<anything>` under
+`check_pypi_bundle.sh`) and refuses to upload if the three in-repo
+versions drifted. Registry drift after a partial publish is the daily
+`release-lockstep.yml` job, not a post-upload `/latest` poll (Warehouse
+JSON can lag the upload). A PR that adds `from infona.<anything>` under
 `infona_client/` or `packages/` fails.
 
 ## Contributor License Agreement (CLA)

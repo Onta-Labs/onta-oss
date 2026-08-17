@@ -30,7 +30,9 @@ def _run(args: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
-def _sandbox(tmp_path: Path, *, cli: str, mcp: str, py: str, pin: str) -> Path:
+def _sandbox(
+    tmp_path: Path, *, cli: str, mcp: str, py: str, pin: str | None
+) -> Path:
     dest = tmp_path / "repo"
     dest.mkdir()
     (dest / "scripts").mkdir()
@@ -40,15 +42,11 @@ def _sandbox(tmp_path: Path, *, cli: str, mcp: str, py: str, pin: str) -> Path:
     (dest / "packages" / "cli" / "package.json").write_text(
         json.dumps({"name": "@infona-ai/cli", "version": cli}) + "\n"
     )
+    mcp_pkg: dict = {"name": "@infona-ai/mcp", "version": mcp}
+    if pin is not None:
+        mcp_pkg["dependencies"] = {"@infona-ai/cli": pin}
     (dest / "packages" / "mcp" / "package.json").write_text(
-        json.dumps(
-            {
-                "name": "@infona-ai/mcp",
-                "version": mcp,
-                "dependencies": {"@infona-ai/cli": pin},
-            }
-        )
-        + "\n"
+        json.dumps(mcp_pkg) + "\n"
     )
     (dest / "pyproject.toml").write_text(
         f'[project]\nname = "infona-client"\nversion = "{py}"\n'
@@ -162,6 +160,35 @@ def test_check_published_reports_caret_pin() -> None:
             return _JsonResp(
                 {"version": "0.1.19", "dependencies": {"@infona-ai/cli": "^0.1.19"}}
             )
+        if "pypi.org" in url:
+            return _JsonResp({"info": {"version": "0.1.19"}})
+        raise AssertionError(url)
+
+    with patch.object(mod.urllib.request, "urlopen", side_effect=fake_urlopen):
+        assert mod.check_published() == 1
+
+
+def test_missing_cli_dep_is_drift(tmp_path: Path) -> None:
+    dest = _sandbox(tmp_path, cli="0.1.19", mcp="0.1.19", py="0.1.19", pin=None)
+    result = _run([], cwd=dest)
+    assert result.returncode != 0
+
+
+def test_empty_cli_pin_is_drift(tmp_path: Path) -> None:
+    dest = _sandbox(tmp_path, cli="0.1.19", mcp="0.1.19", py="0.1.19", pin="")
+    result = _run([], cwd=dest)
+    assert result.returncode != 0
+
+
+def test_check_published_missing_pin_is_drift() -> None:
+    mod = _load_script()
+
+    def fake_urlopen(req: object, timeout: int = 20) -> _JsonResp:
+        url = getattr(req, "full_url", str(req))
+        if url.endswith("/@infona-ai/cli/latest"):
+            return _JsonResp({"version": "0.1.19"})
+        if url.endswith("/@infona-ai/mcp/latest"):
+            return _JsonResp({"version": "0.1.19"})
         if "pypi.org" in url:
             return _JsonResp({"info": {"version": "0.1.19"}})
         raise AssertionError(url)

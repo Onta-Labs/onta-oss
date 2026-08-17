@@ -9,10 +9,15 @@ on:
     - cron: "17 8 * * *"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   published:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Compare latest npm and PyPI versions
         run: python3 scripts/sync_release_version.py --check-published
