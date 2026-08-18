@@ -46,6 +46,7 @@ from infona_client.resolver.er.types import (
     Scorer,
     config_for,
 )
+from infona_client.telemetry import record_job
 
 logger = structlog.stdlib.get_logger("infona.resolver.er.rebuild")
 
@@ -260,26 +261,32 @@ async def rebuild_kg(client, instance_graph: str) -> dict:
     `instance_graph` is the KG's instance graph URI (from kg_graph_uri).
     Returns a report with per-type before/after counts.
     """
-    type_uris = await _types_in_graph(client, instance_graph)
-    per_type: list[dict] = []
-    for type_uri in type_uris:
-        type_name = type_uri[len(TYPE_URI_PREFIX):].rstrip("/")
-        config = config_for(type_name)
-        if config is None:
-            continue  # not ER-enabled — skip
-        per_type.append(
-            await rebuild_type(client, instance_graph, type_name, type_uri, config)
-        )
+    try:
+        type_uris = await _types_in_graph(client, instance_graph)
+        per_type: list[dict] = []
+        for type_uri in type_uris:
+            type_name = type_uri[len(TYPE_URI_PREFIX):].rstrip("/")
+            config = config_for(type_name)
+            if config is None:
+                continue  # not ER-enabled — skip
+            per_type.append(
+                await rebuild_type(client, instance_graph, type_name, type_uri, config)
+            )
 
-    total_absorbed = sum(t["fragments_absorbed"] for t in per_type)
-    logger.info("er_rebuild_kg_complete", types=len(per_type), fragments_absorbed=total_absorbed)
-    return {
-        "types": per_type,
-        "fragments_absorbed_total": total_absorbed,
-        "merges": [m for t in per_type for m in t.get("merges") or []],
-        "conflicts": [c for t in per_type for c in t.get("conflicts") or []],
-        "unresolved": [u for t in per_type for u in t.get("unresolved") or []],
-    }
+        total_absorbed = sum(t["fragments_absorbed"] for t in per_type)
+        rows = sum(int(t.get("entities_before") or 0) for t in per_type)
+        logger.info("er_rebuild_kg_complete", types=len(per_type), fragments_absorbed=total_absorbed)
+        record_job("er rebuild", row_count=rows, source_type="http")
+        return {
+            "types": per_type,
+            "fragments_absorbed_total": total_absorbed,
+            "merges": [m for t in per_type for m in t.get("merges") or []],
+            "conflicts": [c for t in per_type for c in t.get("conflicts") or []],
+            "unresolved": [u for t in per_type for u in t.get("unresolved") or []],
+        }
+    except Exception as exc:
+        record_job("er rebuild", source_type="http", error=exc)
+        raise
 
 
 async def _entity_props(instance_graph: str, uris: list[str]) -> dict[str, dict]:

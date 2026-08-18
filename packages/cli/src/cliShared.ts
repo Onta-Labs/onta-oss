@@ -282,6 +282,10 @@ export async function reviewMapping(
 }
 
 export const program = new Command();
+program.hook("preAction", async () => {
+  const { maybePromptTelemetryConsent } = await import("./telemetry.js");
+  await maybePromptTelemetryConsent();
+});
 program
   .name("infona")
   .description("Infona Context Graph CLI")
