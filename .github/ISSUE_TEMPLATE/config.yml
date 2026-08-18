@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: What are you building?
+    url: https://github.com/infona-ai/infona-oss/discussions/new?category=show-and-tell
+    about: Share the product and the data you are pointing Infona at (Discussions).
+  - name: Question / help
+    url: https://github.com/infona-ai/infona-oss/discussions/new?category=q-a
+    about: Usage questions — not a bug or a tracked use case.
