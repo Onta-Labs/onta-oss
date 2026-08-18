@@ -26,6 +26,11 @@ from infona_client.telemetry.sanitize import (
     normalize_source_type,
     row_count_bucket,
 )
+from infona_client.telemetry.dest import (
+    DEFAULT_CAPTURE_URL,
+    DEFAULT_PROJECT_KEY,
+    wrap_posthog,
+)
 from infona_client.telemetry.send import TIMEOUT_SEC, configured_url
 
 FORBIDDEN_VALUES = (
@@ -46,6 +51,7 @@ def _isolate(monkeypatch, tmp_path):
     for key in (
         "INFONA_TELEMETRY",
         "INFONA_TELEMETRY_URL",
+        "INFONA_TELEMETRY_KEY",
         "INFONA_TELEMETRY_SINK",
         "INFONA_TELEMETRY_USE_CASE",
         "INFONA_TELEMETRY_SYNC",
@@ -274,8 +280,66 @@ def test_file_sink_writes_jsonl(monkeypatch, tmp_path):
     assert payload["row_count_bucket"] == "0"
 
 
-def test_default_has_no_shipped_url():
+def test_default_url_is_infona_oss_posthog():
+    assert configured_url() == DEFAULT_CAPTURE_URL
+    assert DEFAULT_CAPTURE_URL.startswith("https://us.i.posthog.com/")
+    assert DEFAULT_PROJECT_KEY.startswith("phc_")
+
+
+def test_url_off_disables_http(monkeypatch):
+    monkeypatch.setenv("INFONA_TELEMETRY_URL", "off")
     assert configured_url() == ""
+
+
+def test_default_http_wraps_posthog_envelope(monkeypatch):
+    monkeypatch.setenv("INFONA_TELEMETRY", "1")
+    monkeypatch.setenv("INFONA_TELEMETRY_SYNC", "1")
+    seen: list[tuple] = []
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return b"{}"
+
+    def _urlopen(req, timeout=None):
+        seen.append((req.full_url, timeout, req.data))
+        return _Resp()
+
+    monkeypatch.setattr("infona_client.telemetry.send.urlopen", _urlopen)
+    record_job("er rebuild", row_count=12, source_type="csv")
+    assert len(seen) == 1
+    url, timeout, data = seen[0]
+    assert url == DEFAULT_CAPTURE_URL
+    assert timeout == TIMEOUT_SEC
+    body = json.loads(data.decode())
+    assert body["api_key"] == DEFAULT_PROJECT_KEY
+    assert body["event"] == "job"
+    assert body["distinct_id"]
+    props = body["properties"]
+    assert props["job_type"] == "er rebuild"
+    assert props["source_type"] == "csv"
+    assert props["$process_person_profile"] is False
+    for leaked in FORBIDDEN_VALUES:
+        assert leaked not in json.dumps(body)
+
+
+def test_wrap_does_not_put_job_fields_on_the_envelope_root():
+    envelope = wrap_posthog(
+        {
+            "event": "job",
+            "install_id": "i1",
+            "job_type": "export",
+            "source_type": "json",
+        }
+    )
+    assert "job_type" not in envelope
+    assert envelope["properties"]["job_type"] == "export"
+    assert envelope["distinct_id"] == "i1"
 
 
 def test_use_case_must_be_coarse_enum(monkeypatch):

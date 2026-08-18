@@ -55,19 +55,26 @@ The first-run CLI prompt states this in the same words.
 
 ## Destination
 
-No hosted collector is bundled. Set an operator-owned HTTPS endpoint:
+When opted in, the default collector is the public **Infona-oss** PostHog
+project (write-only project token — the same class as a browser snippet key,
+not a personal or cloud secret). The HTTP body is PostHog's capture envelope
+(`api_key` + `event` + `distinct_id` + `properties`). Person profiles are
+off (`$process_person_profile: false`). `install_id` is the distinct id.
+
+Override or disable:
 
 ```bash
-export INFONA_TELEMETRY_URL=https://example.invalid/v1/job
+export INFONA_TELEMETRY_URL=https://example.invalid/v1/job   # your collector
+export INFONA_TELEMETRY_URL=off                             # no HTTP
+export INFONA_TELEMETRY_KEY=phc_your_own_project            # BYOK PostHog
 ```
 
-The client POSTs the JSON object with `Content-Type: application/json`, a
-**2 second** timeout, on a daemon thread. Failures are swallowed — telemetry
-never fails a user job.
+A non-PostHog URL receives the raw allowlisted JSON object. Hosts under
+`*.posthog.com` receive the envelope.
 
-There is **no default URL** and **no shipped platform key**. A PostHog
-capture URL plus a *public write-only project key you own* is fine (BYOK).
-Do not put a private platform secret in this repo.
+The client POSTs with `Content-Type: application/json`, a **2 second**
+timeout, on a daemon thread. Failures are swallowed — telemetry never fails
+a user job.
 
 For local inspection (tests / air-gapped):
 
@@ -129,8 +136,7 @@ GROUP BY 1, 2
 ORDER BY jobs DESC;
 ```
 
-HogQL (if you point `INFONA_TELEMETRY_URL` at a PostHog capture URL and
-map the body onto `event` + `properties`):
+HogQL (default Infona-oss project, or any PostHog capture URL):
 
 ```sql
 SELECT

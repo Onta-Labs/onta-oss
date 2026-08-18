@@ -27,9 +27,9 @@ A random `install_id` (UUID) identifies the install, not you.
 Your data, column names, file names, graph content, workspace / tenant ids,
 prompts, answers, Cypher, SPARQL, emails, API keys.
 
-No hosted URL or platform key is shipped. Point
-`INFONA_TELEMETRY_URL` at a collector you control, or use
-`INFONA_TELEMETRY_SINK=stderr` / `file` locally.
+Default collector (only when enabled) is the public Infona-oss PostHog
+project. Override with `INFONA_TELEMETRY_URL`, or set it to `off`. Local
+inspection: `INFONA_TELEMETRY_SINK=stderr` / `file`.
 
 Full contract + the internal installs / job-mix / vertical-mix query:
 [docs/TELEMETRY.md](../TELEMETRY.md).

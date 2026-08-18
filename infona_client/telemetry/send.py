@@ -7,7 +7,8 @@ Sinks (first match):
 * ``INFONA_TELEMETRY_SINK=file`` — append JSONL to ``INFONA_TELEMETRY_FILE``
   (default ``~/.infona/telemetry.jsonl``)
 * otherwise HTTPS POST to ``INFONA_TELEMETRY_URL`` (stdlib ``urllib``, 2s
-  timeout, background thread). No URL → no network.
+  timeout, background thread). Unset URL → Infona-oss PostHog capture.
+  ``INFONA_TELEMETRY_URL=off`` disables HTTP.
 
 Telemetry errors never propagate. No page-fetcher registration.
 """
@@ -22,6 +23,8 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 from urllib.error import URLError
 from urllib.request import Request, urlopen
+
+from infona_client.telemetry.dest import configured_url, uses_posthog_envelope, wrap_posthog
 
 URL_ENV = "INFONA_TELEMETRY_URL"
 SINK_ENV = "INFONA_TELEMETRY_SINK"
@@ -49,10 +52,6 @@ def reset_send() -> None:
         _inflight.clear()
 
 
-def configured_url() -> str:
-    return os.environ.get(URL_ENV, "").strip()
-
-
 def _file_path() -> Path:
     override = os.environ.get(FILE_ENV, "").strip()
     if override:
@@ -71,11 +70,19 @@ def _write_file(payload: dict[str, Any]) -> None:
         fh.write(json.dumps(payload, separators=(",", ":")) + "\n")
 
 
+def _body_for_url(url: str, payload: dict[str, Any]) -> dict[str, Any]:
+    if uses_posthog_envelope(url):
+        return wrap_posthog(payload)
+    return payload
+
+
 def _post_http(payload: dict[str, Any]) -> None:
     url = configured_url()
     if not url:
         return
-    body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    body = json.dumps(_body_for_url(url, payload), separators=(",", ":")).encode(
+        "utf-8"
+    )
     req = Request(
         url,
         data=body,
