@@ -10,7 +10,9 @@ This module evaluates two dimensions of the Infona ingestion + query pipeline:
      Are types connected in a hierarchy? Are predicates consistent?
 
   2. **Query Accuracy** — Can the system answer natural language questions correctly?
-     Does it generate valid SPARQL? Are answers factually correct against ground truth?
+     Does ``/ask`` generate valid Cypher? Are answers factually correct against
+     ground truth? We lead with trust, not text-to-Cypher: the judge scores the
+     answer, not string-match on the generated query.
 
 Architecture
 ============
@@ -20,7 +22,7 @@ The eval runs in a loop designed for iterative improvement:
     │  1. Ingest dataset(s) via CLI                                   │
     │  2. Eval ontology quality (LLM judge scores structure)          │
     │  3. LLM generates questions at 4 difficulty tiers               │
-    │  4. Execute each question via /ask endpoint                     │
+    │  4. Execute each question via /ask (always-LLM Cypher)          │
     │  5. LLM judge evaluates answers against source data             │
     │  6. Report: scores, failures, weak points                       │
     │  7. Fix gaps in pipeline → repeat from step 2                   │
@@ -28,49 +30,74 @@ The eval runs in a loop designed for iterative improvement:
 
 Usage
 =====
-Via CLI::
+Python only. ``@infona-ai/cli`` has no eval subcommand — do not invent one.
+After the API is up and a KG is ingested, call ``run_full_eval``.
+Requires ``OPENROUTER_API_KEY`` for the LLM judge (and question generation).
 
-    # Full eval: ontology quality + query accuracy
-    infona eval data/listings.csv --kg real-estate --questions 20
+Shipped example datasets: ``examples/trials.csv``, ``examples/bookstore.csv``.
 
-    # Ontology quality only (no questions)
-    infona eval --ontology-only --kg real-estate
+    import asyncio
+    from infona_client.eval import run_full_eval
 
-    # Query accuracy only (ontology already ingested)
-    infona eval --query-only data/listings.csv --kg real-estate
-
-    # Multi-domain test: ingest two datasets, check ontology reuse
-    infona eval data/listings.csv data/restaurants.csv --kg combined
-
-Via Python::
-
-    from infona_client.eval import OntologyEvaluator, QueryEvaluator, run_full_eval
-    report = await run_full_eval(
+    report = asyncio.run(run_full_eval(
         api_url="http://localhost:8000",
+        api_key="dev-key-001",
         tenant="demo-tenant",
-        kg_name="test-kg",
-        dataset_paths=["data/listings.csv"],
+        kg_name="trials",
+        dataset_paths=["examples/trials.csv"],
         num_questions=20,
-    )
+    ))
+
+Ontology quality only (skip ``/ask``)::
+
+    report = asyncio.run(run_full_eval(
+        api_url="http://localhost:8000",
+        api_key="dev-key-001",
+        tenant="demo-tenant",
+        kg_name="trials",
+        dataset_paths=["examples/trials.csv"],
+        ontology_only=True,
+    ))
+
+Query accuracy only (ontology already ingested)::
+
+    report = asyncio.run(run_full_eval(
+        api_url="http://localhost:8000",
+        api_key="dev-key-001",
+        tenant="demo-tenant",
+        kg_name="trials",
+        dataset_paths=["examples/trials.csv"],
+        query_only=True,
+    ))
+
+Multi-domain: two shipped CSVs, check ontology reuse::
+
+    report = asyncio.run(run_full_eval(
+        api_url="http://localhost:8000",
+        api_key="dev-key-001",
+        tenant="demo-tenant",
+        kg_name="combined",
+        dataset_paths=["examples/trials.csv", "examples/bookstore.csv"],
+    ))
 
 Question Difficulty Tiers
 =========================
 The LLM generates questions across 4 tiers to test increasing complexity:
 
   **Tier 1 — Count/Lookup** (basic aggregation)
-      "How many properties are there?"
-      Tests: SELECT COUNT, basic entity retrieval
+      "How many clinical trials are there?"
+      Tests: MATCH ... RETURN count(...), basic entity retrieval
 
   **Tier 2 — Filter** (WHERE clauses)
-      "How many properties have 3 or more bedrooms?"
+      "How many Phase 3 trials have enrollment over 500?"
       Tests: Comparison operators, attribute filtering
 
   **Tier 3 — Join/Relationship** (graph traversal)
-      "Which brokers have listings in Austin?"
+      "Which sponsors have trials at Dana-Farber?"
       Tests: Relationship traversal, multi-entity queries
 
   **Tier 4 — Multi-hop/Complex** (chained reasoning)
-      "What is the average price of condos listed by brokers in zip 78745?"
+      "What is the average enrollment of NSCLC trials listed by Phase 3 sponsors?"
       Tests: Multiple joins, aggregation over filtered relationships
 
 Ontology Quality Dimensions
@@ -105,7 +132,7 @@ LLM Judge Design
 ================
 The judge is a separate LLM call that receives:
   - The question asked
-  - The generated SPARQL
+  - The generated Cypher
   - The answer returned
   - A relevant slice of the source data (for ground truth derivation)
 
@@ -126,8 +153,8 @@ The eval produces a JSON report and a human-readable summary::
 
     INFONA EVAL REPORT
     ════════════════════════════════════════════════════════════
-    Dataset:      listings.csv (1000 rows)
-    KG:           real-estate
+    Dataset:      trials.csv (shipped example)
+    KG:           trials
     Model:        deepseek/deepseek-v3.2
 
     ONTOLOGY QUALITY (45/60)
@@ -147,14 +174,14 @@ The eval produces a JSON report and a human-readable summary::
     QUERY ACCURACY (16/20)
     ────────────────────────────────────────────────────────────
     Tier 1 (Count):      5/5   avg 1.2s
-    Tier 2 (Filter):     4/5   avg 2.1s  ← bedroom filter missed
-    Tier 3 (Join):       4/5   avg 3.4s  ← broker relationship failed
-    Tier 4 (Multi-hop):  3/5   avg 4.8s  ← avg price + filter + join
+    Tier 2 (Filter):     4/5   avg 2.1s  ← enrollment filter missed
+    Tier 3 (Join):       4/5   avg 3.4s  ← sponsor relationship failed
+    Tier 4 (Multi-hop):  3/5   avg 4.8s  ← avg enrollment + filter + join
 
     Failed questions:
-      Q7:  "How many 3-bed properties under $500K?"
-           Expected: 245  Got: 367  (filter not applied)
-           SPARQL: SELECT (COUNT(...)) — missing price < 500000
+      Q7:  "How many Phase 3 trials with enrollment over 500?"
+           Expected: 8  Got: 12  (filter not applied)
+           Cypher: MATCH (t:Entity) ... RETURN count(t) — missing enrollment > 500
       ...
     ════════════════════════════════════════════════════════════
 
