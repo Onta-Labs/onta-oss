@@ -4,8 +4,23 @@ on:
   push:
     branches: [main]
     paths:
-      - 'infona/api/**'
-      - 'infona/models/**'
+      - 'infona_client/api/**'
+      - 'infona_client/models/**'
+      - 'scripts/generate_api_docs.py'
+      - 'docs/openapi.json'
+      - 'docs/API.md'
+      - '.github/workflows/docs.yml'
+  pull_request:
+    paths:
+      - 'infona_client/api/**'
+      - 'infona_client/models/**'
+      - 'scripts/generate_api_docs.py'
+      - 'docs/openapi.json'
+      - 'docs/API.md'
+      - '.github/workflows/docs.yml'
+
+permissions:
+  contents: write
 
 jobs:
   docs:
@@ -32,10 +47,16 @@ jobs:
         env:
           INFONA_NEPTUNE_ENDPOINT: "http://fake:8182"
 
+      # PRs must fail on drift — do not only auto-commit on main.
+      - name: Fail if generated docs drifted
+        if: github.event_name == 'pull_request'
+        run: git diff --exit-code -- docs/openapi.json docs/API.md
+
       - name: Commit docs if changed
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/
+          git add docs/openapi.json docs/API.md
           git diff --cached --quiet || git commit -m "docs: auto-generate API reference"
-          git push || true
+          git push
