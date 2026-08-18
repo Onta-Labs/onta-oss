@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Keep @infona-ai/cli, @infona-ai/mcp, and infona-client on one version.
+"""Keep root package.json, @infona-ai/cli, @infona-ai/mcp, and infona-client on one version.
 
 Usage (repo root):
   python scripts/sync_release_version.py                   # fail if in-repo versions drift
@@ -18,6 +18,7 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+ROOT_PKG = ROOT / "package.json"
 CLI_PKG = ROOT / "packages" / "cli" / "package.json"
 MCP_PKG = ROOT / "packages" / "mcp" / "package.json"
 PYPROJECT = ROOT / "pyproject.toml"
@@ -59,6 +60,7 @@ def read_py_version() -> str:
 
 def current_versions() -> dict[str, str]:
     return {
+        "infona-oss-monorepo": read_npm_version(ROOT_PKG),
         "@infona-ai/cli": read_npm_version(CLI_PKG),
         "@infona-ai/mcp": read_npm_version(MCP_PKG),
         "infona-client": read_py_version(),
@@ -98,13 +100,14 @@ def write_py_version(version: str) -> None:
 
 def apply(version: str) -> None:
     _parse(version)
+    write_npm_version(ROOT_PKG, version)
     write_npm_version(CLI_PKG, version)
     write_npm_version(MCP_PKG, version, pin_cli=True)
     write_py_version(version)
 
 
 def check_repo() -> int:
-    """Fail if the three in-repo versions differ or mcp does not pin cli exactly."""
+    """Fail if the in-repo versions differ or mcp does not pin cli exactly."""
     versions = current_versions()
     for name, ver in versions.items():
         print(f"{name}={ver}")

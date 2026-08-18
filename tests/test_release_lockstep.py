@@ -1,4 +1,4 @@
-"""Guardrail: @infona-ai/cli, @infona-ai/mcp, and infona-client stay on one version.
+"""Guardrail: root package.json, cli, mcp, and infona-client stay on one version.
 
 The writer is scripts/sync_release_version.py. This file is the harness:
 in-repo versions + exact mcp pin must match, and --check-published must
@@ -31,7 +31,13 @@ def _run(args: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
 
 
 def _sandbox(
-    tmp_path: Path, *, cli: str, mcp: str, py: str, pin: str | None
+    tmp_path: Path,
+    *,
+    cli: str,
+    mcp: str,
+    py: str,
+    pin: str | None,
+    root: str | None = None,
 ) -> Path:
     dest = tmp_path / "repo"
     dest.mkdir()
@@ -39,6 +45,16 @@ def _sandbox(
     shutil.copy(SCRIPT, dest / "scripts" / "sync_release_version.py")
     (dest / "packages" / "cli").mkdir(parents=True)
     (dest / "packages" / "mcp").mkdir(parents=True)
+    (dest / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "infona-oss-monorepo",
+                "private": True,
+                "version": root if root is not None else cli,
+            }
+        )
+        + "\n"
+    )
     (dest / "packages" / "cli" / "package.json").write_text(
         json.dumps({"name": "@infona-ai/cli", "version": cli}) + "\n"
     )
@@ -86,12 +102,22 @@ def test_repo_packages_share_one_version() -> None:
     )
     assert result.returncode == 0, result.stderr + result.stdout
     assert "DRIFT" not in result.stderr
+    assert "infona-oss-monorepo=" in result.stdout
     assert "@infona-ai/cli=" in result.stdout
     assert "infona-client=" in result.stdout
 
 
 def test_version_mismatch_is_drift(tmp_path: Path) -> None:
     dest = _sandbox(tmp_path, cli="0.1.19", mcp="0.1.19", py="0.1.0", pin="0.1.19")
+    result = _run([], cwd=dest)
+    assert result.returncode == 1
+    assert "DRIFT" in result.stderr
+
+
+def test_root_package_json_mismatch_is_drift(tmp_path: Path) -> None:
+    dest = _sandbox(
+        tmp_path, cli="0.1.20", mcp="0.1.20", py="0.1.20", pin="0.1.20", root="0.1.0"
+    )
     result = _run([], cwd=dest)
     assert result.returncode == 1
     assert "DRIFT" in result.stderr
