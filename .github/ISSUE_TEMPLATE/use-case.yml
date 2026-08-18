@@ -1,0 +1,51 @@
+name: Show us your use case
+description: What are you building? The job and the data you are pointing Infona at.
+title: "[use case] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Installs tell us nothing. This form is how we learn **who Infona is for**.
+
+        Prefer a [Discussions → Show and tell](https://github.com/infona-ai/infona-oss/discussions/new?category=show-and-tell)
+        post if you just want to share. File this issue if you want it tracked.
+
+        Public repo — describe the **shape** of the data (domain, columns, scale),
+        not real customer rows.
+
+  - type: textarea
+    id: what-building
+    attributes:
+      label: What are you trying to do with this, and what data are you pointing it at?
+      description: >
+        Required. The product or agent you are building, the questions you need
+        answered, and the data you would ingest (domain, source, roughly how many
+        rows or types). No PHI, no private dumps.
+      placeholder: |
+        What I'm building: a vertical agent that briefs MSLs on competitive trials.
+        Data I'm pointing it at: public ClinicalTrials.gov extract + a sponsor
+        product list (~8k rows; Trial, Sponsor, Drug, Indication).
+        Questions I need to be exact: "Which Phase 3 NSCLC trials is X running?"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: path
+    attributes:
+      label: How are you calling Infona?
+      multiple: true
+      options:
+        - CLI (`infona`)
+        - MCP (`@infona-ai/mcp`)
+        - HTTP API / `infona-client`
+        - Not installed yet — evaluating
+    validations:
+      required: false
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: What would "this works" look like?
+      description: One question or loop that has to return an exact row.
+    validations:
+      required: false

@@ -5,7 +5,9 @@
 #   ./scripts/oss_up.sh
 #
 # Never opens a browser. Does not start a second-shell uvicorn.
-# OPENROUTER_API_KEY is optional at boot (graph routes work; /ask needs it).
+# OPENROUTER_API_KEY is optional at boot: the prebuilt trials graph + cached
+# ask plan work with no key (not live inference). A key is only needed to
+# ingest *your own* data.
 
 set -euo pipefail
 
@@ -31,8 +33,8 @@ if [[ ! -f "${ROOT}/.env" ]]; then
     die ".env is missing and .env.example was not found"
   fi
   cp "${ROOT}/.env.example" "${ROOT}/.env"
-  die "Created .env from .env.example. Paste OPENROUTER_API_KEY into .env and re-run:
-    ./scripts/oss_up.sh"
+  log "Created .env from .env.example (no API key needed for the prebuilt trials graph)."
+  log "Paste OPENROUTER_API_KEY later to ingest your own data."
 fi
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -110,6 +112,11 @@ fi
 
 "${ROOT}/scripts/oss_setup.sh"
 
+if [[ -x "${ROOT}/scripts/load_prebuilt_trials.sh" ]]; then
+  log "Loading prebuilt trials graph (no API key)…"
+  "${ROOT}/scripts/load_prebuilt_trials.sh" || log "prebuilt load skipped (run ./scripts/load_prebuilt_trials.sh)"
+fi
+
 BIN="infona"
 if ! command -v infona >/dev/null 2>&1; then
   BIN="npx @infona-ai/cli"
@@ -117,8 +124,10 @@ if ! command -v infona >/dev/null 2>&1; then
 fi
 
 log ""
-ok "Local loop is up. Next:"
-log "  ${BIN} ingest examples/trials.csv --kg trials"
+ok "Local loop is up. Zero-key next (cached-plan replay, not live inference):"
 log "  ${BIN} ask \"Which Phase 3 NSCLC trials is AstraZeneca running?\" --kg trials"
+log ""
+log "Bring an OPENROUTER_API_KEY to ingest your own data:"
+log "  ${BIN} ingest examples/trials.csv --kg trials"
 log "  ${BIN} export --kg trials -f json -o trials.json"
 log ""

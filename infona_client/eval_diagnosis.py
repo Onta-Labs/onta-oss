@@ -2,11 +2,12 @@
 
 Triages each failed eval question into one of three layers:
   - INGESTION: data is wrong/missing in the graph (needs reingest)
-  - ONTOLOGY: graph structure is wrong (needs SPARQL UPDATE)
-  - QUERY: SPARQL generation is wrong (needs prompt fix)
+  - ONTOLOGY: graph structure is wrong (needs ontology rewrite)
+  - QUERY: /ask Cypher generation is wrong (needs prompt fix)
 
 Three-stage pipeline per question:
-  Stage A — Graph Probe: deterministic SPARQL queries against Neptune (~200ms)
+  Stage A — Graph Probe: residual SPARQL SELECT probes against ``POST /query``
+    (quarantine; that route is 410 Gone on the Neo4j product path)
   Stage B — Pattern Matching: rules-based classification (instant)
   Stage C — LLM Diagnosis: for ambiguous cases only (~500ms)
 """

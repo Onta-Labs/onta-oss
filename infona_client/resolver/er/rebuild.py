@@ -46,6 +46,7 @@ from infona_client.resolver.er.types import (
     Scorer,
     config_for,
 )
+from infona_client.telemetry import record_job
 
 logger = structlog.stdlib.get_logger("infona.resolver.er.rebuild")
 
@@ -181,6 +182,12 @@ async def rebuild_type(
             if uri != canonical:
                 merges.append((canonical, uri))
 
+    # Winner / why / leftover field conflicts (ONTA-543). Best-effort: a
+    # missing explore read must never fail the merge itself.
+    extras = await _explain_rebuild(
+        instance_graph, clusters, entities, config, scorer
+    )
+
     # Fold each loser into its canonical through the shared rewrite primitive
     # (ADR 0007): one batched URI rewrite per (loser -> canonical). A rewrite is a
     # single semantic event, so the derived indexes re-key (cheap) rather than
@@ -228,6 +235,7 @@ async def rebuild_type(
         "entities_after": after,
         "clusters_merged": len(clusters),
         "fragments_absorbed": len(merges),
+        **extras,
     }
 
 
@@ -253,17 +261,77 @@ async def rebuild_kg(client, instance_graph: str) -> dict:
     `instance_graph` is the KG's instance graph URI (from kg_graph_uri).
     Returns a report with per-type before/after counts.
     """
-    type_uris = await _types_in_graph(client, instance_graph)
-    per_type: list[dict] = []
-    for type_uri in type_uris:
-        type_name = type_uri[len(TYPE_URI_PREFIX):].rstrip("/")
-        config = config_for(type_name)
-        if config is None:
-            continue  # not ER-enabled — skip
-        per_type.append(
-            await rebuild_type(client, instance_graph, type_name, type_uri, config)
-        )
+    try:
+        type_uris = await _types_in_graph(client, instance_graph)
+        per_type: list[dict] = []
+        for type_uri in type_uris:
+            type_name = type_uri[len(TYPE_URI_PREFIX):].rstrip("/")
+            config = config_for(type_name)
+            if config is None:
+                continue  # not ER-enabled — skip
+            per_type.append(
+                await rebuild_type(client, instance_graph, type_name, type_uri, config)
+            )
 
-    total_absorbed = sum(t["fragments_absorbed"] for t in per_type)
-    logger.info("er_rebuild_kg_complete", types=len(per_type), fragments_absorbed=total_absorbed)
-    return {"types": per_type, "fragments_absorbed_total": total_absorbed}
+        total_absorbed = sum(t["fragments_absorbed"] for t in per_type)
+        rows = sum(int(t.get("entities_before") or 0) for t in per_type)
+        logger.info("er_rebuild_kg_complete", types=len(per_type), fragments_absorbed=total_absorbed)
+        record_job("er rebuild", row_count=rows, source_type="http")
+        return {
+            "types": per_type,
+            "fragments_absorbed_total": total_absorbed,
+            "merges": [m for t in per_type for m in t.get("merges") or []],
+            "conflicts": [c for t in per_type for c in t.get("conflicts") or []],
+            "unresolved": [u for t in per_type for u in t.get("unresolved") or []],
+        }
+    except Exception as exc:
+        record_job("er rebuild", source_type="http", error=exc)
+        raise
+
+
+async def _entity_props(instance_graph: str, uris: list[str]) -> dict[str, dict]:
+    """Public properties for explain — empty dict on any read failure."""
+    from infona_client.graph.explore_store import get_entity_detail
+
+    scope = parse_kg_graph_uri(instance_graph)
+    if scope is None:
+        return {}
+    tenant_id, kg_name = scope
+    out: dict[str, dict] = {}
+    for uri in uris:
+        try:
+            detail = await get_entity_detail(
+                tenant_id=tenant_id, kg=kg_name, entity_id=uri
+            )
+        except Exception:  # noqa: BLE001 — explain is best-effort
+            continue
+        if detail is None:
+            continue
+        props = dict(detail.properties or {})
+        if detail.name:
+            props.setdefault("name", detail.name)
+        if detail.source:
+            props.setdefault("source", detail.source)
+        out[uri] = props
+    return out
+
+
+async def _explain_rebuild(instance_graph, clusters, entities, config, scorer) -> dict:
+    """Attach merge/conflict extras; never raise into the merge path."""
+    if not clusters:
+        return {"merges": [], "conflicts": [], "unresolved": []}
+    try:
+        from infona_client.resolver.er.rebuild_explain import explain_clusters
+
+        uris = [u for cluster in clusters for u in cluster]
+        props_by_uri = await _entity_props(instance_graph, uris)
+        return explain_clusters(
+            clusters,
+            entities,
+            config,
+            props_by_uri=props_by_uri,
+            scorer=scorer,
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning("er_rebuild_explain_failed", exc_info=True)
+        return {"merges": [], "conflicts": [], "unresolved": []}

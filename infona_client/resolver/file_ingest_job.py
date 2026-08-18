@@ -36,6 +36,7 @@ from infona_client.pipeline.stage_trace import (
     StageStatus,
     attach_recorder,
 )
+from infona_client.telemetry import record_job
 
 # StageStatus imported for fail path terminal stamps.
 
@@ -437,6 +438,7 @@ async def finish_file_ingest_job(
 
     _safe_trace(job, _finish)
     await job_store.update(job)
+    record_job("ingest", row_count=rows_in, source_type=job)
 
 
 async def fail_file_ingest_job(
@@ -480,6 +482,7 @@ async def fail_file_ingest_job(
 
     _safe_trace(job, _fail)
     await job_store.update(job)
+    record_job("ingest", source_type=job, error=True)
 
 
 def _default_type_name(content_type: str) -> str:

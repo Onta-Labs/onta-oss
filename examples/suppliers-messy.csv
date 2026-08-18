@@ -1,0 +1,7 @@
+record_id,record_source,observed_at,authority,supplier_name,tax_id,headquarters,credit_rating,email,phone
+ERP-1001,erp,2026-03-01T12:00:00+00:00,source_of_truth,Acme Corp,12-3456789,Austin,A,ap@acme.example,+15125550100
+CRM-4402,crm,2026-03-01T12:00:00+00:00,source_of_truth,ACME Corporation,12-3456789,Austin,BBB,ap@acme.example,
+DIR-8891,directory,2024-06-01T00:00:00+00:00,supplementary,Acme,12-3456789,San Francisco,A,ap@acme.example,
+ERP-2001,erp,2026-03-01T12:00:00+00:00,source_of_truth,Globex Inc,98-7654321,Boston,A,ap@globex.example,+16175550100
+CRM-5503,crm,2026-02-15T09:00:00+00:00,authoritative,Globex Incorporated,98-7654321,Boston,A,ap@globex.example,
+ERP-3001,erp,2026-03-01T12:00:00+00:00,source_of_truth,Initech LLC,55-1112233,Dallas,BBB,ap@initech.example,+19725550100

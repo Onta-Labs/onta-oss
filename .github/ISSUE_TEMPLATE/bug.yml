@@ -1,0 +1,64 @@
+name: Bug report
+description: Something broke — ingest, ask, MCP, CLI, or the graph.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Public repo. Use **synthetic names or public data only** — no real customer
+        rows, no PHI/PII, no private hostnames or keys. Reproduce on
+        `examples/trials.csv` or a tiny fixture when you can.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, what you got.
+      placeholder: |
+        I ran `infona ask "…" --kg trials` and expected FLAURA2.
+        Got an empty answer / traceback / wrong row.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: Minimal steps. Prefer `examples/*.csv` or a 5-row paste (synthetic / public).
+      placeholder: |
+        1. `./scripts/oss_up.sh`
+        2. `infona ingest examples/trials.csv --kg trials`
+        3. `infona ask "…" --kg trials`
+    validations:
+      required: true
+
+  - type: textarea
+    id: data-context
+    attributes:
+      label: What data were you pointing it at?
+      description: Domain and shape only (e.g. "public ClinicalTrials.gov CSV, ~2k rows"). No customer dumps.
+    validations:
+      required: false
+
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: Versions and how you are talking to the API.
+      placeholder: |
+        - infona-client / @infona-ai/cli / @infona-ai/mcp:
+        - path: CLI · MCP · HTTP
+        - Neo4j: docker compose / other
+        - OS:
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / traceback
+      description: Paste output. Strip keys and hostnames.
+      render: shell
+    validations:
+      required: false
