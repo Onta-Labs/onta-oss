@@ -1,4 +1,4 @@
-record_id,source,observed_at,authority,supplier_name,tax_id,headquarters,credit_rating,email,phone
+record_id,record_source,observed_at,authority,supplier_name,tax_id,headquarters,credit_rating,email,phone
 ERP-1001,erp,2026-03-01T12:00:00+00:00,source_of_truth,Acme Corp,12-3456789,Austin,A,ap@acme.example,+15125550100
 CRM-4402,crm,2026-03-01T12:00:00+00:00,source_of_truth,ACME Corporation,12-3456789,Austin,BBB,ap@acme.example,
 DIR-8891,directory,2024-06-01T00:00:00+00:00,supplementary,Acme,12-3456789,San Francisco,A,ap@acme.example,

@@ -114,7 +114,11 @@ def explain_merge(
 
     props = _props(props_by_uri or {}, winner)
     provenance = {
-        "source": _as_str(props.get("record_source") or props.get("source")),
+        "source": _as_str(
+            props.get("record_source")
+            or props.get("source_label")
+            or props.get("source")
+        ),
         "observed_at": _as_str(props.get("observed_at")),
         "authority": _as_str(props.get("authority")),
     }
@@ -156,7 +160,11 @@ def _claims_for_field(
             value=value,
             authority=_parse_authority(props.get("authority")),
             observed_at=_parse_ts(props.get("observed_at")),
-            source=_as_str(props.get("record_source") or props.get("source")),
+            source=_as_str(
+                props.get("record_source")
+                or props.get("source_label")
+                or props.get("source")
+            ),
         )
         existing = by_value.get(value)
         if existing is None or DEFAULT_CONFLICT_POLICY._key(claim) > DEFAULT_CONFLICT_POLICY._key(

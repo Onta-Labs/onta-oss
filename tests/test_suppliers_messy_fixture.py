@@ -107,7 +107,7 @@ async def _seed_row(row: dict[str, str]) -> str:
         for key, col in (
             ("headquarters", "headquarters"),
             ("credit_rating", "credit_rating"),
-            ("record_source", "source"),
+            ("record_source", "record_source"),
             ("authority", "authority"),
             ("observed_at", "observed_at"),
             ("tax_id", "tax_id"),
