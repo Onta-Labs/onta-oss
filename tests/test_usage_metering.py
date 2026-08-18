@@ -42,13 +42,15 @@ def _reset_usage_singletons():
     reset_usage_recorder()
 
 
-TODAY = datetime.now(timezone.utc).date()
+def _today():
+    """UTC day at call time. Import-time freeze misses a midnight UTC crossing."""
+    return datetime.now(timezone.utc).date()
 
 
 def bucket(**kw) -> UsageBucket:
     defaults = dict(
         tenant_id="test-tenant",
-        day=TODAY,
+        day=_today(),
         kg_name="",
         api_key_hint="",
         route_class="other",
@@ -68,7 +70,7 @@ async def test_store_add_increments_same_bucket():
     store = InMemoryUsageStore()
     await store.add([bucket(requests=2, duration_ms_sum=20.0)])
     await store.add([bucket(requests=3, errors=1, duration_ms_sum=5.0)])
-    rows = await store.query_range("test-tenant", TODAY, TODAY)
+    rows = await store.query_range("test-tenant", _today(), _today())
     assert len(rows) == 1
     assert rows[0].requests == 5
     assert rows[0].errors == 1
@@ -82,11 +84,11 @@ async def test_store_query_range_filters_tenant_and_days():
         [
             bucket(),
             bucket(tenant_id="other-tenant"),
-            bucket(day=TODAY - timedelta(days=40)),
+            bucket(day=_today() - timedelta(days=40)),
         ]
     )
     rows = await store.query_range(
-        "test-tenant", TODAY - timedelta(days=30), TODAY
+        "test-tenant", _today() - timedelta(days=30), _today()
     )
     assert len(rows) == 1
     assert rows[0].tenant_id == "test-tenant"
@@ -148,7 +150,7 @@ async def test_recorder_buffers_and_flushes():
     rec.observe("/graphs/t1/ask", "OPTIONS", 200, 1.0, None, tenant="t1")
 
     await rec.flush()
-    rows = await store.query_range("t1", TODAY, TODAY)
+    rows = await store.query_range("t1", _today(), _today())
     by_class = {r.route_class: r for r in rows}
     assert set(by_class) == {"ask", "kgs"}
     ask = by_class["ask"]
@@ -159,7 +161,7 @@ async def test_recorder_buffers_and_flushes():
 
     # Flushing again with an empty buffer is a no-op, not a duplicate write.
     await rec.flush()
-    rows = await store.query_range("t1", TODAY, TODAY)
+    rows = await store.query_range("t1", _today(), _today())
     assert sum(r.requests for r in rows) == 3
 
 
@@ -172,8 +174,8 @@ async def test_recorder_attributes_to_authenticated_tenant_not_path():
     # tenant's path — the record must follow the authenticated identity.
     rec.observe("/graphs/victim-tenant/jobs", "GET", 200, 10.0, "k", tenant="t1")
     await rec.flush()
-    assert await store.query_range("victim-tenant", TODAY, TODAY) == []
-    rows = await store.query_range("t1", TODAY, TODAY)
+    assert await store.query_range("victim-tenant", _today(), _today()) == []
+    rows = await store.query_range("t1", _today(), _today())
     assert len(rows) == 1 and rows[0].requests == 1
 
 
@@ -188,9 +190,9 @@ async def test_recorder_schedules_flush_when_due():
     rec.observe("/graphs/t1/ask", "POST", 200, 5.0, None, tenant="t1")
     for _ in range(5):  # let the created task run
         await asyncio.sleep(0)
-        if await store.query_range("t1", TODAY, TODAY):
+        if await store.query_range("t1", _today(), _today()):
             break
-    rows = await store.query_range("t1", TODAY, TODAY)
+    rows = await store.query_range("t1", _today(), _today())
     assert len(rows) == 1 and rows[0].requests == 1
 
 
@@ -210,10 +212,10 @@ async def test_recorder_rebuffers_on_store_failure():
     rec = UsageRecorder(store=store)
     rec.observe("/graphs/t1/ask", "POST", 200, 50.0, None, tenant="t1")
     await rec.flush()  # swallowed; increments re-buffered
-    assert await store.query_range("t1", TODAY, TODAY) == []
+    assert await store.query_range("t1", _today(), _today()) == []
     store.fail = False
     await rec.flush()
-    rows = await store.query_range("t1", TODAY, TODAY)
+    rows = await store.query_range("t1", _today(), _today())
     assert len(rows) == 1 and rows[0].requests == 1
 
 
@@ -316,7 +318,7 @@ def test_unauthenticated_pre_auth_responses_record_nothing(client):
     asyncio.run(get_usage_recorder().flush())
     rows = asyncio.run(
         get_usage_store().query_range(
-            "victim-tenant", TODAY - timedelta(days=1), TODAY
+            "victim-tenant", _today() - timedelta(days=1), _today()
         )
     )
     assert rows == []
@@ -339,7 +341,7 @@ def test_cross_tenant_path_is_403_and_records_nothing(client, auth_headers):
     store = get_usage_store()
     assert (
         asyncio.run(
-            store.query_range("other-tenant", TODAY - timedelta(days=1), TODAY)
+            store.query_range("other-tenant", _today() - timedelta(days=1), _today())
         )
         == []
     )
@@ -348,7 +350,7 @@ def test_cross_tenant_path_is_403_and_records_nothing(client, auth_headers):
     own_before_ok = sum(
         r.requests
         for r in asyncio.run(
-            store.query_range("test-tenant", TODAY - timedelta(days=1), TODAY)
+            store.query_range("test-tenant", _today() - timedelta(days=1), _today())
         )
     )
     assert (
@@ -359,7 +361,7 @@ def test_cross_tenant_path_is_403_and_records_nothing(client, auth_headers):
     own_after = sum(
         r.requests
         for r in asyncio.run(
-            store.query_range("test-tenant", TODAY - timedelta(days=1), TODAY)
+            store.query_range("test-tenant", _today() - timedelta(days=1), _today())
         )
     )
     assert own_after >= own_before_ok + 1
