@@ -181,6 +181,8 @@ def _pipe(store: MemoryGraphStore) -> tuple[NLQueryPipeline, MagicMock, list[str
         return_value={"head": {"vars": []}, "results": {"bindings": []}}
     )
     pipe = NLQueryPipeline(neptune, anthropic_key="", graph_store=store)
+    # Always-LLM path under test: a real key keeps ONTA-544 cached-plan replay off.
+    pipe._openrouter_key = "test-key"
     pipe._fetch_ontology = AsyncMock(return_value=TRIALS_ONTOLOGY)  # type: ignore[method-assign]
     llm_qs = _wire_hero_llm(pipe)
     return pipe, neptune, llm_qs
