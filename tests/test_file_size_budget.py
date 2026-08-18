@@ -72,7 +72,6 @@ OVERSIZE_ALLOWLIST: dict[str, int] = {
     "infona_client/nlp/numeric_plan_grounding.py": 793,
     "infona_client/nlp/ontology_embeddings.py": 900,
     "infona_client/nlp/ontology_mention_index.py": 972,
-    "infona_client/nlp/query_intent.py": 607,
     "infona_client/nlp/schema_valid_cypher.py": 859,
     "infona_client/normalization/inference.py": 598,
     "infona_client/pipeline/discovery_quality.py": 657,
