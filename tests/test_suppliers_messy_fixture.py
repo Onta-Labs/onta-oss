@@ -64,7 +64,7 @@ def test_fixture_is_synthetic_and_has_the_intended_mess() -> None:
     assert len(acme) == 3
     assert {r["headquarters"] for r in acme} == {"Austin", "San Francisco"}
     assert {r["credit_rating"] for r in acme} == {"A", "BBB"}
-    assert {r["source"] for r in acme} == {"erp", "crm", "directory"}
+    assert {r["record_source"] for r in acme} == {"erp", "crm", "directory"}
     assert {r["tax_id"] for r in acme} == {"12-3456789"}
 
     doc = FIXTURE_DOC.read_text(encoding="utf-8").lower()
