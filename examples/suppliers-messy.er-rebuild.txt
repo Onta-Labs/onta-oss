@@ -1,0 +1,28 @@
+Rebuilding entity resolution for suppliers…
+  Supplier         6 → 3  (−3 fragments across 2 clusters)
+
+  merge  https://graph.infona.ai/entities/Supplier/ERP-1001
+         losers:     https://graph.infona.ai/entities/Supplier/CRM-4402, https://graph.infona.ai/entities/Supplier/DIR-8891
+         reason:     signal-richest
+         score:      1.00
+         provenance: erp @ 2026-03-01T12:00:00+00:00 (source_of_truth)
+
+  merge  https://graph.infona.ai/entities/Supplier/ERP-2001
+         losers:     https://graph.infona.ai/entities/Supplier/CRM-5503
+         reason:     signal-richest
+         score:      1.00
+         provenance: erp @ 2026-03-01T12:00:00+00:00 (source_of_truth)
+
+  conflict  headquarters
+         entity:     https://graph.infona.ai/entities/Supplier/ERP-1001
+         winner:     Austin  (erp, source_of_truth, 2026-03-01T12:00:00+00:00)
+         loser:      San Francisco  (directory, supplementary, 2024-06-01T00:00:00+00:00)
+         reason:     authority
+
+  unresolved  credit_rating
+         entity:     https://graph.infona.ai/entities/Supplier/ERP-1001
+         crm: BBB @ 2026-03-01T12:00:00+00:00 (source_of_truth)
+         erp: A @ 2026-03-01T12:00:00+00:00 (source_of_truth)
+         flagged: equal-trust sources — not silently guessed
+
+Done. 3 fragments absorbed.
