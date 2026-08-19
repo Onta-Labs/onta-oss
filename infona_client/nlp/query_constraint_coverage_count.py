@@ -8,6 +8,8 @@ matches sum/total/avg and would reject argmax / top-k entity answers).
 
 from __future__ import annotations
 
+from typing import Any, Mapping
+
 from infona_client.nlp.query_constraint_coverage_types import CoverageResult
 from infona_client.nlp.query_intent import QueryIntentSketch
 
@@ -47,12 +49,18 @@ def count_vs_list_fail_closed(
 def early_template_shape_fail_closed(
     sketch: QueryIntentSketch,
     template: str | None,
+    params: Mapping[str, Any] | None = None,
 ) -> CoverageResult | None:
-    """Count-vs-list then argmax-vs-list. Single hook for the 549-line checker."""
+    """Count-vs-list, unique-grain, then argmax-vs-list. One check.py hook."""
     from infona_client.nlp.query_constraint_coverage_argmax import (
         argmax_vs_list_fail_closed,
     )
+    from infona_client.nlp.query_constraint_coverage_unique import (
+        unique_count_wrong_grain,
+    )
 
-    return count_vs_list_fail_closed(sketch, template) or argmax_vs_list_fail_closed(
-        sketch, template
+    return (
+        count_vs_list_fail_closed(sketch, template)
+        or unique_count_wrong_grain(sketch, template, params)
+        or argmax_vs_list_fail_closed(sketch, template)
     )

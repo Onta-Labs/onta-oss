@@ -39,6 +39,7 @@ _FILTERING_TEMPLATES = frozenset(
         "literal_values",
         "literal_values_count",
         "literal_argmax_by_dim",
+        "literal_distinct_count",
         "literal_compare",
         "literal_aggregate",
         "related_entity_name_filter",

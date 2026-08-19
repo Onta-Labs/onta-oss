@@ -281,6 +281,10 @@ question has **no** property/value filter; pass expanded `$type_names` \
 "which X has the highest total Y".
 - literal_values_count — same equality params; `RETURN count(DISTINCT e) AS n` \
 — how-many/count + equality. Never pair a count RETURN with template `literal_values`.
+- literal_distinct_count — how-many unique/distinct **values of a datatype \
+leaf** (`$type_names`, `$prop_key`); `RETURN count(DISTINCT val) AS n`. Not \
+`entities_of_type_count` / `count(DISTINCT e)` when the unique noun is a \
+property (vendor_code), not the scanned type.
 - literal_argmax_by_dim — group a literal `$group_key`, SUM `$prop_key`, \
 `RETURN grp AS name, total AS value ORDER BY total DESC LIMIT 1`. Use for \
 "which X has the highest/greatest/largest total/sum Y". Never set \
