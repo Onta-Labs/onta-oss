@@ -72,6 +72,9 @@ export type {
   DltSourceSpec,
   DltResourceMap,
   DltIngestRequest,
+  ConnectorTemplate,
+  ExtractSchedule,
+  ExtractScheduleWrite,
   ExtractSourceSummary,
   ExtractSourceWrite,
   // ONTA-173 — schedules: user-schedulable vs system-managed action split

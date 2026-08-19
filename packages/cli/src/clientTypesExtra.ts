@@ -328,6 +328,17 @@ export interface DltIngestRequest {
   kg?: string;
 }
 
+/** A source's recurring-read cadence (ONTA-555). An ordinary row in the shared
+ *  schedule store — see infona_client/ingestion/schedule.py. */
+export interface ExtractSchedule {
+  id: string;
+  interval_seconds?: number | null;
+  cron?: string | null;
+  enabled: boolean;
+  next_run?: string | null;
+  last_run?: string | null;
+}
+
 export interface ExtractSourceSummary {
   slug: string;
   title: string;
@@ -337,6 +348,46 @@ export interface ExtractSourceSummary {
   resources: string[];
   mapped: string[];
   kg?: string | null;
+  schedule?: ExtractSchedule | null;
+}
+
+/** Body for `PUT .../extract-sources/{slug}/schedule`. Exactly one of
+ *  `interval_seconds` / `cron`. */
+export interface ExtractScheduleWrite {
+  interval_seconds?: number;
+  cron?: string;
+  enabled?: boolean;
+}
+
+/** One connector template from `GET .../extract-sources/catalog` (ONTA-555).
+ *  Prefill for the SAME generic REST/SQL extract — never a shipped credential. */
+export interface ConnectorTemplate {
+  id: string;
+  title: string;
+  category: string;
+  kind: DltSourceKind;
+  blurb: string;
+  docs_url?: string;
+  base_url?: string | null;
+  placeholders: { key: string; label: string; example?: string; help?: string }[];
+  headers?: Record<string, string>;
+  auth: {
+    type: DltAuthType;
+    label: string;
+    help?: string;
+    api_key_header?: string | null;
+    username_label?: string | null;
+    username_default?: string | null;
+  };
+  resources: {
+    path: string;
+    label: string;
+    suggested_type: string;
+    id_field: string;
+    default: boolean;
+  }[];
+  custom: boolean;
+  note?: string;
 }
 
 export interface ExtractSourceWrite {

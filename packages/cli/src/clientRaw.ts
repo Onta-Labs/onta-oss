@@ -104,6 +104,24 @@ export class RawApi {
     });
   }
 
+  /** `GET /graphs/{tenant}/extract-sources/catalog` — connector templates. */
+  extractCatalog(init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("GET", this.client.pExtractCatalog(), init);
+  }
+
+  /** `PUT /graphs/{tenant}/extract-sources/{slug}/schedule` — set the cadence. */
+  extractSourceScheduleSet(slug: string, body: unknown, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("PUT", this.client.pExtractSourceSchedule(slug), {
+      body,
+      ...init,
+    });
+  }
+
+  /** `DELETE /graphs/{tenant}/extract-sources/{slug}/schedule` — stop recurring reads. */
+  extractSourceScheduleClear(slug: string, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("DELETE", this.client.pExtractSourceSchedule(slug), init);
+  }
+
   // -- enrich jobs --------------------------------------------------------- #
 
   /** `POST /graphs/{tenant}/enrich/jobs` — plan + run an enrichment job. */

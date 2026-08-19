@@ -45,11 +45,19 @@ from infona_client.enrichment.models import JobCategory
 # tasks never double-run a sweep). They are dispatched to
 # ``semantic/reconciler.py`` and create NO job rows (see
 # ``dispatch_scheduled_action``).
+#
+# extract (ONTA-555) re-reads a SAVED extract source (``params['extract_slug']``)
+# on a cadence: the same work ``POST /extract-sources/{slug}/run`` does, fired by
+# this runner instead of a button. It creates the ordinary file-ingest job row
+# that path already opens (category ``ingest``), so a scheduled read shows up in
+# the unified Jobs feed exactly like a manual one. Dispatched to
+# ``ingestion/saved_run.py`` — there is no second extract path.
 ScheduleAction = Literal[
     "find-merge-duplicates",
     "enrich",
     "suggest-relationships",
     "notify",
+    "extract",
     "semantic-embed-fill",
     "semantic-reconcile",
 ]
@@ -76,7 +84,7 @@ ScheduleAction = Literal[
 #: to this set (422 otherwise), and the update route refuses to modify rows
 #: whose action lies outside it (403).
 USER_SCHEDULABLE_ACTIONS: frozenset[str] = frozenset(
-    {"find-merge-duplicates", "enrich", "suggest-relationships", "notify"}
+    {"find-merge-duplicates", "enrich", "suggest-relationships", "notify", "extract"}
 )
 
 

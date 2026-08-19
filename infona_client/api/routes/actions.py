@@ -287,6 +287,9 @@ async def dispatch_scheduled_action(
     - ``suggest-relationships`` → :func:`_run_suggest` (premium recommender), or
       a terminal no-op job when no recommender is wired (mirrors the route's
       graceful degrade).
+    - ``extract`` (ONTA-555) → :func:`~infona_client.ingestion.saved_run.run_scheduled_extract`
+      — re-read a saved extract source on its cadence. Job-row-free HERE because
+      the shared run path opens the ordinary file-ingest job itself.
     - ``notify`` (ONTA-235) → :func:`_run_notify`. Snapshot the watched value(s),
       diff against the previous fire's snapshot on the row, and DELIVER a change
       payload through the registered ``DeliverySink`` ONLY when something changed;
@@ -307,6 +310,15 @@ async def dispatch_scheduled_action(
         from infona_client.semantic.reconciler import dispatch_semantic_schedule
 
         await dispatch_semantic_schedule(schedule, client=client)
+        return None
+
+    if action == "extract":
+        # Re-read a saved extract source (ONTA-555). Same handoff as the manual
+        # run route; the job row is opened inside run_dlt_ingest, so nothing is
+        # created here.
+        from infona_client.ingestion.saved_run import run_scheduled_extract
+
+        await run_scheduled_extract(schedule, neptune=client, job_store=job_store)
         return None
 
     if action == "notify":
