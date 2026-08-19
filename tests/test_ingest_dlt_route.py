@@ -79,7 +79,13 @@ def test_missing_env_secret_is_422_not_500(client, auth_headers, monkeypatch):
     monkeypatch.delenv("EXAMPLE_TOKEN", raising=False)
     resp = client.post("/graphs/test-tenant/ingest/dlt", json=BODY, headers=auth_headers)
     assert resp.status_code == 422
-    assert "EXAMPLE_TOKEN" in resp.json()["detail"]
+    detail = resp.json()["detail"]
+    assert "env:" in detail
+    # Server must not read process env (credential oracle).
+    monkeypatch.setenv("EXAMPLE_TOKEN", "leaked-platform-secret")
+    resp2 = client.post("/graphs/test-tenant/ingest/dlt", json=BODY, headers=auth_headers)
+    assert resp2.status_code == 422
+    assert "leaked-platform-secret" not in resp2.text
 
 
 def test_missing_map_is_422(client, auth_headers):

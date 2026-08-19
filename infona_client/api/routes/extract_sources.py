@@ -88,7 +88,14 @@ def _strip_inline_secrets(source: DltSourceSpec, secrets: dict[str, str]) -> Dlt
             auth = DltAuthSpec(type="none", secret_ref="dsn")
     secrets.clear()
     secrets.update(merged)
-    return source.model_copy(update={"auth": auth, "dsn": dsn, "headers": dict(source.headers)})
+    from infona_client.ingestion.models import CREDENTIAL_HEADER_NAMES
+
+    headers = {
+        k: v
+        for k, v in (source.headers or {}).items()
+        if str(k).lower() not in CREDENTIAL_HEADER_NAMES
+    }
+    return source.model_copy(update={"auth": auth, "dsn": dsn, "headers": headers})
 
 
 def _to_extract(body: CreateExtractSourceRequest) -> DltExtractSource:

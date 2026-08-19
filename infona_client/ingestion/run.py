@@ -88,6 +88,27 @@ async def run_dlt_ingest(
     if secrets is None:
         secrets = await resolve_source_secrets(spec, store_get=store_get)
 
+    # Test factories inject a local fixture; production always SSRF-guards.
+    if source_factory is None:
+        from urllib.parse import urlparse
+
+        from infona_client.ingestion.dlt_source import validate_extract_target
+        from infona_client.retrieval.safety import host_dns_blocked
+
+        validate_extract_target(spec, dsn=secrets.dsn)
+        host = None
+        if spec.kind == "rest_api" and spec.base_url:
+            host = urlparse(spec.base_url).hostname
+        elif spec.kind == "sql" and secrets.dsn:
+            host = urlparse(
+                secrets.dsn.replace("postgresql+psycopg2://", "http://")
+            ).hostname
+        if host and await host_dns_blocked(host):
+            raise DltExtractError(
+                "source host resolves to a blocked address "
+                "(loopback / private / link-local / metadata)"
+            )
+
     mapped_types = [m.type for m in body.map.values()]
     job = await open_file_ingest_job(
         job_store,

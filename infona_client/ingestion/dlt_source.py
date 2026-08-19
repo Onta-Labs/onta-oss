@@ -35,6 +35,7 @@ __all__ = [
     "extract_records",
     "lookup_resource_map",
     "require_dlt",
+    "validate_extract_target",
 ]
 
 
@@ -103,6 +104,58 @@ def _rest_auth_cfg(auth: Optional[DltAuthSpec], secrets: ResolvedSecrets) -> dic
     return None
 
 
+def _safe_resource_path(name: str) -> str:
+    """Relative path only — an absolute URL would let dlt hop to IMDS / intranet."""
+    path = (name or "").strip().lstrip("/")
+    if not path or "://" in path or path.startswith("//"):
+        raise DltExtractError(
+            "resource paths must be relative (e.g. v1/contacts), not absolute URLs"
+        )
+    return path
+
+
+def validate_extract_target(spec: DltSourceSpec, *, dsn: Optional[str] = None) -> None:
+    """SSRF pre-filter (ADR 0008). Cheap string check; DNS re-check is async."""
+    from infona_client.retrieval.safety import is_fetchable_url
+
+    if spec.kind == "rest_api":
+        if not spec.base_url or not is_fetchable_url(spec.base_url):
+            raise DltExtractError(
+                "base_url is not a fetchable http(s) URL "
+                "(loopback / private / link-local / metadata hosts are blocked)"
+            )
+        for name in spec.resources:
+            _safe_resource_path(name)
+        return
+    if spec.kind == "sql":
+        target = dsn or spec.dsn or ""
+        if target.startswith(("env:", "store:")):
+            return
+        _validate_sql_dsn(target)
+
+
+def _validate_sql_dsn(dsn: str) -> None:
+    from urllib.parse import urlparse
+
+    from infona_client.retrieval.safety import is_fetchable_url
+
+    raw = (dsn or "").strip()
+    if not raw:
+        raise DltExtractError("sql source is missing a DSN")
+    if raw.startswith("sqlite:") or ":memory:" in raw:
+        raise DltExtractError(
+            "sqlite DSNs are not accepted on the extract route "
+            "(use Postgres / MySQL, or the extra-gated test factory)"
+        )
+    parsed = urlparse(raw.replace("postgresql+psycopg2", "http").replace("postgres://", "http://").replace("mysql+pymysql://", "http://").replace("mysql://", "http://"))
+    host = parsed.hostname
+    if not host or not is_fetchable_url(f"https://{host}/"):
+        raise DltExtractError(
+            "SQL DSN host is not allowed "
+            "(loopback / private / link-local / metadata hosts are blocked)"
+        )
+
+
 def _build_dlt_source(spec: DltSourceSpec, secrets: ResolvedSecrets) -> Any:
     """Construct a dlt source object. No pipeline, no destination."""
     _import_dlt()
@@ -111,11 +164,11 @@ def _build_dlt_source(spec: DltSourceSpec, secrets: ResolvedSecrets) -> Any:
 
         if not spec.base_url:
             raise DltExtractError("rest_api source requires base_url")
+        validate_extract_target(spec)
         client_cfg: dict[str, Any] = {
             "base_url": spec.base_url,
-            # Follow Link headers / JSON ``next`` so a 2-page CRM dump is not
-            # truncated to page 1. ``auto`` is dlt's detector; no destination.
-            "paginator": "auto",
+            # First page only. Auto-pagination follows attacker-controlled
+            # Link/next hops (SSRF). Extra-gated tests use their own factory.
         }
         if spec.headers:
             client_cfg["headers"] = dict(spec.headers)
@@ -125,10 +178,7 @@ def _build_dlt_source(spec: DltSourceSpec, secrets: ResolvedSecrets) -> Any:
         resources = [
             {
                 "name": name,
-                "endpoint": {
-                    "path": name.lstrip("/"),
-                    "paginator": "auto",
-                },
+                "endpoint": {"path": _safe_resource_path(name)},
             }
             for name in spec.resources
         ]
@@ -147,6 +197,7 @@ def _build_dlt_source(spec: DltSourceSpec, secrets: ResolvedSecrets) -> Any:
                 "sql source is missing a DSN. Set source.dsn to env:YOUR_DSN "
                 "or paste the connection string into the secret store."
             )
+        validate_extract_target(spec, dsn=dsn)
         kwargs: dict[str, Any] = {"credentials": dsn}
         tables = list(spec.resources)
         try:
@@ -154,8 +205,11 @@ def _build_dlt_source(spec: DltSourceSpec, secrets: ResolvedSecrets) -> Any:
         except TypeError:
             try:
                 return sql_database(**kwargs, include_tables=tables)
-            except TypeError:
-                return sql_database(credentials=dsn)
+            except TypeError as exc:
+                raise DltExtractError(
+                    "dlt sql_database does not accept table_names/include_tables; "
+                    "refusing an unfiltered database reflect"
+                ) from exc
 
     raise DltExtractError(f"unknown source kind: {spec.kind}")
 
@@ -252,8 +306,9 @@ def lookup_resource_map(resource_name: str, mapping: dict[str, Any]) -> Any | No
 
 
 def _public_extract_error(exc: BaseException) -> str:
-    """Actionable, secret-free message. Never dump a stack or a DSN."""
-    text = str(exc) or type(exc).__name__
+    """Actionable, secret-free message. Never forward str(exc) (DSNs leak)."""
+    name = type(exc).__name__
+    text = str(exc) or name
     lowered = text.lower()
     if "401" in text or "unauthorized" in lowered:
         return (
@@ -264,10 +319,4 @@ def _public_extract_error(exc: BaseException) -> str:
         return "upstream 403 forbidden — the credential is valid but not allowed for this resource."
     if "404" in text:
         return "upstream 404 — check source.base_url and resource paths / table names."
-    # Strip anything that looks like a URL-with-password or bearer token.
-    for needle in ("password=", "Bearer ", "postgresql://", "mysql://"):
-        if needle.lower() in lowered:
-            return f"extract failed ({type(exc).__name__}). Check the source config and credential."
-    if len(text) > 280:
-        text = text[:277] + "..."
-    return f"extract failed: {text}"
+    return f"extract failed ({name}). Check the source config and credential."

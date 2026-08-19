@@ -218,7 +218,16 @@ async def test_sql_sqlite_extract_then_one_refresh():
                 "limit": 1000,
             }
         )
-        extracted = extract_records(spec, secrets=ResolvedSecrets(dsn=dsn))
+        def _sql_factory(_s, _sec):
+            from dlt.sources.sql_database import sql_database
+
+            return sql_database(credentials=dsn, table_names=["contacts"])
+
+        extracted = extract_records(
+            spec,
+            secrets=ResolvedSecrets(dsn=dsn),
+            source_factory=_sql_factory,
+        )
         assert len(extracted) == 1
         ids = {row["id"] for row in extracted[0].rows}
         assert ids == ALL_IDS, extracted[0].rows
@@ -230,7 +239,9 @@ async def test_sql_sqlite_extract_then_one_refresh():
             kg="crm",
         )
         result, captured, mock_refresh = await _handoff(
-            body, secrets=ResolvedSecrets(dsn=dsn)
+            body,
+            secrets=ResolvedSecrets(dsn=dsn),
+            source_factory=_sql_factory,
         )
         assert result.rows_in == 3
         assert {row["id"] for row in captured} == ALL_IDS
