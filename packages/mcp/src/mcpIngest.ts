@@ -255,7 +255,7 @@ function isDltExtraMissing(err: unknown): boolean {
 }
 
 
-/** ONTA-553 / COG-128: thin over SDK ``ingestDlt`` (POST /ingest/dlt). */
+/** ONTA-553 / COG-128: thin over SDK ``ingestDlt``. */
 export async function ingestDltHandler(
   {
     source,
