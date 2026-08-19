@@ -37,6 +37,15 @@ description = "generic-api-key FP on _resolve_allowed(..., api_key, subject=)"
 regexTarget = "line"
 regexes = ['''verdict\.tenants, tenant, api_key, subject=verdict\.subject''']
 
+# Public write-only PostHog *project* token for the Infona-oss capture
+# default (docs/TELEMETRY.md). Same class as a browser snippet key — not a
+# personal or cloud secret. Operators override with INFONA_TELEMETRY_KEY.
+[[allowlists]]
+description = "OSS default PostHog project write key (client-side capture)"
+condition = "AND"
+paths = ['''infona_client/telemetry/dest\.py$''']
+regexes = ['''DEFAULT_PROJECT_KEY''']
+
 # Removed eval tree (#414). generic-api-key matched CSV column names.
 [[allowlists]]
 description = "eval spec *key_column values (spending_id / outlier_flag_2023)"
