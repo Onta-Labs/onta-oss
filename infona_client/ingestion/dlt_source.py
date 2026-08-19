@@ -165,10 +165,11 @@ def _build_dlt_source(spec: DltSourceSpec, secrets: ResolvedSecrets) -> Any:
         if not spec.base_url:
             raise DltExtractError("rest_api source requires base_url")
         validate_extract_target(spec)
+        # Pin single_page. dlt's default is auto-detect (HeaderLink / JSON next),
+        # which follows attacker-controlled hops off base_url (SSRF).
         client_cfg: dict[str, Any] = {
             "base_url": spec.base_url,
-            # First page only. Auto-pagination follows attacker-controlled
-            # Link/next hops (SSRF). Extra-gated tests use their own factory.
+            "paginator": "single_page",
         }
         if spec.headers:
             client_cfg["headers"] = dict(spec.headers)
@@ -178,7 +179,10 @@ def _build_dlt_source(spec: DltSourceSpec, secrets: ResolvedSecrets) -> Any:
         resources = [
             {
                 "name": name,
-                "endpoint": {"path": _safe_resource_path(name)},
+                "endpoint": {
+                    "path": _safe_resource_path(name),
+                    "paginator": "single_page",
+                },
             }
             for name in spec.resources
         ]

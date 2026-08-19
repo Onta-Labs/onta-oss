@@ -246,3 +246,4 @@ def test_wrapper_module_does_not_configure_a_destination():
     assert "dlt.destinations" not in text
     assert "destination=" not in text
     assert "dlt.pipeline" not in text
+    assert '"paginator": "single_page"' in text
