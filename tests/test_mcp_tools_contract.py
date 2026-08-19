@@ -244,3 +244,48 @@ def test_mcp_list_jobs_enum_matches_backend_job_category():
     # Explicit: discovery is present on both sides (the regression this guards).
     assert "discovery" in backend
     assert "discovery" in _mcp_list_jobs_categories()
+
+
+# --- ingest_dlt (ONTA-553 / COG-128) ---------------------------------------- #
+
+
+def test_mcp_ingest_dlt_rides_the_canonical_sdk_method():
+    """Interface convergence: the MCP `ingest_dlt` tool must POST the frozen
+    ``{source, map, kg}`` body through the SDK's ``ingestDlt`` (the one
+    ``POST /graphs/{tenant}/ingest/dlt`` route the CLI and Explorer ride) —
+    not a hand-rolled fetch. Asserted from the TS source so it holds with no
+    npm build in CI."""
+    src = _mcp_src()
+    assert "ingest_dlt" in src, (
+        "the ingest_dlt tool must be registered"
+    )
+    assert "ingestDlt(" in src, (
+        "the ingest_dlt tool must call the SDK's ingestDlt pass-through"
+    )
+    # The SDK owns the route path — do not hard-code it in the tool.
+    assert "/ingest/dlt" not in src, (
+        "the MCP tool must not hard-code the route path — the SDK owns it"
+    )
+    assert "infona-client[dlt]" in src, (
+        "a missing extra must tell the caller to pip install infona-client[dlt]"
+    )
+
+
+def test_ingest_dlt_tool_target_exists(client, auth_headers):
+    """ingest_dlt → POST /ingest/dlt is mounted (same route the SDK hits)."""
+    resp = client.post(
+        f"/graphs/{TENANT}/ingest/dlt",
+        json={
+            "source": {
+                "kind": "rest_api",
+                "base_url": "https://api.example.com",
+                "resources": ["v1/contacts"],
+            },
+            "map": {"v1/contacts": {"type": "Contact", "id_field": "id"}},
+            "kg": "crm",
+        },
+        headers=auth_headers,
+    )
+    # Mounted + dispatched: 503 (extra missing) or 502 (extract fail), never 404.
+    assert resp.status_code != 404
+    assert resp.status_code != 405

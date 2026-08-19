@@ -111,14 +111,25 @@ def _build_dlt_source(spec: DltSourceSpec, secrets: ResolvedSecrets) -> Any:
 
         if not spec.base_url:
             raise DltExtractError("rest_api source requires base_url")
-        client_cfg: dict[str, Any] = {"base_url": spec.base_url}
+        client_cfg: dict[str, Any] = {
+            "base_url": spec.base_url,
+            # Follow Link headers / JSON ``next`` so a 2-page CRM dump is not
+            # truncated to page 1. ``auto`` is dlt's detector; no destination.
+            "paginator": "auto",
+        }
         if spec.headers:
             client_cfg["headers"] = dict(spec.headers)
         auth_cfg = _rest_auth_cfg(spec.auth, secrets)
         if auth_cfg:
             client_cfg["auth"] = auth_cfg
         resources = [
-            {"name": name, "endpoint": {"path": name.lstrip("/")}}
+            {
+                "name": name,
+                "endpoint": {
+                    "path": name.lstrip("/"),
+                    "paginator": "auto",
+                },
+            }
             for name in spec.resources
         ]
         return rest_api_source({"client": client_cfg, "resources": resources})
@@ -136,10 +147,15 @@ def _build_dlt_source(spec: DltSourceSpec, secrets: ResolvedSecrets) -> Any:
                 "sql source is missing a DSN. Set source.dsn to env:YOUR_DSN "
                 "or paste the connection string into the secret store."
             )
+        kwargs: dict[str, Any] = {"credentials": dsn}
+        tables = list(spec.resources)
         try:
-            return sql_database(credentials=dsn, table_names=list(spec.resources))
+            return sql_database(**kwargs, table_names=tables)
         except TypeError:
-            return sql_database(credentials=dsn, table_names=list(spec.resources))
+            try:
+                return sql_database(**kwargs, include_tables=tables)
+            except TypeError:
+                return sql_database(credentials=dsn)
 
     raise DltExtractError(f"unknown source kind: {spec.kind}")
 
