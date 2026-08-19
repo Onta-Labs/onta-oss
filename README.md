@@ -153,7 +153,7 @@ SQL is the same shape with `"kind": "sql"` and `"dsn": "env:EXAMPLE_DSN"`. Hoste
 }
 ```
 
-`ask`, `search`, `agent`, `ingest_csv`, `export_kg`, ontology, jobs — same backend the CLI hits. [packages/mcp/README.md](packages/mcp/README.md).
+`ask`, `search`, `agent`, `ingest_csv`, `ingest_dlt`, `export_kg`, ontology, jobs — same backend the CLI hits. [packages/mcp/README.md](packages/mcp/README.md).
 
 ---
 

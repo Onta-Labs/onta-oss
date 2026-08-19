@@ -17,6 +17,7 @@ import { VERSION } from "./mcpShared.js";
 export { searchHandler, grepHandler } from "./mcpQuery.js";
 export {
   ingestCsvHandler,
+  ingestDltHandler,
   ingestTextHandler,
   exportKgHandler,
   listLocalFilesHandler,
