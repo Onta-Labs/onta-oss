@@ -1,8 +1,9 @@
 # Evaluating Infona
 
-**Status: live.** One published pin on this tree: **2 / 8** query-accuracy
-(25%) on [`examples/trials.csv`](../examples/trials.csv). Six misses are in
-the table below — they are the artifact, not a footnote.
+**Status: live.** One published pin on this tree: **5 / 8** query-accuracy
+(62%) on [`examples/trials.csv`](../examples/trials.csv). Three misses are in
+the table below — they are the artifact, not a footnote. Same eight questions
+as the prior 2/8 pin.
 
 Infona's product claim is **correct, cited, current**: English in, Cypher on
 Neo4j, an exact row out. This page is the public eval of that loop. The
@@ -54,7 +55,7 @@ iteration artifacts still land in gitignored `eval_reports/`.
 | **Questions** | 8 generated (2 per tier) |
 | **Query model** (`/ask` → Cypher) | `openai/gpt-oss-120b` |
 | **Judge + question gen** | `deepseek/deepseek-v3.2` |
-| **Ran** | 2026-08-17T17:00:16 · 174.1s · tree `c5a320a` |
+| **Ran** | 2026-08-19T15:10:24 · 33.4s · tree `ee028fc` (query-only re-run of the published 8) |
 | **Artifact** | [`docs/eval/public_results.json`](eval/public_results.json) |
 
 Override either model with the env vars above or `--query-model` /
@@ -66,16 +67,19 @@ The **Visible misses** column is the point. Failures stay in the table.
 
 | Tier | Skill | Passed | Asked | Accuracy | Visible misses |
 |------|-------|--------|-------|----------|----------------|
-| 1 | Count/Lookup | 1 | 2 | 50% | Unique-sponsor count fail-closed (unbound filter tokens) |
-| 2 | Filter | 0 | 2 | 0% | Active-status count returned rows, not a count; start-year ≥ 2019 fail-closed |
+| 1 | Count/Lookup | 2 | 2 | 100% | |
+| 2 | Filter | 1 | 2 | 50% | Start-year ≥ 2019 returned trial rows, not a count |
 | 3 | Join | 1 | 2 | 50% | AstraZeneca drugs: extra brand-suffixed names (partial) |
-| 4 | Multi-hop | 0 | 2 | 0% | NSCLC Phase-3 average fail-closed; top sponsor returned trial IDs |
-| **All** | | **2** | **8** | **25%** | 6 misses (3 error, 2 wrong, 1 partial) |
+| 4 | Multi-hop | 1 | 2 | 50% | NSCLC Phase-3 average: missing `average_enrollment` column |
+| **All** | | **5** | **8** | **62%** | 3 misses (1 wrong, 1 partial, 1 error) |
 
 Hits (so the miss column is not the whole story):
 
-- T1 correct: “How many clinical trials are there in total?” → 16
-- T3 correct: “What are the brand names of drugs targeting PD-1?” → Keytruda, Opdivo
+- T1: “How many clinical trials are there in total?” → 16
+- T1: “How many unique sponsors are involved in clinical trials?” → 8
+- T2: “How many clinical trials have status 'Active'?” → 4
+- T3: “What are the brand names of drugs targeting PD-1?” → Keytruda, Opdivo
+- T4: “Which sponsor has the highest total enrollment across all their completed trials?” → Bristol Myers Squibb
 
 Tiers (what the harness generates):
 
@@ -91,17 +95,11 @@ Every question the judge did not mark `correct`. Source:
 
 | Tier | Question | Expected | Got | Verdict |
 |------|----------|----------|-----|---------|
-| 1 | How many unique sponsors are involved in clinical trials? | 8 | Fail-closed: plan does not cover filter constraints (`involved`, `clinical trials`) | error / other |
-| 2 | How many clinical trials have status 'Active'? | 4 | Returned Active trial rows (CROWN, FLAURA2, IMvigor011, …) instead of a count | wrong / wrong_aggregation |
-| 2 | How many clinical trials started in or after 2019? | 4 | Fail-closed: unbound constraint tokens `or after 2019` | error / other |
+| 2 | How many clinical trials started in or after 2019? | 4 | Returned trial rows (start year 2019) instead of a count | wrong / wrong_aggregation |
 | 3 | Which drugs are evaluated in trials sponsored by AstraZeneca? | osimertinib, durvalumab | Those names plus `osimertinib_Tagrisso`, `durvalumab_Imfinzi` | partial / uri_instead_of_value |
-| 4 | What is the average enrollment for Phase 3 trials targeting NSCLC? | 792.88 | Fail-closed: unbound `Phase 3 trials` filter | error / other |
-| 4 | Which sponsor has the highest total enrollment across all their completed trials? | Bristol Myers Squibb | List of completed trial IDs (ALEX, CASPIAN, …) | wrong / other |
+| 4 | What is the average enrollment for Phase 3 trials targeting NSCLC? | 792.88 | Missing column `average_enrollment` | error / bad_predicate_uri |
 
-Three of the six misses are the product **failing closed** rather than
-returning a silent wrong total. That is the intended `/ask` behavior when
-the compiled plan does not cover a filter — it is still a miss against the
-question.
+The year question is the remaining list-vs-count miss (`literal_compare` still returns rows). AstraZeneca extra brand suffixes and the NSCLC measure-leaf name are not claimed fixed.
 
 ## Ontology quality (not the headline)
 

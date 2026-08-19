@@ -16,15 +16,9 @@
   "kg_name": "eval-public-trials",
   "tenant": "default",
   "num_questions": 8,
-  "timestamp": "2026-08-17T17:00:16.246935",
-  "duration_s": 174.1,
-  "git_sha": "c5a320a",
-  "notes": [
-    "Query accuracy is KG-scoped (eval-public-trials).",
-    "Ontology judge fetched tenant-wide /ontology/types (no kg filter), so 17/60 mixes other demo KGs on this local store. Not a trials-only ontology score.",
-    "Judge emitted decomposition=-1 (outside 0-10). Published as returned; not clamped.",
-    "Harness ground-truth step imports pandas."
-  ],
+  "timestamp": "2026-08-19T15:10:24.535992",
+  "duration_s": 33.4,
+  "git_sha": "ee028fc",
   "ontology": {
     "total": 17,
     "max_total": 60,
@@ -102,21 +96,18 @@
     {
       "tier": 1,
       "name": "Count/Lookup",
-      "passed": 1,
+      "passed": 2,
       "total": 2,
-      "accuracy_pct": 50,
-      "misses": [
-        "How many unique sponsors are involved in clinical trials?"
-      ]
+      "accuracy_pct": 100,
+      "misses": []
     },
     {
       "tier": 2,
       "name": "Filter",
-      "passed": 0,
+      "passed": 1,
       "total": 2,
-      "accuracy_pct": 0,
+      "accuracy_pct": 50,
       "misses": [
-        "How many clinical trials have status 'Active'?",
         "How many clinical trials started in or after 2019?"
       ]
     },
@@ -133,42 +124,23 @@
     {
       "tier": 4,
       "name": "Multi-hop",
-      "passed": 0,
+      "passed": 1,
       "total": 2,
-      "accuracy_pct": 0,
+      "accuracy_pct": 50,
       "misses": [
-        "What is the average enrollment for Phase 3 trials targeting NSCLC?",
-        "Which sponsor has the highest total enrollment across all their completed trials?"
+        "What is the average enrollment for Phase 3 trials targeting NSCLC?"
       ]
     }
   ],
   "failures": [
     {
-      "tier": 1,
-      "question": "How many unique sponsors are involved in clinical trials?",
-      "expected": "8",
-      "got": "Could not answer with confidence: the generated plan does not cover filter constraints from the question, so executing it risked a silent wrong total (unfiltered aggregate/count). Unbound constraint token(s): 'involved', 'clinical trials'. ",
-      "verdict": "error",
-      "failure_category": "other",
-      "explanation": "The system returned an error message instead of an answer, indicating it could not generate a proper query."
-    },
-    {
-      "tier": 2,
-      "question": "How many clinical trials have status 'Active'?",
-      "expected": "4",
-      "got": "id: TRIAL-CROWN, name: TRIAL-CROWN, primary_type: Trial, literal_value: Active\nid: TRIAL-FLAURA2, name: TRIAL-FLAURA2, primary_type: Trial, literal_value: Active\nid: TRIAL-IMVIGOR011, name: TRIAL-IMVIGOR011, primary_type: Trial, literal_val",
-      "verdict": "wrong",
-      "failure_category": "wrong_aggregation",
-      "explanation": "The system returned individual trial records instead of the requested count of trials with status 'Active'."
-    },
-    {
       "tier": 2,
       "question": "How many clinical trials started in or after 2019?",
       "expected": "4",
-      "got": "Could not answer with confidence: the generated plan does not cover filter constraints from the question, so executing it risked a silent wrong total (unfiltered aggregate/count). Unbound constraint token(s): 'or after 2019', 'after 2019'. ",
-      "verdict": "error",
-      "failure_category": "other",
-      "explanation": "The system returned an error message instead of providing a numerical answer."
+      "got": "id: TRIAL-CM9ER, name: TRIAL-CM9ER, primary_type: Trial, title: TRIAL-CM9ER, value: 2019.0\nid: TRIAL-FLAURA2, name: TRIAL-FLAURA2, primary_type: Trial, title: TRIAL-FLAURA2, value: 2019.0\nid: TRIAL-IMVIGOR011, name: TRIAL-IMVIGOR011, primar",
+      "verdict": "wrong",
+      "failure_category": "wrong_aggregation",
+      "explanation": "The system returned individual trial records instead of counting them, and the count of records shown (4) matches the expected count but the answer format is incorrect."
     },
     {
       "tier": 3,
@@ -177,29 +149,28 @@
       "got": "drug_name: osimertinib\ndrug_name: osimertinib_Tagrisso\ndrug_name: durvalumab\ndrug_name: durvalumab_Imfinzi",
       "verdict": "partial",
       "failure_category": "uri_instead_of_value",
-      "explanation": "The system returned extra brand-suffixed names instead of just the drug names, but it did identify the correct drugs."
+      "explanation": "The system returned duplicate drug names with brand name suffixes, which are not in the expected answer format."
     },
     {
       "tier": 4,
       "question": "What is the average enrollment for Phase 3 trials targeting NSCLC?",
       "expected": "792.88",
-      "got": "Could not answer with confidence: the generated plan does not cover filter constraints from the question, so executing it risked a silent wrong total (unfiltered aggregate/count). Unbound constraint token(s): 'Phase 3 trials'. Which field s",
+      "got": "\n\nNote: requested column [average_enrollment] not present on any matching entity \u2014 the attribute may be unpopulated or named differently.",
       "verdict": "error",
-      "failure_category": "other",
-      "explanation": "The system returned an error message indicating it could not apply the necessary filters to the query."
-    },
-    {
-      "tier": 4,
-      "question": "Which sponsor has the highest total enrollment across all their completed trials?",
-      "expected": "Bristol Myers Squibb",
-      "got": "id: TRIAL-ALEX, name: TRIAL-ALEX, primary_type: Trial, literal_value: Completed\nid: TRIAL-CASPIAN, name: TRIAL-CASPIAN, primary_type: Trial, literal_value: Completed\nid: TRIAL-CM227, name: TRIAL-CM227, primary_type: Trial, literal_value: Co",
-      "verdict": "wrong",
-      "failure_category": "other",
-      "explanation": "The system returned a list of trial IDs instead of the sponsor with highest total enrollment."
+      "failure_category": "bad_predicate_uri",
+      "explanation": "The system returned an error message indicating the query failed to execute properly."
     }
   ],
   "repro": {
     "command": "python scripts/run_public_eval.py --dataset examples/trials.csv --kg eval-public-trials --questions 8",
-    "ingest": "infona ingest examples/trials.csv --kg eval-public-trials -y"
-  }
+    "ingest": "infona ingest examples/trials.csv --kg eval-public-trials -y",
+    "note": "This pin reused the published 8 questions via eval_reports/question_cache/eval-public-trials-8.json (cache_questions=True). Query-only; ontology block is the prior pin."
+  },
+  "notes": [
+    "Query accuracy is KG-scoped (eval-public-trials).",
+    "Ontology judge fetched tenant-wide /ontology/types (no kg filter), so 17/60 mixes other demo KGs on this local store. Not a trials-only ontology score.",
+    "Judge emitted decomposition=-1 (outside 0-10). Published as returned; not clamped.",
+    "Harness ground-truth step imports pandas.",
+    "Query-only re-run of the published 8 questions on the lift stack. Ontology scores left from the prior pin."
+  ]
 }
