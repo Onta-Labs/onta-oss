@@ -30,7 +30,6 @@ from infona_client.api.rate_limit import limiter
 from infona_client.auth.access import require_tenant_write
 from infona_client.auth.api_keys import TenantContext, get_tenant
 from infona_client.config import settings
-from infona_client.graph.client import NeptuneClient
 from infona_client.ingestion.extract_source_store import (
     StoredExtractSource,
     make_extract_source_store,
@@ -267,7 +266,7 @@ async def run_extract_source(
     slug: str,
     body: Optional[RunExtractSourceRequest] = None,
     tenant: TenantContext = Depends(require_tenant_write),
-    client: NeptuneClient = Depends(get_neptune_client),
+    client: Any = Depends(get_neptune_client),
     job_store=Depends(get_enrichment_job_store),
 ):
     require_hosted_extract(tenant)

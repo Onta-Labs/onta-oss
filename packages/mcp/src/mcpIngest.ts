@@ -7,9 +7,9 @@ endpoints.
 import { existsSync, statSync } from "node:fs";
 import { basename } from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { Client, InfonaError } from "@infona-ai/cli";
-import type { DltIngestRequest, DltResourceMap, DltSourceSpec } from "@infona-ai/cli";
+import { Client } from "@infona-ai/cli";
 import { z } from "zod";
+import { ingestDltHandler } from "./mcpIngestDlt.js";
 import {
   ALLOWED_EXTENSIONS,
   DEFAULT_DEPTH,
@@ -20,6 +20,8 @@ import {
   renderListResult,
 } from "./workspace.js";
 import { client, errorResult, LOCAL_FILE_ROOTS, textResult } from "./mcpShared.js";
+
+export { ingestDltHandler } from "./mcpIngestDlt.js";
 
 // ONTA-415: the "did you mean" suffix on a not-found path. This is the SECOND
 // consumer of the one containment-guarded primitive, not a second enumeration
@@ -238,74 +240,6 @@ export async function listLocalFilesHandler(
     return errorResult(err);
   }
 }
-
-const DLT_EXTRA_HINT =
-  "dlt is not installed on the Infona backend. Install the optional extra: " +
-  "pip install infona-client[dlt]";
-
-
-function isDltExtraMissing(err: unknown): boolean {
-  if (!(err instanceof InfonaError)) return false;
-  const blob = `${err.message}\n${err.body ?? ""}`;
-  return (
-    /infona-client\[dlt\]/.test(blob) ||
-    /dlt is not installed/i.test(blob) ||
-    (err.status === 503 && /dlt/i.test(blob))
-  );
-}
-
-
-/** ONTA-553 / COG-128: thin over SDK ``ingestDlt``. */
-export async function ingestDltHandler(
-  {
-    source,
-    map,
-    kg,
-    kg_name,
-  }: {
-    source: DltSourceSpec;
-    map: Record<string, DltResourceMap>;
-    kg?: string;
-    kg_name?: string;
-  },
-  makeClient: () => Client = client,
-) {
-  const kgName = (kg ?? kg_name ?? "").trim();
-  if (!kgName) {
-    return errorResult(new Error("ingest_dlt requires `kg` — nothing was ingested."));
-  }
-  if (!source?.kind || !Array.isArray(source.resources) || !source.resources.length) {
-    return errorResult(
-      new Error(
-        "ingest_dlt requires source.kind and source.resources — nothing was ingested.",
-      ),
-    );
-  }
-  if (!map || !Object.keys(map).length) {
-    return errorResult(
-      new Error(
-        "ingest_dlt requires `map` (resource → ontology type) — nothing was ingested.",
-      ),
-    );
-  }
-  const body: DltIngestRequest = { source, map, kg: kgName };
-  try {
-    const result = await makeClient().ingestDlt(body);
-    const rows = Number(result.rows_in ?? 0);
-    const entities = Number(result.entities_resolved ?? 0);
-    const triples = Number(result.triples_inserted ?? 0);
-    return textResult(
-      `DLT ingest complete: ${rows} rows in, ${entities} entities resolved, ` +
-        `${triples} triples inserted into "${kgName}".`,
-    );
-  } catch (err) {
-    if (isDltExtraMissing(err)) {
-      return errorResult(new Error(DLT_EXTRA_HINT));
-    }
-    return errorResult(err);
-  }
-}
-
 
 export function registerIngestTools(server: McpServer): void {
   server.registerTool(
