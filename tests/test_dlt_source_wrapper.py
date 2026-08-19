@@ -132,6 +132,13 @@ async def test_missing_env_secret_is_actionable():
 
 
 @pytest.mark.asyncio
+async def test_env_ref_does_not_read_process_environment(monkeypatch):
+    monkeypatch.setenv("INFONA_ANTHROPIC_API_KEY", "platform-secret")
+    with pytest.raises(DltSecretMissing, match="resolved on the client"):
+        await resolve_ref("env:INFONA_ANTHROPIC_API_KEY")
+
+
+@pytest.mark.asyncio
 async def test_resolve_source_secrets_inline_token_not_via_env():
     spec = _rest_spec(auth=DltAuthSpec(type="bearer", token="pat-secret"))
     resolved = await resolve_source_secrets(spec, env={})
@@ -159,6 +166,60 @@ def test_source_redacts_inline_token_and_dsn():
     dumped = spec.redacted()
     assert dumped["dsn"] == "***"
     assert dumped["auth"]["token"] is None
+
+
+def test_redacted_masks_authorization_headers():
+    spec = _rest_spec(headers={"Authorization": "Bearer pat-live", "Accept": "application/json"})
+    dumped = spec.redacted()
+    assert dumped["headers"]["Authorization"] == "***"
+    assert dumped["headers"]["Accept"] == "application/json"
+
+
+def test_ssrf_blocks_loopback_and_metadata():
+    from infona_client.ingestion.dlt_source import validate_extract_target
+    from infona_client.ingestion.errors import DltExtractError
+
+    with pytest.raises(DltExtractError, match="fetchable"):
+        validate_extract_target(
+            DltSourceSpec.model_validate(
+                {
+                    "kind": "rest_api",
+                    "base_url": "http://127.0.0.1/latest",
+                    "resources": ["v1/contacts"],
+                }
+            )
+        )
+    with pytest.raises(DltExtractError, match="fetchable"):
+        validate_extract_target(
+            DltSourceSpec.model_validate(
+                {
+                    "kind": "rest_api",
+                    "base_url": "http://169.254.169.254/latest/meta-data/",
+                    "resources": ["v1/contacts"],
+                }
+            )
+        )
+    with pytest.raises(DltExtractError, match="relative"):
+        validate_extract_target(
+            DltSourceSpec.model_validate(
+                {
+                    "kind": "rest_api",
+                    "base_url": "https://api.example.com",
+                    "resources": ["http://169.254.169.254/latest/meta-data/"],
+                }
+            )
+        )
+    with pytest.raises(DltExtractError, match="not allowed|sqlite"):
+        validate_extract_target(
+            DltSourceSpec.model_validate(
+                {
+                    "kind": "sql",
+                    "dsn": "postgresql://user:pw@127.0.0.1:5432/app",
+                    "resources": ["t"],
+                }
+            ),
+            dsn="postgresql://user:pw@127.0.0.1:5432/app",
+        )
 
 
 def test_ingest_request_accepts_kg_name_alias():

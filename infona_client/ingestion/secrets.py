@@ -16,7 +16,6 @@ never a 500.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Optional
 
@@ -80,8 +79,17 @@ async def resolve_ref(
 ) -> str:
     scheme, locator, logical = parse_secret_ref(ref)
     if scheme == "env":
-        source = env if env is not None else os.environ
-        value = source.get(locator)
+        # Never read the server process environment. A Cloud tenant naming
+        # env:INFONA_ANTHROPIC_API_KEY would otherwise exfiltrate platform
+        # secrets. CLI substitutes locally (inline token) before POST.
+        if env is None:
+            raise DltSecretMissing(
+                f"secret_ref={ref!r} is resolved on the client. "
+                "Send auth.token (CLI reads env: for you) or save the source "
+                "so the token is store:-encrypted. The API does not read "
+                "the server process environment."
+            )
+        value = env.get(locator)
         if not value:
             raise DltSecretMissing(
                 f"missing credential: set {locator} (BYOK). "

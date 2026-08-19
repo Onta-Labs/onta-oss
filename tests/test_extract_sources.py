@@ -56,6 +56,24 @@ def test_crud_and_secret_never_echoed(client, auth_headers, monkeypatch):
     assert got.json()["source"]["auth"]["token"] is None
     assert "pat-never-echo" not in got.text
 
+    leaked = dict(CREATE)
+    leaked["slug"] = "crm-hdr"
+    leaked["source"] = {
+        **CREATE["source"],
+        "headers": {"Authorization": "Bearer pat-in-header", "Accept": "application/json"},
+        "auth": {"type": "none"},
+    }
+    leaked["secrets"] = {}
+    hdr = client.post(
+        "/graphs/test-tenant/extract-sources", json=leaked, headers=auth_headers
+    )
+    assert hdr.status_code == 200, hdr.text
+    got_hdr = client.get(
+        "/graphs/test-tenant/extract-sources/crm-hdr", headers=auth_headers
+    )
+    assert "pat-in-header" not in got_hdr.text
+    assert "Authorization" not in (got_hdr.json().get("source", {}).get("headers") or {})
+
     deleted = client.delete("/graphs/test-tenant/extract-sources/crm", headers=auth_headers)
     assert deleted.status_code == 200
     missing = client.get("/graphs/test-tenant/extract-sources/crm", headers=auth_headers)

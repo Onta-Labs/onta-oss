@@ -45,6 +45,9 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 DltSourceKind = Literal["rest_api", "sql"]
 DltAuthType = Literal["bearer", "basic", "api_key", "none"]
+CREDENTIAL_HEADER_NAMES = frozenset(
+    {"authorization", "cookie", "x-api-key", "x-auth-token", "proxy-authorization"}
+)
 
 #: Wave-1 per-resource row cap. Bound so a naive CRM dump cannot fill memory.
 DEFAULT_EXTRACT_LIMIT = 1000
@@ -104,13 +107,23 @@ class DltSourceSpec(BaseModel):
         return self
 
     def redacted(self) -> dict[str, Any]:
-        """JSON-able dict with inline token / literal DSN stripped."""
+        """JSON-able dict with inline token / literal DSN / auth headers stripped."""
         data = self.model_dump()
         if data.get("auth"):
             data["auth"] = {**data["auth"], "token": None}
         dsn = data.get("dsn")
         if isinstance(dsn, str) and not dsn.startswith(("env:", "store:")):
             data["dsn"] = "***"
+        headers = data.get("headers") or {}
+        data["headers"] = {
+            k: "***"
+            for k in headers
+            if str(k).lower() in CREDENTIAL_HEADER_NAMES
+        } | {
+            k: v
+            for k, v in headers.items()
+            if str(k).lower() not in CREDENTIAL_HEADER_NAMES
+        }
         return data
 
 
