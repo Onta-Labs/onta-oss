@@ -584,7 +584,7 @@ def extract_cypher_prop_keys(
     for m in _ENTITY_BRACKET_LITERAL_RE.finditer(c):
         _add(m.group(1))
 
-    for pk in ("prop_key", "rel_attr"):
+    for pk in ("prop_key", "rel_attr", "group_key"):
         v = params.get(pk)
         if isinstance(v, str):
             _add(v)
@@ -697,7 +697,7 @@ def check_schema_valid_cypher(
         # Only param-driven leaves matter for templates (bodies don't invent
         # HAS_* typed hops — RELATED_* use Assertion + p.name = $rel_attr).
         param_props: list[str] = []
-        for pk in ("prop_key", "rel_attr"):
+        for pk in ("prop_key", "rel_attr", "group_key"):
             v = params.get(pk)
             if isinstance(v, str) and v.strip() and _SAFE_IDENT_RE.match(v.strip()):
                 if not _prop_key_allowed(v.strip(), inv):

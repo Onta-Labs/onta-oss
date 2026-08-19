@@ -277,9 +277,14 @@ the shape matches; params must match the template). Helpers include:
 question has **no** property/value filter; pass expanded `$type_names` \
 (include subclasses when the question means "type T and subtypes")
 - literal_values — datatype equality **list** (`$type_names`, `$prop_key`, `$prop_value`) \
-— list/show/which entities matching a value. Not for how-many/count.
+— list/show/which-are / which X with status Y. Not for how-many/count. Not for \
+"which X has the highest total Y".
 - literal_values_count — same equality params; `RETURN count(DISTINCT e) AS n` \
 — how-many/count + equality. Never pair a count RETURN with template `literal_values`.
+- literal_argmax_by_dim — group a literal `$group_key`, SUM `$prop_key`, \
+`RETURN grp AS name, total AS value ORDER BY total DESC LIMIT 1`. Use for \
+"which X has the highest/greatest/largest total/sum Y". Never set \
+`literal_values` or `literal_aggregate` on that intent.
 - literal_compare — numeric inequality (`$prop_key`, `$op` in lt/le/gt/ge/eq, `$threshold`)
 - related_entities — 1-hop object relationships (`$from_types`, `$to_types`, optional `$rel_attr`)
 - related_entity_name_filter — subjects linked to a related entity by display name \

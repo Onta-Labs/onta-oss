@@ -60,7 +60,7 @@ def check_constraint_coverage(
     params = dict(params or {})
     tmpl = (template or "").strip() or None
     sk = sketch or sketch_query_intent(question)
-    early = _host().count_vs_list_fail_closed(sk, tmpl)
+    early = _host().early_template_shape_fail_closed(sk, tmpl)
     if early is not None:
         return early
     tokens = list(sk.filter_tokens)
