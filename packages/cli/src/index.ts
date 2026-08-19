@@ -65,6 +65,15 @@ export type {
   ApiSourceValidateResult,
   ApiSourceTestResult,
   ApiSourceWrite,
+  // ONTA-553 / ONTA-554 — dlt extract (not api-sources)
+  DltSourceKind,
+  DltAuthType,
+  DltAuthSpec,
+  DltSourceSpec,
+  DltResourceMap,
+  DltIngestRequest,
+  ExtractSourceSummary,
+  ExtractSourceWrite,
   // ONTA-173 — schedules: user-schedulable vs system-managed action split
   Schedule,
   ScheduleAction,

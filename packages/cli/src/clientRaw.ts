@@ -69,6 +69,41 @@ export class RawApi {
     return this.client.requestRaw("POST", this.client.pIngestCsvRows(), { body, ...init });
   }
 
+  /** `POST /graphs/{tenant}/ingest/dlt` — extract a REST/SQL source via dlt. */
+  ingestDlt(body: unknown, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("POST", this.client.pIngestDlt(), { body, ...init });
+  }
+
+  extractSourcesList(init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("GET", this.client.pExtractSources(), init);
+  }
+
+  extractSourcesGet(slug: string, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("GET", this.client.pExtractSource(slug), init);
+  }
+
+  extractSourcesCreate(body: unknown, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("POST", this.client.pExtractSources(), { body, ...init });
+  }
+
+  extractSourcesUpdate(slug: string, body: unknown, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("PATCH", this.client.pExtractSource(slug), {
+      body,
+      ...init,
+    });
+  }
+
+  extractSourcesDelete(slug: string, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("DELETE", this.client.pExtractSource(slug), init);
+  }
+
+  extractSourcesRun(slug: string, body?: unknown, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("POST", this.client.pExtractSourceRun(slug), {
+      body,
+      ...init,
+    });
+  }
+
   // -- enrich jobs --------------------------------------------------------- #
 
   /** `POST /graphs/{tenant}/enrich/jobs` — plan + run an enrichment job. */

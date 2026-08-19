@@ -5,6 +5,7 @@ import { SCHEMA_SAMPLE_CAP, parseCsv, stridedSample } from "./clientCsv.js";
 import { InfonaError, EXT_FORMAT } from "./clientError.js";
 import { ClientHttp } from "./clientHttp.js";
 import type { IngestOptions } from "./clientTypes.js";
+import type { DltIngestRequest } from "./clientTypesExtra.js";
 
 export class ClientIngest extends ClientHttp {
   /**
@@ -73,6 +74,16 @@ export class ClientIngest extends ClientHttp {
     };
     if (opts.kg) body.kg_name = opts.kg;
     return this.request("POST", `${this.base()}/ingest`, body, 120_000);
+  }
+
+  /** `POST /graphs/{tenant}/ingest/dlt` — extract REST/SQL then ingest. */
+  async ingestDlt(body: DltIngestRequest): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>(
+      "POST",
+      this.pIngestDlt(),
+      body,
+      300_000,
+    );
   }
 
   protected async ingestCsv(

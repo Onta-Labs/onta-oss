@@ -287,3 +287,60 @@ export interface RawInit {
   headers?: Record<string, string>;
   timeoutMs?: number;
 }
+
+/** Frozen ONTA-553 Wave-1 extract contract (`POST /graphs/{tenant}/ingest/dlt`). */
+export type DltSourceKind = "rest_api" | "sql";
+export type DltAuthType = "bearer" | "basic" | "api_key" | "none";
+
+export interface DltAuthSpec {
+  type?: DltAuthType;
+  /** BYOK: `env:VAR` (CLI substitutes locally) or `store:<slug>/<logical>`. */
+  secret_ref?: string;
+  /** Write-only inline token. Never echoed. */
+  token?: string;
+  username?: string;
+  api_key_header?: string;
+}
+
+export interface DltSourceSpec {
+  kind: DltSourceKind;
+  base_url?: string;
+  dsn?: string;
+  auth?: DltAuthSpec;
+  resources: string[];
+  headers?: Record<string, string>;
+  limit?: number;
+}
+
+export interface DltResourceMap {
+  type: string;
+  id_field?: string;
+  attributes?: string[];
+}
+
+export interface DltIngestRequest {
+  source: DltSourceSpec;
+  map: Record<string, DltResourceMap>;
+  kg?: string;
+}
+
+export interface ExtractSourceSummary {
+  slug: string;
+  title: string;
+  kind: DltSourceKind;
+  enabled: boolean;
+  has_secret: boolean;
+  resources: string[];
+  mapped: string[];
+  kg?: string | null;
+}
+
+export interface ExtractSourceWrite {
+  slug?: string;
+  title?: string;
+  source?: DltSourceSpec;
+  map?: Record<string, DltResourceMap>;
+  kg?: string;
+  enabled?: boolean;
+  secrets?: Record<string, string>;
+}

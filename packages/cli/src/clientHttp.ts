@@ -140,6 +140,20 @@ export class ClientHttp {
   /** @internal */ pIngestCsvRows(): string {
     return `${this.base()}/ingest/csv/rows`;
   }
+  /** @internal ONTA-553: `POST /graphs/{tenant}/ingest/dlt`. */
+  pIngestDlt(): string {
+    return `${this.base()}/ingest/dlt`;
+  }
+  /** @internal ONTA-554 persist family — not `/api-sources`. */
+  pExtractSources(): string {
+    return `${this.base()}/extract-sources`;
+  }
+  /** @internal */ pExtractSource(slug: string): string {
+    return `${this.base()}/extract-sources/${encodeURIComponent(slug)}`;
+  }
+  /** @internal */ pExtractSourceRun(slug: string): string {
+    return `${this.pExtractSource(slug)}/run`;
+  }
   /** @internal */ pEnrichJobs(): string {
     return `${this.base()}/enrich/jobs`;
   }
