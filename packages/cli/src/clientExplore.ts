@@ -6,6 +6,8 @@ import type {
   ApiSourceTestResult,
   ApiSourceValidateResult,
   ApiSourceWrite,
+  ExtractSourceSummary,
+  ExtractSourceWrite,
   GrepResponse,
   NormalizationRule,
   SemanticSearchOptions,
@@ -344,5 +346,48 @@ export class ClientExplore extends ClientApi {
     sample_params?: Record<string, string>;
   }): Promise<ApiSourceTestResult> {
     return this.request<ApiSourceTestResult>("POST", this.pApiSourcesTest(), body, 30_000);
+  }
+
+  // --- dlt extract sources (ONTA-553 / ONTA-554) — not api-sources -------- #
+
+  async extractSourcesList(): Promise<ExtractSourceSummary[]> {
+    const data = await this.request<unknown>("GET", this.pExtractSources(), undefined, 15_000);
+    return Array.isArray(data) ? (data as ExtractSourceSummary[]) : [];
+  }
+
+  async extractSourcesGet(slug: string): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>(
+      "GET",
+      this.pExtractSource(slug),
+      undefined,
+      15_000,
+    );
+  }
+
+  async extractSourcesCreate(body: ExtractSourceWrite): Promise<ExtractSourceSummary> {
+    return this.request<ExtractSourceSummary>("POST", this.pExtractSources(), body, 20_000);
+  }
+
+  async extractSourcesUpdate(
+    slug: string,
+    body: ExtractSourceWrite,
+  ): Promise<ExtractSourceSummary> {
+    return this.request<ExtractSourceSummary>("PATCH", this.pExtractSource(slug), body, 20_000);
+  }
+
+  async extractSourcesDelete(slug: string): Promise<{ ok: boolean }> {
+    return this.request<{ ok: boolean }>("DELETE", this.pExtractSource(slug), undefined, 15_000);
+  }
+
+  async extractSourcesRun(
+    slug: string,
+    body: { kg?: string; limit?: number } = {},
+  ): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>(
+      "POST",
+      this.pExtractSourceRun(slug),
+      body,
+      300_000,
+    );
   }
 }

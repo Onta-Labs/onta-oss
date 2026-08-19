@@ -150,6 +150,31 @@ Import path is `infona_client`. Graph IRIs live under `https://graph.infona.ai/`
 
 ---
 
+### Optional: 3rd-party REST / SQL extract (dlt)
+
+`pip install infona-client` does **not** pull [dlt](https://dlthub.com). Install the extra on the **backend** only (`pip install 'infona-client[dlt]'`). Infona is the destination — there is no dlt warehouse sink. The CLI reads `env:VAR` locally and sends an inline token; the API never reads the server process environment.
+
+```bash
+# frozen body for POST /graphs/{tenant}/ingest/dlt
+cat > spec.json <<'EOF'
+{
+  "source": {
+    "kind": "rest_api",
+    "base_url": "https://api.example.com",
+    "auth": {"type": "bearer", "secret_ref": "env:EXAMPLE_TOKEN"},
+    "resources": ["v1/contacts"]
+  },
+  "map": {"v1/contacts": {"type": "Contact", "id_field": "id"}},
+  "kg": "crm"
+}
+EOF
+infona ingest --dlt spec.json --kg crm
+```
+
+SQL is the same shape with `"kind": "sql"` and `"dsn": "env:EXAMPLE_DSN"`. Hosted Explorer Connect / Run is premium (ONTA-554) and hits this same route.
+
+---
+
 ## Eval — 2 / 8 (25%), misses stay visible
 
 Published pin: **2 / 8** (25%) on [`examples/trials.csv`](examples/trials.csv) (16 synthetic oncology rows).
@@ -258,7 +283,7 @@ Same `ask`, same graph, same exact rows — as a tool result:
 }
 ```
 
-`ask`, `search`, `agent`, `ingest_csv`, `export_kg`, ontology, jobs — same backend the CLI hits. [packages/mcp/README.md](packages/mcp/README.md).
+`ask`, `search`, `agent`, `ingest_csv`, `ingest_dlt`, `export_kg`, ontology, jobs — same backend the CLI hits. [packages/mcp/README.md](packages/mcp/README.md).
 
 ### What's free
 

@@ -14,6 +14,7 @@ from infona_client.auth.api_keys import TenantContext
 from infona_client.auth.access import require_tenant_write
 from infona_client.config import settings
 from infona_client.graph.client import NeptuneClient
+from infona_client.ingestion.models import DltIngestRequest
 from infona_client.resolver.models import CSVRowsRequest, CSVSchemaMapping, CSVSchemaRequest, IngestRequest, IngestResult
 from infona_client.graph.kg_writer import refresh_after_write
 from infona_client.graph.queries import kg_graph_uri, tenant_graph_uri
@@ -572,6 +573,45 @@ async def ingest_csv_rows(
         type_name=mapping_type or None,
     )
     _emit_ingestion_completed(tenant, body.kg_name, result, start)
+    return result
+
+
+@router.post("/ingest/dlt", response_model=IngestResult)
+@limiter.limit("10/minute")
+async def ingest_dlt(
+    request: Request,
+    body: DltIngestRequest,
+    tenant: TenantContext = Depends(require_tenant_write),
+    client: NeptuneClient = Depends(get_neptune_client),
+    job_store=Depends(get_enrichment_job_store),
+):
+    """ONTA-553: extract a 3rd-party REST/SQL source via dlt, then ingest.
+
+    Frozen body: ``{source, map, kg}``. Extract only — Infona is the destination
+    (``ingest_structured_rows`` → ``insert_facts`` + ``refresh_after_write``).
+    ``env:`` BYOK is ungated; ``store:`` secrets require hosted entitlement
+    when a premium checker is registered (ONTA-554).
+    """
+    from infona_client.ingestion.hosted import require_hosted_if_store_secret
+    from infona_client.ingestion.http import raise_dlt_http
+    from infona_client.ingestion.run import run_dlt_ingest
+    from infona_client.ingestion.store_secrets import tenant_store_getter
+
+    require_hosted_if_store_secret(tenant, body.source)
+    start = time.monotonic()
+    try:
+        result = await run_dlt_ingest(
+            tenant_id=tenant.tenant_id,
+            body=body,
+            neptune=client,
+            anthropic_key=settings.anthropic_api_key,
+            job_store=job_store,
+            store_get=tenant_store_getter(tenant.tenant_id),
+        )
+    except Exception as exc:
+        raise_dlt_http(exc)
+        raise
+    _emit_ingestion_completed(tenant, body.kg, result, start)
     return result
 
 
