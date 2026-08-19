@@ -54,14 +54,15 @@ def check_constraint_coverage(
     ``plan_has_dimension_filter`` True (wrong-leaf / multi-filter drop class).
     Ambiguous registry tokens are never passed here (bind path is unique-only).
 
-    ``populated_types`` / ``type_counts`` — optional live GraphStore inventory
-    (from :mod:`query_build`). When supplied, a plan whose primary types all
-    have 0 entities while the question matches other populated types fails
-    closed (pollution-type / high-conf empty class). Omitted → gate skipped.
+    ``populated_types`` / ``type_counts`` — live inventory; empty primary types
+    while the question matches populated types fail closed. Omitted → skip.
     """
     params = dict(params or {})
     tmpl = (template or "").strip() or None
     sk = sketch or sketch_query_intent(question)
+    early = _host().count_vs_list_fail_closed(sk, tmpl)
+    if early is not None:
+        return early
     tokens = list(sk.filter_tokens)
     bound, unbound = _host().tokens_bound_in_plan(tokens, cypher, params)
     has_dim = _host().effective_has_dim_filter(
@@ -217,7 +218,6 @@ def check_constraint_coverage(
         # by continuing with filterish path.
 
     # Fail-closed: filter intent + aggregate/count, no dim (silent totals).
-    # Entity-detail / free lists with an unbound name stay softer (medium).
     if filterish and not has_dim and is_agg_or_count:
         if tmpl in _MEASURE_ONLY_TEMPLATES:
             reason = (

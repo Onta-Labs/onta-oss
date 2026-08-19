@@ -89,10 +89,12 @@ def coverage_feedback(result: CoverageResult, *, previous_cypher: str = "") -> s
         "1. If the question filters by a value/status/label/term, the Cypher MUST "
         "constrain entities with that filter — do not emit a pure type count or "
         "unfiltered sum/avg of a measure property.",
-        "2. Prefer template literal_values / literal_compare / "
+        "2. Prefer template literal_values_count for how-many/count + equality, "
+        "literal_values for list/show/which, literal_compare / "
         "related_entity_name_filter with $prop_value / $op+$threshold / "
         "$target_name when the shape fits; do NOT use literal_aggregate alone "
-        "when a dimension filter is required.",
+        "when a dimension filter is required. Never set template literal_values "
+        "on a how-many/count question (that helper returns rows).",
         "3. Put filter values in params (or equality predicates) so they appear "
         "in the plan. Do not invent ontology fields — use names from the schema.",
         "4. If you cannot tell which field a filter token binds to, still prefer "

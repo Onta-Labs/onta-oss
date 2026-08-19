@@ -230,10 +230,13 @@ CRITICAL — required filters must actually constrain rows (silent-wrong trap):
 succeeds; it does **NOT** drop primary MATCH entity rows. Putting \
 `a.literal_value = $value` only on OPTIONAL MATCH then `RETURN count(e)` yields \
 an **unfiltered total** (wrong). Fail closed is better than a silent wrong total.
-- For required property/value filters (status, phase, label, equality, \
-"how many X that are Y", "sum Z for active", …) you MUST use one of:
-  1. **template** `literal_values` / `literal_compare` / `related_entity_name_filter` \
-(preferred — set the JSON `template` field + params), OR
+- For required property/value filters (equality, "how many X that are Y", \
+"sum Z for active", …) you MUST use one of:
+  1. **template** `literal_values_count` (how-many/count + equality), \
+`literal_values` (list/show/which + equality), `literal_compare` / \
+`related_entity_name_filter` (preferred — set the JSON `template` field + params). \
+Never set `template` to `literal_values` on a how-many/count question (that helper \
+returns rows). OR
   2. **entity denorm**: `WHERE e.<prop_key> = $prop_value` (or compare) on the \
 Entity after type MATCH, OR
   3. **required MATCH** (not OPTIONAL) on Assertion with the value predicate, OR
@@ -244,9 +247,10 @@ aggregate the measure attribute. Never OPTIONAL-filter the status/phase predicat
 - If the question filters (for/in/where/with/status/quoted values, multi-constraint \
 NL), Cypher MUST constrain those values — never emit an unfiltered sum/avg/count \
 of a measure as a silent total. Template `literal_aggregate` alone is ONLY for \
-unfiltered measure aggregates; when a dimension filter is required, use \
-literal_values / literal_compare / related_entity_name_filter first (or free-form \
-with a required filter) then aggregate. If you cannot tell which field a filter \
+unfiltered measure aggregates; when a dimension filter is required, constrain \
+first (`literal_values_count` for a filtered count; free-form filter then \
+aggregate for sum/avg). Never set template `literal_values` on a how-many/count \
+question. If you cannot tell which field a filter \
 token binds to, prefer an honest constrained plan or fail closed over inventing \
 a field or returning a silent unfiltered total.
 
@@ -272,8 +276,10 @@ the shape matches; params must match the template). Helpers include:
 - entities_of_type / entities_of_type_count — type membership ONLY when the \
 question has **no** property/value filter; pass expanded `$type_names` \
 (include subclasses when the question means "type T and subtypes")
-- literal_values — datatype property equality (`$type_names`, `$prop_key`, `$prop_value`) \
-— use for "how many X with status/phase/label = Y", equality filters, filtered counts
+- literal_values — datatype equality **list** (`$type_names`, `$prop_key`, `$prop_value`) \
+— list/show/which entities matching a value. Not for how-many/count.
+- literal_values_count — same equality params; `RETURN count(DISTINCT e) AS n` \
+— how-many/count + equality. Never pair a count RETURN with template `literal_values`.
 - literal_compare — numeric inequality (`$prop_key`, `$op` in lt/le/gt/ge/eq, `$threshold`)
 - related_entities — 1-hop object relationships (`$from_types`, `$to_types`, optional `$rel_attr`)
 - related_entity_name_filter — subjects linked to a related entity by display name \

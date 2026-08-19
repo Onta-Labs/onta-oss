@@ -56,6 +56,7 @@ class DimBindLike(Protocol):
 _DIM_FILTER_TEMPLATES = frozenset(
     {
         "literal_values",
+        "literal_values_count",
         "literal_compare",
         "related_entity_name_filter",
         "related_entity_name_filter_inverse",

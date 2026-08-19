@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from typing import Any, Iterable, Sequence
 
 from infona_client.graph.facts import sanitize_rel_type
+from infona_client.graph.rdfs_helpers_templates import semantic_templates
 from infona_client.nlp.cypher_generate import (
     _ontology_section_for_type,
     _relationship_specs_in_section,
@@ -97,22 +98,10 @@ STRUCTURAL_PROP_KEYS: frozenset[str] = frozenset(
 
 # Templates whose bodies are known-good Assertion shapes (no free-form invent).
 # Params (prop_key / rel_attr) are still schema-checked when present.
-_KNOWN_TEMPLATE_BODIES = frozenset(
-    {
-        "literal_values",
-        "literal_compare",
-        "literal_aggregate",
-        "related_entity_name_filter",
-        "related_entity_name_filter_inverse",
-        "related_entities",
-        "entities_of_type",
-        "entities_of_type_count",
-        "entity_count_total",
-        "entity_count_by_type",
-        "assertions_for_subject",
-        "subclass_of_closure",
-    }
-)
+_KNOWN_TEMPLATE_BODIES = frozenset(semantic_templates()) | {
+    "entity_count_total",
+    "entity_count_by_type",
+}
 
 _SAFE_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 

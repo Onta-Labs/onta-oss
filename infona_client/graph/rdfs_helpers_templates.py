@@ -18,7 +18,9 @@ from typing import Mapping
 TEMPLATE_ENTITIES_OF_TYPE = "entities_of_type"
 TEMPLATE_ENTITIES_OF_TYPE_COUNT = "entities_of_type_count"
 TEMPLATE_LITERAL_VALUES = "literal_values"
+TEMPLATE_LITERAL_VALUES_COUNT = "literal_values_count"
 TEMPLATE_LITERAL_COMPARE = "literal_compare"
+TEMPLATE_RELATED_ENTITY_NAME_FILTER_INVERSE = "related_entity_name_filter_inverse"
 TEMPLATE_LITERAL_AGGREGATE = "literal_aggregate"
 TEMPLATE_RELATED_ENTITIES = "related_entities"
 TEMPLATE_RELATED_ENTITY_NAME_FILTER = "related_entity_name_filter"
@@ -62,7 +64,7 @@ RETURN count(DISTINCT e) AS n
 # ``lexical^^xsd-uri`` suffixes (legacy graphs), then string-compare the
 # lexical half and allow toFloat equality when both sides are numeric so
 # native store numbers still match string $prop_value from NL fixtures.
-LITERAL_VALUES_CYPHER = """
+_LITERAL_VALUES_MATCH = """
 MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
   tenant_id: $tenant_id, kg: $kg
 })
@@ -134,11 +136,24 @@ WHERE a IS NOT NULL OR (
     )
   )
 )
+""".strip()
+
+LITERAL_VALUES_CYPHER = (
+    _LITERAL_VALUES_MATCH
+    + """
 RETURN e.id AS id, e.name AS name, e.primary_type AS primary_type,
        coalesce(a.literal_value, e[$prop_key]) AS literal_value
 ORDER BY e.id
 LIMIT $limit
-""".strip()
+"""
+).strip()
+
+LITERAL_VALUES_COUNT_CYPHER = (
+    _LITERAL_VALUES_MATCH
+    + """
+RETURN count(DISTINCT e) AS n
+"""
+).strip()
 
 # Numeric / inequality compare on a datatype property. Handles both native
 # store numbers and legacy SPARQL-era ``lexical^^xsd-uri`` strings still in
@@ -408,9 +423,15 @@ def semantic_templates() -> dict[str, tuple[str, bool]]:
         TEMPLATE_ENTITIES_OF_TYPE: (ENTITIES_OF_TYPE_CYPHER, False),
         TEMPLATE_ENTITIES_OF_TYPE_COUNT: (ENTITIES_OF_TYPE_COUNT_CYPHER, False),
         TEMPLATE_LITERAL_VALUES: (LITERAL_VALUES_CYPHER, False),
+        TEMPLATE_LITERAL_VALUES_COUNT: (LITERAL_VALUES_COUNT_CYPHER, False),
         TEMPLATE_LITERAL_COMPARE: (LITERAL_COMPARE_CYPHER, False),
         TEMPLATE_LITERAL_AGGREGATE: (LITERAL_AGGREGATE_CYPHER, False),
         TEMPLATE_RELATED_ENTITIES: (RELATED_ENTITIES_CYPHER, False),
+        TEMPLATE_RELATED_ENTITY_NAME_FILTER: (RELATED_ENTITY_NAME_FILTER_CYPHER, False),
+        TEMPLATE_RELATED_ENTITY_NAME_FILTER_INVERSE: (
+            RELATED_ENTITY_NAME_FILTER_INVERSE_CYPHER,
+            False,
+        ),
         TEMPLATE_ASSERTIONS_FOR_SUBJECT: (ASSERTIONS_FOR_SUBJECT_CYPHER, False),
         TEMPLATE_SUBCLASS_OF_CLOSURE: (SUBCLASS_OF_CLOSURE_CYPHER, False),
     }
