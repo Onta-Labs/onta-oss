@@ -4,7 +4,7 @@ Each method returns the backend Response VERBATIM (no throw on non-2xx,
 no reshape). Paths come from Client path builders so they stay shared
 with the typed methods.
 */
-import type { Client } from "./client.js";
+import { RawExtractApi } from "./clientRawExtract.js";
 import type { RawInit } from "./clientTypesExtra.js";
 
 // --- Raw / passthrough API (COG-128) ----------------------------------------- #
@@ -37,8 +37,11 @@ import type { RawInit } from "./clientTypesExtra.js";
  * if (r.status === 404) { ... }            // no try/catch needed
  * ```
  */
-export class RawApi {
-  constructor(private readonly client: Client) {}
+export class RawApi extends RawExtractApi {
+  // The extract family (ingest/dlt + extract-sources + catalog + schedule) lives
+  // in the RawExtractApi base so neither file outgrows the size budget; the
+  // surface callers see is unchanged.
+
 
   // -- agent / ask --------------------------------------------------------- #
 
@@ -67,59 +70,6 @@ export class RawApi {
   /** `POST /graphs/{tenant}/ingest/csv/rows` — write a batch of mapped rows. */
   ingestCsvRows(body: unknown, init?: RawInit): Promise<Response> {
     return this.client.requestRaw("POST", this.client.pIngestCsvRows(), { body, ...init });
-  }
-
-  /** `POST /graphs/{tenant}/ingest/dlt` — extract a REST/SQL source via dlt. */
-  ingestDlt(body: unknown, init?: RawInit): Promise<Response> {
-    return this.client.requestRaw("POST", this.client.pIngestDlt(), { body, ...init });
-  }
-
-  extractSourcesList(init?: RawInit): Promise<Response> {
-    return this.client.requestRaw("GET", this.client.pExtractSources(), init);
-  }
-
-  extractSourcesGet(slug: string, init?: RawInit): Promise<Response> {
-    return this.client.requestRaw("GET", this.client.pExtractSource(slug), init);
-  }
-
-  extractSourcesCreate(body: unknown, init?: RawInit): Promise<Response> {
-    return this.client.requestRaw("POST", this.client.pExtractSources(), { body, ...init });
-  }
-
-  extractSourcesUpdate(slug: string, body: unknown, init?: RawInit): Promise<Response> {
-    return this.client.requestRaw("PATCH", this.client.pExtractSource(slug), {
-      body,
-      ...init,
-    });
-  }
-
-  extractSourcesDelete(slug: string, init?: RawInit): Promise<Response> {
-    return this.client.requestRaw("DELETE", this.client.pExtractSource(slug), init);
-  }
-
-  extractSourcesRun(slug: string, body?: unknown, init?: RawInit): Promise<Response> {
-    return this.client.requestRaw("POST", this.client.pExtractSourceRun(slug), {
-      body,
-      ...init,
-    });
-  }
-
-  /** `GET /graphs/{tenant}/extract-sources/catalog` — connector templates. */
-  extractCatalog(init?: RawInit): Promise<Response> {
-    return this.client.requestRaw("GET", this.client.pExtractCatalog(), init);
-  }
-
-  /** `PUT /graphs/{tenant}/extract-sources/{slug}/schedule` — set the cadence. */
-  extractSourceScheduleSet(slug: string, body: unknown, init?: RawInit): Promise<Response> {
-    return this.client.requestRaw("PUT", this.client.pExtractSourceSchedule(slug), {
-      body,
-      ...init,
-    });
-  }
-
-  /** `DELETE /graphs/{tenant}/extract-sources/{slug}/schedule` — stop recurring reads. */
-  extractSourceScheduleClear(slug: string, init?: RawInit): Promise<Response> {
-    return this.client.requestRaw("DELETE", this.client.pExtractSourceSchedule(slug), init);
   }
 
   // -- enrich jobs --------------------------------------------------------- #

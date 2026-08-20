@@ -173,6 +173,53 @@ async def test_dispatch_runs_the_shared_saved_run_path():
     assert body.source.auth.secret_ref == "store:dlt:crm/token"
 
 
+async def test_fire_follows_the_source_graph_not_the_stale_row():
+    """Re-point a source at another KG and the cadence follows it.
+
+    The schedule row keeps a ``kg_name`` for labelling, but the fire reads the
+    SAVED SOURCE — otherwise a scheduled read would keep writing to the graph
+    the source was pointed at when the cadence was created, while Read now wrote
+    to the new one.
+    """
+    from infona_client.ingestion.saved_run import run_scheduled_extract
+
+    store = make_extract_source_store()
+    await store.upsert(StoredExtractSource(tenant_id=TENANT, source=_source()))
+    schedules = InMemoryScheduleStore()
+    schedule = await upsert_extract_schedule(
+        schedules,
+        tenant_id=TENANT,
+        slug="crm",
+        kg_name="people",
+        body=ExtractScheduleRequest(interval_seconds=DAILY),
+    )
+    moved = _source().model_copy(update={"kg": "customers"})
+    await store.upsert(StoredExtractSource(tenant_id=TENANT, source=moved))
+
+    with patch(
+        "infona_client.ingestion.run.run_dlt_ingest",
+        new=AsyncMock(return_value=IngestResult(rows_in=1)),
+    ) as run:
+        await run_scheduled_extract(schedule, neptune=object())
+    assert run.await_args.kwargs["body"].kg == "customers"
+
+
+def test_patch_repoints_the_cadence_label(client, auth_headers):
+    client.post("/graphs/test-tenant/extract-sources", json=CREATE, headers=auth_headers)
+    client.put(
+        "/graphs/test-tenant/extract-sources/crm/schedule",
+        json={"interval_seconds": DAILY},
+        headers=auth_headers,
+    )
+    client.patch(
+        "/graphs/test-tenant/extract-sources/crm",
+        json={"kg": "customers"},
+        headers=auth_headers,
+    )
+    rows = client.get("/graphs/test-tenant/schedules", headers=auth_headers).json()
+    assert [r["kg_name"] for r in rows] == ["customers"]
+
+
 @pytest.mark.parametrize("reason", ["missing", "disabled"])
 async def test_dispatch_skips_a_stale_schedule(reason):
     """A row pointing at a deleted / paused source must not raise mid-sweep."""

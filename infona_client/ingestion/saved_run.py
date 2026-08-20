@@ -126,13 +126,16 @@ async def run_scheduled_extract(
             reason="missing" if row is None else "disabled",
         )
         return None
-    override = RunExtractSourceRequest(kg=schedule.kg_name or None)
+    # No kg override: the SAVED SOURCE decides where rows land, exactly as it
+    # does for a manual run. The schedule row's ``kg_name`` is descriptive (it
+    # labels the fired job) and would go stale the moment someone re-pointed the
+    # source at another graph — following it would make a scheduled read write
+    # somewhere the Read now button does not.
     result = await run_saved_extract(
         tenant_id=schedule.tenant_id,
         source=row.source,
         neptune=neptune,
         job_store=job_store,
-        override=override,
     )
     _log.info(
         "extract_schedule_fired",

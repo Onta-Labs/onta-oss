@@ -289,6 +289,12 @@ async def update_extract_source(
         StoredExtractSource(tenant_id=tenant.tenant_id, source=updated)
     )
     schedule = await find_extract_schedule(schedule_store, tenant.tenant_id, slug)
+    if schedule is not None and schedule.kg_name != (updated.kg or ""):
+        # Re-point the cadence row's label at the source's new graph. The FIRE
+        # itself reads the source (not this field), so this only keeps the
+        # schedule row honest for anyone reading /schedules.
+        schedule.kg_name = updated.kg or ""
+        await schedule_store.update(schedule)
     return await _summary(tenant.tenant_id, stored, schedule)
 
 

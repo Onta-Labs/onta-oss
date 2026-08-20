@@ -8,6 +8,7 @@ URLs.
 export { InfonaError } from "./clientError.js";
 export { SCHEMA_SAMPLE_CAP, parseCsv } from "./clientCsv.js";
 export { RawApi } from "./clientRaw.js";
+export { RawExtractApi } from "./clientRawExtract.js";
 export type {
   AskOptions,
   AttributeSummary,
