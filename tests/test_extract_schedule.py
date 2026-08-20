@@ -319,3 +319,37 @@ def test_deleting_a_source_removes_its_cadence(client, auth_headers):
     remaining = client.get("/graphs/test-tenant/schedules", headers=auth_headers)
     assert remaining.status_code == 200
     assert remaining.json() == [], "a cadence must not outlive its source"
+
+
+def test_generic_schedules_route_gates_extract_too(client, auth_headers):
+    """`/schedules` must not be a side door around the extract entitlement.
+
+    Creating an extract SOURCE 403s for an un-entitled hosted workspace; a
+    cadence pointing at one saved earlier has to hit the same wall, or the reads
+    (and their cost) keep running after entitlement lapses.
+    """
+    from unittest.mock import patch as _patch
+
+    body = {
+        "kg_name": "people",
+        "category": "ingest",
+        "action": "extract",
+        "params": {"extract_slug": "crm"},
+        "interval_seconds": DAILY,
+    }
+    # OSS (no checker registered): ungated, exactly like the persist family.
+    assert (
+        client.post(
+            "/graphs/test-tenant/schedules", json=body, headers=auth_headers
+        ).status_code
+        == 201
+    )
+
+    with _patch(
+        "infona_client.ingestion.hosted.get_entitlement_checker",
+        return_value=lambda t: False,
+    ), _patch("infona_client.ingestion.hosted.is_entitled", return_value=False):
+        denied = client.post(
+            "/graphs/test-tenant/schedules", json=body, headers=auth_headers
+        )
+    assert denied.status_code == 403
