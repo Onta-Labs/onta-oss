@@ -43,6 +43,9 @@ regexes = ['''verdict\.tenants, tenant, api_key, subject=verdict\.subject''']
 [[allowlists]]
 description = "OSS default PostHog project write key (client-side capture)"
 condition = "AND"
+# regexes default to the extracted *secret* (the phc_ token). This
+# identifier only matches if we target the whole line.
+regexTarget = "line"
 paths = ['''infona_client/telemetry/dest\.py$''']
 regexes = ['''DEFAULT_PROJECT_KEY''']
 
