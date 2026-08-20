@@ -2106,7 +2106,7 @@ class TestCompletionRetry:
     ),
 )
 class TestLiveHotelPMSInference:
-    """End-to-end Pass A→B→C against the real model (deepseek/deepseek-v3.2
+    """End-to-end Pass A→B→C against the real model (deepseek/deepseek-v4-pro-0813
     via OpenRouter) on the hotel PMS export — ADR 0003's generality check:
     zero domain hints anywhere in the prompts. Run on a dev machine with:
 
@@ -2124,7 +2124,7 @@ class TestLiveHotelPMSInference:
         headers, rows = _load_dataset("demo_data/hotel_design_partner/pms_reservations.csv")
         resolver = CSVResolver(client=None, openrouter_key=os.environ["OPENROUTER_API_KEY"])
         # Pin the validated model/provider for live runs regardless of env.
-        resolver.EXTRACT_MODEL = "deepseek/deepseek-v3.2"
+        resolver.EXTRACT_MODEL = "deepseek/deepseek-v4-pro-0813"
         resolver.EXTRACT_PROVIDER = "openrouter"
 
         mapping = await resolver.infer_schema(headers, rows, {}, total_rows=len(rows))
@@ -2173,7 +2173,7 @@ class TestLiveHotelPMSInference:
     ),
 )
 class TestLiveGraingerCompletion:
-    """End-to-end Pass A→B→C→D against the real model (deepseek/deepseek-v3.2
+    """End-to-end Pass A→B→C→D against the real model (deepseek/deepseek-v4-pro-0813
     via OpenRouter) on the Grainger-shaped catalog — the COG-52 acceptance
     scenario with zero domain hints in any prompt. Run on a dev machine with:
 
@@ -2191,7 +2191,7 @@ class TestLiveGraingerCompletion:
         headers, rows = _load_dataset("benchmarks/datasets/grainger-shaped-catalog.csv")
         resolver = CSVResolver(client=None, openrouter_key=os.environ["OPENROUTER_API_KEY"])
         # Pin the validated model/provider for live runs regardless of env.
-        resolver.EXTRACT_MODEL = "deepseek/deepseek-v3.2"
+        resolver.EXTRACT_MODEL = "deepseek/deepseek-v4-pro-0813"
         resolver.EXTRACT_PROVIDER = "openrouter"
 
         mapping = await resolver.infer_schema(headers, rows, {}, total_rows=len(rows))

@@ -18,10 +18,12 @@ import structlog
 from infona_client.eval_bank import rebuild_example_bank
 from infona_client.eval_models import (
     EVAL_MODEL,
+    EVAL_REASONING,
     DatasetStats,
     EvalReport,
     ModelConfig,
 )
+from infona_client.resolver.llm_router import EXTRACT_MODEL_DEFAULT
 from infona_client.graph.queries import kg_graph_uri, tenant_graph_uri
 
 logger = structlog.stdlib.get_logger("infona.eval")
@@ -106,13 +108,14 @@ async def run_full_eval(
     dataset_stats = all_stats[0] if all_stats else None
 
     # Determine which models are used for each role
-    extraction_model = os.environ.get("INFONA_EXTRACT_MODEL", "deepseek/deepseek-v3.2")
+    extraction_model = os.environ.get("INFONA_EXTRACT_MODEL", EXTRACT_MODEL_DEFAULT)
     query_model_resolved = query_model or os.environ.get("INFONA_QUERY_MODEL", "google/gemini-2.5-flash")
     models = ModelConfig(
         eval_judge=EVAL_MODEL,
         question_gen=EVAL_MODEL,
         query_model=query_model_resolved,
         extraction=extraction_model,
+        eval_reasoning=str(EVAL_REASONING.get("effort") or ""),
     )
 
     report = EvalReport(

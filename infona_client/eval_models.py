@@ -10,9 +10,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
-EVAL_MODEL = os.environ.get("INFONA_EVAL_MODEL", "deepseek/deepseek-v3.2")
+# Latest DeepSeek reasoning flagship on OpenRouter (V4 Pro GA, 2026-08-12).
+EVAL_MODEL = os.environ.get("INFONA_EVAL_MODEL", "deepseek/deepseek-v4-pro-0813")
 EVAL_PROVIDER = os.environ.get("INFONA_EVAL_PROVIDER", "openrouter")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+# Thinking must be requested; some providers serve a non-reasoning
+# completion on the same slug when this payload is omitted.
+EVAL_REASONING: dict = {"enabled": True, "effort": "high"}
+# High effort spends ~80% of max_tokens on thinking; 16k leaves JSON room.
+EVAL_MAX_TOKENS = 16384
 
 # Maximum chars of source data to include in judge context.
 # For question generation, we compute dataset stats from the FULL file
@@ -31,8 +37,9 @@ class ModelConfig:
     """
     eval_judge: str = ""      # ontology scoring + query judging
     question_gen: str = ""    # question generation
-    query_model: str = ""     # the model used by /ask to generate SPARQL
+    query_model: str = ""     # the model used by /ask to generate Cypher
     extraction: str = ""      # the model used during ingestion (from env)
+    eval_reasoning: str = ""  # OpenRouter effort, e.g. "high"
 
     def to_dict(self) -> dict:
         return {k: v for k, v in {
@@ -40,6 +47,7 @@ class ModelConfig:
             "question_gen": self.question_gen,
             "query_model": self.query_model,
             "extraction": self.extraction,
+            "eval_reasoning": self.eval_reasoning,
         }.items() if v}
 
 

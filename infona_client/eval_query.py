@@ -217,6 +217,7 @@ class QueryEvaluator:
             prompt=user_content,
             system=prompt,
             api_key=self._openrouter_key,
+            json_mode=True,
         )
 
         try:
@@ -302,12 +303,14 @@ class QueryEvaluator:
         )
 
         try:
-            judge_response = await _host()._llm_call(
-                prompt=judge_prompt,
-                system=QUERY_JUDGE_PROMPT,
-                api_key=self._openrouter_key,
+            judge_kw = dict(
+                prompt=judge_prompt, system=QUERY_JUDGE_PROMPT,
+                api_key=self._openrouter_key, json_mode=True,
             )
-            judgment = _host()._parse_json(judge_response)
+            try:
+                judgment = _host()._parse_json(await _host()._llm_call(**judge_kw))
+            except (json.JSONDecodeError, ValueError):
+                judgment = _host()._parse_json(await _host()._llm_call(**judge_kw))
             return QuestionResult(
                 tier=tier, question=q_text, expected=expected,
                 answer=answer, sparql=sparql,

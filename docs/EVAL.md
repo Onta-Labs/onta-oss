@@ -1,9 +1,9 @@
 # Evaluating Infona
 
-**Status: live.** One published pin on this tree: **5 / 8** query-accuracy
-(62%) on [`examples/trials.csv`](../examples/trials.csv). Three misses are in
+**Status: live.** One published pin on this tree: **6 / 8** query-accuracy
+(75%) on [`examples/trials.csv`](../examples/trials.csv). Two misses are in
 the table below — they are the artifact, not a footnote. Same eight questions
-as the prior 2/8 pin.
+as the prior 2/8 and 5/8 pins.
 
 Infona's product claim is **correct, cited, current**: English in, Cypher on
 Neo4j, an exact row out. This page is the public eval of that loop. The
@@ -30,7 +30,7 @@ pip install pandas            # ground-truth helper in infona_client.eval_llm
 # published sample (16-row oncology CSV)
 infona ingest examples/trials.csv --kg eval-public-trials -y
 export INFONA_QUERY_MODEL=openai/gpt-oss-120b
-export INFONA_EVAL_MODEL=deepseek/deepseek-v3.2
+export INFONA_EVAL_MODEL=deepseek/deepseek-v4-pro-0813
 python scripts/run_public_eval.py \
     --dataset examples/trials.csv \
     --kg eval-public-trials \
@@ -54,8 +54,9 @@ iteration artifacts still land in gitignored `eval_reports/`.
 | **KG** | `eval-public-trials` on tenant `default` (654 triples / 54 entities after ingest) |
 | **Questions** | 8 generated (2 per tier) |
 | **Query model** (`/ask` → Cypher) | `openai/gpt-oss-120b` |
-| **Judge + question gen** | `deepseek/deepseek-v3.2` |
-| **Ran** | 2026-08-19T15:10:24 · 33.4s · tree `ee028fc` (query-only re-run of the published 8) |
+| **Judge + question gen** | `deepseek/deepseek-v4-pro-0813` (reasoning, effort `high`) |
+| **Extraction** (`INFONA_EXTRACT_MODEL`) | `deepseek/deepseek-v4-pro-0813` (reasoning, effort `high`). This pin's KG was not re-ingested. |
+| **Ran** | 2026-08-19T15:58:38 · 202.2s · tree `1c531e8` (same published 8; V4 Pro reasoning judge) |
 | **Artifact** | [`docs/eval/public_results.json`](eval/public_results.json) |
 
 Override either model with the env vars above or `--query-model` /
@@ -69,9 +70,9 @@ The **Visible misses** column is the point. Failures stay in the table.
 |------|-------|--------|-------|----------|----------------|
 | 1 | Count/Lookup | 2 | 2 | 100% | |
 | 2 | Filter | 1 | 2 | 50% | Start-year ≥ 2019 returned trial rows, not a count |
-| 3 | Join | 1 | 2 | 50% | AstraZeneca drugs: extra brand-suffixed names (partial) |
+| 3 | Join | 2 | 2 | 100% | |
 | 4 | Multi-hop | 1 | 2 | 50% | NSCLC Phase-3 average: missing `average_enrollment` column |
-| **All** | | **5** | **8** | **62%** | 3 misses (1 wrong, 1 partial, 1 error) |
+| **All** | | **6** | **8** | **75%** | 2 misses (both error) |
 
 Hits (so the miss column is not the whole story):
 
@@ -79,6 +80,7 @@ Hits (so the miss column is not the whole story):
 - T1: “How many unique sponsors are involved in clinical trials?” → 8
 - T2: “How many clinical trials have status 'Active'?” → 4
 - T3: “What are the brand names of drugs targeting PD-1?” → Keytruda, Opdivo
+- T3: “Which drugs are evaluated in trials sponsored by AstraZeneca?” → judge `correct` (see note)
 - T4: “Which sponsor has the highest total enrollment across all their completed trials?” → Bristol Myers Squibb
 
 Tiers (what the harness generates):
@@ -95,19 +97,20 @@ Every question the judge did not mark `correct`. Source:
 
 | Tier | Question | Expected | Got | Verdict |
 |------|----------|----------|-----|---------|
-| 2 | How many clinical trials started in or after 2019? | 4 | Returned trial rows (start year 2019) instead of a count | wrong / wrong_aggregation |
-| 3 | Which drugs are evaluated in trials sponsored by AstraZeneca? | osimertinib, durvalumab | Those names plus `osimertinib_Tagrisso`, `durvalumab_Imfinzi` | partial / uri_instead_of_value |
-| 4 | What is the average enrollment for Phase 3 trials targeting NSCLC? | 792.88 | Missing column `average_enrollment` | error / bad_predicate_uri |
+| 2 | How many clinical trials started in or after 2019? | 4 | Returned trial rows (start year 2019+) instead of a count | error |
+| 4 | What is the average enrollment for Phase 3 trials targeting NSCLC? | 792.88 | Missing column `average_enrollment` | error / empty_result |
 
-The year question is the remaining list-vs-count miss (`literal_compare` still returns rows). AstraZeneca extra brand suffixes and the NSCLC measure-leaf name are not claimed fixed.
+The year question is still list-vs-count (`literal_compare` returns rows). NSCLC still misses the measure-leaf name.
+
+AstraZeneca extra brand suffixes (`osimertinib_Tagrisso`, `durvalumab_Imfinzi`) are still in the `/ask` answer. This V4 Pro judge marked that question `correct`; the prior v3.2 judge marked it `partial`. That flip is judge-strictness, not a product fix.
 
 ## Ontology quality (not the headline)
 
-The same run scored the inferred ontology **17 / 60**. Treat that figure
+The same run scored the inferred ontology **27 / 60**. Treat that figure
 as contaminated: the harness fetches `GET /ontology/types` **without a kg
 filter**, so on this local store the judge also saw types from other demo
-KGs (Book, Chef, …). The judge also emitted `decomposition = -1` (outside
-0–10); we published it as returned, not clamped.
+KGs (Book, Chef, …). Scores are in 0–10 this run (no out-of-range
+`decomposition = -1`).
 
 Query accuracy above is KG-scoped to `eval-public-trials`. Use that table.
 

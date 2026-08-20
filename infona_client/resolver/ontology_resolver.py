@@ -39,7 +39,7 @@ from infona_client.graph.ontology_queries import get_full_ontology_query
 from infona_client.graph.parser import parse_sparql_results
 from infona_client.models.ontology import ResolutionResult, ResolvedChange
 from infona_client.resolver.attribute_resolver import AttributeSchema, resolve_attribute
-from infona_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
+from infona_client.resolver.llm_router import EXTRACT_MODEL_DEFAULT, PRIMARY_MODEL, openrouter_chat
 from infona_client.resolver.models import (
     AttrAction,
     ExtractedAttribute,
@@ -178,7 +178,7 @@ class OntologyResolver:
 
     # Mirror CSVResolver's provider/model config so the single intent-parse call
     # uses the same routing knobs as the rest of the resolver pipeline.
-    EXTRACT_MODEL = os.environ.get("INFONA_EXTRACT_MODEL", PRIMARY_MODEL)
+    EXTRACT_MODEL = os.environ.get("INFONA_EXTRACT_MODEL", EXTRACT_MODEL_DEFAULT)
     EXTRACT_PROVIDER = os.environ.get("INFONA_EXTRACT_PROVIDER", "openrouter")
     INFER_MODEL = os.environ.get("INFONA_INFER_MODEL", "claude-opus-4-8")
 

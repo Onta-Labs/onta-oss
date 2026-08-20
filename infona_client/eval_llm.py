@@ -12,7 +12,12 @@ from pathlib import Path
 import httpx
 import structlog
 
-from infona_client.eval_models import EVAL_MODEL, OPENROUTER_URL
+from infona_client.eval_models import (
+    EVAL_MAX_TOKENS,
+    EVAL_MODEL,
+    EVAL_REASONING,
+    OPENROUTER_URL,
+)
 from infona_client.eval_prompts import GROUND_TRUTH_PROMPT
 
 logger = structlog.stdlib.get_logger("infona.eval")
@@ -25,12 +30,45 @@ def _host():
     return _mod
 
 
+def _part_text(value) -> str:
+    if isinstance(value, list):
+        return "".join(
+            p.get("text", "") if isinstance(p, dict) else str(p) for p in value
+        )
+    return str(value or "")
+
+
+def _assistant_text(payload: dict) -> str:
+    """Final answer text from an OpenRouter chat completion.
+
+    Reasoning models put chain-of-thought in ``message.reasoning`` (or
+    ``<think>`` inside content). Prefer ``content``; fall back to
+    ``reasoning`` when the provider left content empty.
+    """
+    choices = payload.get("choices") if isinstance(payload, dict) else None
+    choice = choices[0] if isinstance(choices, list) and choices else {}
+    if not isinstance(choice, dict):
+        choice = {}
+    message = choice.get("message") if isinstance(choice.get("message"), dict) else {}
+    text = _part_text(message.get("content")).strip()
+    if "</think>" in text:
+        text = text.rsplit("</think>", 1)[-1].strip()
+    if not text:
+        text = _part_text(message.get("reasoning")).strip()
+    if not text:
+        finish = choice.get("finish_reason")
+        detail = f" (finish_reason={finish})" if finish else ""
+        raise ValueError(f"empty LLM response{detail}")
+    return text
+
+
 async def _llm_call(
     prompt: str,
     system: str = "",
     api_key: str = "",
     model: str = "",
-    max_tokens: int = 4096,
+    max_tokens: int = EVAL_MAX_TOKENS,
+    json_mode: bool = False,
 ) -> str:
     """Call an LLM via OpenRouter. Returns the response text."""
     model = model or EVAL_MODEL
@@ -41,30 +79,46 @@ async def _llm_call(
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
 
-    async with httpx.AsyncClient(timeout=300) as client:
+    reasoning = dict(EVAL_REASONING)
+    body: dict = {
+        "model": model,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": 0,
+        "reasoning": reasoning,
+    }
+    if json_mode:
+        # Think, but put only the JSON answer in content. Echoed
+        # chain-of-thought starved two judge parses on V4 Pro.
+        reasoning["exclude"] = True
+        body["response_format"] = {"type": "json_object"}
+
+    async with httpx.AsyncClient(timeout=600) as client:
         res = await client.post(
             OPENROUTER_URL,
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
-            json={
-                "model": model,
-                "messages": messages,
-                "max_tokens": max_tokens,
-                "temperature": 0,
-            },
+            json=body,
         )
         res.raise_for_status()
-        return res.json()["choices"][0]["message"]["content"]
+        return _assistant_text(res.json())
 
 
 def _parse_json(text: str) -> dict | list:
-    """Parse JSON from LLM response, stripping code fences if present."""
+    """Parse JSON from LLM response, including JSON buried in prose."""
     stripped = text.strip()
+    if "</think>" in stripped:
+        stripped = stripped.rsplit("</think>", 1)[-1].strip()
     if stripped.startswith("```"):
         lines = [l for l in stripped.split("\n") if not l.strip().startswith("```")]
-        stripped = "\n".join(lines)
+        stripped = "\n".join(lines).strip()
+    decoder = json.JSONDecoder()
+    for i, ch in enumerate(stripped):
+        if ch in "{[":
+            obj, _ = decoder.raw_decode(stripped, i)
+            return obj
     return json.loads(stripped)
 
 
@@ -119,7 +173,7 @@ async def _compute_ground_truth(
             prompt=user_content,
             system=prompt,
             api_key=api_key,
-            max_tokens=512,
+            max_tokens=EVAL_MAX_TOKENS,
         )
         # Strip markdown fences if present
         expression = expression.strip()

@@ -286,7 +286,7 @@ class SchemaExtractMixin:
             max_tokens=(
                 max_tokens if max_tokens is not None else self.EXTRACT_MAX_TOKENS
             ),
-            timeout=60,
+            timeout=180 if _sr.is_reasoning_extract_model(self.EXTRACT_MODEL) else 60,
             return_finish_reason=True,
             return_usage=True,
         )

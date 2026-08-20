@@ -10,7 +10,7 @@ Prereqs: ``./scripts/oss_up.sh``, an ingested KG, ``OPENROUTER_API_KEY``,
     infona ingest examples/trials.csv --kg eval-public-trials -y
     export OPENROUTER_API_KEY=sk-or-...
     export INFONA_QUERY_MODEL=openai/gpt-oss-120b
-    export INFONA_EVAL_MODEL=deepseek/deepseek-v3.2
+    export INFONA_EVAL_MODEL=deepseek/deepseek-v4-pro-0813
     python scripts/run_public_eval.py \\
         --dataset examples/trials.csv --kg eval-public-trials --questions 8 \\
         --out docs/eval/public_results.json
@@ -31,7 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATASET = ROOT / "examples" / "trials.csv"
 DEFAULT_OUT = ROOT / "docs" / "eval" / "public_results.json"
 DEFAULT_QUERY_MODEL = "openai/gpt-oss-120b"
-DEFAULT_EVAL_MODEL = "deepseek/deepseek-v3.2"
+DEFAULT_EVAL_MODEL = "deepseek/deepseek-v4-pro-0813"
 DEFAULT_KG = "eval-public-trials"
 TIER_NAMES = {1: "Count/Lookup", 2: "Filter", 3: "Join", 4: "Multi-hop"}
 SCHEMA_VERSION = 1
@@ -149,6 +149,8 @@ def _parse() -> argparse.Namespace:
     p.add_argument("--query-model", default=os.environ.get("INFONA_QUERY_MODEL", DEFAULT_QUERY_MODEL))
     p.add_argument("--eval-model", default=os.environ.get("INFONA_EVAL_MODEL", DEFAULT_EVAL_MODEL))
     p.add_argument("--concurrency", type=int, default=4)
+    p.add_argument("--cache-questions", action="store_true",
+                   help="Reuse eval_reports/question_cache/{kg}-{n}.json")
     p.add_argument("--pending", action="store_true", help="Write schema-only JSON; skip the API")
     return p.parse_args()
 
@@ -161,7 +163,7 @@ async def _run(args: argparse.Namespace) -> dict:
         kg_name=args.kg, dataset_paths=[str(args.dataset)],
         num_questions=args.questions, query_model=args.query_model,
         openrouter_key=os.environ.get("OPENROUTER_API_KEY", ""),
-        concurrency=args.concurrency,
+        concurrency=args.concurrency, cache_questions=args.cache_questions,
     )
     print(format_report(report))
     return public_artifact(report, dataset=args.dataset, questions=args.questions, tenant=args.tenant)
