@@ -9,19 +9,21 @@ Acceptance:
 - Entitlement degrade: enhanced pin + entitled=False → no throw, public only
 - Deprecation preview for attrs present on tenant shape
 
-**Ported by ONTA-527.** Every acceptance case above ran against a ~340-line
-in-file SPARQL emulator (``MemNeptune``) which stored the pin triples, the
-published release records and the ontology content the previews diff. Production
-is Neo4j-only — Neptune is decommissioned and the SPARQL execution path is
-deleted — and ``graph/ontology_base_pin.py`` has no GraphStore path at all: the
-pin itself is read/written with ``neptune.query`` / ``neptune.update`` against a
-``…/base-pin`` named graph, the versions it pins to come from
-``ontology_snapshots.list_snapshots`` (SPARQL), and the preview diffs
-``load_ontology_shape`` results (which early-return EMPTY whenever a GraphStore
-is configured). The emulator was therefore the only reason any of this was
-green, including the two cases that were still passing before this port — they
-were false green, not survivors. It is deleted, the cases are re-expressed on
-the shipped path, and each is a ``strict=True`` xfail naming the mechanism.
+**Ported by ONTA-527, closed here.** Every acceptance case above once ran
+against a ~340-line in-file SPARQL emulator (``MemNeptune``). Production is
+Neo4j-only — Neptune is decommissioned and the SPARQL execution path is
+deleted — so ONTA-527 deleted the emulator, re-expressed the cases against the
+shipped path, and marked each a ``strict=True`` xfail: ``ontology_base_pin``
+read/wrote the pin with ``neptune.query`` / ``neptune.update`` against a
+``…/base-pin`` named graph and had no GraphStore path, so
+``GET /ontology/base-pin`` was a permanent 503 in production.
+
+The pin now lives on the ontology companion (``OntologyCompanion.base_pins``),
+the same GraphStore home ``_current_revision_counter`` and ``list_snapshots``
+already use for the revision counter and the snapshot list (ONTA-531), so the
+xfails are gone and these run green on the shipped path. The residual SPARQL
+arm below is still exercised by ``_DecommissionedSparql`` fixtures where a
+test needs it.
 
 The pure LayerStack / URI tests below are backend-independent and untouched.
 """
@@ -137,18 +139,6 @@ class _DecommissionedSparql:
         raise RuntimeError("Neptune is decommissioned (ONTA-527)")
 
 
-BASE_PIN_GAP = (
-    "BUG (ONTA-527 port gap): workspace base pinning does not exist on Neo4j. "
-    "graph/ontology_base_pin.py is SPARQL-only in all three of its dependencies: "
-    "the pin record itself is read/written with neptune.query / neptune.update "
-    "against the <…/base-pin> named graph, the versions it may pin to come from "
-    "ontology_snapshots.list_snapshots (also SPARQL-only), and previews diff "
-    "ontology_commit.load_ontology_shape output, which early-returns an EMPTY "
-    "OntologyShape whenever a GraphStore is configured. None of it has a "
-    "GraphStore path, so GET/POST /ontology/base (routes/ontology.py calls "
-    "ensure_workspace_base_pin / preview_base_upgrade / upgrade_base_pin / "
-    "get_base_pin with a NeptuneClient) cannot work in production."
-)
 
 
 async def _seed_public_v1(n) -> str:
@@ -192,7 +182,6 @@ async def _publish_public_v2(n) -> str:
     return rec.fingerprint
 
 
-@pytest.mark.xfail(reason=BASE_PIN_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_pin_stability_core():
     """Pin at v1; publish v2; the pinned stack still resolves v1 + its fingerprint.
@@ -249,7 +238,6 @@ async def test_pin_stability_core():
     assert await fingerprint_base_layer(n, stack_auto) == fp_v2
 
 
-@pytest.mark.xfail(reason=BASE_PIN_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_upgrade_then_rollback_restores_fingerprint():
     n = _DecommissionedSparql()
@@ -281,7 +269,6 @@ async def test_upgrade_then_rollback_restores_fingerprint():
     assert stack_rolled.graph_uri_for(Layer.PUBLIC) == release_graph_uri(PUBLIC, 1)
 
 
-@pytest.mark.xfail(reason=BASE_PIN_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_backfill_ensure_at_latest_then_noop():
     n = _DecommissionedSparql()
@@ -300,7 +287,6 @@ async def test_backfill_ensure_at_latest_then_noop():
     assert pin2.updated_at == pin1.updated_at  # second ensure must not rewrite
 
 
-@pytest.mark.xfail(reason=BASE_PIN_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_ensure_with_no_releases_pins_live():
     n = _DecommissionedSparql()
@@ -309,7 +295,6 @@ async def test_ensure_with_no_releases_pins_live():
     assert pin_live.is_live
 
 
-@pytest.mark.xfail(reason=BASE_PIN_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_collision_preview_tenant_overlaps_base_addition():
     """An upgrade preview must name attributes the workspace already defines."""
@@ -369,7 +354,6 @@ async def test_collision_preview_tenant_overlaps_base_addition():
     assert any("risk_score" in s for s in preview.summary)
 
 
-@pytest.mark.xfail(reason=BASE_PIN_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_preview_flags_deprecations_the_workspace_uses():
     n = _DecommissionedSparql()
@@ -421,7 +405,6 @@ async def test_preview_flags_deprecations_the_workspace_uses():
     )
 
 
-@pytest.mark.xfail(reason=BASE_PIN_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_entitlement_degrade_enhanced_pin_without_entitlement():
     """ENTITLEMENT: an enhanced pin held by a non-entitled workspace degrades to
@@ -469,7 +452,6 @@ async def test_entitlement_degrade_enhanced_pin_without_entitlement():
     assert Layer.ENHANCED not in stack_ws.layers
 
 
-@pytest.mark.xfail(reason=BASE_PIN_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_pin_read_failure_does_not_repin_to_latest():
     """B1 FAIL-CLOSED: a pin read that errors must not silently move the pin.
@@ -493,24 +475,31 @@ async def test_pin_read_failure_does_not_repin_to_latest():
     )
     assert (await get_base_pin(n, TENANT_ID)).base_version == 1
 
-    class _PinReadFails(_DecommissionedSparql):
-        async def query(self, sparql: str) -> dict:
-            if "WorkspaceBasePin" in sparql:
-                raise RuntimeError("pin read unavailable")
-            return await _DecommissionedSparql.query(self, sparql)
+    # Break the read the pin ACTUALLY uses. On the shipped GraphStore path
+    # that is the ontology companion, not a SPARQL query — a test that only
+    # broke `query()` would assert nothing about production.
+    import infona_client.graph.ontology_base_pin_store as bp_store
 
-    broken = _PinReadFails()
-    with pytest.raises(BasePinReadError):
-        await get_base_pin(broken, TENANT_ID)
-    with pytest.raises(BasePinReadError):
-        await ensure_workspace_base_pin(broken, TENANT_ID, entitled=False)
+    def _companion_read_fails(_tenant_id: str):
+        raise RuntimeError("pin read unavailable")
 
-    # Soft degrade on the workspace stack: live layers, no rewrite of the pin.
-    stack = await layer_stack_for_workspace(
-        broken, TENANT_ID, entitled=False, auto_ensure=True
-    )
-    assert stack.public_version is None
-    assert stack.graph_uri_for(Layer.PUBLIC) == PUBLIC
+    broken = _DecommissionedSparql()
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(bp_store, "_pin_from_companion", _companion_read_fails)
+    try:
+        with pytest.raises(BasePinReadError):
+            await get_base_pin(broken, TENANT_ID)
+        with pytest.raises(BasePinReadError):
+            await ensure_workspace_base_pin(broken, TENANT_ID, entitled=False)
+
+        # Soft degrade on the workspace stack while the read is still broken.
+        stack_broken = await layer_stack_for_workspace(
+            broken, TENANT_ID, entitled=False, auto_ensure=True
+        )
+        assert stack_broken.public_version is None
+        assert stack_broken.graph_uri_for(Layer.PUBLIC) == PUBLIC
+    finally:
+        monkeypatch.undo()
 
     # Once reads work again the pin is still exactly where it was.
     after = await get_base_pin(n, TENANT_ID)
@@ -519,7 +508,6 @@ async def test_pin_read_failure_does_not_repin_to_latest():
     assert after.auto_upgrade is False
 
 
-@pytest.mark.xfail(reason=BASE_PIN_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_upgrade_refuses_missing_target_version():
     """VALIDATION: pinning to a version nobody published must refuse."""
@@ -536,7 +524,6 @@ async def test_upgrade_refuses_missing_target_version():
     assert pin is not None and pin.base_version == 1
 
 
-@pytest.mark.xfail(reason=BASE_PIN_GAP, strict=True)
 @pytest.mark.asyncio
 async def test_rollback_without_previous_raises():
     n = _DecommissionedSparql()
