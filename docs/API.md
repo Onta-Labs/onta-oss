@@ -1156,6 +1156,11 @@ Unions ``KgStats.type_breakdown`` across every knowledge graph in this
 tenant's durable stats store — one relational read, no SPARQL. Types with
 zero instances in every KG are omitted (so the response IS the Active set).
 
+When that union is empty, fall back to live GraphStore counts
+(:func:`_live_workspace_type_counts`) — on Neo4j nothing writes
+``type_breakdown`` any more, so the durable union alone would report an
+empty Active set for every workspace.
+
 **200:** Successful Response
 **422:** Validation Error
 
