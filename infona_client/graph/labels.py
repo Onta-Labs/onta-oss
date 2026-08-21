@@ -59,6 +59,25 @@ def sanitize_domain_label(leaf: str) -> str:
     return sanitized
 
 
+def is_domain_label(leaf: object) -> bool:
+    """Fail-soft twin of :func:`sanitize_domain_label` — *can* this be a label?
+
+    The raise flavour above is right for a leaf the CALLER supplied and can fix
+    (one schema mutation, one type summary). Use this one wherever the leaf is
+    DERIVED — synthesized as a fallback, or read back from the store while
+    fanning out over many — and one unusable leaf must not take the whole batch
+    down. Same raise/skip split (and the same shared-not-copied reason) as
+    :func:`~infona_client.graph.queries.require_valid_type_name` vs
+    :func:`~infona_client.graph.queries.skip_invalid_type_name`; that pair
+    covers IRI-safety, this one covers the B2 reserved-label gate.
+    """
+    try:
+        sanitize_domain_label(leaf)  # type: ignore[arg-type]  — guarded inside
+    except GraphScopeError:
+        return False
+    return True
+
+
 def sanitize_domain_labels(leaves: Sequence[str]) -> list[str]:
     """Sanitize a sequence of leaves; preserve order, drop duplicates."""
     out: list[str] = []
@@ -120,6 +139,7 @@ async def set_entity_type_labels(
 __all__ = [
     "RESERVED_SYSTEM_LABELS",
     "entity_set_labels_cypher",
+    "is_domain_label",
     "sanitize_domain_label",
     "sanitize_domain_labels",
     "set_entity_type_labels",
