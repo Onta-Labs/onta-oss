@@ -19,9 +19,10 @@ KEY_ENV = "INFONA_TELEMETRY_KEY"
 
 DEFAULT_CAPTURE_URL = "https://us.i.posthog.com/i/v0/e/"
 
-# Public write-only Infona-oss project token (PostHog project 563235).
-# gitleaks:allow — project write key, intended for client-side capture
-DEFAULT_PROJECT_KEY = "phc_B6ZuznkkXJizHmgEe9mh6gwBG4Py9A9hXN2EoLK82pid"
+# Public write-only Infona-oss project token (PostHog project 563235),
+# intended for client-side capture. The marker must sit on the assignment
+# itself; the historical blob is cleared by .gitleaks.toml.
+DEFAULT_PROJECT_KEY = "phc_B6ZuznkkXJizHmgEe9mh6gwBG4Py9A9hXN2EoLK82pid"  # gitleaks:allow
 
 _OFF = frozenset({"0", "off", "none", "false"})
 
