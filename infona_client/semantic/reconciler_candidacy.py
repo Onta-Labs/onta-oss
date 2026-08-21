@@ -96,6 +96,22 @@ async def _catalog_domain_for_attr(tenant_id: str, attr_leaf: str) -> str | None
     return None
 
 
+def _can_carry_a_verdict(type_name: object) -> bool:
+    """Whether a SET_TEXT_KIND verdict can land on ``type_name``.
+
+    Mirrors the catalog's B2 gate (``ontology_catalog_models._validate_type_leaf``
+    — IRI-safety plus ``sanitize_domain_label``) in its fail-soft flavour: the
+    type names reaching here are DERIVED (parsed out of a predicate IRI, or read
+    back from the catalog), not caller-supplied, and candidacy is a best-effort
+    side duty of reconcile. One attribute nobody can classify must stay
+    undecided — never abort the KG's index refresh.
+    """
+    from infona_client.graph.labels import is_domain_label
+    from infona_client.graph.queries import is_valid_type_name
+
+    return is_valid_type_name(type_name) and is_domain_label(type_name)
+
+
 async def _distinct_literal_predicates_store(
     tenant_id: str, kg_name: str
 ) -> list[str] | None:
@@ -246,6 +262,7 @@ async def _apply_default_candidacy(
     decided_locals = {_local_name(u) for u in marker_map}
 
     undecided: list[tuple[str, str, str]] = []  # (pred_uri, type_name, attr_name)
+    undecidable = 0  # no type that can host the verdict — counted, then logged
     for pred in literal_predicates:
         if pred in marker_map:
             continue  # decided (free_text or decided-no)
@@ -254,6 +271,13 @@ async def _apply_default_candidacy(
             if m.group("attr").lower() in marked_locals:
                 continue
             if _local_name(pred) in decided_locals:
+                continue
+            if not _can_carry_a_verdict(m.group("type")):
+                # A predicate whose type segment is a reserved system label
+                # (``types/Entity/attrs/x``) or is otherwise unusable as a type
+                # leaf. Nothing can be declared under it; skip rather than let
+                # commit_ontology raise mid-run.
+                undecidable += 1
                 continue
             undecided.append((pred, m.group("type"), m.group("attr")))
             continue
@@ -266,13 +290,28 @@ async def _apply_default_candidacy(
         if leaf.lower() in decided_locals or leaf.lower() in marked_locals:
             continue
         domain = await _catalog_domain_for_attr(tenant_id, leaf)
-        if domain is None:
-            # No catalog domain yet — still commit under a best-effort type
-            # so the verdict is durable (stub OntoAttr is MERGEd by SET_TEXT_KIND).
-            domain = "Entity"
+        if domain is None or not _can_carry_a_verdict(domain):
+            # Undeclared leaf — a denormalized ``name`` written by the Entity
+            # dual-write, a foreign property — so there is no type to hang a
+            # stub :OntoAttr on. This branch used to fall back to the literal
+            # type name ``"Entity"``, which is a RESERVED SYSTEM LABEL: the
+            # catalog's B2 gate raised out of the middle of the run and the
+            # whole KG's index stopped refreshing, on every KG carrying one
+            # such leaf. Inventing any domain would also mint a phantom
+            # ontology type with no instances, so leave the attribute
+            # undecided instead; the verdict lands once a schema pass declares
+            # it under a real type.
+            undecidable += 1
+            continue
         undecided.append((pred, domain, leaf))
 
     counters = {"attrs_marked_free_text": 0, "attrs_marked_not_text": 0}
+    if undecidable:
+        h.logger.info(
+            "semantic_candidacy_skipped_no_domain",
+            tenant_id=tenant_id,
+            attrs=undecidable,
+        )
     if not undecided:
         return counters
     cap = h._MAX_CANDIDACY_ATTRS_PER_RUN
@@ -307,17 +346,35 @@ async def _apply_default_candidacy(
             if verdict is TextCandidacy.FREE_TEXT
             else TEXT_KIND_NOT_TEXT
         )
-        await commit_ontology(
-            neptune,
-            onto_graph,
-            [OntologyMutation(
-                op=OntologyOpKind.SET_TEXT_KIND,
+        try:
+            await commit_ontology(
+                neptune,
+                onto_graph,
+                [OntologyMutation(
+                    op=OntologyOpKind.SET_TEXT_KIND,
+                    type_name=type_name,
+                    slot_name=attr_name,
+                    text_kind=kind,
+                )],
+                message="semantic reconciler text candidacy",
+            )
+        except Exception as exc:  # noqa: BLE001 — backstop, see below
+            # One attribute's verdict is never worth the KG's whole index
+            # refresh. Everything downstream (scan, upsert, ghost sweep) is
+            # independent of this write, and an unwritten verdict simply leaves
+            # the attr undecided — re-sampled next run, exactly like AMBIGUOUS.
+            # Contrast the marker FETCH, which still raises: an empty map there
+            # is indistinguishable from "no markers" and would ghost-delete the
+            # index. The screen above catches the known-unwritable domains; this
+            # keeps a novel one from reintroducing the abort.
+            h.logger.warning(
+                "semantic_candidacy_verdict_failed",
+                tenant_id=tenant_id,
                 type_name=type_name,
-                slot_name=attr_name,
-                text_kind=kind,
-            )],
-            message="semantic reconciler text candidacy",
-        )
+                attr=attr_name,
+                error=str(exc),
+            )
+            continue
         wrote = True
         if verdict is TextCandidacy.FREE_TEXT:
             counters["attrs_marked_free_text"] += 1
