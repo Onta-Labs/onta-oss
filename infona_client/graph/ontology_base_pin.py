@@ -57,6 +57,11 @@ from infona_client.graph.layers import (
     enhanced_graph_uri,
     public_graph_uri,
 )
+from infona_client.graph.ontology_base_pin_store import (
+    _graph_store_configured,
+    _pin_to_companion,
+    read_companion_pin,
+)
 from infona_client.graph.ontology_commit import (
     OntologyShape,
     load_ontology_shape,
@@ -64,11 +69,6 @@ from infona_client.graph.ontology_commit import (
 )
 from infona_client.graph.ontology_compat import classify_diff
 from infona_client.graph.ontology_queries import INFONA_ONTO, XSD
-from infona_client.graph.ontology_base_pin_store import (
-    _graph_store_configured,
-    _pin_to_companion,
-    read_companion_pin,
-)
 from infona_client.graph.ontology_snapshots import (
     diff_shapes,
     list_snapshots,

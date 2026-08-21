@@ -289,14 +289,21 @@ async def _live_workspace_type_counts(
     if not kg_names:
         return None
 
+    import asyncio
+
     from infona_client.graph.explore_store import type_counts as pg_type_counts
 
+    # Concurrent, not serial: this is a hot read path and a workspace can hold
+    # dozens of KGs, so one round-trip each in sequence would be felt.
+    per_kg = await asyncio.gather(
+        *(pg_type_counts(tenant_id=tenant_id, kg_name=n) for n in kg_names),
+        return_exceptions=True,
+    )
+
     by_type: dict[str, dict[str, int]] = {}
-    for kg_name in kg_names:
-        try:
-            rows = await pg_type_counts(tenant_id=tenant_id, kg_name=kg_name)
-        except Exception:  # noqa: BLE001 — one bad KG must not sink the rest
-            continue
+    for kg_name, rows in zip(kg_names, per_kg):
+        if isinstance(rows, BaseException):
+            continue  # one bad KG must not sink the rest
         for row in rows or ():
             if row.entity_count > 0:
                 by_type.setdefault(row.name, {})[kg_name] = row.entity_count
