@@ -11,6 +11,7 @@ import structlog
 from infona_client.graph.iri import IRI_BASE
 from infona_client.graph.parser import parse_sparql_results
 from infona_client.graph.queries import skip_invalid_type_name
+from infona_client.nlp.pipeline_ontology_catalog import layer_ontology_bindings
 from infona_client.nlp.pipeline_helpers import (
     MAX_ENUM_DISCOVERY_CONCURRENCY,
     ONTOLOGY_CACHE_TTL,
@@ -84,19 +85,35 @@ class PipelineOntologyMixin:
             type_layers: dict[str, Layer] = {}
             for onto_g in ontology_graphs:
                 layer = _layer_for_graph(onto_g)
-                try:
-                    raw = await self.neptune.query(get_full_ontology_query(onto_g))
-                    _, bindings = parse_sparql_results(raw)
-                except Exception:
-                    # Per-layer degradation (ADR 0002 §1): a missing/erroring
-                    # global layer contributes nothing; others still load.
-                    logger.warning(
-                        "layer_ontology_fetch_failed",
-                        graph_uri=onto_g,
-                        layer=layer.value,
-                        exc_info=True,
-                    )
-                    continue
+                # GraphStore catalog FIRST (ONTA-534): the SPARQL body below
+                # raises ``SparqlClientRetired`` for EVERY layer on the shipped
+                # Neo4j backend, and the per-layer `continue` then swallowed it
+                # into an empty `types` dict — a planner with no ontology at
+                # all. The catalog answers the same question, in the same row
+                # shape, from the same reads the Explorer ontology browser uses.
+                bindings = await layer_ontology_bindings(
+                    layer,
+                    onto_graph=onto_g,
+                    store=getattr(self, "_graph_store", None),
+                )
+                if bindings is None:
+                    # Residual SPARQL arm: still the only reader of ATTACHED
+                    # FUNCTIONS, still exercised by the dual-arm unit tests, and
+                    # still what answers when the store declines (no tenant
+                    # scope in the layer URI, no store, or nothing declared).
+                    try:
+                        raw = await self.neptune.query(get_full_ontology_query(onto_g))
+                        _, bindings = parse_sparql_results(raw)
+                    except Exception:
+                        # Per-layer degradation (ADR 0002 §1): a missing/erroring
+                        # global layer contributes nothing; others still load.
+                        logger.warning(
+                            "layer_ontology_fetch_failed",
+                            graph_uri=onto_g,
+                            layer=layer.value,
+                            exc_info=True,
+                        )
+                        continue
                 for row in bindings:
                     tl = row.get("typeLabel", "")
                     if not tl:
