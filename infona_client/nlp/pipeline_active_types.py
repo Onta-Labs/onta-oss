@@ -200,14 +200,78 @@ class PipelineActiveTypesMixin:
                     found.add(name)
         return found
 
+    async def _store_instance_types(self, instance_graph: str) -> set[str] | None:
+        """Type leaves that carry instances in ``instance_graph``, via GraphStore.
+
+        The whole ONTA-427 ladder below asks the instance graph one question —
+        "which type leaves have at least one instance here?" — over SPARQL. The
+        SPARQL HTTP client is RETIRED on the shipped Neo4j backend (ONTA-534), so
+        both the bounded probe and the unbounded scan raise
+        ``SparqlClientRetired`` in production: every ``/ask`` and ``/agent``
+        logged ``active_types_probe_failed`` and the planner lost its
+        "prefer slots WITHOUT [no instances]" grounding on every question.
+
+        :func:`infona_client.graph.explore_store.type_counts` answers exactly
+        that question against the store, in ONE grouped read, and it is the same
+        signal the Explorer type rail renders — so the probe and the rail can no
+        longer disagree about which types are populated. Because it enumerates
+        every ``Entity -[:INSTANCE_OF]-> Class`` leaf (not just declared ones,
+        and not through a primary-type guard) it is a drop-in for the SCAN, not
+        just for the bounded probe: multi-typed entities count under every class
+        they assert, so a populated subtype can never read as empty.
+
+        Best-effort throughout, mirroring
+        :func:`infona_client.api.routes.knowledge_graphs_common._neo4j_live_kg_counts`
+        and ``ontology_workspace._live_workspace_type_counts``: a non-KG graph
+        URI, an unconfigured store, a store error, or an EMPTY result all return
+        ``None`` so the caller keeps the residual SPARQL arm rather than
+        inventing an answer. Returning ``None`` for empty is deliberate — "this
+        KG has no instances" and "this store had nothing to say" are
+        indistinguishable here, and treating the second as the first would mark
+        every declared type ``[no instances]``, the exact ONTA-258 regression
+        this module exists to prevent.
+        """
+        parsed = parse_kg_graph_uri(instance_graph)
+        if not parsed:
+            # Bare tenant / provenance / non-KG graph: no instance scope to read.
+            return None
+        tenant_id, kg_name = parsed
+        try:
+            from infona_client.graph.explore_store import type_counts
+
+            store = getattr(self, "_graph_store", None)
+            if store is None:
+                from infona_client.graph.store import get_optional_graph_store
+
+                store = get_optional_graph_store()
+            rows = await type_counts(
+                store=store, tenant_id=tenant_id, kg_name=kg_name
+            )
+        except Exception as exc:  # noqa: BLE001 — fail soft, never break /ask
+            logger.debug(
+                "active_types_store_read_failed",
+                instance_graph=instance_graph,
+                error=str(exc),
+            )
+            return None
+        found = {r.name for r in rows or () if r.entity_count > 0 and r.name}
+        return found or None
+
     async def _scan_instance_types(self, instance_graph: str) -> set[str]:
         """Every type NAME present in the instance graph (the UNBOUNDED scan).
 
-        The pre-ONTA-427 probe verbatim. Still the right tool for the two jobs
-        that genuinely need types the ontology never declared: the schema-missing
+        GraphStore first (:meth:`_store_instance_types`) — that is the shipped
+        backend and the only arm that can answer at all under ONTA-534. The
+        SPARQL body below is the residual arm: still exercised by the dual-arm
+        unit tests, and still the pre-ONTA-427 probe verbatim for the two jobs
+        that genuinely need types the ontology never declared (the schema-missing
         instance fallback, and the over-cap case where one scan beats hundreds of
-        seeks. READ-ONLY (a SELECT).
+        seeks). READ-ONLY (a SELECT).
         """
+        from_store = await self._store_instance_types(instance_graph)
+        if from_store is not None:
+            return from_store
+
         from infona_client.graph.layers import type_name_from_uri
 
         # Named for what it is, not `query`: the confinement drift guard in
@@ -242,7 +306,23 @@ class PipelineActiveTypesMixin:
         probe could not answer. The second element is the scan's own result (or
         None), so a caller that ALSO needs types the ontology never declared can
         reuse it instead of scanning twice.
+
+        GraphStore comes FIRST (ONTA-534). One grouped read answers the whole
+        ladder's question, so neither SPARQL arm runs on the shipped backend —
+        where both would raise ``SparqlClientRetired`` and degrade the grounding
+        on every ask. It is returned as the ``scanned`` element too, because it
+        enumerates every populated leaf including ones the ontology never
+        declared, which is exactly the contract that element carries.
         """
+        # When this declines, `_scan_instance_types` below asks the store once
+        # more. Deliberate: the scan is also called DIRECTLY by `_fetch_ontology`
+        # so it has to carry its own store arm, and the repeat only happens when
+        # the store already had nothing to say — a zero-row MATCH, in the path
+        # that is about to pay for a whole SPARQL scan anyway.
+        from_store = await self._store_instance_types(instance_graph)
+        if from_store is not None:
+            return from_store, from_store
+
         names: set[str] | None = None
         if declared_names:
             candidate_uris = self._active_type_candidate_uris(declared_names)
