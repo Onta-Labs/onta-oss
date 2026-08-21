@@ -43,3 +43,14 @@ description = "eval spec *key_column values (spending_id / outlier_flag_2023)"
 condition = "AND"
 paths = ['''eval_holdout_v2/multitable_specs/medicare-part-d-pricing\.json$''']
 regexes = ['''spending_id''', '''outlier_flag_2023''']
+
+# infona_client/telemetry/dest.py (ONTA-548, blob first added in 475c5d2).
+# A PostHog *project* token, not a secret: write-only ingest credential of
+# the same class as a browser snippet key, designed to ship in client code.
+# It cannot read events back or reach the PostHog account, and it is not the
+# Infona Webapp (Cloud) project. The in-file `# gitleaks:allow` marker only
+# excuses HEAD; the full-history scan still reaches the original blob, so
+# the one exact value is pinned here.
+[[allowlists]]
+description = "Public PostHog project write key for OSS telemetry (client-side by design)"
+regexes = ['''phc_B6ZuznkkXJizHmgEe9mh6gwBG4Py9A9hXN2EoLK82pid''']
