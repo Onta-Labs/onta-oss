@@ -64,6 +64,11 @@ from infona_client.graph.ontology_commit import (
 )
 from infona_client.graph.ontology_compat import classify_diff
 from infona_client.graph.ontology_queries import INFONA_ONTO, XSD
+from infona_client.graph.ontology_base_pin_store import (
+    _graph_store_configured,
+    _pin_to_companion,
+    read_companion_pin,
+)
 from infona_client.graph.ontology_snapshots import (
     diff_shapes,
     list_snapshots,
@@ -210,7 +215,15 @@ async def get_base_pin(neptune, tenant_id: str) -> BasePin | None:
     A successful empty query result means no pin (``None``). Query / parse
     infrastructure failures raise :class:`BasePinReadError` — they must not
     be collapsed to ``None`` (that would trigger a silent re-pin to latest).
+
+    Under GraphStore the read comes off the ontology companion (ONTA-534); the
+    SPARQL branch below is the residual Neptune arm. Before the split, this hit
+    the retired SPARQL client every request, so ``GET /ontology/base-pin`` was
+    a permanent 503 for every workspace.
     """
+    if _graph_store_configured():
+        return read_companion_pin(tenant_id)
+
     g = base_pin_graph_uri(tenant_id)
     q = (
         f"SELECT ?p ?o FROM <{g}> WHERE {{\n"
@@ -319,9 +332,12 @@ async def set_base_pin(
             )
         )
 
-    # Full replace of the tiny schema-meta graph (not instance data).
-    await neptune.update(f"CLEAR SILENT GRAPH <{g}>")
-    await neptune.update(insert_triples(g, triples))
+    if _graph_store_configured():
+        _pin_to_companion(tenant_id, stored)
+    else:
+        # Full replace of the tiny schema-meta graph (not instance data).
+        await neptune.update(f"CLEAR SILENT GRAPH <{g}>")
+        await neptune.update(insert_triples(g, triples))
     logger.info(
         "base_pin_set",
         tenant_id=tenant_id,

@@ -6,6 +6,9 @@ Acceptance:
   * Peer-tenant rows never leak
   * Empty store → 200 with types: []
   * Pure ``union_type_breakdowns`` is deterministic and skips non-positive
+  * Live GraphStore fallback answers when ``type_breakdown`` is unwritten
+    (ONTA-534: the SPARQL stats scan that wrote it is retired, so on Neo4j the
+    durable union is always empty and Active would read 0 for every workspace)
 """
 
 from __future__ import annotations
@@ -18,12 +21,16 @@ from infona_client.api.deps import get_neptune_client
 from infona_client.api.routes import ontology as ontology_routes
 from infona_client.auth import api_keys
 from infona_client.auth.api_keys import TenantContext
+from infona_client.graph.iri import IRI_BASE
 from infona_client.graph.kg_stats_store import (
     KgStats,
     get_kg_stats_store,
     reset_kg_stats_store,
     union_type_breakdowns,
 )
+from infona_client.graph.kg_writer import insert_facts
+from infona_client.graph.ontology_queries import entity_uri
+from infona_client.graph.store import get_graph_store
 
 TENANT_A = "acme"
 TENANT_B = "globex"
@@ -166,3 +173,77 @@ async def test_workspace_type_counts_tenant_isolation():
     assert "SecretType" not in b_names
     assert a["kg_names"] == ["a-kg"]
     assert b["kg_names"] == ["b-kg"]
+
+
+# ── live GraphStore fallback (ONTA-534 stats-scan retirement) ────────────────
+#
+# `KgStats.type_breakdown` is written only by the whole-KG SPARQL stats scan,
+# which short-circuits under GraphStore. Without a live fallback the ontology
+# browser's Active pill reports 0 types for every Neo4j workspace no matter how
+# much data the graph holds. `conftest` gives each test a fresh MemoryGraphStore
+# as the process store, so writing entities here exercises the shipped path.
+
+RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
+
+
+async def _seed_entities(tenant_id: str, kg: str, per_type: dict[str, int]) -> None:
+    """Write ``n`` instances of each type into ``kg`` on the process store."""
+    store = get_graph_store()
+    graph = f"{IRI_BASE}/graphs/{tenant_id}/kg/{kg}"
+    triples = []
+    for type_name, n in per_type.items():
+        for i in range(n):
+            uri = entity_uri(type_name, f"{kg}-{type_name}-{i}")
+            triples.append((uri, RDF_TYPE, f"{IRI_BASE}/types/{type_name}"))
+            triples.append((uri, RDFS_LABEL, f"{type_name} {i}"))
+    await insert_facts(None, graph, triples, store=store)
+    await store.kg_registry_upsert(tenant_id, kg, description="")
+
+
+@pytest.mark.asyncio
+async def test_live_fallback_when_type_breakdown_never_written():
+    # No KgStats rows at all — exactly the shipped Neo4j state.
+    await _seed_entities(TENANT_A, "synth-a", {"SynthWidget": 3, "SynthBin": 1})
+    await _seed_entities(TENANT_A, "synth-b", {"SynthWidget": 2})
+
+    body = _app(TENANT_A).get(f"/graphs/{TENANT_A}/ontology/type-counts").json()
+    by_name = {t["name"]: t for t in body["types"]}
+    assert by_name["SynthWidget"]["entity_count"] == 5
+    assert by_name["SynthWidget"]["by_kg"] == {"synth-a": 3, "synth-b": 2}
+    assert by_name["SynthBin"]["entity_count"] == 1
+    assert set(body["kg_names"]) == {"synth-a", "synth-b"}
+    # Same ordering contract as the durable union: highest total first.
+    assert body["types"][0]["name"] == "SynthWidget"
+
+
+@pytest.mark.asyncio
+async def test_live_fallback_does_not_override_durable_counts():
+    # A durable row exists → it wins; the live scan must not run or blend in.
+    await _seed(TENANT_A, "synth-a", {"SynthWidget": 10})
+    await _seed_entities(TENANT_A, "synth-a", {"SynthWidget": 3, "SynthBin": 1})
+
+    body = _app(TENANT_A).get(f"/graphs/{TENANT_A}/ontology/type-counts").json()
+    by_name = {t["name"]: t for t in body["types"]}
+    assert by_name["SynthWidget"]["entity_count"] == 10
+    assert "SynthBin" not in by_name
+
+
+@pytest.mark.asyncio
+async def test_live_fallback_keeps_tenants_isolated():
+    await _seed_entities(TENANT_A, "a-kg", {"SynthSecret": 4})
+    await _seed_entities(TENANT_B, "b-kg", {"SynthPeer": 2})
+
+    a = _app(TENANT_A).get(f"/graphs/{TENANT_A}/ontology/type-counts").json()
+    b = _app(TENANT_B).get(f"/graphs/{TENANT_B}/ontology/type-counts").json()
+    assert {t["name"] for t in a["types"]} == {"SynthSecret"}
+    assert {t["name"] for t in b["types"]} == {"SynthPeer"}
+    assert a["kg_names"] == ["a-kg"]
+    assert b["kg_names"] == ["b-kg"]
+
+
+@pytest.mark.asyncio
+async def test_live_fallback_empty_graph_still_returns_empty():
+    body = _app(TENANT_A).get(f"/graphs/{TENANT_A}/ontology/type-counts").json()
+    assert body["types"] == []
+    assert body["kg_names"] == []

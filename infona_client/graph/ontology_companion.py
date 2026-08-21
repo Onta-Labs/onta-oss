@@ -9,6 +9,7 @@ state on the process GraphStore:
 * **revisions** — monotonic workspaceRevision counter
 * **frozen_shapes** — immutable OntologyShape JSON for ``…/v{N}`` / ``…/r{N}``
 * **snapshots** — release/revision metadata lists per live graph
+* **base_pins** — per-workspace base-layer version pin (ONTA-405)
 
 MemoryGraphStore tests and single-process Neo4j both hang the companion on
 the store instance. Hermetic fixtures create a fresh store per test, so state
@@ -48,6 +49,11 @@ class OntologyCompanion:
     frozen_shapes: dict[str, dict[str, Any]] = field(default_factory=dict)
     # live graph_uri → list of release/revision metadata dicts (newest last)
     snapshots: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    # tenant_id → stored base-pin fields (ONTA-405). Same non-durable contract
+    # as `revisions` / `snapshots`: the SPARQL pin graph is gone with the
+    # Neptune backend, and the pin is derivable from the release list, so a
+    # process-local pin is the accurate replacement rather than a hard failure.
+    base_pins: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def clear(self) -> None:
         self.aliases.clear()
@@ -55,6 +61,7 @@ class OntologyCompanion:
         self.revisions.clear()
         self.frozen_shapes.clear()
         self.snapshots.clear()
+        self.base_pins.clear()
 
 
 def get_ontology_companion(store: "GraphStore | None" = None) -> OntologyCompanion:

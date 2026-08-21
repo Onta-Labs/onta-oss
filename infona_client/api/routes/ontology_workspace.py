@@ -253,6 +253,64 @@ async def get_workspace_ontology(
     return await _workspace_ontology(tenant, client)
 
 
+async def _live_workspace_type_counts(
+    tenant_id: str,
+) -> tuple[list[tuple[str, int, dict[str, int]]], list[str]] | None:
+    """Live per-type entity counts unioned across the workspace's KGs, or None.
+
+    ``KgStats.type_breakdown`` — what :func:`workspace_type_counts` unions — is
+    only ever written by the whole-KG SPARQL stats scan, and that scan is
+    retired under the Neo4j GraphStore (ONTA-534: ``recompute_kg_stats`` and
+    ``backfill_kg_summary`` both short-circuit before writing it). So on the
+    shipped backend the durable union is ALWAYS empty and the ontology
+    browser's Active set reads 0 types for every workspace, however much data
+    the graph holds.
+
+    This reads the same live GraphStore counts the Explorer type rail uses
+    (:func:`infona_client.graph.explore_store.type_counts`) over the KG
+    registry. Best-effort throughout, mirroring ``_neo4j_live_kg_counts`` on
+    the KG listing: any failure returns ``None`` so the caller keeps the
+    durable answer rather than failing the read.
+    """
+    try:
+        from infona_client.graph.kg_registry import (
+            list_registered_kgs,
+            neo4j_kg_registry_active,
+        )
+
+        if not neo4j_kg_registry_active():
+            return None
+        entries = await list_registered_kgs(tenant_id)
+    except Exception:  # noqa: BLE001
+        return None
+
+    kg_names = [str(e.get("name") or "") for e in entries or ()]
+    kg_names = [n for n in kg_names if n]
+    if not kg_names:
+        return None
+
+    from infona_client.graph.explore_store import type_counts as pg_type_counts
+
+    by_type: dict[str, dict[str, int]] = {}
+    for kg_name in kg_names:
+        try:
+            rows = await pg_type_counts(tenant_id=tenant_id, kg_name=kg_name)
+        except Exception:  # noqa: BLE001 — one bad KG must not sink the rest
+            continue
+        for row in rows or ():
+            if row.entity_count > 0:
+                by_type.setdefault(row.name, {})[kg_name] = row.entity_count
+
+    if not by_type:
+        return None
+    # Same ordering contract as `union_type_breakdowns`: total desc, name asc.
+    aggregated = [
+        (name, sum(by_kg.values()), by_kg) for name, by_kg in by_type.items()
+    ]
+    aggregated.sort(key=lambda t: (-t[1], t[0].lower()))
+    return aggregated, sorted(kg_names)
+
+
 async def workspace_type_counts(
     tenant: TenantContext = Depends(get_tenant),
 ):
@@ -261,6 +319,11 @@ async def workspace_type_counts(
     Unions ``KgStats.type_breakdown`` across every knowledge graph in this
     tenant's durable stats store — one relational read, no SPARQL. Types with
     zero instances in every KG are omitted (so the response IS the Active set).
+
+    When that union is empty, fall back to live GraphStore counts
+    (:func:`_live_workspace_type_counts`) — on Neo4j nothing writes
+    ``type_breakdown`` any more, so the durable union alone would report an
+    empty Active set for every workspace.
     """
     from infona_client.graph.kg_stats_store import (
         get_kg_stats_store,
@@ -274,13 +337,20 @@ async def workspace_type_counts(
         rows = []
 
     aggregated = union_type_breakdowns(rows)
+    kg_names = sorted({r.kg_name for r in rows})
+
+    if not aggregated:
+        live = await _live_workspace_type_counts(tenant.tenant_id)
+        if live is not None:
+            aggregated, kg_names = live
+
     return WorkspaceTypeCountsResponse(
         tenant_id=tenant.tenant_id,
         types=[
             WorkspaceTypeCount(name=name, entity_count=total, by_kg=by_kg)
             for name, total, by_kg in aggregated
         ],
-        kg_names=sorted({r.kg_name for r in rows}),
+        kg_names=kg_names,
     )
 
 

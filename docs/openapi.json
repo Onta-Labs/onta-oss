@@ -1062,7 +1062,7 @@
           "ontology"
         ],
         "summary": "Workspace Type Counts",
-        "description": "Workspace-wide union of per-type entity counts (ONTA-409).\n\nUnions ``KgStats.type_breakdown`` across every knowledge graph in this\ntenant's durable stats store \u2014 one relational read, no SPARQL. Types with\nzero instances in every KG are omitted (so the response IS the Active set).",
+        "description": "Workspace-wide union of per-type entity counts (ONTA-409).\n\nUnions ``KgStats.type_breakdown`` across every knowledge graph in this\ntenant's durable stats store \u2014 one relational read, no SPARQL. Types with\nzero instances in every KG are omitted (so the response IS the Active set).\n\nWhen that union is empty, fall back to live GraphStore counts\n(:func:`_live_workspace_type_counts`) \u2014 on Neo4j nothing writes\n``type_breakdown`` any more, so the durable union alone would report an\nempty Active set for every workspace.",
         "operationId": "workspace_type_counts_graphs__tenant__ontology_type_counts_get",
         "security": [
           {
