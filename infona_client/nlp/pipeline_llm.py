@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from typing import Any
 
 # Query generation provider config.
 # INFONA_LLM_BASE_URL / INFONA_QUERY_BASE_URL let self-hosted OpenAI-compatible
@@ -234,6 +235,43 @@ def _parse_sparql_gen_json(content: str) -> dict:
             "explanation": "",
             "functions_needed": [],
         }
+
+
+def _parse_cypher_gen_json(content: Any) -> dict:
+    """Parse a Cypher-generation JSON response from a ``json_object`` provider.
+
+    Both Cypher generators (Cerebras and OpenRouter) ask for
+    ``response_format={"type": "json_object"}`` — no server-side JSON *schema*
+    constrains the decode, because the ``params`` bag is a free-form object that
+    strict structured output cannot express (see ``_generate_cypher_via_cerebras``
+    for the probe log). So both must tolerate the same wrapping a reasoning model
+    sometimes adds: a ```` ``` ```` fence, or think-prose before the object. Strip
+    the fence, skip to the first ``{``, then parse. A response that is already a
+    mapping (some providers pre-parse) is returned as-is.
+
+    Raises ``json.JSONDecodeError`` when nothing parseable is left — the caller's
+    provider chain treats that as a failed provider and fails over to the next
+    one rather than blacking out the answer.
+    """
+    if not isinstance(content, str):
+        return content
+    stripped = _strip_code_fences(content)
+    try:
+        return json.loads(stripped)
+    except (json.JSONDecodeError, ValueError) as first_error:
+        # Salvage the first JSON object when the model emitted think-text before
+        # it (and/or a closing fence after it — ``_strip_code_fences`` only fires
+        # on a response that STARTS with a fence). ``raw_decode`` stops at the end
+        # of the object and ignores whatever trails it.
+        brace = stripped.find("{")
+        if brace >= 0:
+            try:
+                obj, _end = json.JSONDecoder().raw_decode(stripped[brace:])
+            except (json.JSONDecodeError, ValueError):
+                obj = None
+            if isinstance(obj, dict):
+                return obj
+        raise first_error
 
 
 # Max rows rendered in the plain-text answer before truncating. The old

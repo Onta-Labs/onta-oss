@@ -64,6 +64,7 @@ from infona_client.nlp.pipeline_llm import (
     EmptyLLMResponse,
     _is_reasoning_query_model,
     _openrouter_base,
+    _parse_cypher_gen_json,
     _parse_sparql_gen_json,
     _require_message_content,
     get_embedding_service,
@@ -170,23 +171,7 @@ class PipelineCypherGenMixin:
             data = res.json()
             content = _require_message_content(data, "openrouter")
             # Reasoning models sometimes wrap JSON in fences or prefix prose.
-            if isinstance(content, str):
-                stripped = content.strip()
-                if stripped.startswith("```"):
-                    lines = [
-                        ln
-                        for ln in stripped.split("\n")
-                        if not ln.strip().startswith("```")
-                    ]
-                    stripped = "\n".join(lines)
-                # Salvage first JSON object if model emitted think-text first.
-                if stripped and not stripped.lstrip().startswith("{"):
-                    brace = stripped.find("{")
-                    if brace >= 0:
-                        stripped = stripped[brace:]
-                parsed = json.loads(stripped)
-            else:
-                parsed = content
+            parsed = _parse_cypher_gen_json(content)
             if "cypher" not in parsed and "sparql" in parsed:
                 parsed["cypher"] = parsed["sparql"]
             return attach_usage(
@@ -201,6 +186,33 @@ class PipelineCypherGenMixin:
     async def _generate_cypher_via_cerebras(
         self, prompt: str, max_completion_tokens: int = 2048
     ) -> dict:
+        """Generate Cypher via Cerebras in ``json_object`` mode.
+
+        NOT ``json_schema``/``strict``. The Cypher contract carries a **free-form
+        ``params`` bag** — the model picks the placeholder names (``$type_names``,
+        ``$prop_key``, …) — and Cerebras strict structured output cannot express
+        an object with arbitrary keys. Every shape was tried against the live API:
+
+        * ``params: {"type": "object", "additionalProperties": true}`` (what we
+          shipped) → **400** ``wrong_api_format``: *"Object fields require at
+          least one of: 'properties' or 'anyOf' with a list of possible
+          properties."* This 400'd every ``/ask`` in production.
+        * ``params: {"type": "object", "properties": {}, "additionalProperties":
+          true}`` → **400**, ``additionalProperties`` must be ``false``.
+        * ``additionalProperties: false`` → a permanently EMPTY ``params``.
+        * dropping ``params`` → root ``additionalProperties: false`` strips it
+          from the response, silently killing parameterization.
+
+        ``params`` is load-bearing (``pipeline_ask``, ``pipeline.py``, and
+        ``_execute_confined_cypher`` all read ``gen["params"]``), so the schema
+        had to go rather than the field. ``json_object`` also lets the model
+        return ``template`` — an allowlisted-helper hint the system prompt
+        documents and ``_execute_confined_cypher`` consumes, which the old root
+        ``additionalProperties: false`` had been silently stripping. This matches
+        what ``_generate_cypher_via_openrouter`` already sends: ONE
+        ``response_format`` for the Cypher path, with the JSON contract stated in
+        ``CYPHER_GENERATION_SYSTEM`` where both providers see it.
+        """
         cerebras_url = "https://api.cerebras.ai/v1/chat/completions"
         assert_online_url(cerebras_url, purpose="query Cypher LLM (cerebras)")
         async with httpx.AsyncClient(timeout=30) as client:
@@ -218,40 +230,15 @@ class PipelineCypherGenMixin:
                     ],
                     "max_completion_tokens": max_completion_tokens,
                     "temperature": 0,
-                    "response_format": {
-                        "type": "json_schema",
-                        "json_schema": {
-                            "name": "cypher_response",
-                            "strict": True,
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "cypher": {"type": "string"},
-                                    "params": {
-                                        "type": "object",
-                                        "additionalProperties": True,
-                                    },
-                                    "explanation": {"type": "string"},
-                                    "functions_needed": {
-                                        "type": "array",
-                                        "items": {"type": "string"},
-                                    },
-                                },
-                                "required": [
-                                    "cypher",
-                                    "explanation",
-                                    "functions_needed",
-                                ],
-                                "additionalProperties": False,
-                            },
-                        },
-                    },
+                    "response_format": {"type": "json_object"},
                 },
             )
             res.raise_for_status()
             data = res.json()
             content = _require_message_content(data, "cerebras")
-            parsed = json.loads(content) if isinstance(content, str) else content
+            # No constrained decode any more, so tolerate fences / think-prose
+            # exactly as the OpenRouter Cypher path does.
+            parsed = _parse_cypher_gen_json(content)
             if "cypher" not in parsed and "sparql" in parsed:
                 parsed["cypher"] = parsed["sparql"]
             return attach_usage(
