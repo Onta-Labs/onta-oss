@@ -5,6 +5,7 @@ import json
 import os
 import re
 import time
+from functools import partial
 from typing import Any, Iterable
 
 import httpx
@@ -231,11 +232,20 @@ class PipelineCypherExecMixin:
         max_completion_tokens: int | None = None,
         prefer_fallback: bool = False,
     ) -> dict | None:
-        """Best-effort LLM Cypher generation.
+        """Best-effort LLM Cypher generation, with provider FAILOVER.
 
         Returns ``None`` without API keys. Re-raises :class:`EmptyLLMResponse`
-        so the retry loop can apply length-truncation recovery (ONTA-530);
-        other generator failures log and return ``None``.
+        so the retry loop can apply length-truncation recovery (ONTA-530).
+
+        Every OTHER generator failure is per-provider, not terminal: the
+        configured providers are tried in preference order and only an
+        all-providers-failed run returns ``None``. This used to wrap the whole
+        chain in one ``try``, so the first provider raising made the later
+        branches unreachable — when Cerebras started 400'ing our structured-output
+        schema, every ``/ask`` and ``/agent`` question died with "no generator
+        produced Cypher" even though OpenRouter and Anthropic were configured and
+        healthy. A vendor tightening a validator must degrade to the next
+        provider, not black out the feature.
 
         ``grounding_text`` is optional structured ontology-subgraph context
         (from :func:`~infona_client.nlp.ontology_subgraph_match.ground_ask_plan`)
@@ -264,31 +274,116 @@ class PipelineCypherExecMixin:
             error_feedback=error_feedback,
             grounding_text=grounding_text,
         )
-        try:
-            if prefer_fallback:
-                # Tier-2 length recovery: leave the *reasoning* model for a
-                # non-reasoning OpenRouter (or Anthropic) path so think-budget
-                # exhaustion does not loop forever on gpt-oss.
-                if self._openrouter_key:
-                    return await self._generate_cypher_via_openrouter(
-                        prompt, prefer_non_reasoning=True
-                    )
-                if getattr(self, "anthropic", None) is not None:
-                    return await self._generate_cypher_via_anthropic(prompt)
-            # Happy path: do NOT pass max_completion_tokens so the call is
-            # byte-identical when no length recovery is in play (tests pin this).
-            cerebras_kw = {}
-            if max_completion_tokens is not None:
-                cerebras_kw["max_completion_tokens"] = max_completion_tokens
-            if self._query_provider == "cerebras" and self._cerebras_key:
-                return await self._generate_cypher_via_cerebras(prompt, **cerebras_kw)
+        attempts = self._cypher_generator_chain(
+            prompt,
+            max_completion_tokens=max_completion_tokens,
+            prefer_fallback=prefer_fallback,
+        )
+        for index, (provider, call) in enumerate(attempts):
+            try:
+                return await call()
+            except EmptyLLMResponse:
+                # Length truncation is RECOVERABLE by the retry loop (bigger
+                # budget, then prefer_fallback) — it owns the escalation, so do
+                # not silently burn a different provider here.
+                raise
+            except Exception:
+                logger.warning(
+                    "cypher_llm_generation_failed",
+                    provider=provider,
+                    attempt=index + 1,
+                    of=len(attempts),
+                    exc_info=True,
+                )
+        if attempts:
+            logger.warning(
+                "cypher_llm_all_providers_failed",
+                providers=[provider for provider, _ in attempts],
+            )
+        return None
+
+    def _cypher_generator_chain(
+        self,
+        prompt: str,
+        *,
+        max_completion_tokens: int | None = None,
+        prefer_fallback: bool = False,
+    ) -> list[tuple[str, Any]]:
+        """Ordered ``(provider_label, zero-arg coroutine factory)`` failover chain.
+
+        Preference order is unchanged from the single-shot version — configured
+        provider first, then OpenRouter, then Cerebras, then Anthropic — but the
+        later entries are now REACHED when an earlier one raises instead of being
+        dead code behind the first ``return``. Each provider appears at most once.
+        """
+        # Happy path: do NOT pass max_completion_tokens so the call is
+        # byte-identical when no length recovery is in play (tests pin this).
+        cerebras_kw: dict[str, Any] = {}
+        if max_completion_tokens is not None:
+            cerebras_kw["max_completion_tokens"] = max_completion_tokens
+
+        def cerebras() -> tuple[str, Any]:
+            return (
+                "cerebras",
+                partial(self._generate_cypher_via_cerebras, prompt, **cerebras_kw),
+            )
+
+        def openrouter() -> tuple[str, Any]:
+            return ("openrouter", partial(self._generate_cypher_via_openrouter, prompt))
+
+        def anthropic() -> tuple[str, Any]:
+            return ("anthropic", partial(self._generate_cypher_via_anthropic, prompt))
+
+        anthropic_ready = self._cypher_anthropic_ready()
+        chain: list[tuple[str, Any]] = []
+        if prefer_fallback:
+            # Tier-2 length recovery: leave the *reasoning* model for a
+            # non-reasoning OpenRouter (or Anthropic) path so think-budget
+            # exhaustion does not loop forever on gpt-oss. Distinct from the
+            # plain "openrouter" rung below — different model.
             if self._openrouter_key:
-                return await self._generate_cypher_via_openrouter(prompt)
-            if self._cerebras_key:
-                return await self._generate_cypher_via_cerebras(prompt, **cerebras_kw)
-            return await self._generate_cypher_via_anthropic(prompt)
-        except EmptyLLMResponse:
-            raise
+                chain.append(
+                    (
+                        "openrouter(non-reasoning)",
+                        partial(
+                            self._generate_cypher_via_openrouter,
+                            prompt,
+                            prefer_non_reasoning=True,
+                        ),
+                    )
+                )
+            if anthropic_ready:
+                chain.append(anthropic())
+        if self._query_provider == "cerebras" and self._cerebras_key:
+            chain.append(cerebras())
+        if self._openrouter_key:
+            chain.append(openrouter())
+        if self._cerebras_key:
+            chain.append(cerebras())
+        if anthropic_ready:
+            chain.append(anthropic())
+
+        deduped: list[tuple[str, Any]] = []
+        seen: set[str] = set()
+        for provider, call in chain:
+            if provider in seen:
+                continue
+            seen.add(provider)
+            deduped.append((provider, call))
+        return deduped
+
+    def _cypher_anthropic_ready(self) -> bool:
+        """True when the Anthropic client is worth a failover attempt.
+
+        Skips only the provably-unusable case (a client carrying an EMPTY string
+        key), so a real client, or a test double whose ``api_key`` is not a
+        string, still gets its rung on the ladder.
+        """
+        client = getattr(self, "anthropic", None)
+        if client is None:
+            return False
+        try:
+            key = getattr(client, "api_key", None)
         except Exception:
-            logger.warning("cypher_llm_generation_failed", exc_info=True)
-            return None
+            return True
+        return bool(key.strip()) if isinstance(key, str) else True
