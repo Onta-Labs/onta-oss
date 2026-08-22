@@ -138,6 +138,13 @@ def test_assertion_shape_is_not_flagged() -> None:
 @pytest.mark.parametrize(
     "cypher",
     [
+        # Neo4j 5 inline pattern predicate — VALID Cypher. The extractor cannot
+        # split this cleanly, so the judge must stay quiet rather than reject a
+        # correct query with "that relationship type cannot exist".
+        "MATCH (a)-[r:HAS_X WHERE r.k = 1]->(b)",
+        "MATCH (a)-[r:LEAD_SPONSOR WHERE r.attr = 'lead_sponsor']->(b)",
+        # A backticked type with a space is not a well-formed token either.
+        "MATCH (a)-[:`LEAD SPONSOR`]->(b)",
         # Every structural rel type the graph layer actually creates.
         "MATCH (e)-[:INSTANCE_OF]->(c)",
         "MATCH (a)-[:SUBJECT]->(e)",
@@ -272,9 +279,113 @@ async def test_valid_template_still_supersedes_invented_edge() -> None:
     assert records
 
 
+@pytest.mark.asyncio
+async def test_feedback_survives_the_store_error_truncation_cap() -> None:
+    """`scrub_store_detail` hard-truncates at 600 chars — the fix must survive.
+
+    Without the token cap a many-token query pushed the message past the cap and
+    the truncated tail was the actionable half.
+    """
+    # 20 realistic-length leaves: without the cap this renders 1010 chars and
+    # `scrub_store_detail` cuts the tail — which is where the fix instruction was.
+    cypher = " ".join(
+        f"MATCH (a)-[:sponsoring_organization_{i}]->(b{i})" for i in range(20)
+    )
+    with pytest.raises(GraphQueryError) as excinfo:
+        await _Pipeline()._execute_confined_cypher(
+            _RecordingSession(), {"cypher": cypher}, cypher, {}
+        )
+
+    detail = excinfo.value.detail
+    assert "truncated" not in detail
+    # The instruction the model has to act on is present and intact.
+    assert ":Assertion" in detail
+    assert "related_entity_name_filter" in detail
+
+
+# ---------------------------------------------------------------------------
+# Prompt surfaces must not DEMONSTRATE the dead shape
+# ---------------------------------------------------------------------------
+
+
+def test_grounding_path_is_not_rendered_as_cypher_edge_syntax() -> None:
+    """`OntologyPath.describe()` lands in the Cypher prompt as `preferred_path:`.
+
+    Rendered as `-[:lead_sponsor]->` it showed the model the exact pattern the
+    guard rejects, so a correct plan cost an avoidable retry. It must name the
+    path without looking like emittable Cypher.
+    """
+    from infona_client.nlp.ontology_subgraph_types import OntologyPath
+
+    path = OntologyPath(
+        domain_type="ClinicalTrial",
+        rel_attr="lead_sponsor",
+        range_type="Company",
+    )
+    desc = path.describe()
+
+    assert "lead_sponsor" in desc and "ClinicalTrial" in desc and "Company" in desc
+    assert "-[:" not in desc
+    # Whatever the rendering, it must not itself trip the guard.
+    assert _cypher_invented_rel_types(desc) == []
+
+
 # ---------------------------------------------------------------------------
 # The shipped few-shot bank must never teach the dead shape
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Few-shot header sentinel
+# ---------------------------------------------------------------------------
+
+
+def test_cypher_few_shot_block_is_empty_when_every_body_is_scrubbed() -> None:
+    """Header-only must render as "", not as a headerful block with no examples.
+
+    `_format_cypher_examples` counts its own header instead of a hardcoded 3.
+    This diff grew that header from 3 lines to 5, so the old literal would have
+    started emitting a body-less instruction block into every Cypher prompt —
+    a silent prompt-bloat regression no other test covers.
+    """
+    from infona_client.nlp.example_bank_format import _format_cypher_examples
+    from infona_client.nlp.example_bank_models import Example
+
+    # A SPARQL body under a `cypher` field is dropped by the defense-in-depth
+    # scrub, so `usable` is non-empty but every body is filtered out.
+    ex = Example(
+        question="How many movies are there?",
+        sparql="",
+        cypher="SELECT ?s WHERE { ?s a <http://example.org/Movie> }",
+        kg_name="imdb-movies",
+    )
+    assert _format_cypher_examples([ex]) == ""
+
+    # And with no examples at all.
+    assert _format_cypher_examples([]) == ""
+
+
+def test_cypher_few_shot_block_renders_when_a_body_survives() -> None:
+    """The complement — the sentinel must not swallow a legitimate block."""
+    from infona_client.nlp.example_bank_format import _format_cypher_examples
+    from infona_client.nlp.example_bank_models import Example
+
+    ex = Example(
+        question="How many movies are there?",
+        sparql="",
+        cypher=(
+            "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})"
+            "-[:INSTANCE_OF]->(c:Class) RETURN count(DISTINCT e) AS n"
+        ),
+        kg_name="imdb-movies",
+    )
+    out = _format_cypher_examples([ex])
+
+    assert "How many movies are there?" in out
+    assert "INSTANCE_OF" in out
+    # The template contract must be stated — dropping it is what let the model
+    # stop emitting `template` in the first place.
+    assert "template" in out
 
 
 def _bank_cypher_rows() -> list[dict]:

@@ -213,6 +213,10 @@ _CYPHER_REL_PATTERN_RE = re.compile(
     r"-\[\s*(?:[A-Za-z_][A-Za-z0-9_]*)?\s*:([^\]{*]+)"
 )
 
+# A well-formed Neo4j relationship type token. `sanitize_rel_type` can only ever
+# emit this shape, so anything else is a parse artefact rather than a rel type.
+_REL_TOKEN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
 
 def _cypher_rel_types(cypher: str) -> list[str]:
     """Return every relationship TYPE token a Cypher string traverses."""
@@ -254,6 +258,14 @@ def _cypher_invented_rel_types(cypher: str) -> list[str]:
     """
     seen: dict[str, None] = {}
     for token in _cypher_rel_types(cypher):
+        # Only judge tokens that are actually shaped like a rel type. A capture
+        # carrying spaces or punctuation is something the extractor could not
+        # parse cleanly — a Neo4j 5 inline predicate (`-[r:HAS_X WHERE r.k=1]->`,
+        # valid Cypher), or a pattern-looking substring inside a string literal.
+        # Claiming those "cannot exist" would reject a correct query, so stay
+        # quiet unless the token is unambiguous.
+        if not _REL_TOKEN_RE.match(token):
+            continue
         # Upper-case-only tokens are a valid rel type by construction, whether
         # structural or a dual-written `sanitize_rel_type` shortcut.
         if any(ch.islower() for ch in token):
@@ -263,15 +275,22 @@ def _cypher_invented_rel_types(cypher: str) -> list[str]:
 
 # Corrective feedback for the retry loop. Names the Assertion source-of-truth
 # shape AND the helper templates, because either one answers the question.
+#
+# Kept short on purpose: `GraphQueryError` runs it through `scrub_store_detail`,
+# which hard-truncates at 600 chars. The fix instruction leads and the rationale
+# trails, so if a many-token message ever does get cut, the actionable half is
+# the half that survives.
 REL_TRAVERSAL_FEEDBACK = (
-    "Relationships are stored as :Assertion nodes, not as typed edges named "
-    "after the ontology leaf. A lower-case relationship type cannot exist "
-    "(every rel type is UPPER_SNAKE_CASE), so that MATCH returns zero rows. "
     "Rewrite as (a:Assertion {tenant_id: $tenant_id, kg: $kg})-[:SUBJECT]->(from), "
     "(a)-[:OBJECT]->(to), (a)-[:PREDICATE]->(p:Property) WHERE p.name = '<leaf>' "
     "— or set the JSON `template` field to related_entities / "
-    "related_entity_name_filter with the matching params."
+    "related_entity_name_filter with matching params. "
+    "Relationships are stored as :Assertion nodes, never as a typed edge named "
+    "after the ontology leaf; every rel type is UPPER_SNAKE_CASE."
 )
+
+# Cap the token list so the feedback cannot crowd out its own fix instruction.
+MAX_REPORTED_REL_TYPES = 3
 
 
 def _sanitize_sparql_literal(text: str) -> str:
