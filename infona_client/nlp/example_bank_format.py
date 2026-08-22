@@ -187,7 +187,21 @@ def _format_cypher_examples(examples: list[Example]) -> str:
         "Always scope MATCH with {tenant_id: $tenant_id, kg: $kg}; never hardcode "
         "workspace ids. Session parameters are injected at execution time.",
         "These examples are Cypher only — never emit SPARQL.",
+        # Every stored example is the EXPANDED body of an allowlisted helper, so
+        # none of them shows a `template` line. Without this reminder the model
+        # imitates the rendering and stops emitting `template` at all — which is
+        # what turned relationship questions into "No results found." once the
+        # bank first shipped with Cypher rows.
+        "Each example is the expanded body of an allowlisted helper. You must "
+        "STILL set the JSON `template` field (plus its params) whenever a helper "
+        "matches — the body is shown to teach the shape, not to replace the "
+        "template field.",
+        # The examples that traverse a relationship all go through :Assertion.
+        # Say why, so the shape is not read as an incidental stylistic choice.
+        "Relationship traversals go through :Assertion (SUBJECT / PREDICATE / "
+        "OBJECT), never a typed edge named after the ontology leaf.",
     ]
+    header_len = len(lines)
     for i, ex in enumerate(usable, 1):
         tag_str = " + ".join(ex.pattern_tags) if ex.pattern_tags else "basic"
         cypher_compact = " ".join(sanitize_example_cypher(ex.cypher).split())
@@ -198,7 +212,9 @@ def _format_cypher_examples(examples: list[Example]) -> str:
         lines.append(f"Example {i} ({tag_str}):")
         lines.append(f"  Q: {ex.question}")
         lines.append(f"  Cypher: {cypher_compact}")
-    # Header-only → empty (no usable Cypher bodies after scrub).
-    if len(lines) <= 3:
+    # Header-only → empty (no usable Cypher bodies after scrub). Counted from
+    # the header list itself so adding a header line cannot silently start
+    # emitting a body-less block.
+    if len(lines) <= header_len:
         return ""
     return "\n".join(lines)

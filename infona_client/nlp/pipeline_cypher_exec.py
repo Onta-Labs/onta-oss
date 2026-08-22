@@ -41,10 +41,12 @@ from infona_client.nlp.pipeline_helpers import (
     ONTOLOGY_EMPTY,
     ONTOLOGY_FETCH_ERROR,
     RDF_TYPE_URI,
+    REL_TRAVERSAL_FEEDBACK,
     _GEO_WKT_URI,
     _active_types_cache,
     _active_types_cache_key,
     _alias_cache,
+    _cypher_invented_rel_types,
     _cypher_uses_forbidden_shapes,
     _drop_internal_predicate_rows,
     _is_interpolatable_iri,
@@ -215,6 +217,20 @@ class PipelineCypherExecMixin:
                 return records, "template:entity_count_by_type"
             records = await session.execute_template("entity_count_total", {})
             return records, "template:entity_count_total"
+
+        # Last gate before free-form Cypher actually runs. Deliberately HERE and
+        # not next to `_cypher_uses_forbidden_shapes` in the retry loop: an
+        # allowlisted template above supersedes the model's raw Cypher, and that
+        # rescue must keep working — a model that invents an edge but also sets a
+        # usable `template` already returned correct rows in production, so
+        # flagging it earlier would break answers that work today.
+        invented = _cypher_invented_rel_types(cypher)
+        if invented and not is_fixture:
+            raise GraphQueryError(
+                "generated Cypher traverses relationship type(s) "
+                f"{', '.join(invented)} that cannot exist. "
+                + REL_TRAVERSAL_FEEDBACK
+            )
 
         records = await session.execute_read(cypher, forced_params)
         return records, "execute_read"
