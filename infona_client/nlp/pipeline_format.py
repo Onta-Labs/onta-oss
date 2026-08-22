@@ -172,6 +172,37 @@ class PipelineFormatMixin:
                 if g and g != data_graph
             ]
 
+            # ONTA-534. Signals B and C below both assert that the answer was
+            # computed from a UNION of graphs — "together with the workspace base
+            # graph and any shared layers". That premise is a NEPTUNE artifact:
+            # `/ask` spliced `other_graphs` into the generated query as extra FROM
+            # clauses, so the union was literally the dataset. Generated CYPHER is
+            # confined to ONE `(tenant_id, kg)` scope instead
+            # (`cypher_scope.confine_generated_cypher` +
+            # `store.assert_cypher_is_scoped` force `$tenant_id`/`$kg`), so on the
+            # shipped backend those graphs are not in the dataset at all and both
+            # sentences would be FALSE about a correct, correctly-scoped answer —
+            # the defect class `nlp/kg_coverage.py` exists to prevent, pointed the
+            # other way.
+            #
+            # Silence here is EXACTLY what production already does: the probe
+            # underneath both signals ran on the retired SPARQL client, raised,
+            # and was swallowed into False. So this changes no user-visible
+            # behaviour; it stops the change that made the probe real from also
+            # making a stale claim reachable, and drops the
+            # `other_graph_instance_probe_failed` noise by not asking at all.
+            #
+            # NOT a permanent verdict on the caveat, and deliberately not a
+            # rewrite of its copy: under Cypher the honest residual risk is an
+            # unscoped SECONDARY pattern (`assert_cypher_is_scoped` is a
+            # heuristic, not a rewriter, so `…-[:REL]->(o:Entity)` leaves `o`
+            # unscoped), which is a different and much narrower claim than either
+            # string makes. Wording that is a product decision and its own change.
+            # There is no SPARQL finish path left (`ask(use_cypher=False)` raises
+            # `SparqlAskPathRetired`), so in practice this retires signals B and C
+            # until they are rewritten.
+            union_dataset_in_play = not neo4j_ask_enabled()
+
             # SIGNAL B, the type-UNANCHORED query. `?s rdf:type ?type` with an
             # unbound type constrains nothing, so it reads the whole union and no
             # type-based signal can speak about it. Measured on production
@@ -193,7 +224,7 @@ class PipelineFormatMixin:
                     synthetic[pt.strip()] = [f"{_IRI}/types/{pt.strip()}"]
                 referenced = synthetic
             if not referenced:
-                if not await other_graphs_hold_instances(
+                if not union_dataset_in_play or not await other_graphs_hold_instances(
                     self.neptune, tenant_id, other_graphs
                 ):
                     return ""
@@ -214,8 +245,11 @@ class PipelineFormatMixin:
                 # marks then means "not measured", not "all covered", and silence
                 # would hide exactly the leak the WARNING log already reports.
                 if ontology_source == "semantic" and active_types is None:
-                    if not await other_graphs_hold_instances(
-                        self.neptune, tenant_id, other_graphs
+                    if (
+                        not union_dataset_in_play
+                        or not await other_graphs_hold_instances(
+                            self.neptune, tenant_id, other_graphs
+                        )
                     ):
                         return ""
                     timing["kg_coverage_undetermined"] = 1.0
@@ -234,6 +268,33 @@ class PipelineFormatMixin:
             present = await self._types_present_in_kg(
                 data_graph, ontology_graph, layer_graph_uris, flagged
             )
+            if present is None:
+                # ONTA-534: the subclass-closure probe could not answer, and on
+                # the shipped backend it never can — it is the retired SPARQL
+                # client, so this is EVERY caveat, not a rare degradation.
+                #
+                # It used to return an empty set here, i.e. "suppress nothing",
+                # on the reasoning that a failure degrades to the direct-type
+                # verdict the planner was already shown. That reasoning holds
+                # when the probe is a rare miss; it does not when the probe is
+                # gone, because the ONE thing it exists to catch — `[no
+                # instances]` is a DIRECT `rdf:type` fact while the query walks
+                # `rdf:type/rdfs:subClassOf*` — is then NEVER caught, and a KG
+                # holding only `Facility` rows is told flatly that it has no
+                # `Organization` data. That is the caveat's own worked example of
+                # being wrong.
+                #
+                # Same fail-closed rule as `other_graphs_hold_instances`: this
+                # gates a POSITIVE assertion about what a graph does not contain,
+                # and unproven means unsaid. Logged so the suppression is visible
+                # rather than only inferable from an absent sentence.
+                timing["kg_coverage_unconfirmed"] = 1.0
+                logger.info(
+                    "kg_coverage_unconfirmed",
+                    kg_name=kg_name,
+                    would_have_flagged=sorted(flagged),
+                )
+                return ""
             flagged = {n: u for n, u in flagged.items() if n not in present}
             if not flagged:
                 return ""
@@ -266,15 +327,21 @@ class PipelineFormatMixin:
         ontology_graph: str,
         layer_graph_uris: list[str] | None,
         flagged: dict[str, list[str]],
-    ) -> set[str]:
+    ) -> set[str] | None:
         """Names among ``flagged`` that DO have an instance in ``data_graph``.
 
         Subclass-aware, which is the whole reason it exists (see
-        :meth:`_kg_coverage_caveat`). Returns an empty set on any failure, i.e.
-        suppresses nothing, leaving the direct-``rdf:type`` verdict the ontology
-        summary already carried. The failure is logged at WARNING because the
-        cost of silence here is a caveat that could be wrong, and its only other
-        trace would be a `timing` key in a response body.
+        :meth:`_kg_coverage_caveat`). An empty set means "the probe ran and
+        cleared nothing"; ``None`` means "the probe could not answer".
+
+        **ONTA-534:** those two used to be the same value (an empty set on
+        failure, i.e. suppress nothing). Keeping them apart is what lets the
+        caller apply the fail-closed rule: this probe gates a POSITIVE assertion
+        about what a graph does NOT contain, and on the shipped backend it is the
+        retired SPARQL client, so "could not answer" is the only answer it ever
+        gives. Collapsing that into "cleared nothing" emits every caveat
+        unconfirmed. The failure stays logged at WARNING because its only other
+        trace would be a ``timing`` key in a response body.
         """
         from infona_client.graph.layers import type_name_from_uri
         from infona_client.nlp.kg_coverage import kg_subtype_presence_query
@@ -295,7 +362,7 @@ class PipelineFormatMixin:
                 instance_graph=data_graph,
                 exc_info=True,
             )
-            return set()
+            return None
         for row in rows:
             name = type_name_from_uri(row.get("type", ""))
             if name:

@@ -16,6 +16,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from infona_client.api.deps import get_neptune_client
+from infona_client.api.routes.lambda_functions_investor import (
+    run_investor_portfolio,
+    run_invoke_investor_portfolio,
+)
+from infona_client.api.routes.lambda_functions_reads import (
+    safe_query as _safe_query,
+    store_discover_investors,
+    store_entity_name,
+    store_function_refs,
+    store_portfolio,
+    store_resolve_cik,
+)
 from infona_client.auth.api_keys import TenantContext, get_tenant
 from infona_client.auth.access import require_tenant_write
 from infona_client.config import settings
@@ -250,42 +262,63 @@ async def invoke_function(
     instance_graph = kg_graph_uri(tenant.tenant_id, body.kg_name)
 
     # --- Step 1: Look up the function definition ---
-    sparql = list_functions_query(ontology_graph, entity_type=None)
-    raw = await client.query(sparql)
-    _, bindings = parse_sparql_results(raw)
-
+    # Function store FIRST (ONTA-534) — the same registry `GET
+    # /graphs/{t}/functions` lists from, so invoke and list cannot disagree
+    # about what is registered. The residual SPARQL arm still supplements it
+    # (dual-arm tests), and its failure is swallowed: a retired client must
+    # leave this as the 404 it always was, not turn it into a 500.
     func_ref = None
-    for row in bindings:
-        if row.get("name") == function_name:
+    for rec in await store_function_refs(tenant.tenant_id):
+        if rec.name == function_name:
             func_ref = FunctionRef(
-                name=row["name"],
-                entity_type=row.get("type", "").split("/")[-1],
-                endpoint_url=row.get("endpoint"),
-                description=row.get("desc", ""),
+                name=rec.name,
+                entity_type=rec.entity_type,
+                endpoint_url=rec.endpoint_url,
+                description=rec.description,
                 tier=FunctionTier.CUSTOM,
             )
             break
 
     if func_ref is None:
+        sparql = list_functions_query(ontology_graph, entity_type=None)
+        for row in await _safe_query(client, sparql):
+            if row.get("name") == function_name:
+                func_ref = FunctionRef(
+                    name=row["name"],
+                    entity_type=row.get("type", "").split("/")[-1],
+                    endpoint_url=row.get("endpoint"),
+                    description=row.get("desc", ""),
+                    tier=FunctionTier.CUSTOM,
+                )
+                break
+
+    if func_ref is None:
         raise HTTPException(status_code=404, detail=f"Function '{function_name}' not registered")
 
     # --- Step 2: Resolve the entityf's filing_cik from the KG ---
+    # GraphStore ladder FIRST (ONTA-534) — the same three rungs, over the same
+    # entity read the Explorer panel renders. Every rung below was a bare
+    # `client.query`, so on the shipped backend this 500'd before the 422 it
+    # was supposed to reach. The SPARQL rungs stay as the residual arm and their
+    # failures are swallowed: an unresolvable CIK is a 422, never a 500.
     entity_type = func_ref.entity_type  # e.g. "Company"
     cik_attr_uri = f"{IRI_BASE}/types/{entity_type}/attrs/filing_cik"
 
-    # Try direct attribute on the entity
-    cik_query = (
-        f"SELECT ?cik FROM <{instance_graph}>\n"
-        f"WHERE {{\n"
-        f"  <{body.entity_uri}> <{cik_attr_uri}> ?cik .\n"
-        f"}}"
+    cik_value = await store_resolve_cik(
+        tenant.tenant_id, body.kg_name, body.entity_uri
     )
-    raw_cik = await client.query(cik_query)
-    _, cik_bindings = parse_sparql_results(raw_cik)
 
-    cik_value = None
-    if cik_bindings:
-        cik_value = cik_bindings[0].get("cik")
+    # Try direct attribute on the entity
+    if not cik_value:
+        cik_query = (
+            f"SELECT ?cik FROM <{instance_graph}>\n"
+            f"WHERE {{\n"
+            f"  <{body.entity_uri}> <{cik_attr_uri}> ?cik .\n"
+            f"}}"
+        )
+        cik_bindings = await _safe_query(client, cik_query)
+        if cik_bindings:
+            cik_value = cik_bindings[0].get("cik")
 
     # Fallback 1: check linked FundingRound entities for a filing_cik attribute
     if not cik_value:
@@ -296,8 +329,7 @@ async def invoke_function(
             f"  ?round <{IRI_BASE}/types/FundingRound/attrs/filing_cik> ?cik .\n"
             f"}}"
         )
-        raw_fallback = await client.query(fallback_query)
-        _, fb_bindings = parse_sparql_results(raw_fallback)
+        fb_bindings = await _safe_query(client, fallback_query)
         if fb_bindings:
             cik_value = fb_bindings[0].get("cik")
 
@@ -312,8 +344,7 @@ async def invoke_function(
             f"}}\n"
             f"LIMIT 1"
         )
-        raw_label = await client.query(label_query)
-        _, label_bindings = parse_sparql_results(raw_label)
+        label_bindings = await _safe_query(client, label_query)
         if label_bindings:
             candidate = label_bindings[0].get("label", "")
             # Verify it looks like a CIK (all digits, possibly zero-padded)
@@ -443,24 +474,31 @@ async def invoke_function(
             f"  ?investor <http://www.w3.org/2000/01/rdf-schema#label> ?investorName .\n"
             f"}}"
         )
+        # Store cascade first, SPARQL supplement second; both already fail-soft.
+        seen_investors: set[str] = set()
         try:
-            raw_discover = await client.query(discover_query)
-            _, discover_bindings = parse_sparql_results(raw_discover)
-            for row in discover_bindings:
-                inv_uri = row.get("investor", "")
-                inv_name = row.get("investorName", "")
-                if inv_uri and inv_name:
-                    inv_type = "Investor"
-                    inv_functions = FUNCTIONS_BY_TYPE.get(inv_type, [])
-                    discovered.append(DiscoveredEntity(
-                        uri=inv_uri,
-                        type=inv_type,
-                        name=inv_name,
-                        functions=inv_functions,
-                        # Deprecated alias — populated identically to `functions`
-                        # so existing invoke-response clients keep working.
-                        skills=inv_functions,
-                    ))
+            rows = await store_discover_investors(
+                tenant.tenant_id, body.kg_name, body.entity_uri
+            )
+            rows += [
+                (r.get("investor", ""), r.get("investorName", ""))
+                for r in await _safe_query(client, discover_query)
+            ]
+            for inv_uri, inv_name in rows:
+                if not inv_uri or not inv_name or inv_uri in seen_investors:
+                    continue
+                seen_investors.add(inv_uri)
+                inv_type = "Investor"
+                inv_functions = FUNCTIONS_BY_TYPE.get(inv_type, [])
+                discovered.append(DiscoveredEntity(
+                    uri=inv_uri,
+                    type=inv_type,
+                    name=inv_name,
+                    functions=inv_functions,
+                    # Deprecated alias — populated identically to `functions`
+                    # so existing invoke-response clients keep working.
+                    skills=inv_functions,
+                ))
         except Exception as exc:
             logger.warning("discover_entities_failed", error=str(exc))
 
@@ -485,7 +523,12 @@ async def invoke_function(
 
 
 # ---------------------------------------------------------------------------
-# Tier-2 Lambda: Investor Portfolio (SPARQL-based, no external API)
+# Tier-2 Lambda: Investor Portfolio (no external API)
+#
+# Bodies live in ``lambda_functions_investor`` (ONTA-534 — this file is at its
+# size pin); the ROUTES stay here so the router and its registration order are
+# unchanged. ``invoke_function`` above dispatches ``investor-portfolio`` to
+# ``invoke_investor_portfolio`` before the generic path runs.
 # ---------------------------------------------------------------------------
 
 class PortfolioRequest(BaseModel):
@@ -507,58 +550,14 @@ async def investor_portfolio(
     """Query the KG for all companies in an investor's portfolio.
 
     Looks up FundingRound entities where lead_investor matches this investor,
-    then follows company_name relationships to get Company names and sums amounts.
-    f"""
-    tenant_id = _tenant.tenant_id
-
-    # Search across all KGs in the tenant for this investor's portfolio
-    # We query the instance graphs for FundingRound → company_name relationships
-    # where lead_investor points to an entity with this investor's name.
-    #
-    # For demo purposes, we try the pear-backyard KG first.
-    kg_names = ["pear-backyard"]
-    companies: list[str] = []
-    total_invested: int = 0
-
-    for kg_name in kg_names:
-        ig = kg_graph_uri(tenant_id, kg_name)
-        portfolio_query = (
-            f"SELECT ?companyName ?amount FROM <{ig}>\n"
-            f"WHERE {{\n"
-            f"  ?investor <{IRI_BASE}/types/Investor/attrs/name> \"{body.investor_name}\" .\n"
-            f"  ?investor <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <{IRI_BASE}/types/Investor> .\n"
-            f"  ?round <{IRI_BASE}/onto/lead_investor> ?investor .\n"
-            f"  ?round <{IRI_BASE}/onto/company_name> ?company .\n"
-            f"  ?company <{IRI_BASE}/types/Company/attrs/name> ?companyName .\n"
-            f"  OPTIONAL {{ ?round <{IRI_BASE}/types/FundingRound/attrs/amount_usd> ?amount }}\n"
-            f"}}"
-        )
-        try:
-            raw_portfolio = await client.query(portfolio_query)
-            _, portfolio_bindings = parse_sparql_results(raw_portfolio)
-            for row in portfolio_bindings:
-                cname = row.get("companyName", "")
-                if cname and cname not in companies:
-                    companies.append(cname)
-                amt_str = row.get("amount", "")
-                if amt_str:
-                    try:
-                        total_invested += int(float(amt_str))
-                    except (ValueError, TypeError):
-                        pass
-        except Exception:
-            pass
-
+    then follows company_name relationships to get Company names and sums
+    amounts. Returns 503 rather than an empty portfolio when the graph cannot
+    be read, so a zero count always means a zero count.
+    """
     return PortfolioResponse(
-        portfolio_count=len(companies),
-        companies=companies,
-        total_invested_usd=total_invested if total_invested > 0 else None,
+        **await run_investor_portfolio(client, _tenant.tenant_id, body.investor_name)
     )
 
-
-# ---------------------------------------------------------------------------
-# Generic invoke for investor-portfolio (reuses invoke pattern)
-# ---------------------------------------------------------------------------
 
 @router.post(
     "/graphs/{tenant}/functions/investor-portfolio/invoke",
@@ -571,139 +570,11 @@ async def invoke_investor_portfolio(
 ):
     """Invoke investor-portfolio for an Investor entity.
 
-    Resolves the investor name from the entity URI, queries the KG for
-    portfolio data, and materializes the results as triples.
+    Resolves the investor name from the entity URI, walks the KG for portfolio
+    data, and materializes the results as triples through the shared write path.
     """
-    start = time.monotonic()
-    instance_graph = kg_graph_uri(tenant.tenant_id, body.kg_name)
-    ontology_graph = tenant_graph_uri(tenant.tenant_id)
-
-    # Resolve investor name from entity — prefer the Investor/attrs/name
-    # attribute (which uses spaces) over rdfs:label (which uses underscores)
-    name_query = (
-        f"SELECT ?name FROM <{instance_graph}>\n"
-        f"WHERE {{\n"
-        f"  {{ <{body.entity_uri}> <{IRI_BASE}/types/Investor/attrs/name> ?name }}\n"
-        f"  UNION\n"
-        f"  {{ <{body.entity_uri}> <http://www.w3.org/2000/01/rdf-schema#label> ?name }}\n"
-        f"}}"
-    )
-    raw_name = await client.query(name_query)
-    _, name_bindings = parse_sparql_results(raw_name)
-
-    if not name_bindings:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Could not resolve name for entity {body.entity_uri}",
-        )
-
-    # Prefer the attrs/name value (with spaces) if both are present
-    investor_name = name_bindings[0].get("name", "")
-
-    # Query portfolio data inline — same SPARQL as the /functions/investor-portfolio
-    # endpoint but executed directly rather than calling the endpoint function
-    # (avoids FastAPI Depends() / connection-state issues when called internally)
-    companies: list[str] = []
-    total_invested: int = 0
-    ig = instance_graph
-    portfolio_query = (
-        f"SELECT ?companyName ?amount FROM <{ig}>\n"
-        f"WHERE {{\n"
-        f"  ?investor <{IRI_BASE}/types/Investor/attrs/name> \"{investor_name}\" .\n"
-        f"  ?investor <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <{IRI_BASE}/types/Investor> .\n"
-        f"  ?round <{IRI_BASE}/onto/lead_investor> ?investor .\n"
-        f"  ?round <{IRI_BASE}/onto/company_name> ?company .\n"
-        f"  ?company <{IRI_BASE}/types/Company/attrs/name> ?companyName .\n"
-        f"  OPTIONAL {{ ?round <{IRI_BASE}/types/FundingRound/attrs/amount_usd> ?amount }}\n"
-        f"}}"
-    )
-    raw_portfolio = await client.query(portfolio_query)
-    _, portfolio_bindings = parse_sparql_results(raw_portfolio)
-    for row in portfolio_bindings:
-        cname = row.get("companyName", "")
-        if cname and cname not in companies:
-            companies.append(cname)
-        amt_str = row.get("amount", "")
-        if amt_str:
-            try:
-                total_invested += int(float(amt_str))
-            except (ValueError, TypeError):
-                pass
-
-    output = {
-        "portfolio_count": len(companies),
-        "companies": ", ".join(companies),
-    }
-    if total_invested > 0:
-        output["total_invested_usd"] = str(total_invested)
-
-    # Materialize results as triples on the Investor entity
-    entity_type = "Investor"
-    new_triples: list[tuple[str, str, str]] = []
-    replaced_preds: list[str] = []
-    for key, value in output.items():
-        if value is None:
-            continue
-        attr_pred = f"{IRI_BASE}/types/{entity_type}/attrs/{key}"
-        new_triples.append((body.entity_uri, attr_pred, str(value)))
-        replaced_preds.append(attr_pred)
-
-        # Ensure attribute in ontology (schema graph — unrelated to the instance
-        # write below; left as-is).
-        datatype = "integer" if key == "portfolio_count" else "string"
-        try:
-            await commit_ontology(
-                client,
-                ontology_graph,
-                [OntologyMutation(
-                    op=OntologyOpKind.UPSERT_ATTRIBUTE,
-                    type_name=entity_type,
-                    slot_name=key,
-                    datatype=datatype,
-                    description="Lambda-computed by investor-portfolio",
-                )],
-            )
-        except Exception:
-            pass
-
-    # Provenance timestamp
-    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    lambda_ts_pred = f"{IRI_BASE}/onto/lambda_refreshed_at"
-    new_triples.append((body.entity_uri, lambda_ts_pred, now_iso))
-    replaced_preds.append(lambda_ts_pred)
-
-    # Persist via the shared write path (ADR 0007): clear each replaced predicate's
-    # prior value, insert the new values, then ONE refresh carrying the touched type.
-    if new_triples:
-        await delete_facts(
-            client,
-            instance_graph,
-            triples=[(body.entity_uri, pred, None) for pred in replaced_preds],
-            touched_types=[entity_type],
-            reason="lambda re-invoke: investor-portfolio",
-        )
-        await insert_facts(client, instance_graph, new_triples)
-        await refresh_after_write(
-            client,
-            tenant_id=tenant.tenant_id,
-            kg_name=body.kg_name,
-            affected_types=[entity_type],
-        )
-
-    duration_ms = (time.monotonic() - start) * 1000
-
-    logger.info(
-        "lambda_invoked",
-        function="investor-portfolio",
-        entity=body.entity_uri,
-        duration_ms=round(duration_ms, 1),
-        portfolio_count=len(companies),
-    )
-
     return InvokeResponse(
-        entity_uri=body.entity_uri,
-        function="investor-portfolio",
-        output=output,
-        discovered_entities=[],
-        duration_ms=round(duration_ms, 1),
+        **await run_invoke_investor_portfolio(
+            client, tenant.tenant_id, body.entity_uri, body.kg_name
+        )
     )

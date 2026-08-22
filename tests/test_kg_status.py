@@ -19,6 +19,7 @@ from infona_client.graph.kg_status import (
     kg_data_status,
     list_kg_names,
     missing_kg_message,
+    other_graphs_hold_instances,
 )
 
 TENANT = "t-probe"
@@ -279,3 +280,184 @@ def test_messages_name_the_kg_and_the_alternatives():
     assert "imdb" not in missing_kg_message("typo", [])
     assert "typo" in missing_kg_message("typo", [])
     assert "fresh" in empty_kg_message("fresh")
+
+
+# --------------------------------------------------------------------------
+# ONTA-534 — the workspace-wide instance probe on the GraphStore
+# --------------------------------------------------------------------------
+# `other_graphs_hold_instances` gates the ONTA-454 coverage caveat, and on the
+# shipped Neo4j backend its only arm was the RETIRED SPARQL client: every call
+# raised, the `except` swallowed it, and the probe answered "no other data"
+# without ever measuring. These pin the store arm, the scopes it will and will
+# not read, and the fail-toward-silence rule for when the store cannot answer
+# either. The store arm is only taken for a REAL NeptuneClient, so these build
+# one (its `ask` raises `SparqlClientRetired` under the hermetic store, which is
+# exactly production's shape).
+
+
+RDF_TYPE_IRI = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+RDFS_LABEL_IRI = "http://www.w3.org/2000/01/rdf-schema#label"
+SYNTH_TYPE = "SynthProbeWidget"
+
+
+def _retired_client():
+    from infona_client.graph.client import NeptuneClient
+
+    # Endpoint is never reached: a process GraphStore is configured (hermetic
+    # conftest fixture), so `.ask()` raises SparqlClientRetired the way it does
+    # in production rather than POSTing anywhere.
+    return NeptuneClient("http://sparql.invalid")
+
+
+async def _seed_instances(graph_uri: str, *, n: int = 1) -> None:
+    """Write ``n`` typed instances into whatever scope ``graph_uri`` denotes."""
+    from infona_client.graph.iri import IRI_BASE
+    from infona_client.graph.kg_writer import insert_facts
+    from infona_client.graph.ontology_queries import entity_uri
+    from infona_client.graph.store import get_graph_store
+
+    triples = []
+    for i in range(n):
+        uri = entity_uri(SYNTH_TYPE, f"probe-{i}")
+        triples.append((uri, RDF_TYPE_IRI, f"{IRI_BASE}/types/{SYNTH_TYPE}"))
+        triples.append((uri, RDFS_LABEL_IRI, f"Probe {i}"))
+    await insert_facts(None, graph_uri, triples, store=get_graph_store())
+
+
+@pytest.mark.asyncio
+async def test_base_scope_instances_are_measured_not_swallowed():
+    """The regression: a real client must ANSWER, not raise into silence.
+
+    The tenant BASE graph URI is the property-graph tenant CATALOG scope
+    (``kg=__ontology__``), which is where an ingest with no ``kg_name`` puts its
+    entities. Before the GraphStore arm this returned False because the retired
+    SPARQL ASK raised, not because the workspace was empty.
+    """
+    from infona_client.graph.layers import public_graph_uri
+    from infona_client.graph.queries import tenant_graph_uri
+
+    base = tenant_graph_uri(TENANT)
+    await _seed_instances(base, n=2)
+    assert await other_graphs_hold_instances(
+        _retired_client(), TENANT, [base, public_graph_uri()]
+    ) is True
+
+
+@pytest.mark.asyncio
+async def test_sibling_kg_graph_uri_is_measured():
+    """A per-KG URI in the list resolves to that KG's instance scope."""
+    from infona_client.graph.queries import kg_graph_uri
+
+    sibling = kg_graph_uri(TENANT, "sibling-kg")
+    await _seed_instances(sibling)
+    assert await other_graphs_hold_instances(
+        _retired_client(), TENANT, [sibling]
+    ) is True
+
+
+@pytest.mark.asyncio
+async def test_global_layer_uris_alone_never_assert_other_data():
+    """The Global layers are catalog-only on the property graph.
+
+    ``layer_content`` permits ontology content kinds there and
+    ``GraphScope.for_instance`` refuses ``__global__`` outright, so there is no
+    instance scope behind those URIs. Seeding the workspace must not make a
+    layers-only question answer True — that would be the caveat claiming data
+    lives somewhere the model cannot put it.
+    """
+    from infona_client.graph.layers import enhanced_graph_uri, public_graph_uri
+    from infona_client.graph.queries import tenant_graph_uri
+
+    await _seed_instances(tenant_graph_uri(TENANT), n=3)
+    assert await other_graphs_hold_instances(
+        _retired_client(), TENANT, [public_graph_uri(), enhanced_graph_uri()]
+    ) is False
+
+
+@pytest.mark.asyncio
+async def test_empty_workspace_answers_no_rather_than_failing():
+    from infona_client.graph.layers import public_graph_uri
+    from infona_client.graph.queries import tenant_graph_uri
+
+    assert await other_graphs_hold_instances(
+        _retired_client(), TENANT, [tenant_graph_uri(TENANT), public_graph_uri()]
+    ) is False
+
+
+@pytest.mark.asyncio
+async def test_foreign_tenant_graph_uri_is_never_read():
+    """Scope comes from the URI's OWN tenant; a mismatch is skipped, not read."""
+    from infona_client.graph.queries import tenant_graph_uri
+
+    other_base = tenant_graph_uri("t-someone-else")
+    await _seed_instances(other_base, n=2)
+    assert await other_graphs_hold_instances(
+        _retired_client(), TENANT, [other_base]
+    ) is False
+
+
+@pytest.mark.asyncio
+async def test_fails_toward_silence_when_the_store_cannot_answer(monkeypatch):
+    """Store error → unproven → unsaid, and nothing cached.
+
+    The SPARQL arm behind it is retired and raises too, so this pins the whole
+    ladder's degradation: an unverified positive claim is never made.
+    """
+    import infona_client.graph.explore_store as explore_store
+    from infona_client.graph.kg_status import _base_instances_cache
+    from infona_client.graph.queries import tenant_graph_uri
+
+    base = tenant_graph_uri(TENANT)
+    await _seed_instances(base, n=2)
+
+    async def _boom(session):
+        raise RuntimeError("bolt pool exhausted")
+
+    monkeypatch.setattr(explore_store, "count_entities_pg", _boom)
+    assert await other_graphs_hold_instances(_retired_client(), TENANT, [base]) is False
+    assert not [k for k in _base_instances_cache if k[0] == TENANT]
+
+
+@pytest.mark.asyncio
+async def test_duck_typed_double_keeps_the_sparql_arm():
+    """Only a REAL NeptuneClient takes the store arm (unit-test doubles still ASK)."""
+    from infona_client.graph.queries import tenant_graph_uri
+
+    class Asking:
+        def __init__(self, answer: bool):
+            self.answer = answer
+            self.asks: list[str] = []
+
+        async def ask(self, sparql: str) -> bool:
+            self.asks.append(sparql)
+            return self.answer
+
+    base = tenant_graph_uri(TENANT)
+    double = Asking(True)
+    assert await other_graphs_hold_instances(double, TENANT, [base]) is True
+    assert double.asks and "rdf-syntax-ns#type" in double.asks[0]
+
+
+@pytest.mark.asyncio
+async def test_positive_verdict_is_cached_per_graph_set():
+    from infona_client.graph.layers import public_graph_uri
+    from infona_client.graph.queries import tenant_graph_uri
+
+    base = tenant_graph_uri(TENANT)
+    graphs = [base, public_graph_uri()]
+    await _seed_instances(base)
+    assert await other_graphs_hold_instances(_retired_client(), TENANT, graphs) is True
+
+    import infona_client.graph.explore_store as explore_store
+
+    async def _boom(session):  # pragma: no cover — must not be reached
+        raise AssertionError("cached positive should not re-probe the store")
+
+    original = explore_store.count_entities_pg
+    explore_store.count_entities_pg = _boom
+    try:
+        assert await other_graphs_hold_instances(
+            _retired_client(), TENANT, graphs
+        ) is True
+    finally:
+        explore_store.count_entities_pg = original

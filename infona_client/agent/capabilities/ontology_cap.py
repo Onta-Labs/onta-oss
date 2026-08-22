@@ -6,9 +6,12 @@ Reuses the EXISTING ontology engine end-to-end (no reimplementation):
   attributes + relationships (and, when no type is in scope, the tenant's types)
   by reusing :func:`infona_client.normalization.inference.list_type_schema`
   (the same bounded single round-trip read the enrich/normalize planners ground
-  their extraction in) and :func:`...ontology_queries.list_types_query`. A
-  read-only request mutates nothing, so it is surfaced as an ``answer`` step the
-  planner returns directly (like :class:`QueryCapability`), not a confirm plan.
+  their extraction in) and
+  :func:`~infona_client.agent.capabilities.ontology_cap_reads.list_tenant_types`
+  (the GraphStore ontology catalog, with the retired SPARQL builder kept as a
+  supplement — ONTA-534). A read-only request mutates nothing, so it is
+  surfaced as an ``answer`` step the planner returns directly (like
+  :class:`QueryCapability`), not a confirm plan.
 
 * **declare / extend** (mutating) — proposes ONE :class:`PlanStep` to add an
   attribute (or a new type) to the ontology. ``execute`` commits it through the
@@ -30,12 +33,8 @@ import structlog
 from infona_client.agent.kg_scope import SCOPE_NONE
 from infona_client.agent.registry import AgentContext, PlanStep
 from infona_client.graph.ontology_commit import commit_ontology
-from infona_client.graph.ontology_queries import (
-    PRIMITIVE_TYPES,
-    list_types_query,
-)
+from infona_client.graph.ontology_queries import PRIMITIVE_TYPES
 from infona_client.models.ontology import OntologyMutation, OntologyOpKind
-from infona_client.graph.parser import parse_sparql_results
 from infona_client.graph.queries import tenant_graph_uri
 from infona_client.normalization.inference import list_type_schema
 from infona_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
@@ -98,21 +97,18 @@ class OntologyCapability:
         }
 
     async def _list_types(self, ctx: AgentContext) -> list[dict]:
-        """The tenant's declared types (name + description), reusing the same
-        ontology query the ``/ontology/types`` route uses."""
-        onto_graph = tenant_graph_uri(ctx.tenant_id)
-        _, rows = parse_sparql_results(
-            await ctx.neptune.query(list_types_query(onto_graph))
+        """The tenant's declared types (name + description).
+
+        GraphStore catalog FIRST, residual SPARQL as a supplement (ONTA-534) —
+        see :mod:`infona_client.agent.capabilities.ontology_cap_reads` for why
+        the bare ``ctx.neptune.query`` this replaced 500'd every schema
+        inspection on the shipped Neo4j backend.
+        """
+        from infona_client.agent.capabilities.ontology_cap_reads import (
+            list_tenant_types,
         )
-        seen: set[str] = set()
-        types: list[dict] = []
-        for r in rows:
-            label = r.get("label", "")
-            if not label or label in seen:
-                continue
-            seen.add(label)
-            types.append({"name": label, "description": r.get("comment", "")})
-        return types
+
+        return await list_tenant_types(ctx.neptune, ctx.tenant_id)
 
     # --- plan: inspect → answer step; declare → confirm step ---------------- #
 

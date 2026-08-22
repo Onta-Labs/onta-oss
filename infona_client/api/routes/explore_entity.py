@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+import structlog
 from fastapi import Depends, Query
 
 from infona_client.api.deps import get_neptune_client
@@ -19,7 +20,7 @@ from infona_client.graph.entitlement import layer_stack_for
 from infona_client.graph.iri import ENTITY_URI_PREFIX, TYPE_URI_PREFIX
 from infona_client.graph.predicates import is_internal_predicate as _is_internal_predicate
 from infona_client.graph.kg_writer import refresh_after_write
-from infona_client.graph.layers import fetch_types_by_layer, layer_type_uri
+from infona_client.graph.layers import Layer, fetch_types_by_layer, layer_type_uri
 from infona_client.graph.parser import parse_sparql_results
 from infona_client.graph.ontology_queries import type_uri
 from infona_client.graph.queries import (
@@ -28,6 +29,8 @@ from infona_client.graph.queries import (
     sparql_string_literal,
     tenant_graph_uri,
 )
+
+logger = structlog.stdlib.get_logger("infona.api.explore_entity")
 
 
 async def get_entity_detail_route(
@@ -330,6 +333,29 @@ async def search_explorer(
         return results
 
     # kind == "attr" — union of visible layer graphs; dedupe by (attr, type name).
+    #
+    # GraphStore catalog FIRST (ONTA-534). The SPARQL read below is the ONLY
+    # thing this branch ever did, it had no ``try``, and the SPARQL HTTP read
+    # is retired under the shipped Neo4j GraphStore — so every Explorer
+    # attribute search came back a 500. The catalog is the same declaration
+    # source the ontology browser renders, read once per VISIBLE layer so
+    # entitlement still decides what a workspace can see. The SPARQL arm stays
+    # as a supplement (dual-arm tests, and any layer the catalog cannot answer
+    # for); its failure is swallowed once the catalog has answered, because
+    # "no attribute matches that substring" is the ORDINARY result of a search
+    # and must not read as an error.
+    out: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for layer in stack.layers:
+        for attr_name, type_name in await _catalog_attr_matches(
+            layer, tenant.tenant_id, q_lower
+        ):
+            key = (attr_name, type_name)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({"attr_name": attr_name, "type_name": type_name})
+
     sparql = (
         f"SELECT DISTINCT ?attrLabel ?type ?typeLabel {from_clause} WHERE {{\n"
         f"  ?attr <{RDF_TYPE}> <http://www.w3.org/1999/02/22-rdf-syntax-ns#Property> .\n"
@@ -339,9 +365,15 @@ async def search_explorer(
         f'  FILTER(CONTAINS(LCASE(STR(?attrLabel)), "{_esc(q_lower)}"))\n'
         f"}}"
     )
-    _, rows = parse_sparql_results(await client.query(sparql))
-    seen: set[tuple[str, str]] = set()
-    out = []
+    try:
+        _, rows = parse_sparql_results(await client.query(sparql))
+    except Exception as exc:  # noqa: BLE001 — retired client must not 500
+        logger.debug(
+            "explore_attr_search_sparql_failed",
+            tenant_id=tenant.tenant_id,
+            error=str(exc),
+        )
+        return out
     for r in rows:
         attr_name = r.get("attrLabel", "")
         type_name = r.get("typeLabel", "")
@@ -354,3 +386,46 @@ async def search_explorer(
         out.append({"attr_name": attr_name, "type_name": type_name})
     return out
 
+
+async def _catalog_attr_matches(
+    layer: Layer, tenant_id: str, q_lower: str
+) -> list[tuple[str, str]]:
+    """``(attr_name, type_name)`` declarations in ONE layer matching ``q_lower``.
+
+    Reads :func:`infona_client.graph.ontology_catalog.list_attributes` for the
+    layer — the same catalog the ontology browser and the NL planner's layer
+    read (#447) use — and filters by the same case-insensitive substring the
+    SPARQL ``CONTAINS(LCASE(...))`` applied. Best-effort per layer: an
+    unconfigured store or a catalog error yields ``[]`` for THAT layer only,
+    mirroring ``fetch_types_by_layer``'s "degrade to an empty layer, never
+    error" contract (ADR 0002 §1), so one unreadable layer cannot take the
+    search down for the others.
+    """
+    try:
+        from infona_client.graph.ontology_catalog import list_attributes
+        from infona_client.graph.store import get_optional_graph_store
+
+        rows = await list_attributes(
+            store=get_optional_graph_store(),
+            type_name=None,
+            layer=layer.value,
+            tenant_id=tenant_id if layer is Layer.TENANT else None,
+        )
+    except Exception as exc:  # noqa: BLE001 — degrade to an empty layer
+        logger.debug(
+            "explore_attr_search_catalog_failed",
+            layer=layer.value,
+            tenant_id=tenant_id,
+            error=str(exc),
+        )
+        return []
+    matches: list[tuple[str, str]] = []
+    for rec in rows or ():
+        attr_name = getattr(rec, "name", "") or ""
+        type_name = getattr(rec, "domain", "") or ""
+        if not attr_name or not type_name:
+            continue
+        if q_lower not in attr_name.lower():
+            continue
+        matches.append((attr_name, type_name))
+    return matches
