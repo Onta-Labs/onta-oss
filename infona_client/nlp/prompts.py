@@ -253,9 +253,19 @@ a field or returning a silent unfiltered total.
 - Correct datatype read pattern:
   `(a:Assertion {tenant_id:$tenant_id, kg:$kg, subject_id:e.id})-[:PREDICATE]->(p:Property)`
   with `a.literal_value` (or denorm `e[p.name]` / `e.price`).
-- Correct object-rel read pattern:
-  `(a:Assertion)-[:SUBJECT]->(from)-[:OBJECT]->(to)` + PREDICATE Property,
-  or the dual-written typed rel `HAS_*` when present.
+- Correct object-rel read pattern (three separate MATCHes off the SAME Assertion \
+`a` — do NOT chain OBJECT off the subject node):
+  `MATCH (a:Assertion {tenant_id:$tenant_id, kg:$kg})-[:SUBJECT]->(from)`
+  `MATCH (a)-[:OBJECT]->(to)`
+  `MATCH (a)-[:PREDICATE]->(p:Property)` then `WHERE p.name = $rel_attr`.
+- A relationship leaf in the ontology schema (`lead_sponsor`, `directed_by`, …) \
+is a **`:Property` name**, NEVER a relationship type. \
+`(x)-[:lead_sponsor]->(y)` matches NOTHING and returns a silent zero-row \
+"no results" on data that has the relationship. Every relationship type in this \
+graph is UPPER_SNAKE_CASE and Neo4j rel types are case-sensitive: the derived \
+dual-written shortcut for leaf `lead_sponsor` is `LEAD_SPONSOR`. Prefer the \
+Assertion pattern (source of truth) or the `related_entities` / \
+`related_entity_name_filter` template; the shortcut rel is a derived cache.
 
 Prefer allowlisted semantic helper templates (set the JSON ``template`` field when \
 the shape matches; params must match the template). Helpers include:
