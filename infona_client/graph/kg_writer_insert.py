@@ -65,8 +65,15 @@ async def insert_facts(
       timestamp). Callers (ingest / enrichment) still build the same ADR 0002
       payload via ``build_provenance_triples``; the named-graph SPARQL write is
       gone, the governance fields are not.
-    * ``validity_triples`` / ``suppression_triples`` / ``reopen_facts`` — still
-      unported (E7). Callers get a warning rather than silence.
+    * ``suppression_triples`` — ported (ONTA-279 / E7). Parsed into
+      :class:`~infona_client.graph.suppression_store.SuppressionMark` records and
+      persisted as ``:Suppression`` nodes scoped to this KG. Callers (retraction)
+      still build the same companion-graph payload via ``build_suppression_triples``
+      / ``build_entity_suppression_triples``; only the storage changed. Until this
+      port, the payload was dropped on the floor and a retracted value silently
+      came back on the next enrichment refresh.
+    * ``validity_triples`` / ``reopen_facts`` — still unported (E7). Callers get a
+      warning rather than silence.
 
     ``run_id`` (ONTA-271): when given, returns a deterministic A6
     :class:`GraphDelta` over the *triple* form of the write (Fact-only writes
@@ -75,7 +82,6 @@ async def insert_facts(
     _host()._warn_unported_companions(
         instance_graph,
         validity_triples=validity_triples,
-        suppression_triples=suppression_triples,
         reopen_facts=reopen_facts,
     )
     instance_triples = list(instance_triples or [])
@@ -88,6 +94,7 @@ async def insert_facts(
         instance_triples=instance_triples,
         facts=facts,
         provenance_triples=list(provenance_triples or []),
+        suppression_triples=list(suppression_triples or []),
         run_id=run_id,
     )
 
@@ -99,6 +106,7 @@ async def _insert_facts_store(
     instance_triples: list[Triple],
     facts: Optional[Sequence[Fact]],
     provenance_triples: Optional[list[Triple]] = None,
+    suppression_triples: Optional[list[Triple]] = None,
     run_id: Optional[str],
 ) -> Optional[GraphDelta]:
     """Property-graph insert path (Memory / Neo4j). Template/native ops only."""
@@ -170,6 +178,33 @@ async def _insert_facts_store(
         except Exception:  # noqa: BLE001 — companions never fail the write
             logger.warning(
                 "insert_facts_store_attr_citation_failed",
+                instance_graph=instance_graph,
+                exc_info=True,
+            )
+    # ONTA-279 / E7: sticky suppression markers. Persisted here — NOT as domain
+    # facts — so the marker survives a hard-delete of the very triple it
+    # suppresses and no reopen can clear it. A failure is logged, never raised:
+    # the instance write it rides along with has already committed, and the
+    # marker's own absence is caught by the read's fail-closed path.
+    if suppression_triples:
+        try:
+            from infona_client.graph.suppression_store import (
+                apply_suppression_marks,
+                parse_suppression_marks,
+            )
+
+            marks = parse_suppression_marks(suppression_triples)
+            written = await apply_suppression_marks(session, marks)
+            if marks and not written:
+                logger.warning(
+                    "insert_facts_suppression_store_unsupported",
+                    instance_graph=instance_graph,
+                    marks=len(marks),
+                    detail="session implements no write_suppression; marks dropped",
+                )
+        except Exception:  # noqa: BLE001 — companions never fail the write
+            logger.warning(
+                "insert_facts_suppression_write_failed",
                 instance_graph=instance_graph,
                 exc_info=True,
             )

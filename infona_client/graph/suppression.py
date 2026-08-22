@@ -50,14 +50,22 @@ For a suppressed fact ``(s, p, o)`` the suppression graph holds::
         sup:graph        <data graph the fact lives in> .
 
 **On the shared write path.** These triples are NOT written by a bespoke writer:
-``kg_writer.insert_facts(suppression_triples=…)`` routes them through the same
-``batched_insert_triples`` seam every other write uses, into the suppression
-companion graph (exactly as it routes ``validity_triples`` to the validity
-graph). This module only BUILDS triples and QUERIES them (it constructs no raw
-instance-graph writes) and COMPOSES the ``graph/queries.py`` DELETE builder for an
-un-suppress rather than hand-rolling SPARQL — exactly like ``graph/validity.py`` —
-so it stays outside the write-path convergence guard's concern the same way that
-module does.
+``kg_writer.insert_facts(suppression_triples=…)`` routes them through the ONE
+insertion primitive every other write uses. This module only BUILDS triples (it
+constructs no instance-graph writes) and COMPOSES the ``graph/queries.py`` DELETE
+builder for an un-suppress rather than hand-rolling SPARQL — exactly like
+``graph/validity.py`` — so it stays outside the write-path convergence guard's
+concern the same way that module does.
+
+**Where each half lives (ONTA-279 / E7 port).** The named-graph RDF shape above
+is the WIRE format the builders here emit; on the shipped Neo4j backend it is
+parsed into ``:Suppression`` nodes by :mod:`infona_client.graph.suppression_store`
+and written by ``insert_facts``. Before the port, ``insert_facts`` dropped
+``suppression_triples`` on the floor and the SPARQL read always answered "not
+suppressed", so a retracted value came back on the next refresh. Read-side ladder
+and fail directions: :mod:`infona_client.graph.suppression_read`. ``validity`` and
+``reopen_facts`` companions remain unported (still warned about by
+``kg_writer_session._warn_unported_companions``).
 
 Boundary: OSS. Imports only stdlib / ``infona_client.*``.
 """
@@ -70,7 +78,21 @@ from infona_client.graph.iri import IRI_BASE, SUPPRESSION_NS
 import hashlib
 from datetime import datetime
 
-from infona_client.graph.queries import _escape_value, delete_node_predicates_query
+import structlog
+
+from infona_client.graph.queries import delete_node_predicates_query
+from infona_client.graph.suppression_read import (  # noqa: F401 — facade re-exports
+    fetch_suppressed,
+    fetch_suppressed_entities,
+    is_entity_suppressed,
+    is_suppressed,
+    read_suppressed,
+    read_suppressed_entities,
+    suppressed_entities_query,
+    suppressed_objects_query,
+)
+
+logger = structlog.stdlib.get_logger("infona.graph.suppression")
 
 # The suppression namespace. A whole-namespace exclusion is added to
 # graph/predicates.py::is_internal_predicate for defense-in-depth (these
@@ -267,145 +289,6 @@ def clear_suppression_update(
     sup_graph = suppression_graph_uri(instance_graph)
     return delete_node_predicates_query(sup_graph, node, list(_MARK_PREDICATES))
 
-
-def suppressed_objects_query(instance_graph: str, subject: str, predicate: str) -> str:
-    """SELECT every SUPPRESSED object of ``(subject, predicate)``.
-
-    Reads the companion suppression graph for all ``sup:object`` marked under this
-    ``(subject, predicate)``. Used by :func:`fetch_suppressed` / :func:`is_suppressed`
-    to decide whether a refresh may (re-)acquire a value.
-    """
-    sup_graph = suppression_graph_uri(instance_graph)
-    s, p = _escape_value(subject), _escape_value(predicate)
-    return (
-        f"SELECT ?o WHERE {{\n"
-        f"  GRAPH <{sup_graph}> {{\n"
-        f"    ?node <{SUP_SUBJECT}> {s} ;\n"
-        f"          <{SUP_PREDICATE}> {p} ;\n"
-        f"          <{SUP_OBJECT}> ?o .\n"
-        f"  }}\n"
-        f"}}"
-    )
-
-
-def _object_term(binding: dict) -> str:
-    """Reconstruct the write-convention object string from a raw SPARQL JSON binding.
-
-    The inverse of ``graph/queries._escape_value`` on the read side (mirrors
-    ``validity._object_term``): preserve the EXACT term so a suppressed typed
-    literal round-trips and matches term-for-term (the ONTA-247 typed-literal
-    lesson). ``uri`` → the URI string; a typed literal → ``value^^datatype``; a
-    plain / ``xsd:string`` literal → the bare value.
-    """
-    kind = binding.get("type")
-    value = binding.get("value", "")
-    if kind == "uri":
-        return value
-    dt = binding.get("datatype")
-    if dt and dt != f"{_XSD}#string":
-        return f"{value}^^{dt}"
-    return value
-
-
-async def fetch_suppressed(
-    neptune, instance_graph: str, subject: str, predicate: str
-) -> set[str]:
-    """The write-convention object terms currently SUPPRESSED for ``(subject, predicate)``.
-
-    Reads the raw SPARQL JSON (not ``parse_sparql_results``, which drops datatype)
-    so each term is reconstructed exactly and can be compared term-identically to a
-    value a refresh is about to write. Best-effort: returns an empty set on any read
-    failure (a suppression read must never fail the caller — worst case a value that
-    should have stayed suppressed gets re-considered, which the conflict policy then
-    arbitrates, rather than crashing the run).
-    """
-    try:
-        raw = await neptune.query(suppressed_objects_query(instance_graph, subject, predicate))
-    except Exception:  # noqa: BLE001 — a suppression read is best-effort
-        return set()
-    bindings = raw.get("results", {}).get("bindings", [])
-    out: set[str] = set()
-    for row in bindings:
-        o = row.get("o")
-        if o is not None:
-            out.add(_object_term(o))
-    return out
-
-
-async def is_suppressed(
-    neptune, instance_graph: str, subject: str, predicate: str, obj: str
-) -> bool:
-    """True iff ``(subject, predicate, obj)`` is on the suppression list.
-
-    Term-faithful: ``obj`` must match the suppressed term exactly (typed-literal
-    convention included), so suppressing ``"42"^^xsd:integer`` does not
-    accidentally suppress the plain string ``"42"`` and vice-versa. Best-effort via
-    :func:`fetch_suppressed`.
-    """
-    return obj in await fetch_suppressed(neptune, instance_graph, subject, predicate)
-
-
-def suppressed_entities_query(instance_graph: str) -> str:
-    """SELECT every ENTITY-level suppressed subject in the companion graph.
-
-    Reads ONLY the ``sup:entity`` marks (the subject-only erasure tombstones), so
-    a ``(s, p, o)`` FACT mark — which carries ``sup:subject`` / ``sup:predicate`` /
-    ``sup:object``, never ``sup:entity`` — is structurally excluded. Used by
-    :func:`fetch_suppressed_entities` / :func:`is_entity_suppressed` to decide, in
-    ONE batched read per run, whether a discovered row may be (re-)acquired. Mirrors
-    :func:`suppressed_objects_query` in shape (an inline SELECT over the companion
-    suppression graph) — a READ, not a write, so it stays outside the write-path
-    convergence guard exactly as the ``(s, p, o)`` reader does.
-    """
-    sup_graph = suppression_graph_uri(instance_graph)
-    return (
-        f"SELECT ?s WHERE {{\n"
-        f"  GRAPH <{sup_graph}> {{\n"
-        f"    ?node <{SUP_ENTITY}> ?s .\n"
-        f"  }}\n"
-        f"}}"
-    )
-
-
-async def fetch_suppressed_entities(neptune, instance_graph: str) -> set[str]:
-    """The set of ENTITY subjects currently SUPPRESSED (erased/tombstoned) in a graph.
-
-    ONE query per run (the FIND-path guard checks set-membership per row, so a
-    discovery of N rows costs a single read, not N reads). Reconstructs each
-    subject term via :func:`_object_term` (a suppressed entity URI round-trips to
-    its exact URI string, comparable term-identically to a discovered row's
-    would-be ``entity_uri``). Best-effort: returns an empty set on any read failure
-    or when there is no target graph — a suppression read must never fail the
-    caller (worst case an erased entity is re-considered rather than the run
-    crashing).
-    """
-    if not instance_graph:
-        return set()
-    try:
-        raw = await neptune.query(suppressed_entities_query(instance_graph))
-    except Exception:  # noqa: BLE001 — a suppression read is best-effort
-        return set()
-    bindings = raw.get("results", {}).get("bindings", [])
-    out: set[str] = set()
-    for row in bindings:
-        s = row.get("s")
-        if s is not None:
-            out.add(_object_term(s))
-    return out
-
-
-async def is_entity_suppressed(neptune, instance_graph: str, subject: str) -> bool:
-    """True iff the ENTITY ``subject`` is on the entity-level suppression list.
-
-    Term-faithful and kind-faithful: matches only ``sup:entity`` marks, so a
-    ``(s, p, o)`` FACT suppression of the same subject does NOT make this return
-    True (and an entity suppression does not make :func:`is_suppressed` return
-    True) — the two suppression kinds are independent. Best-effort via
-    :func:`fetch_suppressed_entities`.
-    """
-    return subject in await fetch_suppressed_entities(neptune, instance_graph)
-
-
 __all__ = [
     "SUPPRESSION_NS",
     "SUP_SUBJECT",
@@ -428,4 +311,6 @@ __all__ = [
     "fetch_suppressed_entities",
     "is_suppressed",
     "is_entity_suppressed",
+    "read_suppressed",
+    "read_suppressed_entities",
 ]

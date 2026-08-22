@@ -71,6 +71,7 @@ from infona_client.graph.memory_store_norms import (  # noqa: F401 — public re
 )
 from infona_client.graph.memory_store_ontology import MemoryOntologyMixin
 from infona_client.graph.memory_store_rels import MemoryRelsMixin
+from infona_client.graph.memory_store_suppression import MemorySuppressionMixin
 from infona_client.graph.memory_store_rows import (  # noqa: F401 — public re-exports
     _AssertionRow,
     _CitationRow,
@@ -81,6 +82,7 @@ from infona_client.graph.memory_store_rows import (  # noqa: F401 — public re-
     _PropertyRow,
     _ProvRow,
     _RelRow,
+    _SuppressionRow,
     _ValueHistoryRow,
 )
 from infona_client.graph.memory_store_session import MemoryGraphSession
@@ -97,6 +99,7 @@ class MemoryGraphStore(
     MemoryLiteralsMixin,
     MemoryRelsMixin,
     MemoryExploreMixin,
+    MemorySuppressionMixin,
     MemoryExecuteMixin,
 ):
     """Process-local fake store; not safe for concurrent multi-process use."""
@@ -109,6 +112,8 @@ class MemoryGraphStore(
         self._prov: list[_ProvRow] = []
         # ValueHistory (ONTA-236/536): ordered old→new transitions
         self._value_history: list[_ValueHistoryRow] = []
+        # Suppression MERGE key: (tenant_id, kg, mark_id) — ONTA-279 sticky marks
+        self._suppressions: dict[tuple[str, str, str], _SuppressionRow] = {}
         # AttrCitation MERGE key: (tenant_id, kg, entity_id, attr, value_hash)
         self._citations: dict[tuple[str, str, str, str, str], _CitationRow] = {}
         # ADR 0013: Class / Property / Assertion
@@ -147,6 +152,7 @@ class MemoryGraphStore(
         self._rels.clear()
         self._prov.clear()
         self._value_history.clear()
+        self._suppressions.clear()
         self._citations.clear()
         self._classes.clear()
         self._properties.clear()
@@ -228,6 +234,7 @@ __all__ = [
     "_PropertyRow",
     "_ProvRow",
     "_RelRow",
+    "_SuppressionRow",
     "_ValueHistoryRow",
     "_norm_cypher",
 ]

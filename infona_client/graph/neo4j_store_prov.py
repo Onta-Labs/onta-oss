@@ -136,6 +136,91 @@ class Neo4jProvMixin:
         return [r.to_dict() if hasattr(r, "to_dict") else dict(r) for r in rows]
 
 
+    async def write_suppression(
+        self,
+        *,
+        mark_id: str,
+        kind: str,
+        statement_id: str = "",
+        subject: str = "",
+        predicate: str = "",
+        object_repr: str = "",
+        reason: str = "",
+        suppressed_at: str = "",
+        graph_uri: str = "",
+    ) -> None:
+        """MERGE one sticky ``:Suppression`` marker (ONTA-279 / E7 port).
+
+        Identity is ``(tenant_id, kg, mark_id)``; ``mark_id`` is the RDF
+        mark-node URI, already ``sha1``-keyed on ``(s, p, o)`` for a fact mark
+        and on ``(s)`` for an entity mark, so re-retracting the same thing is
+        idempotent and the two kinds can never share a node.
+
+        Deliberately standalone: NO ``[:ABOUT]->(:Entity)`` edge (unlike
+        ``write_prov_event``). A marker is written for a value the caller may
+        have just hard-deleted — and an ENTITY mark is a tombstone for a subject
+        that must not be re-minted — so an edge would either resurrect the node
+        or make the mark unreadable exactly when it matters.
+        """
+        cypher = (
+            "MERGE (s:Suppression {tenant_id: $tenant_id, kg: $kg, mark_id: $mark_id})\n"
+            "SET s.kind = $kind,\n"
+            "    s.statement_id = $statement_id,\n"
+            "    s.subject = $subject,\n"
+            "    s.predicate = $predicate,\n"
+            "    s.object_repr = $object_repr,\n"
+            "    s.reason = coalesce($reason, s.reason),\n"
+            "    s.suppressed_at = coalesce($suppressed_at, s.suppressed_at),\n"
+            "    s.graph_uri = coalesce($graph_uri, s.graph_uri)\n"
+            "RETURN s.mark_id AS mark_id"
+        )
+        await self.execute_write(
+            cypher,
+            {
+                "mark_id": mark_id,
+                "kind": kind,
+                "statement_id": statement_id or "",
+                "subject": subject or "",
+                "predicate": predicate or "",
+                "object_repr": object_repr or "",
+                "reason": reason or None,
+                "suppressed_at": suppressed_at or None,
+                "graph_uri": graph_uri or None,
+            },
+        )
+
+    async def read_suppressions(
+        self,
+        *,
+        kind: str | None = None,
+        subject: str | None = None,
+        predicate: str | None = None,
+    ) -> list:
+        """Suppression marks in THIS session's ``(tenant_id, kg)`` scope.
+
+        The scope map is unconditional — a mark written in one workspace must
+        never withhold (or expose) a value in another. ``kind`` keeps a
+        ``(s, p, o)`` fact mark and an entity tombstone from ever answering each
+        other's question, the same separation the RDF predicates gave.
+        """
+        cypher = (
+            "MATCH (s:Suppression {tenant_id: $tenant_id, kg: $kg})\n"
+            "WHERE ($kind IS NULL OR s.kind = $kind)\n"
+            "  AND ($subject IS NULL OR s.subject = $subject)\n"
+            "  AND ($predicate IS NULL OR s.predicate = $predicate)\n"
+            "RETURN s.mark_id AS mark_id, s.kind AS kind,\n"
+            "       s.statement_id AS statement_id, s.subject AS subject,\n"
+            "       s.predicate AS predicate, s.object_repr AS object_repr,\n"
+            "       s.reason AS reason, s.suppressed_at AS suppressed_at,\n"
+            "       s.graph_uri AS graph_uri\n"
+            "ORDER BY s.mark_id"
+        )
+        rows = await self.execute_read(
+            cypher,
+            {"kind": kind, "subject": subject, "predicate": predicate},
+        )
+        return [r.to_dict() if hasattr(r, "to_dict") else dict(r) for r in rows]
+
     async def write_attr_citation(
         self,
         *,

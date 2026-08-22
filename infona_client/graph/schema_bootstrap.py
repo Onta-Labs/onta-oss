@@ -128,6 +128,20 @@ SCHEMA_STATEMENTS: tuple[tuple[str, str], ...] = (
         "CREATE INDEX prov_event_subject IF NOT EXISTS "
         "FOR (p:ProvEvent) ON (p.tenant_id, p.kg, p.subject_id)",
     ),
+    # ONTA-279 sticky suppression markers. Uniqueness on the sha1-keyed mark id
+    # is what makes re-retracting the same value idempotent instead of piling up
+    # duplicate markers; the lookup index serves the per-refresh
+    # "is (subject, predicate) suppressed?" probe.
+    (
+        "suppression_tenant_kg_mark_unique",
+        "CREATE CONSTRAINT suppression_tenant_kg_mark_unique IF NOT EXISTS "
+        "FOR (s:Suppression) REQUIRE (s.tenant_id, s.kg, s.mark_id) IS UNIQUE",
+    ),
+    (
+        "suppression_subject_lookup",
+        "CREATE INDEX suppression_subject_lookup IF NOT EXISTS "
+        "FOR (s:Suppression) ON (s.tenant_id, s.kg, s.kind, s.subject)",
+    ),
     (
         "onto_type_layer_name",
         "CREATE INDEX onto_type_layer_name IF NOT EXISTS "

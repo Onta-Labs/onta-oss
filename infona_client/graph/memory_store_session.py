@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Mapping, Sequence
 from infona_client.graph.memory_store_rows import (
     _CitationRow,
     _ProvRow,
+    _SuppressionRow,
     _ValueHistoryRow,
 )
 from infona_client.graph.schema_bootstrap import get_template
@@ -253,6 +254,56 @@ class MemoryGraphSession:
             predicate=predicate,
             since=since,
             limit=limit,
+        )
+
+    async def write_suppression(
+        self,
+        *,
+        mark_id: str,
+        kind: str,
+        statement_id: str = "",
+        subject: str = "",
+        predicate: str = "",
+        object_repr: str = "",
+        reason: str = "",
+        suppressed_at: str = "",
+        graph_uri: str = "",
+    ) -> None:
+        """Persist one sticky suppression mark (ONTA-279).
+
+        Deliberately does NOT merge an ``:Entity`` for ``subject`` (unlike
+        ``write_prov_event``'s assert/rewrite branch): a mark is written for a
+        value that may have just been hard-deleted, and for an ENTITY tombstone
+        whose whole point is that the entity must not come back.
+        """
+        t, k = self._scope_tk()
+        self._store._upsert_suppression(
+            _SuppressionRow(
+                tenant_id=t,
+                kg=k,
+                mark_id=mark_id,
+                kind=kind,
+                statement_id=statement_id,
+                subject=subject,
+                predicate=predicate,
+                object_repr=object_repr,
+                reason=reason,
+                suppressed_at=suppressed_at,
+                graph_uri=graph_uri,
+            )
+        )
+
+    async def read_suppressions(
+        self,
+        *,
+        kind: str | None = None,
+        subject: str | None = None,
+        predicate: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Suppression marks in THIS session's ``(tenant_id, kg)`` scope."""
+        t, k = self._scope_tk()
+        return self._store._list_suppressions(
+            t, k, kind=kind, subject=subject, predicate=predicate
         )
 
     async def write_attr_citation(
