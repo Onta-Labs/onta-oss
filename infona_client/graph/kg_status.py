@@ -44,6 +44,7 @@ import time
 
 import structlog
 
+from infona_client.graph.kg_status_store import _graphs_hold_instances_store
 from infona_client.graph.parser import parse_sparql_results
 from infona_client.graph.queries import (
     KG_NAME_PRED,
@@ -350,6 +351,35 @@ async def other_graphs_hold_instances(neptune, tenant_id: str, graphs) -> bool:
     the "a caveat that is wrong about which graph answered" failure the caveat
     exists to prevent. Unproven means unsaid.
 
+    **ONTA-534: measured on the GraphStore, and it measures something NARROWER
+    than the SPARQL ASK did.** The SPARQL client is retired on the shipped Neo4j
+    backend, so this probe raised on every ``/ask`` that reached it, the ``except``
+    below swallowed it, and the caveat was unreachable in production — that is
+    what the ``other_graph_instance_probe_failed`` warnings are.
+    :func:`_graphs_hold_instances_store` answers the same WORKSPACE question
+    against the store (entity counts per resolved scope) for a real
+    :class:`NeptuneClient`; duck-typed doubles keep the ASK. Two honest
+    differences, neither of which this port papers over:
+
+    1. **The Global layers drop out.** On Neptune they held roughly a thousand
+       typed subjects and were a live half of this signal. The property-graph
+       model has no instance scope for them at all (see
+       :func:`_graphs_hold_instances_store`), so the store answer is driven by
+       the tenant BASE scope alone.
+    2. **"The workspace holds other data" no longer implies "the answer query
+       read it."** Under Neptune those were one fact, because ``/ask`` spliced
+       every one of these graphs into the generated query as extra ``FROM``
+       clauses. Generated CYPHER is confined to a single ``(tenant_id, kg)``
+       scope instead (``nlp/cypher_scope.confine_generated_cypher`` +
+       ``graph/store.assert_cypher_is_scoped``), so the union dataset the
+       ONTA-454 caveat was written about does not exist on the shipped backend.
+       This function still answers what its NAME says — does the workspace hold
+       instance data outside the named KG — and that is a true statement about
+       the workspace; whether the caveat wording built on it ("the result counts
+       data from '<kg>' together with the workspace base graph and any shared
+       layers", ``nlp/kg_coverage.unscoped_caveat``) is still accurate under
+       Cypher confinement is a SEPARATE question, deliberately not decided here.
+
     Cached POSITIVE-only and keyed on the graph SET (entitlement changes the
     visible layers), so a real workspace pays for this once per TTL and the
     steady-state cost is zero.
@@ -361,13 +391,33 @@ async def other_graphs_hold_instances(neptune, tenant_id: str, graphs) -> bool:
     cached = _base_instances_cache.get(key)
     if cached is not None and (time.time() - cached) < KG_STATUS_CACHE_TTL:
         return True
+
+    # GraphStore-first for a *real* NeptuneClient (production lifespan).
+    # ``type is`` not ``isinstance`` for the same reason as `kg_data_status`:
+    # ``AsyncMock(spec=NeptuneClient)`` satisfies isinstance and would lose the
+    # double's ask() side effects to an empty hermetic store.
+    found: bool | None = None
     try:
-        found = await neptune.ask(_base_has_instances_query(*targets))
-    except Exception:  # noqa: BLE001 - an unverified claim is not made at all
+        from infona_client.graph.client import NeptuneClient
+
+        if type(neptune) is NeptuneClient:
+            found = await _graphs_hold_instances_store(tenant_id, targets)
+    except Exception:  # noqa: BLE001 — fall through to SPARQL / silence
         logger.warning(
-            "other_graph_instance_probe_failed", tenant=tenant_id, exc_info=True
+            "other_graph_instance_store_dispatch_failed",
+            tenant=tenant_id,
+            exc_info=True,
         )
-        return False
+        found = None
+
+    if found is None:
+        try:
+            found = bool(await neptune.ask(_base_has_instances_query(*targets)))
+        except Exception:  # noqa: BLE001 - an unverified claim is not made at all
+            logger.warning(
+                "other_graph_instance_probe_failed", tenant=tenant_id, exc_info=True
+            )
+            return False
     if found:
         _base_instances_cache[key] = time.time()
     return bool(found)
