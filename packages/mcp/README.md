@@ -42,7 +42,7 @@ Hosted Infona also needs `INFONA_API_KEY` and your workspace id in `INFONA_TENAN
 
 ## Tools exposed
 
-The server registers **19** tools, plus **1 more** (`list_local_files`) when you opt in by configuring `INFONA_LOCAL_FILES_DIR` (see [Environment](#environment)):
+The server registers **20** tools, plus **1 more** (`list_local_files`) when you opt in by configuring `INFONA_LOCAL_FILES_DIR` (see [Environment](#environment)):
 
 - `agent` — the single conversational front door to the Ask-AI agent. Send a natural-language message; the agent classifies intent and either answers a question, asks a clarifying question, or proposes a multi-step plan (enrich attributes, clean/normalize values, merge duplicates, inspect/extend the ontology). A plan is **not executed** until you confirm it by calling `agent` again with the returned `plan_id` as `confirm_plan_id`. Planning is free; any paid step a plan contains (e.g. web enrichment) is authorized server-side at execute time, so confirming honors your tenant's entitlements.
 - `list_knowledge_graphs` — list available KGs and their descriptions.

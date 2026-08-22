@@ -599,6 +599,66 @@ Export KG instance data as JSON or CSV (OSS launch F10).
 
 ---
 
+## Extract_Sources
+
+### `GET /graphs/{tenant}/extract-sources`
+
+List Extract Sources
+
+**200:** Successful Response
+**422:** Validation Error
+
+---
+
+### `POST /graphs/{tenant}/extract-sources`
+
+Create Extract Source
+
+**Request body:** `CreateExtractSourceRequest`
+
+**200:** Successful Response
+**422:** Validation Error
+
+---
+
+### `GET /graphs/{tenant}/extract-sources/{slug}`
+
+Get Extract Source
+
+**200:** Successful Response
+**422:** Validation Error
+
+---
+
+### `PATCH /graphs/{tenant}/extract-sources/{slug}`
+
+Update Extract Source
+
+**Request body:** `UpdateExtractSourceRequest`
+
+**200:** Successful Response
+**422:** Validation Error
+
+---
+
+### `DELETE /graphs/{tenant}/extract-sources/{slug}`
+
+Delete Extract Source
+
+**200:** Successful Response
+**422:** Validation Error
+
+---
+
+### `POST /graphs/{tenant}/extract-sources/{slug}/run`
+
+Run Extract Source
+
+**200:** Successful Response
+**422:** Validation Error
+
+---
+
 ## Functions
 
 ### `POST /graphs/{tenant}/functions`
@@ -778,6 +838,17 @@ ONTA-386: tracked ``category=ingest`` job + live stage_trace (P0/P2/P5/P6).
 Build Embeddings
 
 Trigger a full embedding build for all ontology types in this tenant.
+
+**200:** Successful Response
+**422:** Validation Error
+
+---
+
+### `POST /graphs/{tenant}/ingest/dlt`
+
+Ingest Dlt
+
+**Request body:** `DltIngestRequest`
 
 **200:** Successful Response
 **422:** Validation Error
@@ -2404,6 +2475,18 @@ Accept Invite By Token
 | `secrets` | object | No |  |
 | `enabled` | object | No |  |
 
+### CreateExtractSourceRequest
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `slug` | string | Yes |  |
+| `title` | string | No |  |
+| `source` | #/components/schemas/DltSourceSpec | Yes |  |
+| `map` | object | No |  |
+| `kg` | object | No |  |
+| `enabled` | boolean | No |  |
+| `secrets` | object | No |  |
+
 ### CreateJobResponse
 
 | Field | Type | Required | Description |
@@ -2467,6 +2550,44 @@ Accept Invite By Token
 | `name` | string | Yes |  |
 | `functions` | array | Yes |  |
 | `skills` | array | Yes |  |
+
+### DltAuthSpec
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | No |  |
+| `secret_ref` | object | No |  |
+| `token` | object | No |  |
+| `username` | object | No |  |
+| `api_key_header` | object | No |  |
+
+### DltIngestRequest
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `source` | #/components/schemas/DltSourceSpec | Yes |  |
+| `map` | object | Yes |  |
+| `kg` | object | No |  |
+
+### DltResourceMap
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | Yes |  |
+| `id_field` | string | No |  |
+| `attributes` | object | No |  |
+
+### DltSourceSpec
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `kind` | string | Yes |  |
+| `base_url` | object | No |  |
+| `dsn` | object | No |  |
+| `auth` | object | No |  |
+| `resources` | array | Yes |  |
+| `headers` | object | No |  |
+| `limit` | integer | No |  |
 
 ### EnrichActionRequest
 
@@ -2580,6 +2701,21 @@ Accept Invite By Token
 | `key_strategy` | object | No | How this entity is keyed: 'column' = id_column natural key, 'composite' = deterministic id_from composite, 'synthetic' = content-hash key minted per row (ADR 0003 §2). None = legacy mapping that predates the v2 inference pipeline. |
 | `confidence` | object | No | LLM confidence in this entity decision (v2 inference) |
 | `why` | object | No | Profile-evidence rationale for this entity decision (v2 inference) |
+
+### ExtractSourceSummary
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `slug` | string | Yes |  |
+| `title` | string | Yes |  |
+| `kind` | string | Yes |  |
+| `enabled` | boolean | Yes |  |
+| `has_secret` | boolean | Yes |  |
+| `resources` | array | No |  |
+| `mapped` | array | No |  |
+| `kg` | object | No |  |
+| `created_at` | object | No |  |
+| `updated_at` | object | No |  |
 
 ### FactCitation
 
@@ -3229,6 +3365,13 @@ Accept Invite By Token
 | `complete` | boolean | No |  |
 | `summary` | string | No |  |
 
+### RunExtractSourceRequest
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `kg` | object | No |  |
+| `limit` | object | No |  |
+
 ### RunManifest
 
 | Field | Type | Required | Description |
@@ -3561,6 +3704,17 @@ Accept Invite By Token
 | `spec` | object | No |  |
 | `secrets` | object | No |  |
 | `enabled` | object | No |  |
+
+### UpdateExtractSourceRequest
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `title` | object | No |  |
+| `source` | object | No |  |
+| `map` | object | No |  |
+| `kg` | object | No |  |
+| `enabled` | object | No |  |
+| `secrets` | object | No |  |
 
 ### UpdateSkillRequest
 
