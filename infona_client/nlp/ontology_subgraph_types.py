@@ -274,9 +274,21 @@ class OntologyPath:
         return tuple(rels)
 
     def describe(self) -> str:
-        parts = [f"{self.domain_type} -[:{self.rel_attr}]-> {self.range_type or '?'}"]
+        """Render the path for the grounding text injected into the prompt.
+
+        Deliberately NOT Cypher edge syntax. This string lands in the Cypher
+        generation prompt as ``preferred_path:``, and rendering it as
+        ``ClinicalTrial -[:lead_sponsor]-> Company`` demonstrated the exact
+        shape the model must not emit: ``lead_sponsor`` is a ``:Property``
+        name, and a lower-case relationship type cannot exist (rel types are
+        UPPER_SNAKE_CASE, and relationships live on ``:Assertion`` anyway). The
+        model copied the grounding hint into real Cypher and /ask answered
+        "No results found." on data that has the relationship. The arrow form
+        below names the same path without being valid-looking Cypher.
+        """
+        parts = [f"{self.domain_type} --{self.rel_attr}--> {self.range_type or '?'}"]
         for rel, rng in self.chain:
-            parts.append(f"-[:{rel}]-> {rng or '?'}")
+            parts.append(f"--{rel}--> {rng or '?'}")
         return " ".join(parts)
 
     def signature(self) -> str:

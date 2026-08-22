@@ -39,6 +39,7 @@ from infona_client.nlp.pipeline_helpers import (
     MAX_ENUM_DISCOVERY_CONCURRENCY,
     ONTOLOGY_CACHE_TTL,
     ONTOLOGY_EMPTY,
+    MAX_REPORTED_REL_TYPES,
     ONTOLOGY_FETCH_ERROR,
     RDF_TYPE_URI,
     REL_TRAVERSAL_FEEDBACK,
@@ -226,9 +227,11 @@ class PipelineCypherExecMixin:
         # flagging it earlier would break answers that work today.
         invented = _cypher_invented_rel_types(cypher)
         if invented and not is_fixture:
+            shown = invented[:MAX_REPORTED_REL_TYPES]
+            more = "" if len(invented) == len(shown) else ", …"
             raise GraphQueryError(
                 "generated Cypher traverses relationship type(s) "
-                f"{', '.join(invented)} that cannot exist. "
+                f"{', '.join(shown)}{more} that cannot exist. "
                 + REL_TRAVERSAL_FEEDBACK
             )
 
