@@ -34,6 +34,12 @@ from infona_client.graph.client import NeptuneClient
 from infona_client.graph.ontology_queries import RDF, RDFS, type_uri
 from infona_client.graph.parser import parse_sparql_results
 from infona_client.graph.queries import kg_graph_uri
+# Prompt text lives in ``inference_prompts`` (file-size budget); re-exported
+# here so existing ``from ...inference import SUGGEST_SYSTEM`` imports hold.
+from infona_client.normalization.inference_prompts import (
+    SUGGEST_SYSTEM,
+    SUGGEST_USER_TEMPLATE,
+)
 from infona_client.normalization.rules import NormalizationRule, make_rule_id
 from infona_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
 
@@ -44,75 +50,6 @@ ATTRS_INFIX = "/attrs/"
 # How many independent draws to pool, and how many distinct values per draw.
 _NUM_SAMPLES = 3
 _VALUES_PER_SAMPLE = 20
-
-SUGGEST_SYSTEM = """\
-You are a data-normalization analyst for a knowledge graph. You are shown the \
-distinct VALUES a single predicate takes across many entities of one type, and \
-you must decide whether those values need NORMALIZATION before they are useful.
-
-You can recommend ZERO, ONE, or MULTIPLE of these normalization types for the \
-SAME predicate (a value can have more than one problem at once):
-
-1) list_explode — a multi-valued source cell that was collapsed into ONE \
-composite value instead of split into N atomic values. Tell-tale signs:
-   - a literal packing several items with a delimiter: "English, Russian, \
-     Ukrainian", "Python; SQL; Go", "Sales / Marketing", "a|b|c";
-   - an entity whose name/local-name packs several items with the slugified \
-     delimiter "__" (a list separator turned into "__" at ingest), e.g. \
-     "English__Russian__Ukrainian", "Sales__Marketing".
-   params: {"delimiters": ["<each delimiter you observed>"], \
-"target": "entity"|"literal"} — use "entity" when the values are entity \
-names/local-names (the predicate is a relationship to other entities), \
-"literal" when they are plain attribute literals.
-
-2) strip_emoji — text values carry emoji, pictographs, or other non-text JUNK \
-characters that should be removed, leaving the real text: "🎨 design", \
-"ai 🚀", "growth ✨", "🔥🔥 sales". Recommend this whenever you see emoji / \
-pictographic / symbol junk mixed into otherwise-text values. Do NOT recommend \
-it for ordinary punctuation that belongs to real values (e.g. "c++", "C#", \
-"Node.js", "R&D", accented letters like "café"). \
-   params: {"targets": ["attribute"]}
-
-A predicate can need BOTH at once — e.g. skills = "🎨 design; ai; 🚀 growth" \
-needs list_explode (split on "; ") AND strip_emoji (remove 🎨 and 🚀). In that \
-case return BOTH rules.
-
-CRITICAL — do NOT false-split single multi-word values. Many legitimate single \
-values contain spaces or punctuation and must be left intact: "Bahasa Indonesia", \
-"Mandarin Chinese", "Standard Arabic", "Hong Kong", "New York", "Saint Kitts and \
-Nevis", "Trinidad and Tobago". A space is NOT a delimiter. Only treat a value as \
-a packed list when a clear list-delimiter (comma, semicolon, pipe, slash, or the \
-slug "__") separates items that are each individually plausible standalone values.
-
-If the values are already atomic AND emoji-free, return an empty "rules" list. \
-If you see a normalization problem that is NEITHER list_explode NOR strip_emoji \
-(casing, trimming, units, value mapping), do NOT invent a rule for it — leave \
-"rules" empty and explain the observation in a rule's rationale only if you are \
-also returning a supported rule.
-
-Respond with STRICT JSON only, no markdown:
-{
-  "rules": [
-    {
-      "rule_type": "list_explode"|"strip_emoji",
-      "params": { ...rule-type-specific params (see above)... },
-      "confidence": 0.0,
-      "rationale": "one or two sentences"
-    }
-  ]
-}
-Return an empty list ({"rules": []}) when no normalization is needed. Set each \
-confidence in [0,1] reflecting how sure you are that problem is present."""
-
-SUGGEST_USER_TEMPLATE = """\
-Type: {type_name}
-Predicate: {predicate}   (kind: {target_kind})
-
-Distinct sample values for this predicate (pooled from several independent draws):
-{values}
-
-Which normalization(s) does this predicate need (list_explode, strip_emoji, both, \
-or none)? Respond with strict JSON ({{"rules": [...]}})."""
 
 
 async def suggest_rules(
@@ -277,27 +214,10 @@ async def list_type_schema(
     dual-arm unit tests). A bounded, single round-trip read — never an instance
     scan.
     """
-    from infona_client.graph.store import get_optional_graph_store
+    from infona_client.normalization.inference_reads import declared_attributes
 
-    store = get_optional_graph_store()
-    if store is not None:
-        from infona_client.graph.ontology_catalog import list_attributes
-
-        try:
-            attrs = await list_attributes(
-                store=store,
-                tenant_id=tenant_id,
-                type_name=type_name,
-                layer="tenant",
-            )
-        except Exception:
-            logger.warning(
-                "list_type_schema_catalog_failed",
-                type_name=type_name,
-                tenant_id=tenant_id,
-                exc_info=True,
-            )
-            attrs = []
+    attrs = await declared_attributes(tenant_id, type_name)
+    if attrs is not None:
         attributes: list[str] = []
         relationships: list[dict] = []
         seen: set[str] = set()
@@ -422,10 +342,23 @@ async def _list_predicates(
     """List a type's declared predicates from the ontology.
 
     Returns ``[(predicate_uri, target_kind)]``. ``target_kind`` is
-    ``"relationship"`` when the declared ``rdfs:range`` is a ``types/`` URI,
-    else ``"attribute"``. Uses the same attr-definition query shape the Explorer
-    uses (``rdfs:domain`` = the type, with an optional ``rdfs:range``).
+    ``"relationship"`` when the declaration ranges over a type, else
+    ``"attribute"``.
+
+    **GraphStore catalog first (ONTA-534).** This was a bare
+    ``neptune.query`` and it is the FIRST graph touch of every suggestion run,
+    so on the shipped Neo4j backend ``POST /normalize/suggest`` and the agent's
+    clean / enrich planning raised ``SparqlClientRetired`` and 500'd before any
+    predicate was considered. The residual SPARQL arm below is kept as a
+    SUPPLEMENT — still exercised by the dual-arm unit tests, still able to name
+    a predicate the catalog does not — and its failure is swallowed once the
+    catalog has answered, because a type that declares nothing is an ordinary
+    "no rules to suggest", not an error.
     """
+    from infona_client.normalization.inference_reads import catalog_predicates
+
+    from_catalog = await catalog_predicates(tenant_id, type_name)
+
     from infona_client.graph.queries import tenant_graph_uri
 
     onto_graph = tenant_graph_uri(tenant_id)
@@ -437,9 +370,20 @@ async def _list_predicates(
         f"  OPTIONAL {{ ?attr <{RDFS}#range> ?range }}\n"
         f"}}"
     )
-    _, rows = parse_sparql_results(await neptune.query(q))
-    out: list[tuple[str, str]] = []
-    seen: set[str] = set()
+    out: list[tuple[str, str]] = list(from_catalog or ())
+    seen: set[str] = {uri for uri, _ in out}
+    try:
+        _, rows = parse_sparql_results(await neptune.query(q))
+    except Exception as exc:  # noqa: BLE001 — retired client must not 500
+        if from_catalog is None:
+            raise
+        logger.debug(
+            "list_predicates_sparql_failed",
+            tenant_id=tenant_id,
+            type_name=type_name,
+            error=str(exc),
+        )
+        return out
     for r in rows:
         attr = r.get("attr", "")
         if not attr or attr in seen:
@@ -449,6 +393,36 @@ async def _list_predicates(
         kind = "relationship" if rng.startswith(TYPE_URI_PREFIX) else "attribute"
         out.append((attr, kind))
     return out
+
+
+async def _store_sample_values(
+    kg_graph: str, t_uri: str, pred_leaf: str, target_kind: str
+) -> list[str]:
+    """Distinct values for one predicate via GraphStore, or ``[]`` (ONTA-534).
+
+    Scope comes from the instance-graph URI and the type URI and nothing else,
+    so the sample can never widen past the KG the caller named. ``[]`` (a
+    non-KG graph URI, an unparseable type URI, an unconfigured store, a store
+    error, or genuinely no values) leaves the residual SPARQL draws to try.
+    """
+    from infona_client.graph.layers import type_name_from_uri
+    from infona_client.graph.queries import parse_kg_graph_uri
+    from infona_client.normalization.inference_reads import sample_values
+
+    scope = parse_kg_graph_uri(kg_graph)
+    type_name = type_name_from_uri(t_uri)
+    if scope is None or not type_name:
+        return []
+    tenant_id, kg_name = scope
+    values = await sample_values(
+        tenant_id=tenant_id,
+        kg_name=kg_name,
+        type_name=type_name,
+        predicate_leaf=pred_leaf,
+        target_kind=target_kind,
+        limit=_NUM_SAMPLES * _VALUES_PER_SAMPLE,
+    )
+    return values or []
 
 
 async def _sample_values(
@@ -467,10 +441,24 @@ async def _sample_values(
     ONTOLOGY attr URI (``…/attrs/<leaf>``); instance triples use either that attr
     URI (attributes) or the ``…/onto/<leaf>`` predicate (relationships), so the
     instance pattern matches on the LEAF via either form.
+
+    **GraphStore first (ONTA-534).** The SPARQL draws below already degraded to
+    an empty pool on a retired client, which is the quiet half of the bug: with
+    ``_list_predicates`` ported and this one left alone, every suggestion run
+    would answer a confident ``[]`` ("nothing to normalize") without a single
+    value ever being read. The store arm samples through the same two templates
+    ``nlp/dim_registry_refresh`` uses; see
+    :mod:`infona_client.normalization.inference_reads` for the one-draw budget.
+    The SPARQL draws stay as the residual arm and still run when the store had
+    nothing to say.
     """
     pred_leaf = _predicate_leaf(pred_uri)
     onto_pred = ONTO_PRED_PREFIX + pred_leaf
     rdfs_label = f"{RDFS}#label"
+
+    from_store = await _store_sample_values(kg_graph, t_uri, pred_leaf, target_kind)
+    if from_store:
+        return from_store
 
     pooled: list[str] = []
     seen: set[str] = set()
