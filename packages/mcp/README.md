@@ -42,7 +42,7 @@ Hosted Infona also needs `INFONA_API_KEY` and your workspace id in `INFONA_TENAN
 
 ## Tools exposed
 
-The server registers **19** tools, plus **1 more** (`list_local_files`) when you opt in by configuring `INFONA_LOCAL_FILES_DIR` (see [Environment](#environment)):
+The server registers **20** tools, plus **1 more** (`list_local_files`) when you opt in by configuring `INFONA_LOCAL_FILES_DIR` (see [Environment](#environment)):
 
 - `agent` — the single conversational front door to the Ask-AI agent. Send a natural-language message; the agent classifies intent and either answers a question, asks a clarifying question, or proposes a multi-step plan (enrich attributes, clean/normalize values, merge duplicates, inspect/extend the ontology). A plan is **not executed** until you confirm it by calling `agent` again with the returned `plan_id` as `confirm_plan_id`. Planning is free; any paid step a plan contains (e.g. web enrichment) is authorized server-side at execute time, so confirming honors your tenant's entitlements.
 - `list_knowledge_graphs` — list available KGs and their descriptions.
@@ -55,6 +55,7 @@ The server registers **19** tools, plus **1 more** (`list_local_files`) when you
 - `delete_knowledge_graph` — delete a KG and all of its data (irreversible).
 - `ingest_csv` — ingest a CSV file by absolute path into a named KG; the schema is inferred automatically. Set `join_on` to merge each row onto the existing entity that carries the same key value instead of minting duplicates.
 - `ingest_text` — ingest free-form text (or JSON) into a named KG **without writing a file first**. Posts through the same canonical `POST /graphs/{tenant}/ingest` route as the CLI's `infona ingest --text` (LLM entity extraction → ontology resolve → insert). Use for notes, meeting summaries, or any unstructured knowledge; use `ingest_csv` for tabular files on disk.
+- `ingest_dlt` — extract a 3rd-party REST or SQL source via dlt and ingest the rows into a named KG. Posts the frozen `{source, map, kg}` body through the same SDK method (`ingestDlt`) the CLI and Explorer use. The Infona backend needs the optional extra (`pip install infona-client[dlt]`); if it is missing the tool returns that install hint. Auth is BYOK (`env:VAR`).
 - `export_kg` — export a context graph's instance data as **JSON** (default) or **CSV**. Same canonical `GET /graphs/{tenant}/kgs/{kg}/export` route as the CLI's `infona export` (`Client.exportKg`). Optional `type` and `limit` filters; large dumps are truncated in the tool response with a note (use filters or the CLI for a full file).
 - `evolve_ontology` — resolve a fuzzy natural-language ontology-evolution ask (no exact names needed); auto-applies high-confidence changes and returns a summary plus any proposals to confirm.
 - `apply_ontology_change` — confirm and commit a single proposal returned by `evolve_ontology`.

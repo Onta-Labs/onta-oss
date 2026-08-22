@@ -2959,6 +2959,70 @@
         }
       }
     },
+    "/graphs/{tenant}/ingest/dlt": {
+      "post": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "Ingest Dlt",
+        "operationId": "ingest_dlt_graphs__tenant__ingest_dlt_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DltIngestRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/graphs/{tenant}/kgs": {
       "get": {
         "tags": [
@@ -7619,6 +7683,403 @@
         }
       }
     },
+    "/graphs/{tenant}/extract-sources": {
+      "get": {
+        "tags": [
+          "extract_sources"
+        ],
+        "summary": "List Extract Sources",
+        "operationId": "list_extract_sources_graphs__tenant__extract_sources_get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExtractSourceSummary"
+                  },
+                  "title": "Response List Extract Sources Graphs  Tenant  Extract Sources Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "extract_sources"
+        ],
+        "summary": "Create Extract Source",
+        "operationId": "create_extract_source_graphs__tenant__extract_sources_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateExtractSourceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtractSourceSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/graphs/{tenant}/extract-sources/{slug}": {
+      "get": {
+        "tags": [
+          "extract_sources"
+        ],
+        "summary": "Get Extract Source",
+        "operationId": "get_extract_source_graphs__tenant__extract_sources__slug__get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slug"
+            }
+          },
+          {
+            "name": "tenant",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Extract Source Graphs  Tenant  Extract Sources  Slug  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "extract_sources"
+        ],
+        "summary": "Update Extract Source",
+        "operationId": "update_extract_source_graphs__tenant__extract_sources__slug__patch",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slug"
+            }
+          },
+          {
+            "name": "tenant",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateExtractSourceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtractSourceSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "extract_sources"
+        ],
+        "summary": "Delete Extract Source",
+        "operationId": "delete_extract_source_graphs__tenant__extract_sources__slug__delete",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slug"
+            }
+          },
+          {
+            "name": "tenant",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/graphs/{tenant}/extract-sources/{slug}/run": {
+      "post": {
+        "tags": [
+          "extract_sources"
+        ],
+        "summary": "Run Extract Source",
+        "operationId": "run_extract_source_graphs__tenant__extract_sources__slug__run_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slug"
+            }
+          },
+          {
+            "name": "tenant",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/RunExtractSourceRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/graphs/{tenant}/skills": {
       "get": {
         "tags": [
@@ -9686,6 +10147,60 @@
         "title": "CreateApiSourceRequest",
         "description": "Create body: the full spec plus an optional write-only secrets map.\n\n``spec`` is an ``ApiSourceSpec`` JSON object (see the registry spec). ``secrets``\nmaps a logical name (referenced by ``spec.auth.secret_ref``) to a plaintext\nVALUE \u2014 write-only, never returned. ``enabled`` overrides the spec's flag."
       },
+      "CreateExtractSourceRequest": {
+        "properties": {
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "default": ""
+          },
+          "source": {
+            "$ref": "#/components/schemas/DltSourceSpec"
+          },
+          "map": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DltResourceMap"
+            },
+            "type": "object",
+            "title": "Map"
+          },
+          "kg": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kg"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "secrets": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Secrets"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "slug",
+          "source"
+        ],
+        "title": "CreateExtractSourceRequest",
+        "description": "Create body: config + optional write-only ``secrets`` map."
+      },
       "CreateJobResponse": {
         "properties": {
           "job_id": {
@@ -9967,6 +10482,213 @@
         ],
         "title": "DiscoveredEntity",
         "description": "An entity found by cascade discovery, plus the functions attached to its type.\n\n`functions` holds callable FUNCTION names (e.g. ``\"filings()\"``) registered for\nthe entity's type \u2014 executable code, not prose.\n\nDEPRECATED: `skills` is a legacy alias of `functions`, kept only so existing\nclients of the `/graphs/{tenant}/functions/{name}/invoke` response keep working.\nIt is populated identically to `functions` and will be removed in a future\nrelease \u2014 read `functions` instead. The name is a misnomer: in this product a\n\"skill\" is now type-attached human-authored markdown PROSE consumed by LM agents\n(``infona_client.skills``), which is the opposite of an executable function."
+      },
+      "DltAuthSpec": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "bearer",
+              "basic",
+              "api_key",
+              "none"
+            ],
+            "title": "Type",
+            "default": "bearer"
+          },
+          "secret_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret Ref"
+          },
+          "token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          },
+          "api_key_header": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key Header"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "DltAuthSpec",
+        "description": "Auth for a REST extract. SQL uses ``dsn`` / ``secret_ref`` on the source."
+      },
+      "DltIngestRequest": {
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/DltSourceSpec"
+          },
+          "map": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DltResourceMap"
+            },
+            "type": "object",
+            "minProperties": 1,
+            "title": "Map"
+          },
+          "kg": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kg"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source",
+          "map"
+        ],
+        "title": "DltIngestRequest",
+        "description": "Body for ``POST /graphs/{tenant}/ingest/dlt``. Frozen Wave-1 shape."
+      },
+      "DltResourceMap": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Type"
+          },
+          "id_field": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Id Field",
+            "default": "id"
+          },
+          "attributes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "title": "DltResourceMap",
+        "description": "Explicit resource \u2192 ontology type. Wave 1 does not auto-infer types."
+      },
+      "DltSourceSpec": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "rest_api",
+              "sql"
+            ],
+            "title": "Kind"
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "dsn": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dsn"
+          },
+          "auth": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DltAuthSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Resources"
+          },
+          "headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Headers"
+          },
+          "limit": {
+            "type": "integer",
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "default": 1000
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "resources"
+        ],
+        "title": "DltSourceSpec",
+        "description": "How to extract (REST or SQL). Does not write."
       },
       "EnrichActionRequest": {
         "properties": {
@@ -10690,6 +11412,93 @@
         ],
         "title": "EntitySpec",
         "description": "One real-world entity embedded in a (wide) CSV row.\n\nA denormalized row often packs several entities \u2014 e.g. a hotel PMS row holds\na guest (Person), a reservation (Reservation), and a property (Property).\nEach EntitySpec names one of them and how to key it: a single natural-key\ncolumn (`id_column`) or a deterministic composite of columns (`id_from`)."
+      },
+      "ExtractSourceSummary": {
+        "properties": {
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "rest_api",
+              "sql"
+            ],
+            "title": "Kind"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "has_secret": {
+            "type": "boolean",
+            "title": "Has Secret"
+          },
+          "resources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Resources"
+          },
+          "mapped": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Mapped"
+          },
+          "kg": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kg"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "slug",
+          "title",
+          "kind",
+          "enabled",
+          "has_secret"
+        ],
+        "title": "ExtractSourceSummary",
+        "description": "List/get shape. Secret-free by construction (``has_secret`` only)."
       },
       "FactCitation": {
         "properties": {
@@ -13559,6 +14368,38 @@
         "title": "RunCoverage",
         "description": "The manifest's headline coverage view \u2014 \"N of M items; K dropped; reason\".\n\nThis is what downstream reads to caveat partial coverage (the whole reason A9\nexists). ``complete`` is True only for a clean, fully-covered run."
       },
+      "RunExtractSourceRequest": {
+        "properties": {
+          "kg": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kg"
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100000.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RunExtractSourceRequest",
+        "description": "Optional overrides when running a saved extract source."
+      },
       "RunManifest": {
         "properties": {
           "run_id": {
@@ -15038,6 +15879,77 @@
         "type": "object",
         "title": "UpdateApiSourceRequest",
         "description": "Patch body. ``spec`` (if present) REPLACES the stored spec body; ``secrets``\nadds/replaces named secrets; ``enabled`` toggles the row. All optional so a\ncaller can e.g. flip ``enabled`` alone."
+      },
+      "UpdateExtractSourceRequest": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DltSourceSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "map": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/DltResourceMap"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Map"
+          },
+          "kg": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kg"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "secrets": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Secrets"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "UpdateExtractSourceRequest"
       },
       "UpdateSkillRequest": {
         "properties": {

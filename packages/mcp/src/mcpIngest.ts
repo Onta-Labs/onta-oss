@@ -9,6 +9,7 @@ import { basename } from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Client } from "@infona-ai/cli";
 import { z } from "zod";
+import { ingestDltHandler } from "./mcpIngestDlt.js";
 import {
   ALLOWED_EXTENSIONS,
   DEFAULT_DEPTH,
@@ -19,6 +20,8 @@ import {
   renderListResult,
 } from "./workspace.js";
 import { client, errorResult, LOCAL_FILE_ROOTS, textResult } from "./mcpShared.js";
+
+export { ingestDltHandler } from "./mcpIngestDlt.js";
 
 // ONTA-415: the "did you mean" suffix on a not-found path. This is the SECOND
 // consumer of the one containment-guarded primitive, not a second enumeration
@@ -272,6 +275,50 @@ export function registerIngestTools(server: McpServer): void {
     },
     async ({ file_path, kg_name, join_on }) =>
       ingestCsvHandler({ file_path, kg_name, join_on }),
+  );
+  server.registerTool(
+    "ingest_dlt",
+    {
+      description:
+        "Extract a 3rd-party REST or SQL source via dlt and ingest the rows " +
+        "into a context graph. Posts the frozen {source, map, kg} body through " +
+        "the same SDK method the CLI and Explorer use (COG-128). The backend " +
+        "must have `pip install infona-client[dlt]`. Auth is BYOK.",
+      inputSchema: {
+        source: z
+          .object({
+            kind: z.enum(["rest_api", "sql"]),
+            base_url: z.string().optional(),
+            dsn: z.string().optional(),
+            auth: z
+              .object({
+                type: z.enum(["bearer", "basic", "api_key", "none"]).optional(),
+                secret_ref: z.string().optional(),
+                token: z.string().optional(),
+                username: z.string().optional(),
+                api_key_header: z.string().optional(),
+              })
+              .optional(),
+            resources: z.array(z.string()).min(1),
+            headers: z.record(z.string()).optional(),
+            limit: z.number().int().min(1).max(100_000).optional(),
+          })
+          .describe("How to extract. Does not write."),
+        map: z
+          .record(
+            z.object({
+              type: z.string().min(1),
+              id_field: z.string().optional(),
+              attributes: z.array(z.string()).optional(),
+            }),
+          )
+          .describe("resource name → ontology type."),
+        kg: z.string().optional(),
+        kg_name: z.string().optional(),
+      },
+    },
+    async ({ source, map, kg, kg_name }) =>
+      ingestDltHandler({ source, map, kg, kg_name }),
   );
   server.registerTool(
     "ingest_text",

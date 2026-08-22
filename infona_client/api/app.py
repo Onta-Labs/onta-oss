@@ -9,7 +9,7 @@ from slowapi.errors import RateLimitExceeded
 
 from infona_client.api.middleware import RequestLoggingMiddleware
 from infona_client.api.rate_limit import limiter
-from infona_client.api.routes import actions, agent, api_sources, ask, conversations, corrections, enrich, explore, export, functions, grep, health, history, ingest, jobs, knowledge_graphs, lambda_functions, normalize, ontology, operator, query, schedules, search, skills, tenants, triples, usage, user_api_sources, workspace_invites
+from infona_client.api.routes import actions, agent, api_sources, ask, conversations, corrections, enrich, explore, export, extract_sources, functions, grep, health, history, ingest, ingest_dlt, jobs, knowledge_graphs, lambda_functions, normalize, ontology, operator, query, schedules, search, skills, tenants, triples, usage, user_api_sources, workspace_invites
 from infona_client.config import settings
 from infona_client.graph.client import NeptuneClient
 from infona_client.graph.queries import InvalidGraphIdentifier
@@ -447,6 +447,9 @@ def create_app() -> FastAPI:
     app.include_router(ask.router, tags=["ask"])
     app.include_router(ontology.router, tags=["ontology"])
     app.include_router(ingest.router, tags=["ingest"])
+    # ONTA-553: POST /ingest/dlt lives in its own module so ingest.py stays
+    # under the file-size ratchet. Same canonical route; no client-side fork.
+    app.include_router(ingest_dlt.router, tags=["ingest"])
     app.include_router(knowledge_graphs.router, tags=["knowledge_graphs"])
     app.include_router(export.router, tags=["export"])
     app.include_router(enrich.router, tags=["enrich"])
@@ -480,6 +483,10 @@ def create_app() -> FastAPI:
     # User-scoped API sources: register once, visible in every workspace the
     # caller can access. Canonical /v1/me/api-sources (not under /graphs).
     app.include_router(user_api_sources.router, tags=["user_api_sources"])
+    # ONTA-553/554: 3rd-party extract sources (dlt). Distinct from /api-sources
+    # (curated lookup registry). Execute is POST /ingest/dlt; this family persists
+    # workspace configs. Same SDK/CLI/Explorer route — no /hubspot-sync.
+    app.include_router(extract_sources.router, tags=["extract_sources"])
     # Type-attached SKILLS: markdown instruction attached to an entity type,
     # consumed by LM agents (distinct from FUNCTIONS, which are type-attached
     # compute). One canonical route set for webapp/CLI/MCP.
