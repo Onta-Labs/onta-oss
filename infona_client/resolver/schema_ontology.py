@@ -122,19 +122,67 @@ class SchemaOntologyMixin:
             entitled=is_entitled(TenantContext(tenant_id=tenant_id, api_key="")),
         )
 
+    async def _ontology_bindings(self, graph_uri: str) -> list[dict] | None:
+        """Rows for :meth:`_fetch_ontology`'s assembly loop — catalog first (ONTA-534).
+
+        The read was ``get_full_ontology_query`` over the SPARQL HTTP client,
+        which is RETIRED under the shipped Neo4j GraphStore: every ingest raised
+        ``SparqlClientRetired``, the ``except`` below logged
+        ``ontology_fetch_failed``, and the ingest planned against an EMPTY
+        ontology. That is not a degraded summary — it is the input
+        :meth:`TypeMatcher.match` short-circuits on (``type_match_auto_new``,
+        ``reason="empty_ontology"``), so every type gets re-minted from scratch
+        instead of matched against what the workspace already declares.
+
+        **Tenant layer only, deliberately.** The SPARQL arm read exactly ONE
+        graph — the tenant ontology graph the caller passes — and this arm reads
+        exactly the same scope. The ``LayerStack`` built next to it
+        (:meth:`_layer_stack_for`) is for the layered *parent map* (ONTA-397):
+        subclass edges may span layers, so climbing them must. Folding
+        Public/Enhanced type NAMES into ``existing_types`` is a different
+        decision — the matcher would then resolve a proposal onto a global type
+        that the tenant graph does not declare and ingest would write instance
+        data typed against it — so that stays out of this fix.
+
+        Returns the binding rows, or ``None`` when neither arm can answer.
+        """
+        from infona_client.graph.layers import Layer
+        from infona_client.nlp.pipeline_ontology_catalog import layer_ontology_bindings
+
+        # Same reader the NL planner (PR #447) and the Explorer ontology browser
+        # use, in `get_full_ontology_query`'s own binding shape — so the loop
+        # below stays ONE code path over store rows and SPARQL rows. A store
+        # threaded onto the resolver wins; otherwise the catalog session
+        # resolves the process store (and a missing one is a decline, not a
+        # raise, because it is raised INSIDE the reader's own guard).
+        bindings = await layer_ontology_bindings(
+            Layer.TENANT,
+            onto_graph=graph_uri,
+            store=getattr(self, "_graph_store", None),
+        )
+        if bindings is not None:
+            return bindings
+        # Residual SPARQL arm, unchanged: still what answers when the store
+        # declines (no workspace in the graph URI, no store, store error, or
+        # nothing declared yet), and still exercised by the dual-arm tests.
+        try:
+            raw = await self._neptune.query(get_full_ontology_query(graph_uri))
+            _, sparql_bindings = parse_sparql_results(raw)
+        except Exception:
+            _sr.logger.warning("ontology_fetch_failed", exc_info=True)
+            return None
+        return sparql_bindings
+
     async def _fetch_ontology(
         self, graph_uri: str
     ) -> tuple[dict[str, str], dict[str, dict[str, AttributeSchema]]]:
-        """Fetch existing types and attributes from Neptune.
+        """Fetch existing types and attributes for this workspace.
 
         Returns:
             (types: {name: description}, attrs: {type_name: {attr_name: schema}})
         """
-        try:
-            raw = await self._neptune.query(get_full_ontology_query(graph_uri))
-            _, bindings = parse_sparql_results(raw)
-        except Exception:
-            _sr.logger.warning("ontology_fetch_failed", exc_info=True)
+        bindings = await self._ontology_bindings(graph_uri)
+        if bindings is None:
             return {}, {}
 
         types: dict[str, str] = {}
@@ -155,10 +203,25 @@ class SchemaOntologyMixin:
                     datatype = range_str[len(type_uri_prefix):]
                 elif "#" in range_str:
                     fragment = range_str.split("#")[-1]
-                    # Map XSD names to our datatype names
+                    # Map XSD names to our datatype names. The `dateTime` /
+                    # `Resource` spellings are the SPARQL arm's (an rdfs:range
+                    # minted by `_datatype_to_xsd`); `datetime` / `uri` / `geo`
+                    # are the catalog arm's, which re-mints the IRI from the
+                    # stored primitive NAME. Both spell the same datatype and
+                    # no writer emits the catalog spellings as an rdfs:range, so
+                    # adding them leaves the SPARQL arm byte-identical while
+                    # keeping a declared `datetime` column from silently reading
+                    # back as `string` once the fetch runs off the catalog.
+                    # One asymmetry stays, deliberately: `geo` reads back as
+                    # `geo` from the catalog but the SPARQL spelling
+                    # (`geosparql#wktLiteral`) still falls through to `string`,
+                    # as it always has. Both are in PRIMITIVE_TYPES, so
+                    # literal-vs-relationship is unaffected either way, and
+                    # changing the retired arm's answer is not this fix's job.
                     dt_map = {
                         "string": "string", "integer": "integer", "float": "float",
                         "boolean": "boolean", "dateTime": "datetime", "Resource": "uri",
+                        "datetime": "datetime", "uri": "uri", "geo": "geo",
                     }
                     datatype = dt_map.get(fragment, "string")
                 else:
