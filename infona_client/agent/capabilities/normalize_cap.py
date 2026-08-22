@@ -8,9 +8,13 @@ Reuses the existing normalization engine end-to-end (no reimplementation):
   **dry-run preview** computed in-memory from sampled values (no writes).
 * ``execute`` → persists the (confirmed) rule via
   :class:`infona_client.normalization.rules.NormalizationRuleStore` and applies
-  it via :func:`infona_client.normalization.execute.apply_rule`, as a background
-  job using the same strong-ref ``_spawn`` pattern as ``enrich.py`` /
-  ``normalize.py`` (so the task can't be GC'd after the request returns).
+  it via :func:`infona_client.normalization.apply_job.apply_and_record` (which
+  wraps :func:`infona_client.normalization.execute.apply_rule` and records the
+  outcome ON the rule — ``applied`` or ``failed`` + ``last_error``), as a
+  background job using the same strong-ref ``_spawn`` pattern as ``enrich.py`` /
+  ``normalize.py`` (so the task can't be GC'd after the request returns). The
+  ack below is therefore not the last word: a failed apply is visible on the
+  rule instead of dying in a log line.
 
 The agent never calls the ``/normalize/*`` HTTP routes — it drives the same
 engine functions directly.
@@ -21,13 +25,12 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from datetime import datetime, timezone
 
 import structlog
 
 from infona_client.agent.kg_scope import SCOPE_REQUIRE
 from infona_client.agent.registry import AgentContext, PlanStep
-from infona_client.normalization.execute import apply_rule
+from infona_client.normalization.apply_job import apply_and_record
 from infona_client.normalization.inference import (
     list_type_schema,
     sample_predicate_values,
@@ -229,18 +232,19 @@ class NormalizeCapability:
 
 
 async def _apply_and_mark(neptune, tenant_id: str, rule: NormalizationRule) -> None:
-    """Run apply_rule, then mark applied. Detached — errors logged, not raised."""
-    try:
-        summary = await apply_rule(neptune, tenant_id, rule)
-        await NormalizationRuleStore(neptune).update_status(
-            tenant_id,
-            rule.id,
-            "applied",
-            applied_at=datetime.now(timezone.utc).isoformat(),
-        )
-        logger.info("agent_normalize_done", rule_id=rule.id, **summary)
-    except Exception:
-        logger.error("agent_normalize_failed", rule_id=rule.id, exc_info=True)
+    """Run apply_rule and record the outcome on the rule, then log it.
+
+    The DURABLE part lives in :func:`~infona_client.normalization.apply_job.apply_and_record`
+    (shared with the ``/normalize`` route so the two cannot drift): success →
+    ``applied``, failure → ``failed`` + ``last_error``, which the user can see
+    via ``GET /normalize/rules`` instead of the agent's ack being the last word.
+    Detached — never raises.
+    """
+    outcome = await apply_and_record(neptune, tenant_id, rule)
+    if outcome.ok:
+        logger.info("agent_normalize_done", rule_id=rule.id, **outcome.summary)
+    else:
+        logger.error("agent_normalize_failed", rule_id=rule.id, error=outcome.error)
 
 
 def _dry_run_preview(rule: NormalizationRule) -> dict:

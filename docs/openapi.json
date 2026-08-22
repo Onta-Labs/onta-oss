@@ -5826,7 +5826,7 @@
           "normalize"
         ],
         "summary": "Apply Rule Route",
-        "description": "Apply a confirmed rule in the background; ack immediately (202).\n\nApply runs ONLY when the rule is ``confirmed`` (or already ``applied`` \u2014 a\nre-run is idempotent). ``suggested`` / ``rejected`` rules are refused.\nOn success the rule's status flips to ``applied`` with ``applied_at`` set.",
+        "description": "Apply a confirmed rule in the background; ack immediately (202).\n\nApply runs when the rule is ``confirmed``, already ``applied`` (a re-run is\nidempotent), or ``failed`` \u2014 a failed apply is a RETRY, not a dead end, so\nfixing the cause and POSTing here again is all it takes. ``suggested`` /\n``rejected`` rules are refused.\n\nOn success the status flips to ``applied`` with ``applied_at`` set and any\nprior ``last_error`` cleared; on failure it flips to ``failed`` with\n``failed_at`` / ``last_error`` set, so the user can SEE that the rule they\nconfirmed is not live (``GET /normalize/rules?status=failed``). The 202 is\nunchanged \u2014 apply is genuinely a background job.",
         "operationId": "apply_rule_route_graphs__tenant__normalize_rules__rule_id__apply_post",
         "security": [
           {
@@ -12620,7 +12620,8 @@
               "suggested",
               "confirmed",
               "rejected",
-              "applied"
+              "applied",
+              "failed"
             ],
             "title": "Status",
             "default": "suggested"
@@ -12639,6 +12640,28 @@
               }
             ],
             "title": "Applied At"
+          },
+          "failed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed At"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
           }
         },
         "type": "object",
