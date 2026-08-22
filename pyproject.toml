@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 # hence -client). Canonical import path is `infona_client`.
 [project]
 name = "infona-client"
-version = "0.1.29"
+version = "0.1.30"
 description = "Infona living context graph (OSS core)"
 readme = "README.md"
 license = "Apache-2.0"
