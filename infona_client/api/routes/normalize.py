@@ -10,8 +10,12 @@ Lifecycle: suggest → (human) confirm/reject → apply.
   POST /graphs/{tenant}/normalize/rules/{id}/confirm   status -> confirmed
   POST /graphs/{tenant}/normalize/rules/{id}/reject    status -> rejected
   POST /graphs/{tenant}/normalize/rules/{id}/apply     run apply_rule in the
-                                                       background (confirmed only),
-                                                       set status=applied on success
+                                                       background (confirmed /
+                                                       applied / failed), set
+                                                       status=applied on success,
+                                                       status=failed + last_error
+                                                       on failure (retry = POST
+                                                       here again)
 
 The user-authored create path complements inference: for sparse issues (e.g. an
 emoji in ~0.4% of values) random-sample inference is unreliable, and a user may
@@ -26,7 +30,6 @@ the task can't be garbage-collected after the request returns.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
 from typing import Literal
 
 import structlog
@@ -37,7 +40,7 @@ from infona_client.api.deps import get_neptune_client
 from infona_client.auth.api_keys import TenantContext, get_tenant
 from infona_client.auth.access import require_tenant_write
 from infona_client.graph.client import NeptuneClient
-from infona_client.normalization.execute import apply_rule
+from infona_client.normalization.apply_job import apply_and_record
 from infona_client.normalization.inference import suggest_rules
 from infona_client.normalization.rules import (
     NormalizationRule,
@@ -55,6 +58,12 @@ from infona_client.normalization.rules import (
 _SUPPORTED_RULE_TYPES = {"list_explode", "strip_emoji", "promote_to_node"}
 _VALID_LIST_EXPLODE_TARGETS = {"entity", "literal"}
 _VALID_PROMOTE_KEY_BY = {"value", "owner"}
+
+# Statuses an apply may run from. ``failed`` is included ON PURPOSE: a failed
+# apply must be re-runnable once its cause is fixed, or the durable failure
+# status would strand the rule in a state only manual store surgery could
+# clear. ``suggested`` / ``rejected`` still require an explicit confirm first.
+_APPLYABLE_STATUSES = frozenset({"confirmed", "applied", "failed"})
 
 logger = structlog.stdlib.get_logger("infona.normalization.routes")
 
@@ -248,15 +257,22 @@ async def apply_rule_route(
 ):
     """Apply a confirmed rule in the background; ack immediately (202).
 
-    Apply runs ONLY when the rule is ``confirmed`` (or already ``applied`` — a
-    re-run is idempotent). ``suggested`` / ``rejected`` rules are refused.
-    On success the rule's status flips to ``applied`` with ``applied_at`` set.
+    Apply runs when the rule is ``confirmed``, already ``applied`` (a re-run is
+    idempotent), or ``failed`` — a failed apply is a RETRY, not a dead end, so
+    fixing the cause and POSTing here again is all it takes. ``suggested`` /
+    ``rejected`` rules are refused.
+
+    On success the status flips to ``applied`` with ``applied_at`` set and any
+    prior ``last_error`` cleared; on failure it flips to ``failed`` with
+    ``failed_at`` / ``last_error`` set, so the user can SEE that the rule they
+    confirmed is not live (``GET /normalize/rules?status=failed``). The 202 is
+    unchanged — apply is genuinely a background job.
     """
     store = _store(client)
     rule = await store.get(tenant.tenant_id, rule_id)
     if rule is None:
         raise HTTPException(status_code=404, detail="rule not found")
-    if rule.status not in ("confirmed", "applied"):
+    if rule.status not in _APPLYABLE_STATUSES:
         raise HTTPException(
             status_code=409,
             detail=f"rule must be confirmed before apply (status={rule.status})",
@@ -268,16 +284,16 @@ async def apply_rule_route(
 async def _apply_and_mark(
     client: NeptuneClient, tenant_id: str, rule: NormalizationRule
 ) -> None:
-    """Run apply_rule, then mark the rule applied. Errors are logged, not raised
-    (this runs detached as a background task)."""
-    try:
-        summary = await apply_rule(client, tenant_id, rule)
-        await NormalizationRuleStore(client).update_status(
-            tenant_id,
-            rule.id,
-            "applied",
-            applied_at=datetime.now(timezone.utc).isoformat(),
-        )
-        logger.info("normalize_apply_done", rule_id=rule.id, **summary)
-    except Exception:
-        logger.error("normalize_apply_failed", rule_id=rule.id, exc_info=True)
+    """Run apply_rule and record the outcome on the rule, then log it.
+
+    The DURABLE part lives in :func:`~infona_client.normalization.apply_job.apply_and_record`
+    (shared with the agent capability so the two cannot drift): success →
+    ``applied``, failure → ``failed`` + ``last_error``. This wrapper only adds
+    the route's own log events. It never raises — it runs detached, after the
+    202 already went out.
+    """
+    outcome = await apply_and_record(client, tenant_id, rule)
+    if outcome.ok:
+        logger.info("normalize_apply_done", rule_id=rule.id, **outcome.summary)
+    else:
+        logger.error("normalize_apply_failed", rule_id=rule.id, error=outcome.error)

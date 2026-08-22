@@ -143,7 +143,9 @@ export interface TypeEdge {
   weight: number;
 }
 
-/** A stored normalization rule (suggested / confirmed / rejected / applied).
+/** A stored normalization rule (suggested / confirmed / rejected / applied /
+ *  failed). `failed` means the background apply raised — `last_error` says why
+ *  and `failed_at` when; the rule is NOT dead, POSTing apply again retries it.
  *  Open beyond the documented fields because the rule's `params` shape varies by
  *  `rule_type` (e.g. `strip_emoji`, `list_explode`). */
 export interface NormalizationRule {
@@ -156,9 +158,11 @@ export interface NormalizationRule {
   params?: Record<string, unknown>;
   confidence?: number;
   rationale?: string;
-  status: "suggested" | "confirmed" | "rejected" | "applied" | string;
+  status: "suggested" | "confirmed" | "rejected" | "applied" | "failed" | string;
   created_at?: string;
   applied_at?: string | null;
+  failed_at?: string | null;
+  last_error?: string | null;
   [key: string]: unknown;
 }
 

@@ -12,6 +12,11 @@ Two ``rule_type``\\ s ship today:
   characters (e.g. ``skills = "🎨 design"`` → ``"design"``); the junk is removed
   and the leftover whitespace collapsed, in place.
 
+A rule's ``status`` is its lifecycle: ``suggested`` → ``confirmed`` → ``applied``
+(or ``rejected``), plus ``failed`` when an apply pass raised. ``failed`` is a
+DURABLE, RETRYABLE record, not a terminal state — see :data:`RuleStatus` and
+``normalization.apply_job``.
+
 Rules live as ordinary triples in the **tenant ontology graph**
 (:func:`tenant_graph_uri`) — one ``…/entities/NormalizationRule/<id>`` resource
 with an ``rdf:type`` plus one predicate per field. ``params`` / ``sample_values``
@@ -58,9 +63,25 @@ P_SAMPLE_VALUES = NORM_NS + "sampleValues"
 P_STATUS = NORM_NS + "status"
 P_CREATED_AT = NORM_NS + "createdAt"
 P_APPLIED_AT = NORM_NS + "appliedAt"
+P_FAILED_AT = NORM_NS + "failedAt"
+P_LAST_ERROR = NORM_NS + "lastError"
 
-RuleStatus = Literal["suggested", "confirmed", "rejected", "applied"]
+# ``failed`` (ONTA-535) is the DURABLE outcome of an apply pass that raised.
+# Apply runs detached, after the route already returned 202, so an exception has
+# nowhere to surface: before this existed the rule sat at ``confirmed`` forever
+# and the only trace was a log line the user never sees. ``failed`` is NOT
+# terminal — ``POST /rules/{id}/apply`` accepts it, so fixing the underlying
+# cause and re-applying is the whole retry story (no manual store surgery).
+RuleStatus = Literal["suggested", "confirmed", "rejected", "applied", "failed"]
 TargetKind = Literal["attribute", "relationship"]
+
+# A failure message is persisted as a literal in the tenant ontology graph, so
+# it is capped: enough to identify the cause, never a whole traceback.
+MAX_LAST_ERROR_CHARS = 500
+
+# Sentinel for "leave this field alone" in :meth:`NormalizationRuleStore.update_status`
+# — distinct from ``None``, which explicitly CLEARS the field.
+_UNSET: object = object()
 
 
 class NormalizationRule(BaseModel):
@@ -96,6 +117,13 @@ class NormalizationRule(BaseModel):
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
     applied_at: Optional[str] = None
+    # Outcome of the LAST apply attempt that raised. Both are set together with
+    # ``status="failed"`` and cleared together by the next successful apply, so
+    # a rule showing ``applied`` never carries a stale error. ``applied_at`` is
+    # deliberately NOT cleared on failure: it still records the last apply that
+    # actually landed.
+    failed_at: Optional[str] = None
+    last_error: Optional[str] = None
 
     @property
     def uri(self) -> str:
@@ -214,8 +242,17 @@ class NormalizationRuleStore:
         rule_id: str,
         status: RuleStatus,
         applied_at: Optional[str] = None,
+        failed_at: Optional[str] | object = _UNSET,
+        last_error: Optional[str] | object = _UNSET,
     ) -> Optional[NormalizationRule]:
-        """Set a rule's status (and optionally applied_at). Idempotent.
+        """Set a rule's status (and optionally its outcome fields). Idempotent.
+
+        ``applied_at`` keeps its historical semantics: ``None`` means "leave it
+        alone" (it is the timestamp of the last apply that actually landed, and
+        a later FAILED attempt must not erase it). ``failed_at`` / ``last_error``
+        instead default to :data:`_UNSET` so a caller can pass an explicit
+        ``None`` to CLEAR them — which is exactly what a successful apply does,
+        so an ``applied`` rule never shows a stale error.
 
         Returns the updated rule, or None if it doesn't exist.
         """
@@ -225,6 +262,14 @@ class NormalizationRuleStore:
         rule.status = status
         if applied_at is not None:
             rule.applied_at = applied_at
+        if failed_at is not _UNSET:
+            rule.failed_at = failed_at  # type: ignore[assignment]
+        if last_error is not _UNSET:
+            rule.last_error = (
+                last_error[:MAX_LAST_ERROR_CHARS]
+                if isinstance(last_error, str)
+                else None
+            )
         await self.save(tenant_id, rule)
         return rule
 
@@ -253,6 +298,12 @@ class NormalizationRuleStore:
         ]
         if rule.applied_at:
             triples.append((uri, P_APPLIED_AT, rule.applied_at))
+        # Written only when set, so a cleared outcome leaves no triple behind
+        # (``save`` is clear-then-write, so absence IS the cleared state).
+        if rule.failed_at:
+            triples.append((uri, P_FAILED_AT, rule.failed_at))
+        if rule.last_error:
+            triples.append((uri, P_LAST_ERROR, rule.last_error[:MAX_LAST_ERROR_CHARS]))
         return triples
 
     @staticmethod
@@ -289,4 +340,6 @@ class NormalizationRuleStore:
             status=fields.get(P_STATUS, "suggested"),  # type: ignore[arg-type]
             created_at=fields.get(P_CREATED_AT, ""),
             applied_at=fields.get(P_APPLIED_AT) or None,
+            failed_at=fields.get(P_FAILED_AT) or None,
+            last_error=fields.get(P_LAST_ERROR) or None,
         )

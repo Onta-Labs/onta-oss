@@ -1122,9 +1122,16 @@ Apply Rule Route
 
 Apply a confirmed rule in the background; ack immediately (202).
 
-Apply runs ONLY when the rule is ``confirmed`` (or already ``applied`` — a
-re-run is idempotent). ``suggested`` / ``rejected`` rules are refused.
-On success the rule's status flips to ``applied`` with ``applied_at`` set.
+Apply runs when the rule is ``confirmed``, already ``applied`` (a re-run is
+idempotent), or ``failed`` — a failed apply is a RETRY, not a dead end, so
+fixing the cause and POSTing here again is all it takes. ``suggested`` /
+``rejected`` rules are refused.
+
+On success the status flips to ``applied`` with ``applied_at`` set and any
+prior ``last_error`` cleared; on failure it flips to ``failed`` with
+``failed_at`` / ``last_error`` set, so the user can SEE that the rule they
+confirmed is not live (``GET /normalize/rules?status=failed``). The 202 is
+unchanged — apply is genuinely a background job.
 
 **202:** Successful Response
 **422:** Validation Error
@@ -3007,6 +3014,8 @@ Accept Invite By Token
 | `status` | string | No |  |
 | `created_at` | string | No |  |
 | `applied_at` | object | No |  |
+| `failed_at` | object | No |  |
+| `last_error` | object | No |  |
 
 ### OkResponse
 
