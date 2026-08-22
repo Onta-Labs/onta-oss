@@ -11,6 +11,17 @@ tests prove it on a real triplestore.
 
 Skipped in CI (pyoxigraph is not a declared test dependency there); runs wherever
 pyoxigraph is installed (local dev).
+
+**Both cases already fail on a machine that HAS pyoxigraph, and did before
+ONTA-534.** Conftest installs a ``MemoryGraphStore`` as the process store, so
+``apply_rule``'s writes have gone there — not into this pyoxigraph store — ever
+since the Neo4j cutover, and since ONTA-534 its reads do too. The typed-literal
+guarantee this file was written for is now asserted against the shipped store in
+``test_normalization_apply_store.py::
+test_strip_emoji_does_not_retype_a_numeric_sibling`` and
+``test_normalization_apply_store_nodes.py::
+test_promote_to_node_owner_keyed_preserves_the_value``. Rebuilding this harness
+on the store is left as its own change.
 """
 from __future__ import annotations
 

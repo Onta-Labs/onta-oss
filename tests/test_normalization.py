@@ -9,25 +9,26 @@ Three layers:
   3. Execution (the important one): seed composite `speaks` edges, apply_rule, and
      assert canonical-IRI dedup, edge rewrite, composite drop, and idempotency.
 
-**ONTA-527 / ONTA-529 — read this before "fixing" anything here.**
+**ONTA-527 / ONTA-529 / ONTA-534 — read this before "fixing" anything here.**
 
 * ``_RULE_STORE_WRITE_BUG`` — FIXED in ONTA-529. ``NormalizationRuleStore`` now
   writes via ``GraphScope.for_catalog(layer='tenant')`` and reads via GraphStore.
   Layer 1 and the ``/normalize`` route surface (layer 4) are green.
-* ``_EXECUTOR_SPLIT_BRAIN_BUG`` — STILL OPEN. ``normalization/execute.py`` READS
-  through SPARQL and WRITES through the converged GraphStore path, so
-  ``apply_rule`` cannot observe its own writes. Layer 3 stays xfail(strict).
+* The executor split-brain — FIXED in ONTA-534: ``normalization/execute.py``
+  now READS the GraphStore it writes. Layer 3 stays xfail(strict) anyway, for a
+  HARNESS reason: ``FakeNeptune`` seeds quads the ported reads never look at.
+  See ``_FAKE_NEPTUNE_HARNESS_MISMATCH`` below.
 
 Layer 2 (inference) still passes and is left alone: it only READS, and its
 decision logic — which predicates warrant which rules, ranked how — is
-unchanged. Its reads are on the same SPARQL path the executor's are, so a green
-inference test says nothing about whether that path has a store behind it in
-production; it pins the ranking, not the transport.
+unchanged; it pins the ranking, not the transport.
 
-Two layer-3 cases still pass but are now VACUOUS on the graph half and are
-flagged inline where they sit: a test whose expectation is "the graph did not
-change" cannot fail when every write goes to a different store than the one it
-inspects. Their summary-dict assertions are still load-bearing.
+Three layer-3 cases still pass but are VACUOUS, summary assertions included,
+and are flagged inline where they sit: ``apply_rule`` reads and writes a store
+this file never seeds, so it can only ever be a no-op here. The behaviours they
+were written for are asserted for real in
+``tests/test_normalization_apply_store.py`` and
+``tests/test_normalization_apply_store_nodes.py``.
 """
 
 from __future__ import annotations
@@ -61,32 +62,33 @@ KG = "june-16"
 
 
 # --------------------------------------------------------------------------- #
-# Remaining product bug this file is still xfailed on (ONTA-527). Store write
-# + read (ONTA-529) is fixed; the executor split-brain is not.
+# Why layer 3 is still xfail here — and where it is really covered now.
+#
+# The executor's SPARQL-read half WAS ported to the GraphStore (ONTA-534), so
+# `apply_rule` is no longer split-brained: it reads and writes the same store,
+# the orphan sweep works, and a re-run is a genuine no-op. What this harness
+# cannot express is the thing the port fixed. `FakeNeptune` seeds a SPARQL quad
+# store while `apply_rule` reads the process GraphStore (conftest's autouse
+# `MemoryGraphStore`), so a rule applied here sees an EMPTY graph, does nothing,
+# and reports an all-zero summary. Every case below that asserts "the quads
+# changed" therefore still fails — for a harness reason, not a product one.
+#
+# Porting these onto the store would be a rewrite rather than an edit, so the
+# real coverage lives in `tests/test_normalization_apply_store.py` and
+# `tests/test_normalization_apply_store_nodes.py`: the same behaviours
+# (canonical-IRI dedup, edge re-point, orphan-sweep completeness +
+# re-runnability, idempotency, emoji cleaning, literal split, promotion) seeded
+# through `insert_facts` and asserted against the store the code actually uses.
+# What these keep pinning is the SHAPE of the SPARQL the residual arm still
+# emits when no store can be consulted.
 # --------------------------------------------------------------------------- #
-_EXECUTOR_SPLIT_BRAIN_BUG = (
-    "BUG (surfaced by ONTA-527): normalization/execute.py is split-brained — it "
-    "READS through SPARQL (`await neptune.query(...)` for the explode SELECT, the "
-    "orphan-sweep SELECT/COUNT, the rdfs:range lookup and the strip_emoji / "
-    "promote SELECTs) while WRITING through the converged Neo4j path "
-    "(insert_facts / delete_facts / rewrite via resolve_optional_graph_store). "
-    "apply_rule therefore cannot observe its own writes, and the damage is not "
-    "confined to this harness: (1) the orphan sweep is a NO-OP, because it looks "
-    "for composite nodes with no inbound edge and the edges it just deleted are "
-    "still there on the read side — merged-away composites accumulate in every "
-    "KG; (2) apply_rule is no longer IDEMPOTENT — a second apply re-splits the "
-    "same literals and re-reports edges_rewritten/atomic_created > 0 (see "
-    "test_single_value_junk_repoint_is_idempotent_on_rerun); (3) each such "
-    "re-apply also re-fires explore.schedule_recompute, so a no-op run now costs "
-    "a full Explorer type-stats recompute (see "
-    "test_apply_triggers_stats_recompute_on_mutation). In production it is worse "
-    "still: the client those reads go through is app.state.neptune_client, which "
-    "api/app.py:301 constructs from `settings.neptune_endpoint or "
-    "'http://127.0.0.1:8182'` under its own comment calling it a 'Vestigial "
-    "SPARQL client (ONTA-527): no route executes SPARQL any more' — so on the "
-    "Neo4j-only deployment there is no store behind them at all. The fix is to "
-    "port execute.py's reads to GraphStore; the write half already converges "
-    "correctly and must stay on kg_writer (ADR 0007)."
+_FAKE_NEPTUNE_HARNESS_MISMATCH = (
+    "HARNESS, not a product bug (fixed by ONTA-534): FakeNeptune seeds a SPARQL "
+    "quad store while apply_rule reads the process GraphStore, so the rule sees "
+    "an empty graph and these quad-level assertions cannot pass. The same "
+    "behaviours are covered against a real store in "
+    "tests/test_normalization_apply_store.py + "
+    "tests/test_normalization_apply_store_nodes.py."
 )
 
 
@@ -731,7 +733,7 @@ def _seed_speaks_composites(neptune: FakeNeptune):
     return kg
 
 
-@pytest.mark.xfail(reason=_EXECUTOR_SPLIT_BRAIN_BUG, strict=True)
+@pytest.mark.xfail(reason=_FAKE_NEPTUNE_HARNESS_MISMATCH, strict=True)
 @pytest.mark.asyncio
 async def test_execute_explode_relationship_and_idempotent():
     neptune = FakeNeptune()
@@ -792,7 +794,7 @@ async def test_execute_explode_relationship_and_idempotent():
     assert summary2 == {"edges_rewritten": 0, "atomic_created": 0, "orphans_dropped": 0}
 
 
-@pytest.mark.xfail(reason=_EXECUTOR_SPLIT_BRAIN_BUG, strict=True)
+@pytest.mark.xfail(reason=_FAKE_NEPTUNE_HARNESS_MISMATCH, strict=True)
 @pytest.mark.asyncio
 async def test_orphan_sweep_is_complete_keeps_referenced_and_atomic():
     """Final sweep deletes ALL composite Language nodes with no inbound edge —
@@ -870,7 +872,7 @@ async def test_orphan_sweep_is_complete_keeps_referenced_and_atomic():
     assert summary["orphans_dropped"] == 3
 
 
-@pytest.mark.xfail(reason=_EXECUTOR_SPLIT_BRAIN_BUG, strict=True)
+@pytest.mark.xfail(reason=_FAKE_NEPTUNE_HARNESS_MISMATCH, strict=True)
 @pytest.mark.asyncio
 async def test_orphan_sweep_rerunnable_clears_leftover_orphan():
     """A leftover composite node (rdf:type + label, NO inbound edge, nothing to
@@ -950,7 +952,7 @@ def _worksin_rule() -> NormalizationRule:
     )
 
 
-@pytest.mark.xfail(reason=_EXECUTOR_SPLIT_BRAIN_BUG, strict=True)
+@pytest.mark.xfail(reason=_FAKE_NEPTUNE_HARNESS_MISMATCH, strict=True)
 @pytest.mark.asyncio
 async def test_single_value_leading_delimiter_is_repointed_and_swept():
     """`…/Industry/__Agriculture` (single value, LEADING junk "__") → subject is
@@ -990,7 +992,7 @@ async def test_single_value_leading_delimiter_is_repointed_and_swept():
     assert summary["orphans_dropped"] == 1
 
 
-@pytest.mark.xfail(reason=_EXECUTOR_SPLIT_BRAIN_BUG, strict=True)
+@pytest.mark.xfail(reason=_FAKE_NEPTUNE_HARNESS_MISMATCH, strict=True)
 @pytest.mark.asyncio
 async def test_single_value_trailing_delimiter_is_repointed_and_swept():
     """`…/Industry/Automotive__` (single value, TRAILING junk "__") → re-pointed
@@ -1025,7 +1027,7 @@ async def test_single_value_trailing_delimiter_is_repointed_and_swept():
     assert summary["orphans_dropped"] == 1
 
 
-@pytest.mark.xfail(reason=_EXECUTOR_SPLIT_BRAIN_BUG, strict=True)
+@pytest.mark.xfail(reason=_FAKE_NEPTUNE_HARNESS_MISMATCH, strict=True)
 @pytest.mark.asyncio
 async def test_doubled_delimiter_single_node_splits_into_two_atoms():
     """`…/Industry/A____B` (DOUBLED "__" between two real tokens) → splits to two
@@ -1092,20 +1094,26 @@ async def test_clean_atomic_target_is_not_repointed_idempotent():
     # … and nothing was rewritten or swept (it has no delimiter, so the sweep
     # never considers it an orphan either).
     #
-    # ONTA-527: the four graph assertions above are VACUOUS today — under
-    # _EXECUTOR_SPLIT_BRAIN_BUG every write goes to the GraphStore, so `quads`
-    # (the SPARQL side) is unchanged no matter what apply_rule did. The summary
-    # assertion below is the one still doing work here.
+    # ONTA-534: VACUOUS now, summary included — apply_rule reads AND writes the
+    # GraphStore, so it never sees these quads and can only report zeros. The
+    # real skip-condition assertion is
+    # `test_normalization_apply_store_nodes.py::
+    # test_list_explode_relationship_rerun_is_a_no_op`.
     assert quads == before
     assert summary == {"edges_rewritten": 0, "atomic_created": 0, "orphans_dropped": 0}
 
 
-@pytest.mark.xfail(reason=_EXECUTOR_SPLIT_BRAIN_BUG, strict=True)
 @pytest.mark.asyncio
 async def test_single_value_junk_repoint_is_idempotent_on_rerun():
     """After the junk single-value node is re-pointed + swept, a SECOND apply is a
     no-op: the clean `Agriculture` node's atom IRI == its own IRI, so it is
-    skipped and nothing changes."""
+    skipped and nothing changes.
+
+    ONTA-534: now VACUOUS end to end — the ported reads see the (empty) store, so
+    both applies are no-ops on `quads` whatever the skip-condition does. Kept
+    only as the shape pin; the real idempotency assertion is
+    `test_normalization_apply_store_nodes.py::
+    test_list_explode_relationship_rerun_is_a_no_op`."""
     neptune = FakeNeptune()
     kg = "https://graph.infona.ai/graphs/t1/kg/june-16"
     worksin = ONTO + "worksin"
@@ -1128,7 +1136,7 @@ async def test_single_value_junk_repoint_is_idempotent_on_rerun():
     assert summary2 == {"edges_rewritten": 0, "atomic_created": 0, "orphans_dropped": 0}
 
 
-@pytest.mark.xfail(reason=_EXECUTOR_SPLIT_BRAIN_BUG, strict=True)
+@pytest.mark.xfail(reason=_FAKE_NEPTUNE_HARNESS_MISMATCH, strict=True)
 @pytest.mark.asyncio
 async def test_rerun_sweep_resolves_target_type_from_ontology_range():
     """COG-118: on a re-run where NOTHING is rewritten (edges_rewritten == 0),
@@ -1207,7 +1215,7 @@ async def test_rerun_sweep_resolves_target_type_from_ontology_range():
     assert not [q for q in seen_queries if "SELECT DISTINCT ?t" in q]
 
 
-@pytest.mark.xfail(reason=_EXECUTOR_SPLIT_BRAIN_BUG, strict=True)
+@pytest.mark.xfail(reason=_FAKE_NEPTUNE_HARNESS_MISMATCH, strict=True)
 @pytest.mark.asyncio
 async def test_rerun_sweep_falls_back_to_touched_composites_without_range():
     """If the ontology declares NO types/ range for the predicate (un-upgraded
@@ -1241,7 +1249,7 @@ async def test_rerun_sweep_falls_back_to_touched_composites_without_range():
     assert not [t for t in quads if t[0] == ENTITY + "Language/English__Persian"]
 
 
-@pytest.mark.xfail(reason=_EXECUTOR_SPLIT_BRAIN_BUG, strict=True)
+@pytest.mark.xfail(reason=_FAKE_NEPTUNE_HARNESS_MISMATCH, strict=True)
 @pytest.mark.asyncio
 async def test_apply_triggers_stats_recompute_on_mutation(monkeypatch):
     """A mutating apply fires explore.schedule_recompute(tenant_id, kg_name); a
@@ -1280,7 +1288,7 @@ async def test_apply_triggers_stats_recompute_on_mutation(monkeypatch):
     assert calls == []
 
 
-@pytest.mark.xfail(reason=_EXECUTOR_SPLIT_BRAIN_BUG, strict=True)
+@pytest.mark.xfail(reason=_FAKE_NEPTUNE_HARNESS_MISMATCH, strict=True)
 @pytest.mark.asyncio
 async def test_execute_explode_literal():
     neptune = FakeNeptune()
@@ -1335,7 +1343,7 @@ def _strip_emoji_rule() -> NormalizationRule:
     )
 
 
-@pytest.mark.xfail(reason=_EXECUTOR_SPLIT_BRAIN_BUG, strict=True)
+@pytest.mark.xfail(reason=_FAKE_NEPTUNE_HARNESS_MISMATCH, strict=True)
 @pytest.mark.asyncio
 async def test_execute_strip_emoji_cleans_and_drops_pure_emoji():
     neptune = FakeNeptune()
@@ -1391,17 +1399,17 @@ async def test_execute_strip_emoji_preserves_real_skill_names():
 
     summary = await apply_rule(neptune, TENANT, _strip_emoji_rule())
     quads = neptune.graphs[kg]
-    # ONTA-527: "the values survived" is VACUOUS today — under
-    # _EXECUTOR_SPLIT_BRAIN_BUG a rewrite would land in the GraphStore and leave
-    # `quads` intact anyway. The summary assertion is what still bites: it is
-    # computed from the read side, so a regression that started matching "c++" or
-    # "café" as emoji would still be caught here.
+    # ONTA-534: VACUOUS now, summary included — apply_rule reads AND writes the
+    # GraphStore, so it never sees these quads and can only report zeros. The
+    # "c++ / café are not emoji" regression is really caught by
+    # `test_normalization_apply_store.py::
+    # test_strip_emoji_leaves_real_skill_names_alone`.
     for v in keepers:
         assert (ENTITY + "Mentor/A", skills, v) in quads
     assert summary == {"literals_cleaned": 0, "triples_rewritten": 0}
 
 
-@pytest.mark.xfail(reason=_EXECUTOR_SPLIT_BRAIN_BUG, strict=True)
+@pytest.mark.xfail(reason=_FAKE_NEPTUNE_HARNESS_MISMATCH, strict=True)
 @pytest.mark.asyncio
 async def test_execute_strip_emoji_works_on_exploded_atomic_literals():
     """strip_emoji is per-literal, so it cleans atomic literals the same way it
