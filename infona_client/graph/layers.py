@@ -217,16 +217,112 @@ class LayerStack:
         return None
 
 
-async def fetch_types_by_layer(neptune, stack: LayerStack) -> dict[Layer, dict[str, str]]:
-    """Fetch existing types per visible layer (one list_types_query per graph).
+def _tenant_of_layer_graph(onto_graph: str) -> str | None:
+    """Workspace whose tenant catalog ``onto_graph`` names, or ``None``.
+
+    Derived from the LAYER's own graph URI and nothing else — the same
+    derivation ``nlp/pipeline_ontology_catalog.tenant_for_catalog_graph`` makes
+    for the planner, over the same ``graph/queries`` primitives. Anything that
+    does not round-trip yields ``None`` (and therefore the SPARQL arm), because
+    guessing a workspace from something other than the layer URI is exactly the
+    shape a cross-tenant read takes.
+    """
+    from infona_client.graph.queries import parse_kg_graph_uri, parse_tenant_graph_uri
+
+    if not onto_graph:
+        return None
+    tenant = parse_tenant_graph_uri(onto_graph)
+    if tenant:
+        return tenant
+    parsed = parse_kg_graph_uri(onto_graph)
+    return parsed[0] if parsed else None
+
+
+async def _store_layer_types(
+    layer: Layer, stack: LayerStack, *, store=None
+) -> dict[str, str] | None:
+    """One layer's declared ``{type_name: description}`` from the catalog, or ``None``.
+
+    Reads :mod:`infona_client.graph.ontology_catalog` — the SAME reader
+    ``nlp/pipeline_ontology_catalog.layer_ontology_bindings`` uses for the
+    planner, so the Explorer's type resolve and the planner's schema cannot
+    disagree about what a layer declares. ``layer_ontology_bindings`` itself is
+    not reusable here: it projects per-(type × attribute) SPARQL bindings and
+    carries no ``rdfs:comment``, whereas this returns the name→description map
+    :meth:`LayerStack.resolve_type` consumes.
+
+    ``None`` means "the catalog had nothing to say" and the caller keeps its
+    residual SPARQL arm. That covers a **version-pinned** global layer, which is
+    the load-bearing decline: :meth:`LayerStack.graph_uri_for` resolves a pin to
+    a release graph (``…/v{N}``) and the catalog has no release snapshots, so
+    answering from the LIVE layer would let a pinned workspace's effective
+    ontology jump to latest — the exact failure the pin exists to prevent. A pin
+    therefore degrades to an EMPTY layer, per the class docstring.
+    """
+    if layer is Layer.PUBLIC and stack.public_version is not None:
+        return None
+    if layer is Layer.ENHANCED and stack.enhanced_version is not None:
+        return None
+
+    tenant_id: str | None = None
+    if layer is Layer.TENANT:
+        tenant_id = _tenant_of_layer_graph(stack.tenant_graph_uri)
+        if not tenant_id:
+            return None
+
+    try:
+        from infona_client.graph.ontology_catalog import list_types as cat_list_types
+
+        scope: dict[str, Any] = {"store": store, "layer": layer.value}
+        if tenant_id:
+            scope["tenant_id"] = tenant_id
+        rows = await cat_list_types(**scope)
+    except Exception as exc:  # noqa: BLE001 — fail soft, keep the SPARQL arm
+        logger.debug(
+            "layer_types_catalog_read_failed",
+            layer=layer.value,
+            error=str(exc),
+        )
+        return None
+    if not rows:
+        # "This layer declares nothing" and "this store had nothing to say" are
+        # indistinguishable here; treating the second as the first would hand
+        # `resolve_type` a confidently empty layer. Decline.
+        return None
+    return {
+        str(getattr(row, "name", "") or ""): str(getattr(row, "description", "") or "")
+        for row in rows
+        if getattr(row, "name", "")
+    }
+
+
+async def fetch_types_by_layer(
+    neptune, stack: LayerStack, *, store=None
+) -> dict[Layer, dict[str, str]]:
+    """Fetch existing types per visible layer (one catalog read per layer).
 
     Returns {layer: {type_name: description}} for every layer in the stack —
     shaped to feed LayerStack.resolve_type. A layer whose graph is missing,
     empty, or errors yields {} (graceful degradation, mirroring
     SchemaResolver._fetch_ontology); other layers are unaffected.
+
+    **ONTA-534.** Each layer is now read from the ontology catalog
+    (:func:`_store_layer_types`); ``list_types_query`` over the SPARQL HTTP
+    client is the residual arm. On the shipped Neo4j GraphStore that client is
+    retired and raises for EVERY layer, the ``except`` below degraded each one
+    to ``{}``, and the whole stack came back empty. The caller
+    (``api/routes/explore_resolve._resolve_layered_type``) reads an empty stack
+    as "no visible layer declares this name" and returns ``None`` — so an
+    Explorer type that plainly exists resolved as *no such type*, with no error
+    anywhere. Per-layer degradation is still the contract; what changed is that a
+    layer can now be READ.
     """
     types_by_layer: dict[Layer, dict[str, str]] = {}
     for layer in stack.layers:
+        from_store = await _store_layer_types(layer, stack, store=store)
+        if from_store is not None:
+            types_by_layer[layer] = from_store
+            continue
         types: dict[str, str] = {}
         try:
             raw = await neptune.query(list_types_query(stack.graph_uri_for(layer)))
