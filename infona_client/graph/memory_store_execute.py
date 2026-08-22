@@ -27,6 +27,9 @@ from infona_client.graph.memory_store_norms import (
     _LITERAL_GREP_NORM,
     _LITERAL_VALUES_NORM,
     _MERGE_NORM,
+    _NORM_LITERALS_BY_PROP_NORM,
+    _NORM_ORPHANS_OF_TYPE_NORM,
+    _NORM_RELS_BY_ATTR_NORM,
     _ONTO_ATTR_DELETE_NORM,
     _ONTO_ATTR_LIST_NORM,
     _ONTO_ATTR_RANGE_NORM,
@@ -173,6 +176,37 @@ class MemoryExecuteMixin:
                 type_name=None if type_name is None else str(type_name),
                 predicate_leaf=None if pred is None else str(pred),
                 limit=int(lim) if lim is not None else 51,
+            )
+
+        # --- Normalization rule-apply reads (ONTA-534) -----------------------
+        # `primary_type` is OPTIONAL on the literal read (None = predicate-
+        # scoped, KG-wide) — see graph/normalize_cypher.py for why.
+        if norm == _NORM_LITERALS_BY_PROP_NORM:
+            ptype = params.get("primary_type")
+            return self._entity_literals_by_prop(
+                tenant_id,
+                kg,
+                str(params.get("prop_key") or ""),
+                None if ptype is None else str(ptype),
+            )
+
+        if norm == _NORM_RELS_BY_ATTR_NORM:
+            rtype = params.get("rel_type")
+            return self._entity_rels_by_attr(
+                tenant_id,
+                kg,
+                str(params.get("rel_attr") or ""),
+                None if rtype is None else str(rtype),
+            )
+
+        if norm == _NORM_ORPHANS_OF_TYPE_NORM:
+            rtype = params.get("rel_type")
+            return self._entity_orphans_of_type(
+                tenant_id,
+                kg,
+                str(params.get("primary_type") or ""),
+                str(params.get("rel_attr") or ""),
+                None if rtype is None else str(rtype),
             )
 
         if norm == _FILTER_PROP_EQ_NORM:

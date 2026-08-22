@@ -74,19 +74,26 @@ async def _promote_to_node(
     #    is a URI, so a re-run selects nothing. No delimiter CONTAINS — promotion
     #    applies to ALL literals. The marker comment self-identifies the query in
     #    log traces.
-    q = (
-        f"SELECT ?s ?p ?o FROM <{kg_graph}> WHERE {{\n"
-        f"  # promote_to_node: literals of {pred_leaf} on {type_name}\n"
-        f"  ?s ?p ?o .\n"
-        f"  FILTER(?p = <{prim_pred}>)\n"
-        f"  FILTER(isLiteral(?o))\n"
-        f"}}"
+    store_rows = await _host().literal_rows(
+        kg_graph, pred_leaf, type_name=type_name
     )
-    _, rows = _host().parse_sparql_results(await neptune.query(q))
+    if store_rows is None:
+        q = (
+            f"SELECT ?s ?p ?o FROM <{kg_graph}> WHERE {{\n"
+            f"  # promote_to_node: literals of {pred_leaf} on {type_name}\n"
+            f"  ?s ?p ?o .\n"
+            f"  FILTER(?p = <{prim_pred}>)\n"
+            f"  FILTER(isLiteral(?o))\n"
+            f"}}"
+        )
+        _, raw = _host().parse_sparql_results(await neptune.query(q))
+        rows = [(r.get("s", ""), r.get("o", "")) for r in raw]
+    else:
+        rows = [(r.subject, r.value) for r in store_rows]
 
     onto_pred = ONTO_PRED_PREFIX + pred_leaf  # onto/<leaf> — the relationship edge form
 
-    node_triples: list[tuple[str, str, str]] = []
+    node_triples: list[tuple[str, str, Any]] = []
     edges_to_add: list[tuple[str, str, str]] = []
     subjects_to_clear: set[str] = set()
     nodes_seen: set[str] = set()
@@ -97,11 +104,14 @@ async def _promote_to_node(
     value_attr = attr_uri(target_type, "value")  # owner-keyed lossless store
     name_attr = attr_uri(target_type, "name")  # value-keyed Explorer-Data label
 
-    for r in rows:
-        s = r.get("s", "")
-        o = r.get("o", "")
-        if not s or o is None or o == "":
+    for s, o_raw in rows:
+        if not s or o_raw is None or o_raw == "":
             continue
+        # `o_raw` keeps the store's native type — ingest writes `"4.6"^^xsd:float`
+        # and the store holds a real float — so the owner-keyed `value` attribute
+        # can preserve the measurement EXACTLY. `o` is the text form the node
+        # identity + label are derived from.
+        o = o_raw if isinstance(o_raw, str) else str(o_raw)
         # The atoms to promote: split a multi-value literal (value-keyed only) or
         # take the whole literal as one value. _split trims + de-dupes; a value
         # with no delimiter comes back as a single-element list (idempotent).
@@ -124,8 +134,9 @@ async def _promote_to_node(
                 new_triples = [
                     (node_uri, RDF_TYPE, t_uri),
                     (node_uri, RDFS_LABEL, atom),
-                    # PRESERVE the original literal losslessly as the node's value.
-                    (node_uri, value_attr, atom),
+                    # PRESERVE the original literal losslessly as the node's
+                    # value — the RAW term, so a typed float stays a float.
+                    (node_uri, value_attr, atom if isinstance(o_raw, str) else o_raw),
                 ]
             if node_uri not in nodes_seen:
                 nodes_seen.add(node_uri)
@@ -160,6 +171,20 @@ async def _promote_to_node(
     #    every literal object regardless of datatype and never hits the onto/<leaf>
     #    edge (a different predicate), all through the shared delete_facts (batched,
     #    provenance tombstone, ADR 0007).
+    #
+    #    The edges are then RE-INSERTED after the clear. On the property-graph
+    #    store an Assertion is keyed by (subject, PROPERTY IRI, object) and
+    #    ``object_property_iri(leaf) == datatype_property_iri(leaf)`` — one IRI per
+    #    leaf, whatever the range — so the clear's Assertion cleanup
+    #    (``pg_ops.delete_literals`` → ``delete_assertions_for_subject(property_id
+    #    =property_uri(leaf))``) matches the OBJECT assertion we just wrote as well
+    #    as the literal one it is meant to remove. The relationship itself survives
+    #    (the clear never touches rels), so the damage is silent: Explorer would
+    #    still render the edge while the Assertion-backed NL reads stopped seeing
+    #    it — precisely the "looks like it works, invisible to queries" failure
+    #    class. Re-asserting is idempotent (same MERGE key) and keeps the
+    #    insert-FIRST crash ordering: a crash before the clear converges on re-run
+    #    because the literal is still there to re-select.
     # E7: GraphStore once per write batch when neo4j backend is active.
     store = _host().resolve_optional_graph_store()
     if node_triples:
@@ -174,6 +199,8 @@ async def _promote_to_node(
             reason="normalization:promote_to_node literal->node",
             store=store,
         )
+        if edges_to_add:
+            await _host().insert_facts(neptune, kg_graph, edges_to_add, store=store)
 
     # 3) ONTOLOGY (only when something was promoted — a pure re-run stays a total
     #    no-op, schema included). Two idempotent upserts:

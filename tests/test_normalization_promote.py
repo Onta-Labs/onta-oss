@@ -24,7 +24,7 @@ evaluate: the promotion SELECT (all literal objects of the predicate) and the
 
 **ONTA-527: every case here is xfail(strict) on ONE product bug** — the
 split-brained ``normalization/execute.py`` imported from
-``tests/test_normalization.py`` as ``_EXECUTOR_SPLIT_BRAIN_BUG``. Nothing was
+``tests/test_normalization.py`` as ``_FAKE_NEPTUNE_HARNESS_MISMATCH``. Nothing was
 fixed, deleted or loosened: ``_promote_to_node`` selects the literals through
 SPARQL and writes the new nodes/edges + clears the old literals through the
 converged GraphStore path, so the four behaviours below are asserted against a
@@ -50,7 +50,7 @@ from tests.test_normalization import (  # reuse the harness
     TENANT,
     TYPES,
     FakeNeptune,
-    _EXECUTOR_SPLIT_BRAIN_BUG,
+    _FAKE_NEPTUNE_HARNESS_MISMATCH,
     _split_ops,
     _stub_schedule_recompute,  # noqa: F401 — autouse fixture, imported to register
 )
@@ -206,7 +206,7 @@ def _range_of(neptune, attr_uri_str) -> str | None:
 # --------------------------------------------------------------------------- #
 # 1. value-keyed categorical
 # --------------------------------------------------------------------------- #
-@pytest.mark.xfail(reason=_EXECUTOR_SPLIT_BRAIN_BUG, strict=True)
+@pytest.mark.xfail(reason=_FAKE_NEPTUNE_HARNESS_MISMATCH, strict=True)
 @pytest.mark.asyncio
 async def test_promote_value_keyed_categorical_shares_nodes():
     neptune = PromoteFakeNeptune()
@@ -253,7 +253,7 @@ async def test_promote_value_keyed_categorical_shares_nodes():
 # --------------------------------------------------------------------------- #
 # 2. owner-keyed measurement + value preserved
 # --------------------------------------------------------------------------- #
-@pytest.mark.xfail(reason=_EXECUTOR_SPLIT_BRAIN_BUG, strict=True)
+@pytest.mark.xfail(reason=_FAKE_NEPTUNE_HARNESS_MISMATCH, strict=True)
 @pytest.mark.asyncio
 async def test_promote_owner_keyed_measurement_distinct_and_lossless():
     neptune = PromoteFakeNeptune()
@@ -296,7 +296,7 @@ async def test_promote_owner_keyed_measurement_distinct_and_lossless():
 # --------------------------------------------------------------------------- #
 # 3. idempotent re-run
 # --------------------------------------------------------------------------- #
-@pytest.mark.xfail(reason=_EXECUTOR_SPLIT_BRAIN_BUG, strict=True)
+@pytest.mark.xfail(reason=_FAKE_NEPTUNE_HARNESS_MISMATCH, strict=True)
 @pytest.mark.asyncio
 async def test_promote_idempotent_second_run_is_noop():
     neptune = PromoteFakeNeptune()
@@ -320,7 +320,7 @@ async def test_promote_idempotent_second_run_is_noop():
 # --------------------------------------------------------------------------- #
 # 4. split: "A, B" -> two value-keyed nodes
 # --------------------------------------------------------------------------- #
-@pytest.mark.xfail(reason=_EXECUTOR_SPLIT_BRAIN_BUG, strict=True)
+@pytest.mark.xfail(reason=_FAKE_NEPTUNE_HARNESS_MISMATCH, strict=True)
 @pytest.mark.asyncio
 async def test_promote_value_keyed_split_multivalue():
     neptune = PromoteFakeNeptune()
@@ -363,7 +363,7 @@ async def test_promote_value_keyed_split_multivalue():
 # 5. the stubbed list_explode(attribute, target=entity) now routes to a
 #    value-keyed split promotion instead of the old no-op.
 # --------------------------------------------------------------------------- #
-@pytest.mark.xfail(reason=_EXECUTOR_SPLIT_BRAIN_BUG, strict=True)
+@pytest.mark.xfail(reason=_FAKE_NEPTUNE_HARNESS_MISMATCH, strict=True)
 @pytest.mark.asyncio
 async def test_list_explode_attribute_target_entity_promotes():
     neptune = PromoteFakeNeptune()

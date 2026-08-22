@@ -63,6 +63,13 @@ via ``params.key_by``:
   (``<node> <types/<TargetType>/attrs/value> "4.6"``) alongside ``rdfs:label``.
   ``split`` is ignored (a measurement is one value).
 
+All four shapes READ through the GraphStore (ONTA-534,
+``normalization/execute_reads.py``) and WRITE through the converged path
+(``graph/kg_writer.py``). Before the read port the first ``await
+neptune.query(...)`` raised ``SparqlClientRetired`` on the shipped Neo4j-only
+backend, so every apply died before touching the graph. Each read keeps a
+residual SPARQL arm for when no store can be consulted.
+
 Idempotent: re-running finds nothing to change (values are already atomic /
 emoji-free; a promoted object is a URI, not a literal, so the ``isLiteral(?o)``
 filter returns nothing) and is a no-op. ``list_explode`` returns
@@ -130,6 +137,12 @@ from infona_client.normalization.execute_explode import (  # noqa: F401
     _sweep_orphan_composites,
 )
 from infona_client.normalization.execute_promote import _promote_to_node  # noqa: F401
+from infona_client.normalization.execute_reads import (  # noqa: F401 — monkeypatch surface
+    catalog_range_types,
+    literal_rows,
+    orphan_rows,
+    rel_rows,
+)
 from infona_client.normalization.execute_strip import _strip_emoji  # noqa: F401
 
 
@@ -215,5 +228,5 @@ async def _dispatch(
         return await _explode_relationship(
             neptune, kg_graph, onto_graph, rule.type_name, pred_leaf, delimiters
         )
-    return await _explode_literal(neptune, kg_graph, pred_leaf, delimiters)
+    return await _explode_literal(neptune, kg_graph, rule, delimiters)
 

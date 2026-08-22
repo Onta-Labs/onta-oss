@@ -29,6 +29,7 @@ from infona_client.graph.memory_store_execute import MemoryExecuteMixin
 from infona_client.graph.memory_store_explore import MemoryExploreMixin
 from infona_client.graph.memory_store_listing import MemoryListingMixin
 from infona_client.graph.memory_store_literals import MemoryLiteralsMixin
+from infona_client.graph.memory_store_normalize import MemoryNormalizeMixin
 from infona_client.graph.memory_store_norms import (  # noqa: F401 — public re-exports
     _COUNT_BY_TYPE_SINGLE_NORM,
     _COUNT_TOTAL_NORM,
@@ -100,6 +101,7 @@ class MemoryGraphStore(
     MemoryRelsMixin,
     MemoryExploreMixin,
     MemorySuppressionMixin,
+    MemoryNormalizeMixin,
     MemoryExecuteMixin,
 ):
     """Process-local fake store; not safe for concurrent multi-process use."""

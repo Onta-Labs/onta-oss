@@ -12,6 +12,7 @@ from infona_client.graph.ontology_queries import (
     RDFS,
     TYPE_URI_PREFIX,
     _safe_id,
+    attr_uri,
     entity_uri,
 )
 
@@ -170,6 +171,61 @@ def _split(value: str, delimiters: list[str]) -> list[str]:
             seen.add(a)
             atoms.append(a)
     return atoms
+
+
+def _literal_predicate(row_type: str | None, rule_type: str, leaf: str) -> str | None:
+    """The ``types/<T>/attrs/<leaf>`` predicate a literal is written back on.
+
+    Prefers the ROW's own type (a predicate-scoped read spans types, so the
+    entity that holds the value names the right one) and falls back to the
+    rule's declaring type when the row carries none. ``None`` when neither is a
+    usable type name — that value is skipped rather than written under a
+    fabricated predicate.
+
+    **Always an ``attrs/`` form, never ``onto/<leaf>``.** ``kg_writer``'s
+    predicate-scoped clear treats an ``onto/`` predicate as possibly-relational
+    and drops the subject's RELATIONSHIP edges on that leaf as well
+    (``kg_writer_mutate._delete_facts_store``), so writing a literal back under
+    ``onto/<leaf>`` would let a later clear destroy unrelated node-valued data.
+    """
+    for candidate in (row_type, rule_type):
+        if not candidate:
+            continue
+        try:
+            return attr_uri(candidate, leaf)
+        except Exception:  # noqa: BLE001 — an unusable name costs THAT row only
+            continue
+    logger.debug("literal_predicate_unresolved", type_name=row_type, predicate=leaf)
+    return None
+
+
+def _group_store_literals(rows, rule, leaf: str) -> dict[tuple[str, str], list]:
+    """``LiteralRow``s → ``{(subject, predicate): [value, …]}`` in store order.
+
+    Values stay in their NATIVE store type. Ingest writes a typed literal
+    (``"4.6"^^xsd:float``) and the store keeps it as a real float, so a caller
+    that rewrites a leaf must hand the untouched siblings back exactly as it
+    found them — stringifying them here would silently retype a column the rule
+    never even matched.
+    """
+    groups: dict[tuple[str, str], list] = {}
+    for row in rows:
+        pred = _literal_predicate(row.type_name, rule.type_name, leaf)
+        if pred is None:
+            continue
+        groups.setdefault((row.subject, pred), []).append(row.value)
+    return groups
+
+
+def _group_sparql_literals(raw) -> dict[tuple[str, str], list]:
+    """Residual-arm ``?s ?p ?o`` bindings → the same grouped shape."""
+    groups: dict[tuple[str, str], list] = {}
+    for r in raw:
+        s, p, o = r.get("s", ""), r.get("p", ""), r.get("o", "")
+        if not s or not p or o is None or o == "":
+            continue
+        groups.setdefault((s, p), []).append(o)
+    return groups
 
 
 def _atom_uri(target_type: str, atom: str) -> str:

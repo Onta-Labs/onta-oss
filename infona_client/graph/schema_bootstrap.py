@@ -26,6 +26,7 @@ from infona_client.graph.facts import (
     ER_SIGNAL_PROPERTY_KEY_PREFIX,
     INTERNAL_PROPERTY_KEYS,
 )
+from infona_client.graph.normalize_cypher import NORMALIZE_READ_CYPHER
 from infona_client.graph.rdfs_helpers import (
     ASSERTIONS_FOR_SUBJECT_CYPHER,
     ENTITIES_OF_TYPE_COUNT_CYPHER,
@@ -873,6 +874,9 @@ TEMPLATES: Mapping[str, CypherTemplate] = {
         cypher=SUBCLASS_OF_CLOSURE_CYPHER,
         writing=False,
     ),
+    # Normalization rule-apply reads (ONTA-534) — see graph/normalize_cypher.py.
+    **{n: CypherTemplate(name=n, cypher=c, writing=False)
+       for n, c in NORMALIZE_READ_CYPHER.items()},
 }
 
 
