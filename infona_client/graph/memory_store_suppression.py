@@ -22,8 +22,17 @@ class MemorySuppressionMixin:
         ``snapshot_prov`` / ``snapshot_citations``), never a read path."""
         return [dict(row.__dict__) for row in self._suppressions.values()]
 
+    #: Identity fields — SET unconditionally, exactly as the Neo4j ``MERGE``
+    #: does. They are the sha1 preimage of ``mark_id``, so on a MERGE hit they
+    #: are already equal; writing them anyway keeps the two implementations
+    #: byte-identical rather than merely equivalent-in-practice.
+    _IDENTITY_FIELDS = ("kind", "statement_id", "subject", "predicate", "object_repr")
+    #: Annotation fields — ``coalesce($new, existing)`` in the Neo4j MERGE, so a
+    #: later write that omits them must not blank out what is already stored.
+    _ANNOTATION_FIELDS = ("reason", "suppressed_at", "graph_uri")
+
     def _upsert_suppression(self, row: _SuppressionRow) -> None:
-        """MERGE on ``(tenant_id, kg, mark_id)``; later non-empty fields win.
+        """MERGE on ``(tenant_id, kg, mark_id)``, mirroring the Neo4j statement.
 
         Idempotent by construction: the mark id is the ``sha1``-keyed RDF mark
         node URI, so re-retracting the same value updates one row instead of
@@ -34,16 +43,9 @@ class MemorySuppressionMixin:
         if existing is None:
             self._suppressions[key] = row
             return
-        existing.kind = row.kind or existing.kind
-        for field in (
-            "statement_id",
-            "subject",
-            "predicate",
-            "object_repr",
-            "reason",
-            "suppressed_at",
-            "graph_uri",
-        ):
+        for field in self._IDENTITY_FIELDS:
+            setattr(existing, field, getattr(row, field))
+        for field in self._ANNOTATION_FIELDS:
             value = getattr(row, field)
             if value:
                 setattr(existing, field, value)

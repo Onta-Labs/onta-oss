@@ -183,9 +183,16 @@ async def _insert_facts_store(
             )
     # ONTA-279 / E7: sticky suppression markers. Persisted here — NOT as domain
     # facts — so the marker survives a hard-delete of the very triple it
-    # suppresses and no reopen can clear it. A failure is logged, never raised:
-    # the instance write it rides along with has already committed, and the
-    # marker's own absence is caught by the read's fail-closed path.
+    # suppresses and no reopen can clear it.
+    #
+    # Failures are logged at ERROR, never raised, matching the companion
+    # convention (the instance write has already committed by now, so raising
+    # would report failure for a write that partly succeeded). Note the read's
+    # fail-closed path does NOT cover this: an ABSENT marker reads as an empty
+    # set, not as a read failure, so a dropped mark reproduces the exact
+    # re-acquisition bug this port fixes. That is why these three log lines are
+    # ERROR and name the marks — they are the only signal that a retraction did
+    # not actually stick.
     if suppression_triples:
         try:
             from infona_client.graph.suppression_store import (
@@ -194,18 +201,27 @@ async def _insert_facts_store(
             )
 
             marks = parse_suppression_marks(suppression_triples)
-            written = await apply_suppression_marks(session, marks)
-            if marks and not written:
-                logger.warning(
-                    "insert_facts_suppression_store_unsupported",
+            if not marks:
+                logger.error(
+                    "insert_facts_suppression_payload_unparsed",
                     instance_graph=instance_graph,
-                    marks=len(marks),
-                    detail="session implements no write_suppression; marks dropped",
+                    triples=len(suppression_triples),
+                    detail="no suppression mark parsed from the payload; nothing suppressed",
                 )
+            else:
+                written = await apply_suppression_marks(session, marks)
+                if not written:
+                    logger.error(
+                        "insert_facts_suppression_store_unsupported",
+                        instance_graph=instance_graph,
+                        marks=len(marks),
+                        detail="session implements no write_suppression; marks dropped",
+                    )
         except Exception:  # noqa: BLE001 — companions never fail the write
-            logger.warning(
+            logger.error(
                 "insert_facts_suppression_write_failed",
                 instance_graph=instance_graph,
+                marks=len(suppression_triples),
                 exc_info=True,
             )
     # Secondary indexes still key off graph URI + triple-shaped payloads when

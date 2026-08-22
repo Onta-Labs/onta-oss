@@ -78,8 +78,6 @@ from infona_client.graph.iri import IRI_BASE, SUPPRESSION_NS
 import hashlib
 from datetime import datetime
 
-import structlog
-
 from infona_client.graph.queries import delete_node_predicates_query
 from infona_client.graph.suppression_read import (  # noqa: F401 — facade re-exports
     fetch_suppressed,
@@ -91,8 +89,6 @@ from infona_client.graph.suppression_read import (  # noqa: F401 — facade re-e
     suppressed_entities_query,
     suppressed_objects_query,
 )
-
-logger = structlog.stdlib.get_logger("infona.graph.suppression")
 
 # The suppression namespace. A whole-namespace exclusion is added to
 # graph/predicates.py::is_internal_predicate for defense-in-depth (these

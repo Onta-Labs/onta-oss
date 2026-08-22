@@ -7,8 +7,11 @@ the write-shape and the read-ladder; the facade re-exports every name here, so
 ``from infona_client.graph.suppression import is_suppressed`` keeps working.
 
 Each reader runs the GraphStore arm FIRST (the shipped Neo4j backend, ONTA-527)
-and keeps the residual SPARQL arm below it for the dual-arm unit tests — the same
-ladder ``nlp/pipeline_active_types._scan_instance_types`` uses.
+and keeps the residual SPARQL arm below it — the same ladder
+``nlp/pipeline_active_types._scan_instance_types`` uses. Note that ``conftest``
+installs a ``MemoryGraphStore`` for every test, so the pyoxigraph suppression
+tests now resolve through the STORE arm; the SPARQL arm is reached only by a test
+that explicitly clears the store (``configure_graph_store(None)``).
 
 Facade names are looked up lazily via :func:`_sup` so this module never imports
 its facade at module scope (no import cycle) — the ``_host()`` pattern the
