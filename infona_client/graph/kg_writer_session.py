@@ -205,21 +205,25 @@ def _warn_unported_companions(
     instance_graph: str,
     *,
     validity_triples: Optional[list[Triple]] = None,
-    suppression_triples: Optional[list[Triple]] = None,
     reopen_facts: Optional[list[Triple]] = None,
 ) -> None:
     """Log once per write when a caller passes an unported companion payload.
 
-    Valid-time and suppression companions were named-graph SPARQL writes. Their
-    property-graph node ports are E7, so on Neo4j these payloads have been
-    dropped on the floor since the cutover. Warning here turns a silent no-op
-    into something greppable (ONTA-527).
+    Valid-time companions were named-graph SPARQL writes. Their property-graph
+    node port is E7, so on Neo4j these payloads have been dropped on the floor
+    since the cutover. Warning here turns a silent no-op into something greppable
+    (ONTA-527).
+
+    ``suppression_triples`` is NO LONGER on this list (ONTA-279 port): it is
+    persisted as ``:Suppression`` nodes by ``_insert_facts_store``. Valid-time
+    (``validity_triples`` / ``reopen_facts``) stays unported deliberately — it is
+    a history/queryability model question, not a governance marker, and mixing
+    the two ports would make neither reviewable.
     """
     unported = [
         name
         for name, payload in (
             ("validity_triples", validity_triples),
-            ("suppression_triples", suppression_triples),
             ("reopen_facts", reopen_facts),
         )
         if payload
@@ -230,7 +234,7 @@ def _warn_unported_companions(
             instance_graph=instance_graph,
             payloads=unported,
             detail=(
-                "valid-time / suppression companions have no property-graph "
-                "port yet (E7); payload ignored"
+                "valid-time companions have no property-graph port yet (E7); "
+                "payload ignored"
             ),
         )

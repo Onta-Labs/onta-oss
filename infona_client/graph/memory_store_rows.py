@@ -82,6 +82,47 @@ class _ValueHistoryRow:
 
 
 @dataclass
+class _SuppressionRow:
+    """One sticky suppression marker (ONTA-279 property-graph port).
+
+    MERGE identity is ``(tenant_id, kg, mark_id)`` — ``mark_id`` is the RDF
+    mark-node URI, already ``sha1``-keyed on ``(s, p, o)`` (fact) or ``(s)``
+    (entity), so re-suppressing the same thing is idempotent. Deliberately
+    independent of ``_AssertionRow``: the marker must outlive a hard-deleted
+    fact.
+    """
+
+    tenant_id: str
+    kg: str
+    mark_id: str
+    kind: str  # "fact" | "entity"
+    statement_id: str = ""
+    subject: str = ""
+    predicate: str = ""
+    object_repr: str = ""
+    reason: str = ""
+    suppressed_at: str = ""
+    graph_uri: str = ""
+
+    def as_record(self) -> GraphRecord:
+        return GraphRecord(
+            data={
+                "mark_id": self.mark_id,
+                "kind": self.kind,
+                "statement_id": self.statement_id,
+                "subject": self.subject,
+                "predicate": self.predicate,
+                "object_repr": self.object_repr,
+                "reason": self.reason,
+                "suppressed_at": self.suppressed_at,
+                "graph_uri": self.graph_uri,
+                "tenant_id": self.tenant_id,
+                "kg": self.kg,
+            }
+        )
+
+
+@dataclass
 class _CitationRow:
     tenant_id: str
     kg: str
