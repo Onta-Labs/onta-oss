@@ -1,7 +1,7 @@
 {
   "name": "infona-oss-monorepo",
   "private": true,
-  "version": "0.1.36",
+  "version": "0.1.37",
   "description": "Infona Node SDK + CLI + MCP server monorepo",
   "license": "Apache-2.0",
   "workspaces": [
