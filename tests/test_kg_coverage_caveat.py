@@ -447,17 +447,37 @@ async def test_probe_confirming_absence_still_yields_the_caveat():
     assert "Organization" in result.coverage_caveat
 
 
-@pytest.mark.asyncio
-async def test_probe_failure_degrades_to_the_verdict_the_planner_already_saw():
-    """The probe can only SUPPRESS. A failure must not silence the caveat.
+@pytest.fixture
+def union_dataset(monkeypatch):
+    """Put the answer query back on a UNION dataset (the Neptune-era premise).
 
-    The ontology summary already told the model "[no instances]"; restating it is
-    strictly no worse than the context the answer was generated from.
+    ONTA-534: signals B and C assert the answer came from the KG graph UNIONed
+    with the tenant base graph and the Global layers — true while ``/ask``
+    spliced those in as extra ``FROM`` clauses, false once generated Cypher is
+    confined to one ``(tenant_id, kg)`` scope. The signal LOGIC is still the
+    ONTA-454 record and what a Cypher-era rewrite must preserve or consciously
+    change, so these force the premise back on rather than being deleted.
+    Cypher-path silence is pinned in ``tests/test_kg_coverage_cypher_scope.py``.
     """
-    result = await _ask(
-        _neptune(answer_rows=["4229"], probe_raises=True), RECALL_SPARQL
-    )
-    assert "ProductRecall" in result.coverage_caveat
+    import infona_client.nlp.pipeline_format as pf
+
+    monkeypatch.setattr(pf, "neo4j_ask_enabled", lambda *a, **k: False)
+
+@pytest.mark.asyncio
+async def test_probe_failure_now_silences_rather_than_asserting_unconfirmed():
+    """ONTA-534 reverses this: an unconfirmed caveat is not asserted.
+
+    "The probe can only SUPPRESS, so a failure degrades to the [no instances]
+    verdict the planner already saw" holds while the probe is a rare miss, not
+    once it is the RETIRED SPARQL client and fails every time: the one thing it
+    catches — ``[no instances]`` is a DIRECT ``rdf:type`` fact while the query
+    walks ``rdf:type/rdfs:subClassOf*`` — is then never caught, and a KG holding
+    only ``Facility`` rows is told flatly it has no ``Organization`` data. Same
+    fail-closed rule as ``other_graphs_hold_instances``: unproven, unsaid.
+    """
+    result = await _ask(_neptune(answer_rows=["4229"], probe_raises=True), RECALL_SPARQL)
+    assert result.coverage_caveat == ""
+    assert "4229" in result.answer, "the ANSWER itself is never withheld"
 
 
 @pytest.mark.asyncio
@@ -492,7 +512,7 @@ UNSCOPED_SPARQL = (
 
 
 @pytest.mark.asyncio
-async def test_type_unanchored_query_is_caveated_as_workspace_wide():
+async def test_type_unanchored_query_is_caveated_as_workspace_wide(union_dataset):
     """Signal A is structurally blind here: there is no type to compare."""
     result = await _ask(_neptune(answer_rows=["19582"]), UNSCOPED_SPARQL)
     assert "19582" in result.answer
@@ -506,15 +526,14 @@ async def test_type_unanchored_query_is_caveated_as_workspace_wide():
 
 
 @pytest.mark.asyncio
-async def test_unanchored_query_is_silent_when_nothing_else_holds_instances():
+async def test_unanchored_query_is_silent_when_nothing_else_holds_instances(union_dataset):
     """A workspace whose data lives entirely in one KG: the union IS that KG.
 
     Review finding 2: the ASK must cover EVERY non-KG graph in the dataset, not
     just the tenant base graph. Measured on production, the base graph holds
-    18,515 typed subjects, `kg/maral` holds 8, and the unscoped union answers
-    19,582, so roughly a thousand typed subjects live in the shared Global
-    layers. Gating on the base graph alone would leave a workspace with an empty
-    base graph silently uncaveated.
+    18,515 typed subjects, `kg/maral` holds 8, and the union answers 19,582 — so
+    ~1000 typed subjects live in the shared Global layers, and gating on the base
+    graph alone would leave an empty-base-graph workspace silently uncaveated.
     """
     client = _neptune(answer_rows=["8"], base_has_instances=False)
     result = await _ask(client, UNSCOPED_SPARQL)
@@ -532,7 +551,7 @@ async def test_unanchored_query_is_silent_when_nothing_else_holds_instances():
 
 
 @pytest.mark.asyncio
-async def test_unanchored_probe_failure_stays_silent_rather_than_guessing():
+async def test_unanchored_probe_failure_stays_silent_rather_than_guessing(union_dataset):
     """Signal B asserts other data EXISTS. Unproven means unsaid.
 
     Deliberately the opposite of `kg_data_status`'s fail-open rule: that one
@@ -547,7 +566,7 @@ async def test_unanchored_probe_failure_stays_silent_rather_than_guessing():
 
 
 @pytest.mark.asyncio
-async def test_unanchored_query_without_a_kg_name_is_silent():
+async def test_unanchored_query_without_a_kg_name_is_silent(union_dataset):
     result = await _ask(
         _neptune(answer_rows=["19582"]),
         UNSCOPED_SPARQL.replace(f"FROM <{KG_GRAPH}> ", ""),
@@ -557,7 +576,7 @@ async def test_unanchored_query_without_a_kg_name_is_silent():
 
 
 @pytest.mark.asyncio
-async def test_unanchored_signal_costs_one_ask_and_no_subtype_probe():
+async def test_unanchored_signal_costs_one_ask_and_no_subtype_probe(union_dataset):
     client = _neptune(answer_rows=["19582"])
     await _ask(client, UNSCOPED_SPARQL)
     assert len(client.ask.await_args_list) == 1
@@ -582,7 +601,7 @@ def test_unscoped_caveat_needs_a_kg_name():
 
 
 @pytest.mark.asyncio
-async def test_failed_semantic_probe_says_coverage_is_unknown():
+async def test_failed_semantic_probe_says_coverage_is_unknown(union_dataset):
     """Review finding 3. The worst possible moment for silence.
 
     When the ONTA-411 active-type probe fails, `ontology_embeddings` marks
