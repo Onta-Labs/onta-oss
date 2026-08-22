@@ -1026,8 +1026,9 @@ Investor Portfolio
 Query the KG for all companies in an investor's portfolio.
 
 Looks up FundingRound entities where lead_investor matches this investor,
-then follows company_name relationships to get Company names and sums amounts.
-f
+then follows company_name relationships to get Company names and sums
+amounts. Returns 503 rather than an empty portfolio when the graph cannot
+be read, so a zero count always means a zero count.
 
 **Request body:** `PortfolioRequest`
 
@@ -1042,8 +1043,8 @@ Invoke Investor Portfolio
 
 Invoke investor-portfolio for an Investor entity.
 
-Resolves the investor name from the entity URI, queries the KG for
-portfolio data, and materializes the results as triples.
+Resolves the investor name from the entity URI, walks the KG for portfolio
+data, and materializes the results as triples through the shared write path.
 
 **Request body:** `InvokeRequest`
 

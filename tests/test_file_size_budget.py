@@ -54,7 +54,7 @@ OVERSIZE_ALLOWLIST: dict[str, int] = {
     "infona_client/api/routes/explore_schema.py": 554,
     "infona_client/api/routes/grep.py": 649,
     "infona_client/api/routes/ingest.py": 592,
-    "infona_client/api/routes/lambda_functions.py": 709,
+    "infona_client/api/routes/lambda_functions.py": 579,
     "infona_client/api/routes/workspace_invites.py": 726,
     "infona_client/api_registry/enrichment.py": 556,
     "infona_client/api_registry/spec.py": 898,

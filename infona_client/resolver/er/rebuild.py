@@ -239,8 +239,76 @@ async def rebuild_type(
     }
 
 
+async def _store_types_in_graph(instance_graph: str) -> list[str] | None:
+    """Type URIs that carry instances in ``instance_graph``, via GraphStore.
+
+    ONTA-534: ``_types_in_graph`` asked that question over
+    the SPARQL HTTP client, which is RETIRED under the shipped Neo4j
+    GraphStore. It is the FIRST graph touch of every rebuild, it has no
+    ``try``, and ``rebuild_kg``'s handler re-raises after recording the job —
+    so ``POST …/er-rebuild`` (and the agent's find-duplicates step) 500'd on
+    production before any type was ever considered.
+
+    :func:`infona_client.graph.explore_store.type_counts` answers the same
+    question in ONE grouped read — the same signal the Explorer type rail
+    renders — so the rebuild and the rail can no longer disagree about which
+    types are populated. Counts come back as Class LEAVES, so the tenant-
+    namespace URI is re-minted through the shared ``type_uri`` builder; that is
+    the only namespace ``config_for`` can key an ER config on anyway (a
+    ``types/public/X`` instance reduced to ``public/X`` under the old SPARQL
+    arm and was skipped just the same).
+
+    ``None`` means "the store could not be consulted" (non-KG graph URI,
+    unconfigured store, store error) so the caller keeps its residual SPARQL
+    arm. An EMPTY list is a real answer — a KG with no instances has no types
+    to rebuild — but the caller still lets SPARQL supplement it, so the
+    dual-arm tests keep exercising both.
+    """
+    scope = parse_kg_graph_uri(instance_graph)
+    if scope is None:
+        # Bare tenant / provenance / test-stub graph: no instance scope to read.
+        return None
+    tenant_id, kg_name = scope
+    try:
+        from infona_client.graph.explore_store import type_counts
+        from infona_client.graph.ontology_queries import type_uri as _type_uri
+
+        rows = await type_counts(
+            store=resolve_optional_graph_store(),
+            tenant_id=tenant_id,
+            kg_name=kg_name,
+        )
+    except Exception as exc:  # noqa: BLE001 — fail soft onto the SPARQL arm
+        logger.debug(
+            "er_rebuild_store_types_failed",
+            instance_graph=instance_graph,
+            error=str(exc),
+        )
+        return None
+    out: list[str] = []
+    for row in rows or ():
+        if not row.name or row.entity_count <= 0:
+            continue
+        try:
+            out.append(_type_uri(row.name))
+        except Exception:  # noqa: BLE001 — one corrupt leaf costs THAT type only
+            continue
+    return out
+
+
 async def _types_in_graph(client, instance_graph: str) -> list[str]:
-    """Distinct rdf:type URIs present in the instance graph (infona types only)."""
+    """Distinct type URIs present in the instance graph (infona types only).
+
+    GraphStore first (:func:`_store_types_in_graph`) — that is the shipped
+    backend and the only arm that can answer at all under ONTA-534. The SPARQL
+    body below is the residual arm: still exercised by the dual-arm unit tests,
+    and still consulted as a SUPPLEMENT when the store named no types, so a
+    backend that only the SPARQL client can see is not silently dropped. Its
+    failure is swallowed once the store has already answered — a rebuild must
+    not 500 because a retired client raised on a KG the store could read.
+    """
+    from_store = await _store_types_in_graph(instance_graph)
+
     sparql = f"""
 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 SELECT DISTINCT ?t
@@ -250,9 +318,31 @@ WHERE {{
   FILTER(STRSTARTS(STR(?t), "{TYPE_URI_PREFIX}"))
 }}
 """
-    data = await client.query(sparql)
-    rows = data.get("results", {}).get("bindings", [])
-    return [r["t"]["value"] for r in rows if r.get("t")]
+    try:
+        data = await client.query(sparql)
+        rows = data.get("results", {}).get("bindings", [])
+        from_sparql = [r["t"]["value"] for r in rows if r.get("t")]
+    except Exception as exc:  # noqa: BLE001
+        if from_store is None:
+            # Neither arm could answer — the caller's own handler records the
+            # job failure and re-raises, exactly as before this port.
+            raise
+        logger.debug(
+            "er_rebuild_sparql_types_failed",
+            instance_graph=instance_graph,
+            error=str(exc),
+        )
+        return from_store
+
+    if from_store is None:
+        return from_sparql
+    merged = list(from_store)
+    seen = set(merged)
+    for uri in from_sparql:
+        if uri not in seen:
+            seen.add(uri)
+            merged.append(uri)
+    return merged
 
 
 async def rebuild_kg(client, instance_graph: str) -> dict:
