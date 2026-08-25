@@ -162,7 +162,7 @@ CLI, MCP, and HTTP share **one canonical route per operation**. Do not invent a 
 |---|---|
 | `infona use <kg>` | Save the working graph. Later `ingest` / `ask` can drop `--kg`. |
 | `infona ingest <file> --kg <kg>` | Schema once, then deterministic rows. Does **not** merge intra-file fragments. |
-| `infona er rebuild --kg <kg>` | Second-pass URI collapse + field-conflict report. **`--kg` is required** (does not read `infona use`). |
+| `infona er rebuild --kg <kg>` | Second-pass URI collapse: apply winners, report leftovers. **`--kg` is required** (does not read `infona use`). |
 | `infona ask "…" --kg <kg>` | Always-LLM Cypher with a key; cached-plan replay with none. |
 | `infona ontology types` | List types / attributes. |
 | `infona ontology resolve "…"` | Evolve the ontology from English (`--kg` is optional context; not the `use` default). |
@@ -184,7 +184,9 @@ More CLI: [packages/cli/README.md](packages/cli/README.md). HTTP: [docs/API.md](
 
 ### Optional: 3rd-party REST / SQL extract (dlt)
 
-`pip install infona-client` does **not** pull [dlt](https://dlthub.com). Install the extra on the **backend** only (`pip install 'infona-client[dlt]'`). Infona is the destination — there is no dlt warehouse sink. The CLI reads `env:VAR` locally and sends an inline token; the API never reads the server process environment.
+`pip install infona-client` does **not** pull [dlt](https://dlthub.com). Install the extra on the **backend** only (`pip install 'infona-client[dlt]'`). Infona is the destination — there is no dlt warehouse sink.
+
+There is **no** `infona ingest --dlt`. The same spec is `POST /graphs/{tenant}/ingest/dlt` (SDK `Client.ingestDlt`, MCP `ingest_dlt`). The CLI is not on that route.
 
 ```bash
 # frozen body for POST /graphs/{tenant}/ingest/dlt
@@ -200,7 +202,9 @@ cat > spec.json <<'EOF'
   "kg": "crm"
 }
 EOF
-infona ingest --dlt spec.json --kg crm
+curl -sS -X POST http://localhost:8000/graphs/default/ingest/dlt \
+  -H 'Content-Type: application/json' \
+  --data-binary @spec.json
 ```
 
 SQL is the same shape with `"kind": "sql"` and `"dsn": "env:EXAMPLE_DSN"`. Hosted Explorer Connect / Run is premium (ONTA-554) and hits this same route.
