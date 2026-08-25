@@ -9,6 +9,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { registerAgentTools } from "./mcpAgent.js";
+import { registerErRebuildTools } from "./mcpErRebuild.js";
 import { registerIngestTools } from "./mcpIngest.js";
 import { registerQueryTools } from "./mcpQuery.js";
 import { registerSchemaTools } from "./mcpSchema.js";
@@ -23,6 +24,7 @@ export {
   listLocalFilesHandler,
 } from "./mcpIngest.js";
 export { inspectGraphSchemaHandler } from "./mcpSchema.js";
+export { erRebuildHandler } from "./mcpErRebuild.js";
 
 const server = new McpServer(
   {
@@ -39,6 +41,7 @@ const server = new McpServer(
 registerQueryTools(server);
 registerIngestTools(server);
 registerSchemaTools(server);
+registerErRebuildTools(server);
 registerAgentTools(server);
 // Exported so a caller can start the SAME server without re-implementing it
 // (e.g. a test that imports this package as a library): the `isEntrypoint` guard
