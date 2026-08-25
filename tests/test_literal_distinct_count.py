@@ -70,9 +70,13 @@ def test_template_registered_and_prompt():
     assert "$limit" not in t.cypher
     s = CYPHER_GENERATION_SYSTEM.lower()
     assert "literal_distinct_count" in s
-    assert "enrollment" not in s
-    assert "nsclc" not in s
-    assert "sponsor" not in s
+    # Scope to this helper's teaching line. The rest of the prompt already
+    # mentions lead_sponsor as a generic rel-type leaf (not an eval-set list).
+    i = s.find("literal_distinct_count")
+    chunk = s[i : i + 400]
+    assert "enrollment" not in chunk
+    assert "nsclc" not in chunk
+    assert "sponsor" not in chunk
 
 
 @pytest.mark.asyncio
