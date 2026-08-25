@@ -12,7 +12,7 @@ Short answer for OSS users. The long engineering map lives in the monorepo
 | **Ask** natural language → exact graph query | Cypher on Neo4j by default |
 | **MCP + CLI + HTTP API** | Same backend routes everywhere |
 | **Search / grep** over your graph | |
-| **Clean, dedupe-at-write, conflict policy** | |
+| **Clean, URI collapse, fragment merge** | `er rebuild` merges fragment URIs. Applying field-conflict winners as the sole current graph value is not shipped. |
 | **Export** JSON / CSV | `GET …/kgs/{kg}/export` · `infona export` |
 | **Plugin seams** | Auth, enrichment adapters, fetchers — you wire them |
 | **Free / no-key data sources** | NPPES, ClinicalTrials.gov, Open Food Facts, … |

@@ -6,15 +6,13 @@
 </p>
 
 <p align="center">
-  <strong>Two sources disagree about the same entity. Infona resolves it — which source won, why, and when it was last verified.</strong>
+  <strong>Messy CSV, JSON, or text → one LLM schema pass → deterministic rows into Neo4j → ask in English (Cypher).</strong>
 </p>
 
 <p align="center">
-  ERP says Acme's headquarters is Austin. A <strong>stale</strong> directory scrape says San Francisco.
-  <strong>Reconciliation</strong> will <strong>dedupe</strong> the name variants onto one supplier, record
-  <strong>provenance</strong> (erp, 2026-03-01, source_of_truth), and keep the losing
-  <strong>citation</strong> queryable. Headquarters is a resolved <strong>conflict</strong> (Austin, reason: authority).
-  Equal-trust <code>credit_rating</code> stays flagged — not silently guessed.
+  Luna (or your configured model) sees the file once and names types, attributes, relationships.
+  Every cell maps through that schema via <code>insert_facts</code>. Then
+  <code>ask</code> compiles English to Cypher on the populated graph.
 </p>
 
 <p align="center">
@@ -33,10 +31,10 @@
 </p>
 
 <p align="center">
-  <img src="docs/readme/hero.png" alt="Two sources, one entity: Infona shows which source won, why, and when the fact was last verified — then an exact ask on the populated graph."/>
+  <img src="docs/readme/hero.png" alt="English question compiled to Cypher on Neo4j: AstraZeneca runs FLAURA2, indication NSCLC."/>
 </p>
 
-<p align="center"><em>Two sources disagree. You see the winner, the reason, and the last-verified timestamp. <code>ingest</code> → <code>ask</code> is the payoff, not the claim.</em></p>
+<p align="center"><em>Ask in English, get Cypher, get the row. <code>ingest</code> → <code>ask</code> is the payoff. The graph is the trials.csv sample.</em></p>
 
 ---
 
@@ -72,9 +70,9 @@ Advertised bound stays **10 minutes**. Measured **1 min 42 s** cold on **macOS 2
 Placeholder keys from `.env.example` (`sk-or-...`) count as **no key**.
 `INFONA_ASK_CACHED_PLAN=1` forces replay even with a key (tests). `=0` disables it.
 
-### 1. Messy suppliers — conflict first
+### 1. Messy suppliers — URI merge
 
-Entity resolution and conflict policy are step one. `examples/suppliers-messy.csv` is **synthetic** (Acme / Globex / Initech, fake tax IDs). No real customer data.
+`examples/suppliers-messy.csv` is **synthetic** (Acme / Globex / Initech, fake tax IDs). No real customer data.
 
 Schema inference needs a key (paste `OPENROUTER_API_KEY=sk-or-...` into `.env`):
 
@@ -83,7 +81,7 @@ infona ingest examples/suppliers-messy.csv --kg suppliers
 infona er rebuild --kg suppliers
 ```
 
-Ingest writes every row as its own Supplier fragment. `er rebuild` re-blocks the already-ingested graph and collapses them. A stranger should see a winner, a why, a timestamp, and one leftover conflict the system refused to guess:
+Ingest writes every row as its own Supplier fragment. `er rebuild` re-blocks the already-ingested graph and **collapses fragment URIs** (6→3). The headquarters and credit_rating lines below are an **explanatory report**: field winners are not written as the sole current graph value. Both HQ literals stay live; validity intervals are not on Neo4j yet.
 
 ```
 Rebuilding entity resolution for suppliers…
@@ -116,9 +114,9 @@ Rebuilding entity resolution for suppliers…
 Done. 3 fragments absorbed.
 ```
 
-- **merge** — three Acme name variants (and two Globex) became one entity each. The surviving URI is the signal-richest fragment; its `provenance` is the source row that won (erp, timestamp, authority).
-- **conflict / headquarters** — ERP is `source_of_truth`; the directory is a stale `supplementary` scrape. **Austin** wins on the **authority** axis. The loser stays queryable with its own provenance.
-- **unresolved / credit_rating** — ERP says `A`, CRM says `BBB`. Same authority, same timestamp. The row stays **flagged** until a reviewer decides.
+- **merge** — three Acme name variants (and two Globex) became one entity each. The surviving URI is the signal-richest fragment; its `provenance` is the source row that won (erp, timestamp, authority). That URI collapse **is** applied to the graph.
+- **conflict / headquarters** — the report names Austin as the authority-axis winner (ERP `source_of_truth` over a stale directory scrape). That line is the explanation, not a rewrite of current facts.
+- **unresolved / credit_rating** — ERP says `A`, CRM says `BBB`. Same authority, same timestamp. The report **flags** the pair instead of silently picking.
 
 Fixture notes: [`examples/suppliers-messy.md`](examples/suppliers-messy.md).
 Hermetic proof: `tests/test_suppliers_messy_fixture.py`.
@@ -229,7 +227,7 @@ Full contract: [docs/TELEMETRY.md](docs/TELEMETRY.md).
 
 ## What this is not
 
-Infona is **not** a memory or context layer that stuffs retrieved chunks into a prompt window. It is **not** an enrichment vendor — this repo registers **no** default open-web page fetcher; you bring retrieval or you skip web fetch ([docs/BOUNDARY.md](docs/BOUNDARY.md)). It is **not** RAG over a vector index, and it is **not** "chat with your CSV." Two sources, one entity, a winner, a reason, a last-verified timestamp. If that is not the problem, this is not the tool.
+Infona is **not** a memory or context layer that stuffs retrieved chunks into a prompt window. This repo registers **no** default open-web page fetcher; you bring retrieval or you skip web fetch ([docs/BOUNDARY.md](docs/BOUNDARY.md)). It is **not** RAG over a vector index, and it is **not** "chat with your CSV."
 
 ---
 
@@ -237,9 +235,8 @@ Infona is **not** a memory or context layer that stuffs retrieved chunks into a 
 
 | | |
 |---|---|
-| **Entity resolution** | `infona er rebuild` collapses fragments. Winner URI, reason, score, provenance timestamp. |
-| **Conflict policy** | Authority / freshness decide; equal-trust pairs stay flagged. Loser values stay queryable. |
-| **Provenance** | Source + timestamp + authority on the winning fact. Answers carry per-fact citations (`tests/test_answer_citations.py`). |
+| **Entity resolution** | `infona er rebuild` collapses fragment URIs (6→3 on the suppliers fixture). Winner URI, reason, score, provenance timestamp. Field-conflict lines in the report are explanatory; they do not rewrite current graph values. |
+| **Provenance** | Source + timestamp + authority on the winning fact in the report. Answers carry per-fact citations (`tests/test_answer_citations.py`). |
 | **Schema from one pass** | Luna (or your configured model) sees the file once. Types, attributes, relationships. No per-row LLM. |
 | **Deterministic rows** | Every cell maps through that schema via `insert_facts`. |
 | **A real graph** | Neo4j. Sponsors, trials, drugs, indications are nodes. |
@@ -252,7 +249,7 @@ CSV / JSON / text
   → schema inference (1 LLM call; skipped for the prebuilt snapshot)
   → deterministic row mapping
   → Neo4j knowledge graph (GraphStore / Cypher)
-  → er rebuild (merge, conflict, provenance)
+  → er rebuild (URI collapse; field-conflict report)
   → ask (cached-plan replay with no key; always-LLM Cypher with a key)
 ```
 
@@ -287,7 +284,7 @@ Same `ask`, same graph, same exact rows — as a tool result:
 
 ### What's free
 
-- **OSS (this repo):** ingest, ontology, ask, MCP / CLI / HTTP, export, free sources, BYOK registry, plugin seams, conflict policy.
+- **OSS (this repo):** ingest, ontology, ask, MCP / CLI / HTTP, export, free sources, BYOK registry, plugin seams.
 - **Bring your own retrieval:** OSS registers **no** open-web page fetcher. Enrichment that needs a URL fetch declines unless *you* register one — or you use hosted Infona.
 - **Hosted-only:** managed keys Infona bills, paid search/scrape ladders, curated Enhanced ontology, Explorer, billing.
 
@@ -301,6 +298,6 @@ Full table: **[docs/BOUNDARY.md](docs/BOUNDARY.md)**.
 
 Apache 2.0 — [LICENSE](LICENSE), [NOTICE](NOTICE).
 
-Shipped packages share one version (**0.1.20**): [`infona-client`](https://pypi.org/project/infona-client/) on PyPI and [`@infona-ai/cli`](https://www.npmjs.com/package/@infona-ai/cli) / [`@infona-ai/mcp`](https://www.npmjs.com/package/@infona-ai/mcp) on npm. Release notes: [CHANGELOG.md](CHANGELOG.md).
+Shipped packages share one lockstep version: [`infona-client`](https://pypi.org/project/infona-client/) on PyPI and [`@infona-ai/cli`](https://www.npmjs.com/package/@infona-ai/cli) / [`@infona-ai/mcp`](https://www.npmjs.com/package/@infona-ai/mcp) on npm. Release notes: [CHANGELOG.md](CHANGELOG.md).
 
 [docs/API.md](docs/API.md) · [docs/BOUNDARY.md](docs/BOUNDARY.md) · [ROADMAP.md](ROADMAP.md) · [SECURITY.md](SECURITY.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) · [CHANGELOG.md](CHANGELOG.md) · [CONTRIBUTING.md](CONTRIBUTING.md) · [CLA.md](CLA.md) · [AGENTS.md](AGENTS.md)

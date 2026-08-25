@@ -1,6 +1,8 @@
 # ONTA-287 — README 10-minute quickstart guard.
 # Mocked / zero-key on every PR (no key, no spend). Live-key ingest+ask only
 # on push-to-main and workflow_dispatch — never fork PRs, never PR secrets.
+# Job if: cannot read `secrets`. Empty OPENROUTER_API_KEY skips live steps
+# (exit 0), never fails the job.
 #
 # Every-PR job is NOT a literal `./scripts/oss_up.sh` (compose --build is a
 # cold-image tax). It uses the neo4j.yml service + host uvicorn +
@@ -136,17 +138,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Skip live ingest (no OPENROUTER_API_KEY)
+        if: env.OPENROUTER_API_KEY == ''
+        run: echo "OPENROUTER_API_KEY is empty; live ingest+ask skipped (not a failure)."
+
       - name: Set up Node
+        if: env.OPENROUTER_API_KEY != ''
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
       - name: Write .env (pinned model; live key)
+        if: env.OPENROUTER_API_KEY != ''
         run: |
-          if [ -z "${OPENROUTER_API_KEY}" ]; then
-            echo "OPENROUTER_API_KEY secret is empty" >&2
-            exit 1
-          fi
           {
             echo "INFONA_GRAPH_BACKEND=neo4j"
             echo "NEO4J_URI=bolt://localhost:7687"
@@ -160,9 +164,11 @@ jobs:
           } > .env
 
       - name: oss_up.sh (literal compose --build, fresh runner)
+        if: env.OPENROUTER_API_KEY != ''
         run: ./scripts/oss_up.sh
 
       - name: Live ingest + pinned ask → FLAURA2
+        if: env.OPENROUTER_API_KEY != ''
         run: bash scripts/ci_quickstart_smoke.sh
 
       - name: Dump compose logs on failure

@@ -7,4 +7,7 @@ the ONTA-543 `er rebuild` merge plus unresolved `credit_rating` — is guarded b
 `.github/workflows/oss-quickstart-smoke.yml`. A mocked / zero-key job runs on
 every PR (no key, no spend; cached-plan path after ONTA-544). A live-key
 ingest+ask job runs only on push-to-main and `workflow_dispatch` against a
-dedicated `OPENROUTER_API_KEY` secret, never on fork PRs.
+dedicated `OPENROUTER_API_KEY` secret, never on fork PRs. The job `if:` does
+not read `secrets` (illegal in that context). If the secret is empty, Write
+`.env` / `oss_up` / live smoke are skipped via `if: env.OPENROUTER_API_KEY != ''`
+so the job stays green.
