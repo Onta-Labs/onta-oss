@@ -40,6 +40,21 @@ class MemoryLiteralsMixin:
         except (TypeError, ValueError):
             return False
 
+    def _current_denorm_literal(
+        self,
+        tenant_id: str,
+        kg: str,
+        subject: str,
+        prop_key: str,
+        value: Any,
+    ) -> Any:
+        """Entity-cache literal with closed validity terms removed."""
+        from infona_client.graph.current_facts import drop_closed_value
+
+        return drop_closed_value(
+            value, self._closed_terms_for_prop(tenant_id, kg, subject, prop_key)
+        )
+
     def _literal_values_eq(
         self,
         tenant_id: str,
@@ -72,6 +87,10 @@ class MemoryLiteralsMixin:
                     continue
             if not self._literal_eq(a.literal_value, prop_value):
                 continue
+            if not self._value_is_current(
+                tenant_id, kg, a.subject_id, prop_key, a.literal_value
+            ):
+                continue
             if a.subject_id in seen:
                 continue
             r = self._entities.get((tenant_id, kg, a.subject_id))
@@ -97,7 +116,9 @@ class MemoryLiteralsMixin:
             r = self._entities.get((tenant_id, kg, eid))
             if r is None:
                 continue
-            actual = self._entity_prop_value(r, prop_key)
+            actual = self._current_denorm_literal(
+                tenant_id, kg, eid, prop_key, self._entity_prop_value(r, prop_key)
+            )
             if actual is None or not self._literal_eq(actual, prop_value):
                 continue
             out.append(
@@ -192,6 +213,10 @@ class MemoryLiteralsMixin:
                 prop_row = self._properties.get((tenant_id, kg, a.property_id))
                 if prop_row is None or prop_row.name != prop_key:
                     continue
+            if not self._value_is_current(
+                tenant_id, kg, a.subject_id, prop_key, a.literal_value
+            ):
+                continue
             num = self._to_float_legacy(a.literal_value)
             if num is None or not _op_ok(num):
                 continue
@@ -223,7 +248,9 @@ class MemoryLiteralsMixin:
             r = self._entities.get((tenant_id, kg, eid))
             if r is None:
                 continue
-            raw = self._entity_prop_value(r, prop_key)
+            raw = self._current_denorm_literal(
+                tenant_id, kg, eid, prop_key, self._entity_prop_value(r, prop_key)
+            )
             num = self._to_float_legacy(raw)
             if num is None or not _op_ok(num):
                 continue
@@ -343,6 +370,10 @@ class MemoryLiteralsMixin:
                 prop_row = self._properties.get((tenant_id, kg, a.property_id))
                 if prop_row is None or prop_row.name != prop_key:
                     continue
+            if not self._value_is_current(
+                tenant_id, kg, a.subject_id, prop_key, a.literal_value
+            ):
+                continue
             num = self._to_float_legacy(a.literal_value)
             if num is None:
                 continue
@@ -357,7 +388,9 @@ class MemoryLiteralsMixin:
             r = self._entities.get((tenant_id, kg, eid))
             if r is None:
                 continue
-            raw = self._entity_prop_value(r, prop_key)
+            raw = self._current_denorm_literal(
+                tenant_id, kg, eid, prop_key, self._entity_prop_value(r, prop_key)
+            )
             num = self._to_float_legacy(raw)
             if num is None:
                 continue
@@ -413,6 +446,10 @@ class MemoryLiteralsMixin:
                 prop_row = self._properties.get((tenant_id, kg, a.property_id))
                 if prop_row is None or prop_row.name != prop_key:
                     continue
+            if not self._value_is_current(
+                tenant_id, kg, a.subject_id, prop_key, a.literal_value
+            ):
+                continue
             num = self._to_float_legacy(a.literal_value)
             if num is None or a.subject_id in seen:
                 continue
@@ -428,7 +465,11 @@ class MemoryLiteralsMixin:
             r = self._entities.get((tenant_id, kg, eid))
             if r is None:
                 continue
-            num = self._to_float_legacy(self._entity_prop_value(r, prop_key))
+            num = self._to_float_legacy(
+                self._current_denorm_literal(
+                    tenant_id, kg, eid, prop_key, self._entity_prop_value(r, prop_key)
+                )
+            )
             if num is None:
                 continue
             grp = _grp_of(eid)
@@ -475,6 +516,10 @@ class MemoryLiteralsMixin:
                 prop_row = self._properties.get((tenant_id, kg, a.property_id))
                 if prop_row is None or prop_row.name != prop_key:
                     continue
+            if not self._value_is_current(
+                tenant_id, kg, a.subject_id, prop_key, a.literal_value
+            ):
+                continue
             val = _norm(a.literal_value)
             if not val or a.subject_id in per_entity:
                 continue
@@ -486,7 +531,11 @@ class MemoryLiteralsMixin:
             r = self._entities.get((tenant_id, kg, eid))
             if r is None:
                 continue
-            val = _norm(self._entity_prop_value(r, prop_key))
+            val = _norm(
+                self._current_denorm_literal(
+                    tenant_id, kg, eid, prop_key, self._entity_prop_value(r, prop_key)
+                )
+            )
             if val:
                 per_entity[eid] = val
 

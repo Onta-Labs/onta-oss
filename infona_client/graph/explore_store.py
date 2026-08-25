@@ -44,6 +44,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Mapping, Optional
 
+from infona_client.graph.current_facts import (
+    closed_literals_for_subject,
+    drop_closed_literals,
+)
 from infona_client.graph.facts import (
     RESERVED_ENTITY_PROPERTY_KEYS,
     is_internal_property_key,
@@ -280,7 +284,10 @@ def _summary_from_row(row: Mapping[str, Any]) -> EntitySummary:
     )
 
 
-def _public_properties(props: Mapping[str, Any] | None) -> dict[str, Any]:
+def _public_properties(
+    props: Mapping[str, Any] | None,
+    closed_by_leaf: Mapping[str, set[str]] | None = None,
+) -> dict[str, Any]:
     """Strip reserved / system / internal Entity keys from a properties map.
 
     Reserved keys (``id``, ``name``, ``source``, …) are structural Entity
@@ -289,7 +296,8 @@ def _public_properties(props: Mapping[str, Any] | None) -> dict[str, Any]:
     :func:`~infona_client.graph.facts.is_internal_property_key` classifies —
     the same filter the grep path uses (ONTA-535 / ONTA-527). Without it the
     Explorer entity panel and records table render ingest bookkeeping as
-    data columns.
+    data columns. Closed valid-time literals (``valid_to`` set) are dropped
+    so a superseded HQ does not appear next to the current one.
     """
     if not props:
         return {}
@@ -303,7 +311,7 @@ def _public_properties(props: Mapping[str, Any] | None) -> dict[str, Any]:
         if v is None:
             continue
         out[key] = v
-    return out
+    return drop_closed_literals(out, closed_by_leaf)
 
 
 def _rel_from_row(row: Mapping[str, Any]) -> EntityRel:
@@ -462,6 +470,7 @@ async def get_entity_detail_pg(
         else:
             outgoing.append(rel)
 
+    closed = await closed_literals_for_subject(session, eid)
     return EntityDetail(
         id=str(row.get("id") or eid),
         tenant_id=str(row.get("tenant_id") or session.scope.tenant_id),
@@ -470,7 +479,7 @@ async def get_entity_detail_pg(
         name=row.get("name"),
         source=row.get("source"),
         labels=labels,
-        properties=_public_properties(raw_props),
+        properties=_public_properties(raw_props, closed_by_leaf=closed),
         outgoing=tuple(outgoing),
         incoming=tuple(incoming),
     )
