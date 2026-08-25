@@ -146,14 +146,17 @@ class MemoryExploreMixin:
             for attr, val in candidates:
                 if pred_filter is not None and attr != pred_filter:
                     continue
-                if val is None:
+                current = self._current_denorm_literal(
+                    tenant_id, kg, eid, attr, val
+                )
+                if current is None:
                     continue
-                # Multi-value lists: any element may match (scan each).
+                # Multi-value lists: any current element may match (scan each).
                 values: list[Any]
-                if isinstance(val, (list, tuple)):
-                    values = list(val)
+                if isinstance(current, (list, tuple)):
+                    values = list(current)
                 else:
-                    values = [val]
+                    values = [current]
                 for item in values:
                     text = str(item)
                     hay = text if case_sensitive else text.lower()
@@ -191,7 +194,13 @@ class MemoryExploreMixin:
             row = self._entities.get((tenant_id, kg, eid))
             if row is None:
                 continue
-            raw = self._entity_prop_value(row, prop_key)
+            raw = self._current_denorm_literal(
+                tenant_id,
+                kg,
+                eid,
+                prop_key,
+                self._entity_prop_value(row, prop_key),
+            )
             if raw is None:
                 continue
             items: list[Any]

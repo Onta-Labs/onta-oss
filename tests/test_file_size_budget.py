@@ -64,7 +64,7 @@ OVERSIZE_ALLOWLIST: dict[str, int] = {
     "infona_client/graph/ontology_base_pin.py": 887,
     "infona_client/graph/pg_ops.py": 805,
     "infona_client/graph/queries.py": 798,
-    "infona_client/graph/schema_bootstrap.py": 840,
+    "infona_client/graph/schema_bootstrap.py": 822,
     "infona_client/graph/sparql_scope.py": 648,
     "infona_client/models/ontology.py": 960,
 

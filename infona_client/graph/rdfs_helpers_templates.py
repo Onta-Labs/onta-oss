@@ -11,6 +11,13 @@ from __future__ import annotations
 import re
 from typing import Mapping
 
+from infona_client.graph.current_facts import (
+    CURRENT_INTERVAL_KEEP_CYPHER,
+    CURRENT_INTERVAL_OPTIONAL_CYPHER,
+    current_interval_keep_cypher,
+    current_interval_scan_cypher,
+)
+
 # ---------------------------------------------------------------------------
 # Template names (ADR 0013 — NL fixtures + schema_bootstrap registry keys)
 # ---------------------------------------------------------------------------
@@ -66,7 +73,8 @@ RETURN count(DISTINCT e) AS n
 # ``lexical^^xsd-uri`` suffixes (legacy graphs), then string-compare the
 # lexical half and allow toFloat equality when both sides are numeric so
 # native store numbers still match string $prop_value from NL fixtures.
-_LITERAL_VALUES_MATCH = """
+_LITERAL_VALUES_MATCH = (
+    """
 MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
   tenant_id: $tenant_id, kg: $kg
 })
@@ -105,8 +113,14 @@ WHERE p.name = $prop_key AND (
     )
   )
 )
-WITH DISTINCT e, a
-WHERE a IS NOT NULL OR (
+"""
+    + CURRENT_INTERVAL_OPTIONAL_CYPHER
+    + """
+WITH DISTINCT e, a, v
+WHERE """
+    + CURRENT_INTERVAL_KEEP_CYPHER
+    + """ AND (
+  a IS NOT NULL OR (
   e[$prop_key] = $prop_value
   OR (
     CASE
@@ -138,7 +152,9 @@ WHERE a IS NOT NULL OR (
     )
   )
 )
-""".strip()
+)
+"""
+).strip()
 
 LITERAL_VALUES_CYPHER = (
     _LITERAL_VALUES_MATCH
@@ -157,10 +173,10 @@ RETURN count(DISTINCT e) AS n
 """
 ).strip()
 
-# Numeric / inequality compare on a datatype property. Handles both native
-# store numbers and legacy SPARQL-era ``lexical^^xsd-uri`` strings still in
-# older graphs (split off the suffix before toFloat).
-LITERAL_COMPARE_CYPHER = """
+# Shared Assertion SoT + current-interval filter for numeric/agg helpers.
+# Closed ValidityInterval rows drop out; missing interval stays current.
+_LITERAL_RAW_CURRENT = (
+    """
 MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
   tenant_id: $tenant_id, kg: $kg
 })
@@ -168,8 +184,21 @@ WHERE c.name IN $type_names OR c.id IN $type_names
 OPTIONAL MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg, subject_id: e.id})
   -[:PREDICATE]->(p:Property {tenant_id: $tenant_id, kg: $kg})
 WHERE p.name = $prop_key
-WITH e, coalesce(a.literal_value, e[$prop_key]) AS raw
+"""
+    + CURRENT_INTERVAL_OPTIONAL_CYPHER
+    + """
+WITH e, a, v, coalesce(a.literal_value, e[$prop_key]) AS raw
 WHERE raw IS NOT NULL
+  AND """
+    + CURRENT_INTERVAL_KEEP_CYPHER
+).strip()
+
+# Numeric / inequality compare on a datatype property. Handles both native
+# store numbers and legacy SPARQL-era ``lexical^^xsd-uri`` strings still in
+# older graphs (split off the suffix before toFloat).
+LITERAL_COMPARE_CYPHER = (
+    _LITERAL_RAW_CURRENT
+    + """
 WITH e, raw,
   toFloat(
     CASE
@@ -188,21 +217,15 @@ RETURN e.id AS id, e.name AS name, e.primary_type AS primary_type,
        coalesce(e.title, e.name) AS title, num AS value
 ORDER BY num, e.id
 LIMIT $limit
-""".strip()
+"""
+).strip()
 
 
 # Aggregate (sum/avg/min/max) over a datatype property — Assertion SoT + denorm.
 # $agg_op is one of sum|avg|min|max (allowlisted by the fixture, never free text).
-LITERAL_AGGREGATE_CYPHER = """
-MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
-  tenant_id: $tenant_id, kg: $kg
-})
-WHERE c.name IN $type_names OR c.id IN $type_names
-OPTIONAL MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg, subject_id: e.id})
-  -[:PREDICATE]->(p:Property {tenant_id: $tenant_id, kg: $kg})
-WHERE p.name = $prop_key
-WITH e, coalesce(a.literal_value, e[$prop_key]) AS raw
-WHERE raw IS NOT NULL
+LITERAL_AGGREGATE_CYPHER = (
+    _LITERAL_RAW_CURRENT
+    + """
 WITH e, toFloat(
   CASE
     WHEN toString(raw) CONTAINS '^^' THEN split(toString(raw), '^^')[0]
@@ -218,20 +241,16 @@ RETURN CASE
   WHEN $agg_op = 'max' THEN max(num)
   ELSE null
 END AS value
-""".strip()
+"""
+).strip()
 
 # Group by a datatype leaf, SUM a measure, return the dim with the max sum.
 # No equality filter in this helper (constrain first, or free-form).
-LITERAL_ARGMAX_BY_DIM_CYPHER = """
-MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
-  tenant_id: $tenant_id, kg: $kg
-})
-WHERE c.name IN $type_names OR c.id IN $type_names
-OPTIONAL MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg, subject_id: e.id})
-  -[:PREDICATE]->(p:Property {tenant_id: $tenant_id, kg: $kg})
-WHERE p.name = $prop_key
-WITH e, coalesce(a.literal_value, e[$prop_key]) AS raw
-WHERE raw IS NOT NULL
+# Group key uses the same current-interval filter as the measure (closed HQ
+# must not remain a dim bucket after Austin beats SF).
+LITERAL_ARGMAX_BY_DIM_CYPHER = (
+    _LITERAL_RAW_CURRENT
+    + """
 WITH e, toFloat(
   CASE
     WHEN toString(raw) CONTAINS '^^' THEN split(toString(raw), '^^')[0]
@@ -240,24 +259,27 @@ WITH e, toFloat(
 ) AS num
 WHERE num IS NOT NULL
 WITH e, max(num) AS num
-WITH coalesce(toString(e[$group_key]), '') AS grp, sum(num) AS total
+"""
+    + current_interval_scan_cypher(
+        leaf="$group_key", value="e[$group_key]", alias="gv"
+    )
+    + """
+WITH e, num, e[$group_key] AS grp_raw, gv
+WHERE """
+    + current_interval_keep_cypher("gv")
+    + """
+WITH coalesce(toString(grp_raw), '') AS grp, sum(num) AS total
 WHERE grp <> ''
 RETURN grp AS name, total AS value
 ORDER BY total DESC, grp ASC
 LIMIT 1
-""".strip()
+"""
+).strip()
 
 # Distinct non-empty values of a datatype leaf (not DISTINCT entities).
-LITERAL_DISTINCT_COUNT_CYPHER = """
-MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
-  tenant_id: $tenant_id, kg: $kg
-})
-WHERE c.name IN $type_names OR c.id IN $type_names
-OPTIONAL MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg, subject_id: e.id})
-  -[:PREDICATE]->(p:Property {tenant_id: $tenant_id, kg: $kg})
-WHERE p.name = $prop_key
-WITH e, coalesce(a.literal_value, e[$prop_key]) AS raw
-WHERE raw IS NOT NULL
+LITERAL_DISTINCT_COUNT_CYPHER = (
+    _LITERAL_RAW_CURRENT
+    + """
 WITH e, CASE
   WHEN toString(raw) CONTAINS '^^' THEN split(toString(raw), '^^')[0]
   ELSE toString(raw)
@@ -265,7 +287,8 @@ END AS val
 WHERE val <> ''
 WITH e, max(val) AS val
 RETURN count(DISTINCT val) AS n
-""".strip()
+"""
+).strip()
 
 # Filter subjects of a type by a related entity's display name / name
 # (e.g. Book --HAS_GENRE--> Genre{display_name: "Classic Fiction"}).

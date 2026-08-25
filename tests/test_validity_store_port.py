@@ -246,6 +246,7 @@ def test_memory_and_neo4j_sessions_expose_the_same_native_surface():
         "write_validity_interval",
         "read_validity_intervals",
         "reopen_validity_interval",
+        "rewrite_validity_subject",
     ):
         assert callable(getattr(MemoryGraphSession, name, None)), name
         assert callable(getattr(Neo4jValidityMixin, name, None)), name
