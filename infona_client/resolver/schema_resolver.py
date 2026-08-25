@@ -42,6 +42,7 @@ from infona_client.graph.ontology_queries import (
 )
 from infona_client.graph.store import resolve_optional_graph_store
 from infona_client.models.ontology import OntologyMutation, OntologyOpKind  # noqa: F401
+from infona_client.resolver.batch_rollback import rollback_ingest_batch  # noqa: F401
 from infona_client.resolver.llm_router import (  # noqa: F401
     EXTRACT_MODEL_DEFAULT,
     PRIMARY_MODEL,
