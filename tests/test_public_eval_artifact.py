@@ -51,6 +51,7 @@ def test_artifact_schema_and_status():
     assert "eval_judge" in data["models"] or "question_gen" in data["models"]
     assert "run_public_eval.py" in data["repro"]["command"]
     assert "infona ingest" in data["repro"]["ingest"]
+    assert data.get("num_questions") == 8, "historical artifact must stay n=8"
 
 
 def test_tiers_have_names_and_miss_column():
@@ -97,6 +98,13 @@ def test_eval_md_has_table_and_stranger_command():
     assert text.count("| Filter |") >= 1
     assert text.count("| Join |") >= 1
     assert text.count("| Multi-hop |") >= 1
+    assert "historical pin" in text.lower()
+    assert "2026-08-19" in text
+    assert "Public pin going forward" in text
+    assert "--questions 32" in text
+    assert "--questions 8" in text
+    assert "public_results_n32.json" in text
+    assert "A live n=32 run is **not** in this tree" in text
 
 
 def test_fragment_has_full_eval_table():
@@ -110,15 +118,23 @@ def test_fragment_has_full_eval_table():
     assert "| Multi-hop |" in text
     assert "**6 / 8**" in text
     assert "8 / 8" not in text
+    assert "historical pin" in text.lower()
+    assert "--questions 32" in text
 
 
 def test_readme_points_at_eval_md_not_the_table():
-    """Homepage leads ingest → FLAURA2; the 6/8 table lives in EVAL.md."""
+    """Homepage leads ingest → FLAURA2; score tables live in EVAL.md.
+
+    README must not headline a fraction over 8 questions.
+    """
     text = README.read_text()
     assert README.is_file()
     assert "docs/EVAL.md" in text
     assert "FLAURA2" in text
-    assert "6 / 8" in text
+    assert "always-LLM Cypher" in text
+    assert "historical" in text.lower()
+    assert "6 / 8" not in text
+    assert "6/8" not in text
     assert "8 / 8" not in text
     assert "| Count/Lookup |" not in text
     assert "| Multi-hop |" not in text
@@ -134,3 +150,7 @@ def test_wrapper_is_thin_and_not_an_infona_eval_cli():
     assert "OPENROUTER_API_KEY" in text
     assert 'DEFAULT_EVAL_MODEL = "deepseek/deepseek-v4-pro-0813"' in text
     assert "cache_questions" in text
+    assert "DEFAULT_QUESTIONS = 32" in text
+    assert "--questions 8" in text
+    assert "public_results.json" in text
+    assert "public_results_n32.json" in text

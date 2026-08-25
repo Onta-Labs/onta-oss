@@ -236,7 +236,7 @@ Same `ask`, same graph, same exact rows — as a tool result. Same HTTP routes t
 
 ## Eval
 
-Published pin: **6 / 8** (75%) on 16 synthetic oncology rows — two misses stay visible. That is the pin, not a footnote. The homepage loop is ingest → **FLAURA2**. Full table, misses, and repro: [docs/EVAL.md](docs/EVAL.md). Backing JSON: [docs/eval/public_results.json](docs/eval/public_results.json). Eval is Python-only; there is no `infona eval` CLI.
+Query accuracy is a live always-LLM Cypher pin; the small-n 8-question run is historical. Protocol, dated table, and repro: [docs/EVAL.md](docs/EVAL.md). Eval is Python-only; there is no `infona eval` CLI.
 
 ---
 

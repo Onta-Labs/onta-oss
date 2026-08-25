@@ -12,8 +12,10 @@ Prereqs: ``./scripts/oss_up.sh``, an ingested KG, ``OPENROUTER_API_KEY``,
     export INFONA_QUERY_MODEL=openai/gpt-oss-120b
     export INFONA_EVAL_MODEL=deepseek/deepseek-v4-pro-0813
     python scripts/run_public_eval.py \\
-        --dataset examples/trials.csv --kg eval-public-trials --questions 8 \\
-        --out docs/eval/public_results.json
+        --dataset examples/trials.csv --kg eval-public-trials
+
+Default ``--questions`` is 32 (writes ``docs/eval/public_results_n32.json``).
+Historical n=8: ``--questions 8 --out docs/eval/public_results.json``.
 
 Your own CSV: same command, swap ``--dataset`` and ``--kg``.
 """
@@ -29,7 +31,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATASET = ROOT / "examples" / "trials.csv"
-DEFAULT_OUT = ROOT / "docs" / "eval" / "public_results.json"
+DEFAULT_QUESTIONS = 32
+DEFAULT_OUT = ROOT / "docs" / "eval" / "public_results_n32.json"
 DEFAULT_QUERY_MODEL = "openai/gpt-oss-120b"
 DEFAULT_EVAL_MODEL = "deepseek/deepseek-v4-pro-0813"
 DEFAULT_KG = "eval-public-trials"
@@ -141,7 +144,7 @@ def _parse() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
     p.add_argument("--kg", default=DEFAULT_KG)
-    p.add_argument("--questions", type=int, default=8)
+    p.add_argument("--questions", type=int, default=DEFAULT_QUESTIONS)
     p.add_argument("--out", type=Path, default=DEFAULT_OUT)
     p.add_argument("--api-url", default=os.environ.get("INFONA_API_URL", "http://localhost:8000"))
     p.add_argument("--api-key", default=os.environ.get("INFONA_API_KEY", "dev-key-001"))
