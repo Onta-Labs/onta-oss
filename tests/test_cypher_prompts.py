@@ -108,7 +108,8 @@ def test_build_cypher_user_prompt_includes_conversation_only_when_given():
     )
     assert "Ada Example" in with_hist
     assert "what did we talk about?" in with_hist
-    assert "ignore prior" in with_hist.lower()
+    assert "follow-up" in with_hist.lower()
+    assert "do not switch" in with_hist.lower()
 
 
 def test_build_cypher_user_prompt_retry_forbids_sparql_fallback():
