@@ -246,8 +246,8 @@ async def get_type_records(
     contain — is a different thing from a type with no rows, and is a 422
     (ONTA-425). The sentinel keeps covering every name that is merely absent.
 
-    **Dual-backend (E9):** when ``INFONA_GRAPH_BACKEND=neo4j``, reads via
-    :mod:`infona_client.graph.explore_store`. Default Neptune path unchanged.
+    **GraphStore / Neo4j:** reads via :mod:`infona_client.graph.explore_store`.
+    Residual SPARQL/Neptune is retired (hermetic tests / QC), not the product path.
     """
     require_valid_type_name(type_name)
     _EMPTY = {"columns": ["name"], "rows": [], "total": 0, "next_cursor": None}

@@ -41,10 +41,10 @@ async def get_entity_detail_route(
 ):
     """Entity detail (properties + incident relationships).
 
-    **Dual-backend (E9):** under ``INFONA_GRAPH_BACKEND=neo4j`` (or an injected
-    GraphStore) uses :func:`infona_client.graph.explore_store.get_entity_detail`.
-    On the default Neptune path, assembles the same shape via SPARQL point
-    lookups on the KG graph.
+    **GraphStore / Neo4j:** reads via
+    :func:`infona_client.graph.explore_store.get_entity_detail`. Retired
+    SPARQL/Neptune point lookups are residual (hermetic tests / QC), not
+    the product path.
     """
     from fastapi import HTTPException
 

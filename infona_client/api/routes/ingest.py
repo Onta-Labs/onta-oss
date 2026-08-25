@@ -76,7 +76,7 @@ async def ingest(
     """Ingest raw content into the knowledge graph.
 
     Runs LLM extraction, schema resolution (type matching, attribute
-    resolution, validation), and inserts validated triples into Neptune.
+    resolution, validation), and writes facts to the Neo4j GraphStore.
 
     ONTA-386: opens a tracked ``category=ingest`` job with live stage_trace
     (P0/P2/P5/P6; file is A1-like entry so P1 is skipped). Writes still go
