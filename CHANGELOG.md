@@ -41,8 +41,10 @@ want the tag series to catch up.
   Release after a successful npm + PyPI bump (notes point at this
   file). `v0.1.17`–`v0.1.42` are not backfilled.
 - README and launch-surface docs: the product loop is schema → Neo4j →
-  ask. `er rebuild` URI merge is applied; field-conflict lines are an
-  explanatory report.
+  ask. `er rebuild` URI merge is applied. Authority-axis field winners
+  are the current graph value (Austin HQ; San Francisco stored/closed);
+  equal-trust `credit_rating` stays dual-current and flagged. Homepage
+  eval table demoted to a pointer at `docs/EVAL.md` (pin remains 6/8).
 - Live OSS quickstart steps skip when `OPENROUTER_API_KEY` is empty
   (job `if:` cannot read `secrets`; empty key is not a failure).
 

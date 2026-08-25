@@ -81,7 +81,7 @@ infona ingest examples/suppliers-messy.csv --kg suppliers
 infona er rebuild --kg suppliers
 ```
 
-Ingest writes every row as its own Supplier fragment. `er rebuild` re-blocks the already-ingested graph and **collapses fragment URIs** (6→3). The headquarters and credit_rating lines below are an **explanatory report**: field winners are not written as the sole current graph value. Both HQ literals stay live; validity intervals are not on Neo4j yet.
+Ingest writes every row as its own Supplier fragment. `er rebuild` re-blocks the already-ingested graph and **collapses fragment URIs** (6→3). Headquarters and credit_rating then land as graph state: **Austin is the current HQ** (San Francisco stays stored, closed); equal-trust `credit_rating` stays dual-current and flagged.
 
 ```
 Rebuilding entity resolution for suppliers…
@@ -115,8 +115,8 @@ Done. 3 fragments absorbed.
 ```
 
 - **merge** — three Acme name variants (and two Globex) became one entity each. The surviving URI is the signal-richest fragment; its `provenance` is the source row that won (erp, timestamp, authority). That URI collapse **is** applied to the graph.
-- **conflict / headquarters** — the report names Austin as the authority-axis winner (ERP `source_of_truth` over a stale directory scrape). That line is the explanation, not a rewrite of current facts.
-- **unresolved / credit_rating** — ERP says `A`, CRM says `BBB`. Same authority, same timestamp. The report **flags** the pair instead of silently picking.
+- **conflict / headquarters** — the report names Austin as the authority-axis winner (ERP `source_of_truth` over a stale directory scrape). Austin is current; San Francisco stays stored and closed.
+- **unresolved / credit_rating** — ERP says `A`, CRM says `BBB`. Same authority, same timestamp. The report **flags** the pair instead of silently picking; both stay dual-current.
 
 Fixture notes: [`examples/suppliers-messy.md`](examples/suppliers-messy.md).
 Hermetic proof: `tests/test_suppliers_messy_fixture.py`.
@@ -173,27 +173,9 @@ SQL is the same shape with `"kind": "sql"` and `"dsn": "env:EXAMPLE_DSN"`. Hoste
 
 ---
 
-## Eval — 6 / 8 (75%), misses stay visible
+## Eval
 
-Published pin: **6 / 8** (75%) on [`examples/trials.csv`](examples/trials.csv) (16 synthetic oncology rows).
-Query model `openai/gpt-oss-120b`, judge `deepseek/deepseek-v4-pro-0813` (reasoning, effort high). `/ask` is always-LLM Cypher — these scores are not golden-string shortcuts. Same eight questions as the prior 2/8 pin. Two misses stay visible.
-
-Eval is Python-only. There is no `infona eval` CLI.
-
-```bash
-infona ingest examples/trials.csv --kg eval-public-trials -y
-python scripts/run_public_eval.py --dataset examples/trials.csv --kg eval-public-trials --questions 8
-```
-
-| Tier | Skill | Passed | Asked | Accuracy | Visible misses |
-|------|-------|--------|-------|----------|----------------|
-| 1 | Count/Lookup | 2 | 2 | 100% | |
-| 2 | Filter | 1 | 2 | 50% | Start-year ≥ 2019 returned rows, not a count |
-| 3 | Join | 2 | 2 | 100% | |
-| 4 | Multi-hop | 1 | 2 | 50% | NSCLC Phase-3 average used a missing `average_enrollment` column |
-| **All** | | **6** | **8** | **75%** | |
-
-Full write-up: [docs/EVAL.md](docs/EVAL.md). Backing JSON: [docs/eval/public_results.json](docs/eval/public_results.json).
+Published pin: **6 / 8** (75%) on 16 synthetic oncology rows — two misses stay visible. That is the pin, not a footnote. The homepage loop is ingest → **FLAURA2**. Full table, misses, and repro: [docs/EVAL.md](docs/EVAL.md). Backing JSON: [docs/eval/public_results.json](docs/eval/public_results.json). Eval is Python-only; there is no `infona eval` CLI.
 
 ---
 
@@ -235,7 +217,7 @@ Infona is **not** a memory or context layer that stuffs retrieved chunks into a 
 
 | | |
 |---|---|
-| **Entity resolution** | `infona er rebuild` collapses fragment URIs (6→3 on the suppliers fixture). Winner URI, reason, score, provenance timestamp. Field-conflict lines in the report are explanatory; they do not rewrite current graph values. |
+| **Entity resolution** | `infona er rebuild` collapses fragment URIs (6→3 on the suppliers fixture). Winner URI, reason, score, provenance timestamp. Authority-axis winners become the current graph value (Austin HQ; SF stored/closed). Equal-trust `credit_rating` stays dual-current and flagged. |
 | **Provenance** | Source + timestamp + authority on the winning fact in the report. Answers carry per-fact citations (`tests/test_answer_citations.py`). |
 | **Schema from one pass** | Luna (or your configured model) sees the file once. Types, attributes, relationships. No per-row LLM. |
 | **Deterministic rows** | Every cell maps through that schema via `insert_facts`. |
@@ -249,7 +231,7 @@ CSV / JSON / text
   → schema inference (1 LLM call; skipped for the prebuilt snapshot)
   → deterministic row mapping
   → Neo4j knowledge graph (GraphStore / Cypher)
-  → er rebuild (URI collapse; field-conflict report)
+  → er rebuild (URI collapse; field winners applied; equal-trust flagged)
   → ask (cached-plan replay with no key; always-LLM Cypher with a key)
 ```
 
