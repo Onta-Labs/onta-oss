@@ -1,6 +1,7 @@
 # ONTA-287 — README 10-minute quickstart guard.
 # Mocked / zero-key on every PR (no key, no spend). Live-key ingest+ask only
 # on push-to-main and workflow_dispatch — never fork PRs, never PR secrets.
+# Skip the live job when OPENROUTER_API_KEY is empty so main is not red.
 #
 # Every-PR job is NOT a literal `./scripts/oss_up.sh` (compose --build is a
 # cold-image tax). It uses the neo4j.yml service + host uvicorn +
@@ -117,7 +118,7 @@ jobs:
 
   live:
     name: Live-key (main / dispatch)
-    if: github.repository == 'infona-ai/infona-oss' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+    if: github.repository == 'infona-ai/infona-oss' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && secrets.OPENROUTER_API_KEY != ''
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:

@@ -1,7 +1,8 @@
 # Quickstart — ER first (ONTA-543)
 
 The clean `trials.csv` loop shows schema → graph → ask. This is the
-**third command**: a messy table whose *point* is a merge conflict.
+**third command**: a messy table whose *point* is URI merge, plus a
+field-conflict report.
 
 `examples/suppliers-messy.csv` is **synthetic** (Acme / Globex / Initech,
 fake tax IDs). No real customer data, no spider-bench leakage.
@@ -13,10 +14,12 @@ infona er rebuild --kg suppliers
 
 Ingest writes every row as its own Supplier fragment (intra-batch ER
 cannot see siblings yet). `er rebuild` re-blocks the already-ingested
-graph and collapses the fragments.
+graph and collapses the fragments (6→3). Headquarters and credit_rating
+lines are an **explanatory report** — field winners are not written as
+the sole current graph value.
 
-A stranger should see something in this shape — a winner, a why, a
-timestamp, and one leftover conflict the system refused to guess:
+A stranger should see something in this shape — URI merge, a winner, a
+why, a timestamp, and one leftover conflict the system refused to guess:
 
 ```
 Rebuilding entity resolution for suppliers…
@@ -54,13 +57,16 @@ Done. 3 fragments absorbed.
 - **merge** — three Acme name variants (and two Globex) became one
   entity each. The surviving URI is the signal-richest fragment; its
   `provenance` is the source row that won (erp, timestamp, authority).
+  That URI collapse **is** applied to the graph.
 - **conflict / headquarters** — two sources disagreed on one field.
   ERP is `source_of_truth`, the directory is a stale `supplementary`
-  scrape. **Austin** wins on the **authority** axis. The loser stays
-  queryable with its own provenance.
+  scrape. The report names **Austin** as winner on the **authority**
+  axis. That line is explanatory: field winners are not written as the
+  sole current graph value. Both HQ literals stay live (validity
+  intervals are not on Neo4j yet).
 - **unresolved / credit_rating** — ERP says `A`, CRM says `BBB`.
   Same authority, same timestamp; a lexical pick would be a silent
-  guess. The row stays **flagged** until a reviewer decides.
+  guess. The report **flags** that pair until a reviewer decides.
 
 Full fixture notes: [`examples/suppliers-messy.md`](../../examples/suppliers-messy.md).
 The hermetic proof is `tests/test_suppliers_messy_fixture.py`.
