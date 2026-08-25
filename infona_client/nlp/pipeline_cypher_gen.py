@@ -252,7 +252,7 @@ class PipelineCypherGenMixin:
 
     async def _generate_cypher_via_anthropic(self, prompt: str) -> dict:
         msg = await self.anthropic.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=2048,
             system=CYPHER_GENERATION_SYSTEM,
             messages=[{"role": "user", "content": prompt}],
@@ -276,6 +276,6 @@ class PipelineCypherGenMixin:
         return attach_usage(
             parsed,
             usage=usage,
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             provider="anthropic",
         )
