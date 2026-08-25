@@ -181,6 +181,16 @@ async def ontology_from_graph_store(
             force_include=force_set or None,
             preface=True,
         )
+        try:
+            from infona_client.nlp.populated_leaf_plan import (
+                format_leaf_grounding_notes,
+            )
+
+            extra = format_leaf_grounding_notes(planning)
+            if extra:
+                text = f"{text}\n{extra}"
+        except Exception:
+            pass
         names = [t.name for t in planning]
         return text, names
     except Exception:
