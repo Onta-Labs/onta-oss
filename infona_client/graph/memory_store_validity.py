@@ -67,6 +67,33 @@ class MemoryValidityMixin:
         out.sort(key=lambda d: str(d.get("interval_id") or ""))
         return out
 
+    def _closed_terms_for_prop(
+        self, tenant_id: str, kg: str, subject: str, prop_key: str
+    ) -> set[str]:
+        """Closed object term-keys for ``(subject, prop_key)`` in this scope."""
+        from infona_client.graph.current_facts import closed_terms_for_prop
+
+        return closed_terms_for_prop(
+            self._list_validity(tenant_id, kg, subject=subject),
+            prop_key,
+        )
+
+    def _value_is_current(
+        self,
+        tenant_id: str,
+        kg: str,
+        subject: str,
+        prop_key: str,
+        value: Any,
+    ) -> bool:
+        """True when ``value`` has no closed interval (legacy / open)."""
+        from infona_client.graph.current_facts import drop_closed_value
+
+        if value is None:
+            return False
+        closed = self._closed_terms_for_prop(tenant_id, kg, subject, prop_key)
+        return drop_closed_value(value, closed) is not None
+
     def _reopen_validity(
         self,
         tenant_id: str,
