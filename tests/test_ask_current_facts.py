@@ -13,6 +13,8 @@ from infona_client.api_registry.spec import AuthorityLevel
 from infona_client.graph.current_facts import (
     CURRENT_INTERVAL_KEEP_CYPHER,
     CURRENT_INTERVAL_OPTIONAL_CYPHER,
+    ENTITY_TYPE_PROP_DISTINCT_CYPHER,
+    current_interval_scan_cypher,
 )
 from infona_client.graph.explore_store import get_entity_detail
 from infona_client.graph.kg_writer import insert_facts
@@ -27,6 +29,7 @@ from infona_client.graph.rdfs_helpers_templates import (
     LITERAL_VALUES_COUNT_CYPHER,
     LITERAL_VALUES_CYPHER,
 )
+from infona_client.graph.schema_bootstrap import ENTITY_LITERAL_GREP_CYPHER
 from infona_client.graph.scope import GraphScope
 from infona_client.graph.store import get_graph_store
 from infona_client.pipeline.conflict import FactClaim
@@ -40,6 +43,7 @@ RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 TYPE_URI = "https://graph.infona.ai/types/Widget"
 HQ = attr_uri(TYPE, "headquarters")
 SKU = attr_uri(TYPE, "sku")
+QTY = attr_uri(TYPE, "unit_qty")
 AUSTIN, SF = "Austin", "San Francisco"
 AT = datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc)
 
@@ -122,6 +126,19 @@ def test_literal_templates_optional_match_validity_interval():
         assert CURRENT_INTERVAL_OPTIONAL_CYPHER in body
         assert CURRENT_INTERVAL_KEEP_CYPHER in body
         assert "valid_to IS NULL" in body
+    # Denorm fallback: closed scalar on e[$prop_key] when Assertion is null.
+    assert "coalesce(a.literal_value, e[$prop_key])" in CURRENT_INTERVAL_OPTIONAL_CYPHER
+    assert "$prop_key" in CURRENT_INTERVAL_OPTIONAL_CYPHER
+    assert "ValidityInterval" in ENTITY_LITERAL_GREP_CYPHER
+    assert CURRENT_INTERVAL_KEEP_CYPHER in ENTITY_LITERAL_GREP_CYPHER
+    assert "WITH e, prop_key, val, v" in ENTITY_LITERAL_GREP_CYPHER
+    assert "ValidityInterval" in ENTITY_TYPE_PROP_DISTINCT_CYPHER
+    assert CURRENT_INTERVAL_KEEP_CYPHER in ENTITY_TYPE_PROP_DISTINCT_CYPHER
+    grp = current_interval_scan_cypher(
+        leaf="$group_key", value="e[$group_key]", alias="gv"
+    )
+    assert grp in LITERAL_ARGMAX_BY_DIM_CYPHER
+    assert "WITH e, num, e[$group_key] AS grp_raw, gv" in LITERAL_ARGMAX_BY_DIM_CYPHER
 
 
 def test_conflict_winner_literal_template_hides_closed_sf():
@@ -167,6 +184,70 @@ def test_explore_properties_drop_closed_hq():
         assert _hq_values(detail.properties) == {AUSTIN}
         assert SF not in _hq_values(detail.properties)
         assert _lits(ENTITY, HQ) >= {AUSTIN, SF}
+
+    _run(run())
+
+
+def test_explore_grep_hides_closed_hq():
+    async def run():
+        await _seed_austin_beats_sf()
+        store = get_graph_store()
+        session = store.session(GraphScope.for_instance(TENANT, KG))
+
+        async def grep(needle: str) -> list:
+            return await session.execute_template(
+                "entity_literal_grep",
+                {
+                    "needle": needle,
+                    "case_sensitive": False,
+                    "type_name": TYPE,
+                    "predicate_leaf": "headquarters",
+                    "limit": 25,
+                },
+            )
+
+        austin = await grep(AUSTIN)
+        sf = await grep(SF)
+        assert {r.get("entity_uri") for r in austin} == {ENTITY}
+        assert {r.get("value") for r in austin} == {AUSTIN}
+        assert sf == []
+        assert _lits(ENTITY, HQ) >= {AUSTIN, SF}
+
+    _run(run())
+
+
+def test_dim_distinct_hides_closed_hq():
+    async def run():
+        await _seed_austin_beats_sf()
+        store = get_graph_store()
+        session = store.session(GraphScope.for_instance(TENANT, KG))
+        rows = await session.execute_template(
+            "entity_type_prop_distinct",
+            {"primary_type": TYPE, "prop_key": "headquarters", "limit": 25},
+        )
+        assert {r.get("value") for r in rows} == {AUSTIN}
+        assert _lits(ENTITY, HQ) >= {AUSTIN, SF}
+
+    _run(run())
+
+
+def test_argmax_group_key_hides_closed_hq():
+    async def run():
+        await _seed_austin_beats_sf()
+        await insert_facts(None, GRAPH, [(ENTITY, QTY, 10)])
+        store = get_graph_store()
+        session = store.session(GraphScope.for_instance(TENANT, KG))
+        rows = await session.execute_template(
+            "literal_argmax_by_dim",
+            {
+                "type_names": [TYPE],
+                "group_key": "headquarters",
+                "prop_key": "unit_qty",
+            },
+        )
+        assert len(rows) == 1
+        assert rows[0].get("name") == AUSTIN
+        assert SF not in {r.get("name") for r in rows}
 
     _run(run())
 

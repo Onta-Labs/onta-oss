@@ -16,20 +16,108 @@ from typing import Any, Iterable, Mapping
 # object_repr. Predicate is the RDF attr URI on the interval, while Property.id
 # is ``property_uri(leaf)`` — match exact or shared leaf. ``valid_to`` absent
 # or empty → current (Neo4j null, MemoryGraphStore "").
+# Bind object to Assertion SoT or Entity denorm: when ``a`` is null, a closed
+# scalar still sitting on ``e[$prop_key]`` must match the interval (Memory
+# already uses ``_current_denorm_literal``). ``p`` is also null then, so the
+# leaf also compares to ``$prop_key``.
 CURRENT_INTERVAL_OPTIONAL_CYPHER = """
 OPTIONAL MATCH (v:ValidityInterval {
   tenant_id: $tenant_id, kg: $kg, subject: e.id
 })
-WHERE (v.predicate = p.id OR last(split(v.predicate, '/')) = p.name)
+WHERE (
+    v.predicate = p.id
+    OR last(split(v.predicate, '/')) = p.name
+    OR last(split(v.predicate, '/')) = $prop_key
+  )
   AND (
-    v.object_repr = toString(a.literal_value)
-    OR split(toString(v.object_repr), '^^')[0] = toString(a.literal_value)
+    v.object_repr = toString(coalesce(a.literal_value, e[$prop_key]))
+    OR split(toString(v.object_repr), '^^')[0]
+      = toString(coalesce(a.literal_value, e[$prop_key]))
   )
 """.strip()
 
 CURRENT_INTERVAL_KEEP_CYPHER = (
     "(v IS NULL OR v.valid_to IS NULL OR v.valid_to = '')"
 )
+
+
+def current_interval_keep_cypher(alias: str = "v") -> str:
+    """``CURRENT_INTERVAL_KEEP_CYPHER`` for a non-``v`` OPTIONAL MATCH alias."""
+    return (
+        f"({alias} IS NULL OR {alias}.valid_to IS NULL OR {alias}.valid_to = '')"
+    )
+
+
+def current_interval_scan_cypher(
+    *,
+    leaf: str,
+    value: str = "val",
+    alias: str = "v",
+) -> str:
+    """OPTIONAL MATCH a ValidityInterval for one denorm leaf/value.
+
+    ``leaf`` / ``value`` are Cypher expressions (``prop_key``, ``$prop_key``,
+    ``e[$group_key]``). Last-segment predicate match lines RDF attr URIs up
+    with Entity property keys. No Assertion ``a`` / Property ``p``.
+    """
+    return f"""
+OPTIONAL MATCH ({alias}:ValidityInterval {{
+  tenant_id: $tenant_id, kg: $kg, subject: e.id
+}})
+WHERE last(split({alias}.predicate, '/')) = {leaf}
+  AND (
+    {alias}.object_repr = toString({value})
+    OR split(toString({alias}.object_repr), '^^')[0] = toString({value})
+  )
+""".strip()
+
+
+def build_entity_literal_grep_cypher(excluded_key_list: str, er_prefix: str) -> str:
+    """Index-free Entity property substring scan; closed valid-time terms drop."""
+    return f"""
+MATCH (e:Entity {{tenant_id: $tenant_id, kg: $kg}})
+WHERE ($type_name IS NULL OR e.primary_type = $type_name OR EXISTS {{
+  MATCH (e)-[:INSTANCE_OF]->(c:Class {{tenant_id: $tenant_id, kg: $kg}})
+  WHERE c.name = $type_name OR c.id = $type_name
+}})
+WITH e, [k IN keys(e) WHERE NOT k IN [
+  {excluded_key_list}
+] AND NOT k STARTS WITH '{er_prefix}'] AS prop_keys
+UNWIND prop_keys AS prop_key
+WITH e, prop_key, e[prop_key] AS val
+{current_interval_scan_cypher(leaf="prop_key")}
+WITH e, prop_key, val, v
+WHERE val IS NOT NULL
+  AND {CURRENT_INTERVAL_KEEP_CYPHER}
+  AND ($predicate_leaf IS NULL OR prop_key = $predicate_leaf)
+  AND (
+    ($case_sensitive = true AND toString(val) CONTAINS $needle)
+    OR ($case_sensitive = false AND toLower(toString(val)) CONTAINS toLower($needle))
+  )
+RETURN e.id AS entity_uri, e.name AS label, e.primary_type AS type,
+       prop_key AS attr, toString(val) AS value
+ORDER BY e.id, prop_key
+LIMIT $limit
+""".strip()
+
+
+# Distinct literal values for one type+prop (dim registry). Closed terms drop
+# before DISTINCT so a superseded HQ cannot remain a dim value.
+ENTITY_TYPE_PROP_DISTINCT_CYPHER = f"""
+MATCH (e:Entity {{tenant_id: $tenant_id, kg: $kg}})-[:INSTANCE_OF]->(c:Class {{
+  tenant_id: $tenant_id, kg: $kg
+}})
+WHERE c.name = $primary_type OR c.id = $primary_type
+WITH e, e[$prop_key] AS val
+WHERE val IS NOT NULL
+{current_interval_scan_cypher(leaf="$prop_key")}
+WITH val, v
+WHERE {CURRENT_INTERVAL_KEEP_CYPHER}
+WITH DISTINCT toString(val) AS value
+RETURN value
+ORDER BY value ASC
+LIMIT $limit
+""".strip()
 
 
 def term_key(term: Any) -> str:
@@ -159,9 +247,13 @@ async def closed_literals_for_subject(session: Any, subject: str) -> dict[str, s
 __all__ = [
     "CURRENT_INTERVAL_KEEP_CYPHER",
     "CURRENT_INTERVAL_OPTIONAL_CYPHER",
+    "ENTITY_TYPE_PROP_DISTINCT_CYPHER",
+    "build_entity_literal_grep_cypher",
     "closed_by_leaf",
     "closed_literals_for_subject",
     "closed_terms_for_prop",
+    "current_interval_keep_cypher",
+    "current_interval_scan_cypher",
     "drop_closed_literals",
     "drop_closed_value",
     "interval_is_closed",

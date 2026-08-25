@@ -431,11 +431,12 @@ class MemoryLiteralsMixin:
             r = self._entities.get((tenant_id, kg, eid))
             if r is None:
                 return ""
-            raw = self._entity_prop_value(r, group_key)
+            raw = self._current_denorm_literal(
+                tenant_id, kg, eid, group_key, self._entity_prop_value(r, group_key)
+            )
             if raw is None:
-                raw = getattr(r, group_key, None)
-            text = str(raw or "").strip()
-            return text
+                return ""
+            return str(raw).strip()
 
         for (t, k, _), a in self._assertions.items():
             if t != tenant_id or k != kg:

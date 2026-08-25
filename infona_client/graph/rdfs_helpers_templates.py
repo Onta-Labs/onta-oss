@@ -14,6 +14,8 @@ from typing import Mapping
 from infona_client.graph.current_facts import (
     CURRENT_INTERVAL_KEEP_CYPHER,
     CURRENT_INTERVAL_OPTIONAL_CYPHER,
+    current_interval_keep_cypher,
+    current_interval_scan_cypher,
 )
 
 # ---------------------------------------------------------------------------
@@ -244,6 +246,8 @@ END AS value
 
 # Group by a datatype leaf, SUM a measure, return the dim with the max sum.
 # No equality filter in this helper (constrain first, or free-form).
+# Group key uses the same current-interval filter as the measure (closed HQ
+# must not remain a dim bucket after Austin beats SF).
 LITERAL_ARGMAX_BY_DIM_CYPHER = (
     _LITERAL_RAW_CURRENT
     + """
@@ -255,7 +259,16 @@ WITH e, toFloat(
 ) AS num
 WHERE num IS NOT NULL
 WITH e, max(num) AS num
-WITH coalesce(toString(e[$group_key]), '') AS grp, sum(num) AS total
+"""
+    + current_interval_scan_cypher(
+        leaf="$group_key", value="e[$group_key]", alias="gv"
+    )
+    + """
+WITH e, num, e[$group_key] AS grp_raw, gv
+WHERE """
+    + current_interval_keep_cypher("gv")
+    + """
+WITH coalesce(toString(grp_raw), '') AS grp, sum(num) AS total
 WHERE grp <> ''
 RETURN grp AS name, total AS value
 ORDER BY total DESC, grp ASC

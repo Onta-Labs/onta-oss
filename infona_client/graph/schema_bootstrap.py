@@ -22,6 +22,10 @@ import re
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
+from infona_client.graph.current_facts import (
+    ENTITY_TYPE_PROP_DISTINCT_CYPHER,
+    build_entity_literal_grep_cypher,
+)
 from infona_client.graph.facts import (
     ER_SIGNAL_PROPERTY_KEY_PREFIX,
     INTERNAL_PROPERTY_KEYS,
@@ -577,30 +581,11 @@ _GREP_EXCLUDED_KEY_LIST = ", ".join(f"'{k}'" for k in _GREP_EXCLUDED_PROPERTY_KE
 # Index-free literal substring scan over Entity properties (grep dual-backend).
 # System + internal keys are excluded before UNWIND so neither tenant_id/kg/id
 # nor ER/ingest housekeeping ever appears as a "match" — or consumes the LIMIT.
-# ``$type_name`` / ``$predicate_leaf`` may be null (no filter). Over-fetch with
-# ``LIMIT $limit`` (caller passes limit+1 for honest truncation).
-ENTITY_LITERAL_GREP_CYPHER = f"""
-MATCH (e:Entity {{tenant_id: $tenant_id, kg: $kg}})
-WHERE ($type_name IS NULL OR e.primary_type = $type_name OR EXISTS {{
-  MATCH (e)-[:INSTANCE_OF]->(c:Class {{tenant_id: $tenant_id, kg: $kg}})
-  WHERE c.name = $type_name OR c.id = $type_name
-}})
-WITH e, [k IN keys(e) WHERE NOT k IN [
-  {_GREP_EXCLUDED_KEY_LIST}
-] AND NOT k STARTS WITH '{ER_SIGNAL_PROPERTY_KEY_PREFIX}'] AS prop_keys
-UNWIND prop_keys AS prop_key
-WITH e, prop_key, e[prop_key] AS val
-WHERE val IS NOT NULL
-  AND ($predicate_leaf IS NULL OR prop_key = $predicate_leaf)
-  AND (
-    ($case_sensitive = true AND toString(val) CONTAINS $needle)
-    OR ($case_sensitive = false AND toLower(toString(val)) CONTAINS toLower($needle))
-  )
-RETURN e.id AS entity_uri, e.name AS label, e.primary_type AS type,
-       prop_key AS attr, toString(val) AS value
-ORDER BY e.id, prop_key
-LIMIT $limit
-""".strip()
+# Closed valid-time terms drop (current_facts). ``$type_name`` /
+# ``$predicate_leaf`` may be null. Over-fetch with ``LIMIT $limit``.
+ENTITY_LITERAL_GREP_CYPHER = build_entity_literal_grep_cypher(
+    _GREP_EXCLUDED_KEY_LIST, ER_SIGNAL_PROPERTY_KEY_PREFIX
+)
 
 # --- NL→Cypher fixtures (E6 quality) -----------------------------------------
 
@@ -623,21 +608,6 @@ RETURN a.id AS from_id, a.name AS from_name, a.primary_type AS from_type,
        b.id AS to_id, b.name AS to_name, b.primary_type AS to_type,
        type(r) AS rel_type, coalesce(r.attr, type(r)) AS attr
 ORDER BY a.id, b.id
-LIMIT $limit
-""".strip()
-
-# Distinct literal property values for one type+prop (low-card dim registry).
-# Cap via ``$limit`` — callers must not full-scan free-text leaves unbounded.
-ENTITY_TYPE_PROP_DISTINCT_CYPHER = """
-MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
-  tenant_id: $tenant_id, kg: $kg
-})
-WHERE c.name = $primary_type OR c.id = $primary_type
-WITH e, e[$prop_key] AS val
-WHERE val IS NOT NULL
-WITH DISTINCT toString(val) AS value
-RETURN value
-ORDER BY value ASC
 LIMIT $limit
 """.strip()
 
