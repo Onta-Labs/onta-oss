@@ -1,8 +1,8 @@
 # Quickstart — ER first (ONTA-543)
 
 The clean `trials.csv` loop shows schema → graph → ask. This is the
-**third command**: a messy table whose *point* is URI merge, plus a
-field-conflict report.
+**third command**: a messy table whose *point* is URI merge, plus
+field-conflict winners applied as current graph values.
 
 `examples/suppliers-messy.csv` is **synthetic** (Acme / Globex / Initech,
 fake tax IDs). No real customer data, no spider-bench leakage.
@@ -15,8 +15,8 @@ infona er rebuild --kg suppliers
 Ingest writes every row as its own Supplier fragment (intra-batch ER
 cannot see siblings yet). `er rebuild` re-blocks the already-ingested
 graph and collapses the fragments (6→3). Headquarters and credit_rating
-lines are an **explanatory report** — field winners are not written as
-the sole current graph value.
+then land as graph state: Austin is the current HQ (SF stored/closed);
+equal-trust credit_rating stays dual-current and flagged.
 
 A stranger should see something in this shape — URI merge, a winner, a
 why, a timestamp, and one leftover conflict the system refused to guess:
@@ -61,12 +61,11 @@ Done. 3 fragments absorbed.
 - **conflict / headquarters** — two sources disagreed on one field.
   ERP is `source_of_truth`, the directory is a stale `supplementary`
   scrape. The report names **Austin** as winner on the **authority**
-  axis. That line is explanatory: field winners are not written as the
-  sole current graph value. Both HQ literals stay live (validity
-  intervals are not on Neo4j yet).
+  axis. Austin is current; San Francisco stays stored and closed.
 - **unresolved / credit_rating** — ERP says `A`, CRM says `BBB`.
   Same authority, same timestamp; a lexical pick would be a silent
   guess. The report **flags** that pair until a reviewer decides.
+  Both stay dual-current.
 
 Full fixture notes: [`examples/suppliers-messy.md`](../../examples/suppliers-messy.md).
 The hermetic proof is `tests/test_suppliers_messy_fixture.py`.

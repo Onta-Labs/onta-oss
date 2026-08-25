@@ -71,10 +71,16 @@ def test_fixture_is_synthetic_and_has_the_intended_mess() -> None:
 
     doc = FIXTURE_DOC.read_text(encoding="utf-8").lower()
     fragment = FRAGMENT.read_text(encoding="utf-8").lower()
+    readme = (REPO / "README.md").read_text(encoding="utf-8").lower()
     for text in (doc, fragment):
         assert "synthetic" in text
         assert "spider-bench" not in text or "no spider-bench" in text
         assert "customer" in text  # "no real customer data"
+    for text in (doc, fragment, readme):
+        # #460/#461: winners are current graph values, not a narration.
+        assert "validity intervals are not on neo4j" not in text
+        assert "field winners are not written" not in text
+        assert "do not rewrite current" not in text
     # No live customer / eval-set identifiers in the CSV cells.
     blob = FIXTURE.read_text(encoding="utf-8").lower()
     assert "spider" not in blob
