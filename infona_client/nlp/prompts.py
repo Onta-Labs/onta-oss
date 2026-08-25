@@ -324,7 +324,10 @@ other KGs) when a populated type fits.
 stored strings (do not invent enum values). If **money / measure leaf candidates** \
 are listed for cost/price/tuition cues, use that prop_key (e.g. assay_cost / \
 unit_cost / list_price) — never invent a bare price/cost leaf that is not \
-declared. Multi-constraint questions MUST constrain **all** listed dims before \
+declared. Never mint `average_X` / `avg_X` / `mean_X` / `total_X` when X is a \
+Graph-build measure leaf — AVG/SUM X. How-many/count must set \
+`literal_compare_count` / `literal_values_count`, never the row-returning list \
+twin. Multi-constraint questions MUST constrain **all** listed dims before \
 SUM/COUNT/AVG.
 - Parameterize user filters: string/number needles as `$param`, not concatenated.
 - Prefer `count(*)` with an alias: `RETURN count(*) AS n`.
