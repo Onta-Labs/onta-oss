@@ -27,18 +27,7 @@ from infona_client.graph.facts import (
     INTERNAL_PROPERTY_KEYS,
 )
 from infona_client.graph.normalize_cypher import NORMALIZE_READ_CYPHER
-from infona_client.graph.rdfs_helpers import (
-    ASSERTIONS_FOR_SUBJECT_CYPHER,
-    ENTITIES_OF_TYPE_COUNT_CYPHER,
-    ENTITIES_OF_TYPE_CYPHER,
-    LITERAL_COMPARE_CYPHER,
-    LITERAL_AGGREGATE_CYPHER,
-    LITERAL_VALUES_CYPHER,
-    RELATED_ENTITIES_CYPHER,
-    RELATED_ENTITY_NAME_FILTER_CYPHER,
-    RELATED_ENTITY_NAME_FILTER_INVERSE_CYPHER,
-    SUBCLASS_OF_CLOSURE_CYPHER,
-)
+from infona_client.graph.rdfs_helpers_templates import semantic_templates
 
 #: Bare-identifier guard for property-key names interpolated into a template.
 _SAFE_PROPERTY_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -655,10 +644,9 @@ ORDER BY value ASC
 LIMIT $limit
 """.strip()
 
-# --- ADR 0013 semantic helpers (rdfs_helpers) --------------------------------
+# --- ADR 0013 semantic helpers (rdfs_helpers_templates.semantic_templates) ---
 # Prefer these names for NL fixtures and new app code. Wave‑1 explore paths
 # may still use entity_* templates above; both are allowlisted.
-# Cypher strings are imported at module top from rdfs_helpers.
 
 
 @dataclass(frozen=True, slots=True)
@@ -674,7 +662,7 @@ class CypherTemplate:
 
 # Registry keyed by stable template name. Application code should only run
 # Cypher from this map (or future kg_writer ports that register here).
-TEMPLATES: Mapping[str, CypherTemplate] = {
+_TEMPLATES: dict[str, CypherTemplate] = {
     "entity_merge": CypherTemplate(
         name="entity_merge",
         cypher=ENTITY_MERGE_CYPHER,
@@ -823,61 +811,22 @@ TEMPLATES: Mapping[str, CypherTemplate] = {
         cypher=ENTITY_TYPE_REL_TARGET_DISTINCT_CYPHER,
         writing=False,
     ),
-    # ADR 0013 semantic helper names (compose these from NL / app code)
-    "entities_of_type": CypherTemplate(
-        name="entities_of_type",
-        cypher=ENTITIES_OF_TYPE_CYPHER,
-        writing=False,
-    ),
-    "entities_of_type_count": CypherTemplate(
-        name="entities_of_type_count",
-        cypher=ENTITIES_OF_TYPE_COUNT_CYPHER,
-        writing=False,
-    ),
-    "literal_values": CypherTemplate(
-        name="literal_values",
-        cypher=LITERAL_VALUES_CYPHER,
-        writing=False,
-    ),
-    "literal_compare": CypherTemplate(
-        name="literal_compare",
-        cypher=LITERAL_COMPARE_CYPHER,
-        writing=False,
-    ),
-    "literal_aggregate": CypherTemplate(
-        name="literal_aggregate",
-        cypher=LITERAL_AGGREGATE_CYPHER,
-        writing=False,
-    ),
-    "related_entities": CypherTemplate(
-        name="related_entities",
-        cypher=RELATED_ENTITIES_CYPHER,
-        writing=False,
-    ),
-    "related_entity_name_filter": CypherTemplate(
-        name="related_entity_name_filter",
-        cypher=RELATED_ENTITY_NAME_FILTER_CYPHER,
-        writing=False,
-    ),
-    "related_entity_name_filter_inverse": CypherTemplate(
-        name="related_entity_name_filter_inverse",
-        cypher=RELATED_ENTITY_NAME_FILTER_INVERSE_CYPHER,
-        writing=False,
-    ),
-    "assertions_for_subject": CypherTemplate(
-        name="assertions_for_subject",
-        cypher=ASSERTIONS_FOR_SUBJECT_CYPHER,
-        writing=False,
-    ),
-    "subclass_of_closure": CypherTemplate(
-        name="subclass_of_closure",
-        cypher=SUBCLASS_OF_CLOSURE_CYPHER,
-        writing=False,
-    ),
-    # Normalization rule-apply reads (ONTA-534) — see graph/normalize_cypher.py.
-    **{n: CypherTemplate(name=n, cypher=c, writing=False)
-       for n, c in NORMALIZE_READ_CYPHER.items()},
 }
+
+_TEMPLATES.update(
+    {
+        name: CypherTemplate(name=name, cypher=cypher, writing=writing)
+        for name, (cypher, writing) in semantic_templates().items()
+    }
+)
+# Normalization rule-apply reads (ONTA-534) — see graph/normalize_cypher.py.
+_TEMPLATES.update(
+    {
+        n: CypherTemplate(name=n, cypher=c, writing=False)
+        for n, c in NORMALIZE_READ_CYPHER.items()
+    }
+)
+TEMPLATES: Mapping[str, CypherTemplate] = _TEMPLATES
 
 
 def get_template(name: str) -> CypherTemplate:

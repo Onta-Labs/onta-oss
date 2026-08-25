@@ -47,7 +47,7 @@ class MemoryLiteralsMixin:
         type_names: Any,
         prop_key: str,
         prop_value: Any,
-        limit: int,
+        limit: int | None,
     ) -> list[GraphRecord]:
         # Prefer Assertion literal SoT; Entity property cache is secondary.
         matched = self._entity_ids_via_instance_of(tenant_id, kg, type_names)
@@ -88,7 +88,7 @@ class MemoryLiteralsMixin:
                     }
                 )
             )
-            if len(out) >= limit:
+            if limit is not None and len(out) >= limit:
                 return out
         # Secondary: Entity property cache (dual-written after Assertion).
         for eid in sorted(matched):
@@ -110,9 +110,23 @@ class MemoryLiteralsMixin:
                     }
                 )
             )
-            if len(out) >= limit:
+            if limit is not None and len(out) >= limit:
                 break
         return out
+
+    def _literal_values_count(
+        self,
+        tenant_id: str,
+        kg: str,
+        type_names: Any,
+        prop_key: str,
+        prop_value: Any,
+    ) -> list[GraphRecord]:
+        """Uncapped equality count — never use the list helper's default 25."""
+        rows = self._literal_values_eq(
+            tenant_id, kg, type_names, prop_key, prop_value, limit=None
+        )
+        return [GraphRecord(data={"n": len(rows)})]
 
     @staticmethod
     def _to_float_legacy(raw: Any) -> float | None:

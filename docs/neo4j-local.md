@@ -323,7 +323,7 @@ Or per call: `pipeline.ask(..., use_cypher=True)` with an injected
 | Example bank optional `cypher` field + language-filtered retrieve | `nlp/example_bank.py` |
 | Committed Cypher few-shot seeds (ADR 0013 shapes) | `nlp/cypher_example_seeds.py` |
 | Pipeline branch (catalog ontology, template prefer, 1× retry) | `nlp/pipeline.py` (`_ask_cypher`) |
-| Allowlisted NL semantic templates | `entities_of_type`, `entities_of_type_count`, `literal_values`, `related_entities`, `assertions_for_subject`, `subclass_of_closure` |
+| Allowlisted NL semantic templates | `entities_of_type`, `entities_of_type_count`, `literal_values`, `literal_values_count`, `related_entities`, `assertions_for_subject`, `subclass_of_closure` |
 | Explore legacy templates (still registered) | `entity_count_*`, `entity_list_by_type_page`, … |
 
 Generated Cypher is confined before run: read-only, `$tenant_id`/`$kg` required

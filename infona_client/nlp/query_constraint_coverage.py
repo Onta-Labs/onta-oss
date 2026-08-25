@@ -42,6 +42,9 @@ from __future__ import annotations
 from infona_client.nlp.query_constraint_coverage_check import (  # noqa: F401
     check_constraint_coverage,
 )
+from infona_client.nlp.query_constraint_coverage_count import (  # noqa: F401
+    count_vs_list_fail_closed,
+)
 from infona_client.nlp.query_constraint_coverage_dim import (  # noqa: F401
     _dim_bind_label,
     _leaf_present_in_plan,
@@ -91,6 +94,7 @@ __all__ = [
     "assign_query_confidence",
     "build_clarification_prompt",
     "check_constraint_coverage",
+    "count_vs_list_fail_closed",
     "coverage_feedback",
     "fail_closed_answer",
     "effective_has_dim_filter",

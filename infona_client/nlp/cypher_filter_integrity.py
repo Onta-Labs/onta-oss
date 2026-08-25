@@ -37,6 +37,7 @@ from typing import Any
 _FILTERING_TEMPLATES = frozenset(
     {
         "literal_values",
+        "literal_values_count",
         "literal_compare",
         "literal_aggregate",
         "related_entity_name_filter",
@@ -379,7 +380,8 @@ def check_cypher_filter_integrity(
             return (
                 "question has filter intent but plan is a pure type scan "
                 f"({tmpl}) with no property/value constraint — that yields a "
-                "silent unfiltered total. Prefer template literal_values / "
+                "silent unfiltered total. Prefer template literal_values_count "
+                "for how-many/count + equality, literal_values for list/show, "
                 "literal_compare / related_entity_name_filter, or free-form "
                 "with required MATCH / e.prop = $value (never OPTIONAL MATCH "
                 "value filters without a post-WITH WHERE a IS NOT NULL)."
@@ -396,8 +398,8 @@ def check_cypher_filter_integrity(
             "question has filter intent but Cypher is a type-only scan with no "
             "constraining property filter — results would be a silent unfiltered "
             "total. Add a required filter: e.<prop> = $value, MATCH (not OPTIONAL) "
-            "on Assertion with value predicate, or template literal_values / "
-            "literal_compare; if using OPTIONAL MATCH for Assertion, follow with "
+            "on Assertion with value predicate, or template literal_values_count "
+            "(how-many) / literal_values (list); if using OPTIONAL MATCH for Assertion, follow with "
             "WITH e, a WHERE a IS NOT NULL (or WHERE raw IS NOT NULL after coalesce)."
         )
 
@@ -414,7 +416,8 @@ def filter_integrity_feedback(reason: str, *, previous_cypher: str = "") -> str:
         "1. Never put a required value filter only in WHERE after OPTIONAL MATCH "
         "on Assertion/Property — that does not drop primary entity rows.",
         "2. Prefer one of:",
-        "   - template: literal_values (equality) or literal_compare (inequality) "
+        "   - template: literal_values_count (how-many/count + equality) or "
+        "literal_values (list/show) or literal_compare (inequality) "
         "with $type_names, $prop_key, $prop_value / $op+$threshold",
         "   - entity denorm: MATCH (e:Entity {tenant_id:$tenant_id, kg:$kg})"
         "-[:INSTANCE_OF]->(c:Class …) WHERE c.name IN $type_names AND "
