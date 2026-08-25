@@ -19,7 +19,8 @@ export type UserSchedulableAction =
   | "find-merge-duplicates"
   | "enrich"
   | "suggest-relationships"
-  | "notify";
+  | "notify"
+  | "extract";
 
 /** The action a {@link Schedule} fires — the FULL read-side vocabulary, a
  *  superset of {@link UserSchedulableAction}. `semantic-embed-fill` /
@@ -27,7 +28,9 @@ export type UserSchedulableAction =
  *  maintenance rows the backend creates internally; they show up in a tenant's
  *  schedule list/get responses, but create/update accept only the
  *  user-schedulable subset (422 otherwise) and PATCHing a system row is a 403.
- *  Exhaustive consumers of `Schedule.action` must handle all five arms. */
+ *  `extract` (ONTA-555) is user-schedulable (gated like the extract family);
+ *  preferred write path is `PUT /extract-sources/{slug}/schedule`.
+ *  Exhaustive consumers of `Schedule.action` must handle all six arms. */
 export type ScheduleAction =
   | UserSchedulableAction
   | "semantic-embed-fill"
@@ -41,6 +44,7 @@ export const USER_SCHEDULABLE_ACTIONS: readonly UserSchedulableAction[] = [
   "enrich",
   "suggest-relationships",
   "notify",
+  "extract",
 ] as const;
 
 /**
