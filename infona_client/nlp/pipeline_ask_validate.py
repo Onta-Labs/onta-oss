@@ -33,6 +33,10 @@ class PipelineAskValidateMixin:
             check_cypher_filter_integrity,
             filter_integrity_feedback,
         )
+        from infona_client.nlp.query_ambiguity import (
+            conversation_has_prior_turn,
+            question_is_anaphoric,
+        )
         from infona_client.nlp.query_constraint_coverage import (
             check_constraint_coverage,
             coverage_feedback,
@@ -44,11 +48,15 @@ class PipelineAskValidateMixin:
             schema_valid_feedback,
         )
 
+        anaphoric_followup = conversation_has_prior_turn(
+            getattr(st, "conversation", None)
+        ) and question_is_anaphoric(question)
         filt_reason = check_cypher_filter_integrity(
             cypher_raw,
             question=question,
             template=gen.get("template"),
             params=params,
+            anaphoric_followup=anaphoric_followup,
         )
         if filt_reason:
             last_error = filter_integrity_feedback(

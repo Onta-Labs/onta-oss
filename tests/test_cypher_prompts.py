@@ -97,7 +97,8 @@ def test_build_cypher_user_prompt_includes_conversation_only_when_given():
         [
             {"role": "user", "text": "when did I last meet Ada Example?"},
             {"role": "assistant", "text": "2026-08-12"},
-        ]
+        ],
+        question="what did we talk about?",
     )
     with_hist = build_cypher_generation_prompt(
         "what did we talk about?",
@@ -110,6 +111,23 @@ def test_build_cypher_user_prompt_includes_conversation_only_when_given():
     assert "what did we talk about?" in with_hist
     assert "follow-up" in with_hist.lower()
     assert "do not switch" in with_hist.lower()
+
+    specified = format_conversation_for_prompt(
+        [
+            {"role": "user", "text": "when did I last meet Ada Example?"},
+            {"role": "assistant", "text": "2026-08-12"},
+        ],
+        question="when was the last time I met Bea Sample?",
+    )
+    specified_prompt = build_cypher_generation_prompt(
+        "when was the last time I met Bea Sample?",
+        "Type: Book",
+        tenant_id="t",
+        kg_name="kg",
+        conversation_text=specified,
+    )
+    assert "fully specified" in specified_prompt.lower()
+    assert "FOLLOW-UP" not in specified_prompt
 
 
 def test_build_cypher_user_prompt_retry_forbids_sparql_fallback():

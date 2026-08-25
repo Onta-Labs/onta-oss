@@ -160,20 +160,31 @@ def format_anaphora_clarification() -> str:
     )
 
 
-def format_conversation_for_prompt(conversation: object | None) -> str:
+def format_conversation_for_prompt(
+    conversation: object | None,
+    question: str = "",
+) -> str:
     """Render prior turns for the Cypher planner. Empty when there is no history.
 
-    The model may use this block ONLY to resolve pronouns / 'that meeting'.
-    A fully specified current question must not inherit prior filters.
+    Anaphoric current questions (``what did we talk about?``) bind to the
+    prior turn. A fully specified current question must not inherit prior
+    filters.
     """
     turns = list(conversation or [])
     if not turns:
         return ""
-    lines = [
-        "This question is a FOLLOW-UP to the prior turn. Resolve we / they / "
-        "that / the last to the entities named below. Do not switch to a "
-        "different person or meeting."
-    ]
+    if question and not question_is_anaphoric(question):
+        lines = [
+            "Prior turns for context only. The current question is fully "
+            "specified — do not inherit filters from those turns."
+        ]
+    else:
+        lines = [
+            "This question is a FOLLOW-UP to the prior turn. Resolve we / they / "
+            "that / the last to the entities named below. Do not switch to a "
+            "different person or meeting. Bind that referent with a required "
+            "MATCH (not OPTIONAL MATCH) or related_entity_name_filter."
+        ]
     for t in turns[-8:]:
         if isinstance(t, dict):
             role = str(t.get("role") or "user").strip().lower() or "user"
