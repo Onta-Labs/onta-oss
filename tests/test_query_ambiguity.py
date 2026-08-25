@@ -69,6 +69,10 @@ def test_anaphoric_followup_without_history_needs_clarify():
     assert question_is_anaphoric("what were their names and when were they met")
     assert not question_is_anaphoric("how many SynthWidget entities are there?")
     assert not question_is_anaphoric("when did I meet Ada Example?")
+    assert not question_is_anaphoric("when was the last time I met Ada Example?")
+    assert not ambiguous_anaphora_needs_clarify(
+        "when was the last time I met Ada Example?"
+    )
     # Intra-sentential "their" / "we" is bound in the same question.
     assert not question_is_anaphoric("list SynthWidget entities and their weights")
     assert not question_is_anaphoric("how many records do we have?")
