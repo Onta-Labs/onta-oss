@@ -251,6 +251,63 @@ ORDER BY a.literal_value DESC LIMIT 1
     assert r.ok, r.reason
 
 
+def test_template_does_not_waive_empty_entity_cache():
+    """template=related_entities must not skip empty-cache on executing Cypher.
+
+    Assertion-shaped body (no invented rels) may execute_read even when a
+    template name is set. Projecting the empty ``title`` alias while
+    ``event_title`` is populated must fail schema-valid — not ``template
+    schema ok``.
+    """
+    onto = _event_ontology_text()
+    cypher = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
+  tenant_id: $tenant_id, kg: $kg
+})
+WHERE c.name IN $type_names
+MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg})-[:SUBJECT]->(e)
+MATCH (a)-[:PREDICATE]->(p:Property {tenant_id: $tenant_id, kg: $kg})
+WHERE p.name = $prop_key
+RETURN e.title AS title
+""".strip()
+    r = check_schema_valid_cypher(
+        cypher,
+        onto,
+        params={"type_names": [TYPE_EVENT], "prop_key": "event_title"},
+        template="related_entities",
+    )
+    assert not r.ok, r.reason
+    assert (r.reason or "") != "template schema ok"
+    assert "title" in (r.reason or "").lower()
+    assert "event_title" in (r.reason or "")
+    rewritten = remap_empty_cache_projections(
+        cypher, onto, params={"type_names": [TYPE_EVENT]}
+    )
+    assert "e.event_title" in rewritten
+    assert "e.title" not in rewritten
+
+
+def test_invented_rel_template_rescue_skips_empty_cache_on_unexecuted_cypher():
+    """Lowercase typed hop + template stays schema-ok (execute-time rescue)."""
+    onto = _event_ontology_text() + "\n  Relationships: hosts → Person\n"
+    cypher = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
+  tenant_id: $tenant_id, kg: $kg
+})
+WHERE c.name IN $type_names
+MATCH (e)-[:hosts]->(p:Entity {tenant_id: $tenant_id, kg: $kg})
+RETURN e.title AS title
+""".strip()
+    r = check_schema_valid_cypher(
+        cypher,
+        onto,
+        params={"type_names": [TYPE_EVENT]},
+        template="related_entities",
+    )
+    assert r.ok, r.reason
+    assert r.reason == "template schema ok"
+
+
 @dataclass
 class _Slot:
     name: str
