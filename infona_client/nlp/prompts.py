@@ -398,8 +398,9 @@ def build_cypher_generation_prompt(
     :func:`infona_client.nlp.ontology_subgraph_match.ground_ask_plan` — hints
     only; the model still produces the final Cypher (always-LLM product rule).
 
-    ``conversation_text`` is optional prior-turn context for pronoun / anaphora
-    follow-ups. Empty (the default) keeps the prompt byte-identical.
+    ``conversation_text`` is optional prior-turn context for pronoun follow-ups.
+    Empty (the default) keeps the prompt byte-identical. When present it tells
+    the model the live question is a follow-up, not a new standalone ask.
     """
     examples_section = f"\n{examples_text}\n" if examples_text else ""
     convo_section = ""

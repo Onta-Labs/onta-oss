@@ -170,8 +170,9 @@ def format_conversation_for_prompt(conversation: object | None) -> str:
     if not turns:
         return ""
     lines = [
-        "Prior conversation (resolve pronouns / \"that meeting\" / \"we\" from "
-        "this; if the current question is fully specified, ignore prior entities):"
+        "This question is a FOLLOW-UP to the prior turn. Resolve we / they / "
+        "that / the last to the entities named below. Do not switch to a "
+        "different person or meeting."
     ]
     for t in turns[-8:]:
         if isinstance(t, dict):
