@@ -32,8 +32,11 @@ def classify_bolt_uri(uri: str | None) -> str:
     raw = (uri or "").strip()
     if not raw:
         return KIND_MISSING
-    parsed = urlparse(raw if "://" in raw else f"bolt://{raw}")
-    host = (parsed.hostname or "").strip().lower()
+    try:
+        parsed = urlparse(raw if "://" in raw else f"bolt://{raw}")
+        host = (parsed.hostname or "").strip().lower()
+    except ValueError:
+        return KIND_MISSING
     if not host:
         return KIND_MISSING
     if host in {"localhost", "localhost.localdomain"}:

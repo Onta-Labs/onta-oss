@@ -38,3 +38,7 @@ def test_hostname_is_cloud_map():
 
 def test_public_ip():
     assert classify_bolt_uri("bolt://8.8.8.8:7687") == KIND_PUBLIC_IP
+
+
+def test_garbage_uri_is_missing_not_an_exception():
+    assert classify_bolt_uri("bolt://[") == KIND_MISSING

@@ -12,15 +12,19 @@
           "health"
         ],
         "summary": "Health",
+        "description": "Graph-store readiness. **200** only when Neo4j answers; **503** with `status: degraded` when it does not (so a load balancer stops routing). `neo4j_uri_kind` is `hostname` / `private_ip` / `loopback` / `public_ip` / `missing` \u2014 never the raw host.",
         "operationId": "health_health_get",
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Graph store up",
             "content": {
               "application/json": {
                 "schema": {}
               }
             }
+          },
+          "503": {
+            "description": "Graph store down or unconfigured"
           }
         }
       }

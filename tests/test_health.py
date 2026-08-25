@@ -54,3 +54,11 @@ def test_health_reports_private_ip_kind_without_echoing_the_host(client, monkeyp
     assert body["neo4j_uri_kind"] == "private_ip"
     dumped = response.text
     assert "10.0.10.176" not in dumped
+
+
+def test_health_malformed_uri_never_500(client, monkeypatch):
+    monkeypatch.setenv("NEO4J_URI", "bolt://[")
+    response = client.get("/health")
+    assert response.status_code != 500
+    body = response.json()
+    assert body["neo4j_uri_kind"] == "missing"

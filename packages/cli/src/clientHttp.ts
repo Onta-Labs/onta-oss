@@ -417,13 +417,17 @@ export class ClientHttp {
       const res = await fetch(healthUrl, {
         signal: AbortSignal.timeout(5000),
       });
-      if (!res.ok) return { ok: false, requiresAuth: false, url: this.baseUrl };
+      // 503 + JSON means the process is up and Neo4j is down. Unreachable
+      // is a thrown fetch / non-JSON 5xx — do not conflate the two.
       try {
         const data = (await res.json()) as { status?: unknown; neo4j?: unknown };
         hstatus = typeof data.status === "string" ? data.status : undefined;
         neo4j = typeof data.neo4j === "boolean" ? data.neo4j : undefined;
       } catch {
-        // body not JSON — still treat the process as reachable
+        if (!res.ok) return { ok: false, requiresAuth: false, url: this.baseUrl };
+      }
+      if (!res.ok && neo4j === undefined) {
+        return { ok: false, requiresAuth: false, url: this.baseUrl };
       }
     } catch {
       return { ok: false, requiresAuth: false, url: this.baseUrl };
