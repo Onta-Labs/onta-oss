@@ -64,8 +64,7 @@ and written by ``insert_facts``. Before the port, ``insert_facts`` dropped
 ``suppression_triples`` on the floor and the SPARQL read always answered "not
 suppressed", so a retracted value came back on the next refresh. Read-side ladder
 and fail directions: :mod:`infona_client.graph.suppression_read`. ``validity`` and
-``reopen_facts`` companions remain unported (still warned about by
-``kg_writer_session._warn_unported_companions``).
+``reopen_facts`` companions are ported as ``:ValidityInterval`` (E7).
 
 Boundary: OSS. Imports only stdlib / ``infona_client.*``.
 """

@@ -51,6 +51,7 @@ from infona_client.graph.neo4j_store_write import Neo4jWriteMixin
 from infona_client.graph.neo4j_store_rewrite import Neo4jRewriteMixin
 from infona_client.graph.neo4j_store_prov import Neo4jProvMixin
 from infona_client.graph.neo4j_store_assert import Neo4jAssertMixin
+from infona_client.graph.neo4j_store_validity import Neo4jValidityMixin
 
 logger = structlog.stdlib.get_logger("infona.graph.neo4j")
 
@@ -60,6 +61,7 @@ class Neo4jGraphSession(
     Neo4jRewriteMixin,
     Neo4jProvMixin,
     Neo4jAssertMixin,
+    Neo4jValidityMixin,
 ):
     """Scoped session over a shared async driver."""
 

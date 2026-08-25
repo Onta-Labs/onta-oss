@@ -132,6 +132,18 @@ SCHEMA_STATEMENTS: tuple[tuple[str, str], ...] = (
         "CREATE INDEX suppression_subject_lookup IF NOT EXISTS "
         "FOR (s:Suppression) ON (s.tenant_id, s.kg, s.kind, s.subject)",
     ),
+    # ONTA-277 valid-time companions. Uniqueness on the sha1-keyed interval id
+    # is what makes closing a fact MERGE onto the node that was opened.
+    (
+        "validity_interval_tenant_kg_id_unique",
+        "CREATE CONSTRAINT validity_interval_tenant_kg_id_unique IF NOT EXISTS "
+        "FOR (v:ValidityInterval) REQUIRE (v.tenant_id, v.kg, v.interval_id) IS UNIQUE",
+    ),
+    (
+        "validity_interval_subject_lookup",
+        "CREATE INDEX validity_interval_subject_lookup IF NOT EXISTS "
+        "FOR (v:ValidityInterval) ON (v.tenant_id, v.kg, v.subject)",
+    ),
     (
         "onto_type_layer_name",
         "CREATE INDEX onto_type_layer_name IF NOT EXISTS "

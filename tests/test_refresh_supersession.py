@@ -43,7 +43,7 @@ from infona_client.graph.kg_writer import insert_facts
 from infona_client.graph.ontology_queries import attr_uri
 from infona_client.graph.queries import kg_graph_uri
 from infona_client.graph.suppression import is_suppressed
-from infona_client.graph.validity import current_objects_query, fetch_history
+from infona_client.graph.validity import fetch_history
 from infona_client.pipeline.corrections import UserAssertion, apply_user_assertion
 from infona_client.pipeline.mutations import retract_fact, write_with_conflict_resolution
 
@@ -145,18 +145,30 @@ async def _seed_current(
 
 async def _current(n: PyoxiNeptune, predicate: str) -> set[str]:
     """The "current facts" projection — objects with no CLOSED validity interval."""
-    raw = await n.query(current_objects_query(INSTANCE_GRAPH, ACME, predicate))
-    return {b["o"]["value"] for b in raw["results"]["bindings"]}
+    from infona_client.graph.validity import fetch_current_object_terms
+
+    return set(await fetch_current_object_terms(n, INSTANCE_GRAPH, ACME, predicate))
 
 
 async def _instance_objects(n: PyoxiNeptune, predicate: str) -> set[str]:
     """EVERY object of (ACME, predicate) in the instance graph, regardless of
     validity — so we can prove supersession CLOSED an interval but never DELETED the
     edge."""
-    raw = await n.query(
-        f"SELECT ?o WHERE {{ GRAPH <{INSTANCE_GRAPH}> {{ <{ACME}> <{predicate}> ?o }} }}"
-    )
-    return {b["o"]["value"] for b in raw["results"]["bindings"]}
+    from infona_client.graph.store import get_graph_store
+
+    leaf = predicate.rstrip("/").rsplit("/", 1)[-1]
+    out: set[str] = set()
+    for a in get_graph_store().snapshot_assertions():
+        if a.get("subject_id") != ACME:
+            continue
+        pid = str(a.get("property_id") or "")
+        if pid != predicate and not pid.endswith("/" + leaf):
+            continue
+        if a.get("literal_value") is not None:
+            out.add(str(a.get("literal_value")))
+        elif a.get("object_id"):
+            out.add(str(a.get("object_id")))
+    return out
 
 
 def _verdict(value: str, *, at: datetime, confidence: float = 0.95) -> Verdict:

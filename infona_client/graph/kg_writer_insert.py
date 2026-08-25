@@ -72,18 +72,17 @@ async def insert_facts(
       / ``build_entity_suppression_triples``; only the storage changed. Until this
       port, the payload was dropped on the floor and a retracted value silently
       came back on the next enrichment refresh.
-    * ``validity_triples`` / ``reopen_facts`` — still unported (E7). Callers get a
-      warning rather than silence.
+    * ``validity_triples`` / ``reopen_facts`` — ported (E7). Parsed into
+      :class:`~infona_client.graph.validity_store.ValidityRecord` rows and
+      persisted as ``:ValidityInterval`` nodes scoped to this KG. ``reopen_facts``
+      clears ``valid_to`` / ``superseded_by`` / ``status`` so a resurrected value
+      is current again (ONTA-277). Callers still build the RDF companion payload
+      via ``build_open_interval_triples`` / ``build_closed_interval_triples``.
 
     ``run_id`` (ONTA-271): when given, returns a deterministic A6
     :class:`GraphDelta` over the *triple* form of the write (Fact-only writes
     without triples yield an empty domain set unless triples are also supplied).
     """
-    _host()._warn_unported_companions(
-        instance_graph,
-        validity_triples=validity_triples,
-        reopen_facts=reopen_facts,
-    )
     instance_triples = list(instance_triples or [])
     gs = _host()._resolve_graph_session(
         store=store, session=session, instance_graph=instance_graph
@@ -95,6 +94,8 @@ async def insert_facts(
         facts=facts,
         provenance_triples=list(provenance_triples or []),
         suppression_triples=list(suppression_triples or []),
+        validity_triples=list(validity_triples or []),
+        reopen_facts=list(reopen_facts or []),
         run_id=run_id,
     )
 
@@ -107,11 +108,14 @@ async def _insert_facts_store(
     facts: Optional[Sequence[Fact]],
     provenance_triples: Optional[list[Triple]] = None,
     suppression_triples: Optional[list[Triple]] = None,
+    validity_triples: Optional[list[Triple]] = None,
+    reopen_facts: Optional[list[Triple]] = None,
     run_id: Optional[str],
 ) -> Optional[GraphDelta]:
     """Property-graph insert path (Memory / Neo4j). Template/native ops only."""
     from infona_client.graph import pg_ops
     from infona_client.graph.provenance import parse_provenance_records
+    from infona_client.graph.provenance_query import stamp_authority_on_facts
 
     fact_list: list[Fact] = list(facts) if facts else []
     if instance_triples:
@@ -143,6 +147,7 @@ async def _insert_facts_store(
                 fact_list = pg_ops.fold_provenance_records_onto_facts(
                     fact_list, prov_records
                 )
+                fact_list = stamp_authority_on_facts(fact_list, prov_records)
         except Exception:  # noqa: BLE001 — fold is best-effort
             logger.warning(
                 "insert_facts_store_provenance_fold_failed",
@@ -205,6 +210,21 @@ async def _insert_facts_store(
         except Exception:  # noqa: BLE001 — companions never fail the write
             logger.warning(
                 "insert_facts_suppression_write_failed",
+                instance_graph=instance_graph,
+                exc_info=True,
+            )
+    # E7: valid-time companions. Reopen LAST so a resurrection wins over a
+    # closed interval in the same payload. Failures are logged, never raised.
+    if validity_triples or reopen_facts:
+        try:
+            from infona_client.graph.validity_store import persist_validity_payload
+
+            await persist_validity_payload(
+                session, instance_graph, validity_triples, reopen_facts
+            )
+        except Exception:  # noqa: BLE001 — companions never fail the write
+            logger.warning(
+                "insert_facts_validity_write_failed",
                 instance_graph=instance_graph,
                 exc_info=True,
             )

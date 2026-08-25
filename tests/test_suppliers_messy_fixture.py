@@ -24,6 +24,7 @@ from infona_client.graph.kg_writer import insert_facts
 from infona_client.graph.ontology_queries import attr_uri, entity_uri
 from infona_client.graph.queries import kg_graph_uri
 from infona_client.pipeline.conflict import REASON_AUTHORITY, REASON_VALUE, FactClaim, resolve
+from infona_client.graph.validity import fetch_current_object_terms
 from infona_client.pipeline.mutations import write_with_conflict_resolution
 from infona_client.resolver.er.rebuild import rebuild_type
 from infona_client.resolver.er.rebuild_explain import format_rebuild_report
@@ -45,6 +46,7 @@ RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
 ACME_WINNER = entity_uri("Supplier", "ERP-1001")
 GLOBEX_WINNER = entity_uri("Supplier", "ERP-2001")
 HQ_PRED = attr_uri("Supplier", "headquarters")
+CREDIT_PRED = attr_uri("Supplier", "credit_rating")
 
 
 def _rows() -> list[dict[str, str]]:
@@ -186,6 +188,26 @@ async def test_ingest_rebuild_merge_winner_and_unresolved_conflict() -> None:
     assert values == {"A", "BBB"}
     assert "not silently guessed" in credit["flagged"]
 
+    from infona_client.graph.store import get_graph_store
+
+    def _lits(pred: str) -> set:
+        leaf = pred.rstrip("/").rsplit("/", 1)[-1]
+        return {
+            a.get("literal_value")
+            for a in get_graph_store().snapshot_assertions()
+            if a.get("subject_id") == ACME_WINNER
+            and str(a.get("property_id") or "").endswith(leaf)
+        }
+
+    assert _lits(HQ_PRED) >= {"Austin", "San Francisco"}
+    assert set(await fetch_current_object_terms(None, INSTANCE_GRAPH, ACME_WINNER, HQ_PRED)) == {
+        "Austin"
+    }
+    assert _lits(CREDIT_PRED) >= {"A", "BBB"}
+    assert set(
+        await fetch_current_object_terms(None, INSTANCE_GRAPH, ACME_WINNER, CREDIT_PRED)
+    ) == {"A", "BBB"}
+
     kg_report = {
         "types": [report],
         "fragments_absorbed_total": report["fragments_absorbed"],
@@ -244,9 +266,7 @@ async def test_headquarters_write_receipt_carries_winner_reason_provenance() -> 
     assert receipt.winner == (ACME_WINNER, HQ_PRED, "Austin")
     assert receipt.loser == (ACME_WINNER, HQ_PRED, "San Francisco")
 
-    # Validity companions are not on the property-graph port yet (E7), so
-    # fetch_provenance may be empty. The receipt + both instance values
-    # still prove the loser was kept, not silently dropped.
+    # Both instance values remain stored; only Austin is current.
     from infona_client.graph.store import get_graph_store
 
     hq_vals = {
@@ -256,6 +276,9 @@ async def test_headquarters_write_receipt_carries_winner_reason_provenance() -> 
         and str(a.get("property_id") or "").endswith("headquarters")
     }
     assert hq_vals >= {"Austin", "San Francisco"}
+    assert set(await fetch_current_object_terms(None, INSTANCE_GRAPH, ACME_WINNER, HQ_PRED)) == {
+        "Austin"
+    }
 
 
 def test_credit_rating_would_be_a_lexical_guess() -> None:

@@ -204,6 +204,15 @@ async def rebuild_type(
             store=store,
         )
 
+    # Canonical URI now holds both literals; close resolved losers so the
+    # report is not theater. Failures must not fail the merge (ONTA-543 / E7).
+    try:
+        from infona_client.resolver.er.rebuild_apply import apply_resolved_conflicts
+
+        await apply_resolved_conflicts(client, instance_graph, type_name, extras)
+    except Exception:  # noqa: BLE001
+        logger.warning("er_rebuild_conflict_apply_failed", exc_info=True)
+
     # One post-write refresh per rebuild batch (NOT per entity): re-key the merged
     # subjects in the derived indexes and recompute type-stats. Scope comes from
     # the instance-graph URI; a non-KG graph (e.g. a test stub) yields no scope, so

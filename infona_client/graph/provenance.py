@@ -74,6 +74,7 @@ from infona_client.graph.provenance_query import (  # noqa: F401 — public re-e
     fetch_provenance_from_store,
     parse_provenance_records,
     provenance_query,
+    stamp_authority_on_facts,
 )
 from infona_client.graph.provenance_uris import (  # noqa: F401 — public re-exports
     ATTR_META_NS,
