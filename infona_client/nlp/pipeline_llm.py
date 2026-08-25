@@ -92,6 +92,16 @@ def _is_reasoning_query_model(model: str | None) -> bool:
 DEFAULT_QUERY_MODEL = _default_query_model()
 DEFAULT_QUERY_PROVIDER = _default_query_provider()  # cerebras, openrouter, or anthropic
 
+
+def skip_narrative_rephrase(missing_vars: list[str] | None) -> bool:
+    """Unbound projections must not be fluent-covered by the 8B rephraser.
+
+    The Llama 8B narrative path invents entities for missing columns. Skip it
+    and keep the raw table + missing-column note instead.
+    """
+    return bool(missing_vars)
+
+
 # Reasoning-budget recovery for gpt-oss-120b (and similar). The model can spend
 # its ENTIRE max_completion_tokens on reasoning and return finish_reason=length
 # with NO answer content. Retry with a bigger budget; then optionally fall back

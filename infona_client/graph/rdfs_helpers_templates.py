@@ -345,9 +345,9 @@ WHERE p.name = $rel_attr
     OR toLower(replace(coalesce(t.name, ''), '_', ' ')) = toLower($target_name)
     OR toLower(coalesce(t.display_name, t.name, '')) CONTAINS toLower($target_name)
   )
-RETURN DISTINCT e.id AS id, coalesce(e.title, e.name) AS title,
+RETURN DISTINCT e.id AS id, coalesce(e.display_name, e.title, e.name) AS title,
        e.primary_type AS primary_type,
-       coalesce(t.display_name, t.name) AS related_name
+       coalesce(t.display_name, t.title, t.name) AS related_name
 ORDER BY e.id
 LIMIT $limit
 """.strip()
@@ -372,8 +372,12 @@ WHERE $to_types IS NULL
    OR any(n IN tc_names WHERE n IN $to_types)
    OR any(i IN tc_ids WHERE i IN $to_types)
    OR to_e.primary_type IN $to_types
-RETURN from_e.id AS from_id, from_e.name AS from_name, from_e.primary_type AS from_type,
-       to_e.id AS to_id, to_e.name AS to_name, to_e.primary_type AS to_type,
+RETURN from_e.id AS from_id,
+       coalesce(from_e.display_name, from_e.title, from_e.name) AS from_name,
+       from_e.primary_type AS from_type,
+       to_e.id AS to_id,
+       coalesce(to_e.display_name, to_e.title, to_e.name) AS to_name,
+       to_e.primary_type AS to_type,
        p.name AS rel_type, p.name AS attr
 ORDER BY from_id, to_id
 LIMIT $limit

@@ -5,9 +5,14 @@ import time
 
 import structlog
 
-from infona_client.graph.parser import unbound_projection_vars
+from infona_client.graph.parser import (
+    apply_unbound_confidence,
+    dropped_projection_aliases,
+    unbound_projection_vars,
+)
 from infona_client.models.query import NLResult
 from infona_client.nlp.pipeline_helpers import ONTOLOGY_EMPTY, ONTOLOGY_FETCH_ERROR
+from infona_client.nlp.pipeline_llm import skip_narrative_rephrase
 
 logger = structlog.stdlib.get_logger("infona.nlp.pipeline")
 
@@ -41,8 +46,12 @@ class PipelineAskFinishMixin:
         token_ledger = st.token_ledger
         run_manifest = st.run_manifest
 
-        # Unbound projection honesty
+        # Unbound projection honesty: OPTIONAL columns that never bound, plus
+        # generated RETURN aliases a template rescue silently dropped.
         missing_vars = unbound_projection_vars(variables, bindings)
+        for alias in dropped_projection_aliases(cypher, variables, bindings):
+            if alias not in missing_vars:
+                missing_vars.append(alias)
         if missing_vars:
             timing["unbound_projection_vars"] = ", ".join(missing_vars)
             logger.info(
@@ -82,9 +91,15 @@ class PipelineAskFinishMixin:
             answer += f"\n\nCoverage note: {kg_coverage_note}"
 
         t_reph = time.time()
-        narrative_answer = await self._rephrase_via_openrouter(
-            question, bindings
-        )
+        if skip_narrative_rephrase(missing_vars):
+            # Fail closed: the 8B rephraser covers missed columns with fluent
+            # invented entities. Raw table + missing-column note stay authoritative.
+            narrative_answer = ""
+            timing["rephrase_skipped_unbound_projection"] = 1.0
+        else:
+            narrative_answer = await self._rephrase_via_openrouter(
+                question, bindings
+            )
         rephrase_usage = getattr(self, "_last_rephrase_usage", None)
         self._last_rephrase_usage = None
         if rephrase_usage:
@@ -154,6 +169,12 @@ class PipelineAskFinishMixin:
                 q_clarify = cov_ok.clarification_prompt or ""
             except Exception:
                 pass
+        if missing_vars:
+            q_conf, q_conf_reason = apply_unbound_confidence(
+                missing_vars, q_conf, q_conf_reason
+            )
+            timing["query_confidence"] = q_conf
+            timing["query_confidence_reason"] = q_conf_reason
         try:
             from infona_client.nlp.ask_process_log import log_ask_event
 

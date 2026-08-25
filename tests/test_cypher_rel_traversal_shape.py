@@ -280,6 +280,54 @@ async def test_valid_template_still_supersedes_invented_edge() -> None:
 
 
 @pytest.mark.asyncio
+async def test_assertion_shaped_cypher_executes_despite_related_entities_template():
+    """Schema-valid Assertion Cypher must not lose RETURN columns to the template.
+
+    Q2 class: gen.template=related_entities + Assertion body + no invented
+    rels → execute_read keeps person_name / date instead of a slug dump.
+    """
+    from infona_client.graph.store import GraphRecord
+    from infona_client.nlp.pipeline_cypher_exec import PipelineCypherExecMixin
+
+    class _Session:
+        def __init__(self) -> None:
+            self.reads: list[tuple[str, dict]] = []
+            self.templates: list[tuple[str, dict]] = []
+
+        async def execute_read(self, cypher: str, params: dict) -> list:
+            self.reads.append((cypher, params))
+            return [
+                GraphRecord(
+                    data={"person_name": "Ada Lovelace", "date": "2024-06-01"}
+                )
+            ]
+
+        async def execute_template(self, name: str, params: dict) -> list:
+            self.templates.append((name, params))
+            raise AssertionError("template must not drop Assertion RETURN columns")
+
+    session = _Session()
+    gen = {
+        "cypher": ASSERTION_CYPHER,
+        "template": "related_entities",
+        "params": {
+            "from_types": ["SynthEvent"],
+            "to_types": ["SynthPerson"],
+            "rel_attr": "attendee",
+        },
+    }
+    records, path = await PipelineCypherExecMixin()._execute_confined_cypher(
+        session, gen, ASSERTION_CYPHER, {"tenant_id": "t", "kg": "k"}
+    )
+
+    assert path.startswith("execute_read")
+    assert session.templates == []
+    assert session.reads
+    assert records[0].get("person_name") == "Ada Lovelace"
+    assert records[0].get("date") == "2024-06-01"
+
+
+@pytest.mark.asyncio
 async def test_feedback_survives_the_store_error_truncation_cap() -> None:
     """`scrub_store_detail` hard-truncates at 600 chars — the fix must survive.
 
