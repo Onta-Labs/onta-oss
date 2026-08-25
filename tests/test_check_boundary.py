@@ -173,6 +173,11 @@ LEAKS = [
         'CONTACT = "poweruser@gmail.com"',  # boundary-ok: fabricated address planted for this self-test
         id="personal-email-with-placeholder-suffix",
     ),
+    pytest.param(
+        "infona_client/api/routes/probe.py",
+        '@router.get("/v1/me/dashboard")\n',
+        id="explorer-cross-workspace-dashboard-route",
+    ),
 ]
 
 

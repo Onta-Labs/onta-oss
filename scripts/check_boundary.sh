@@ -338,6 +338,14 @@ run_check "imports the proprietary 'infona' parent package (use infona_client or
 run_check "references a proprietary-only module path (lives in the parent repo, not OSS)" \
   'infona/auth/clerk|infona/enrichment/(exa|perplexity|gs1)|infona/billing|infona/entitlement'
 
+# 2b. Explorer product surfaces. Per-tenant `/graphs/{tenant}/usage` is OSS
+#     (self-hosters need their own counters). The hosted Explorer's
+#     cross-workspace dashboard rollup is premium and must not grow a public
+#     `/v1/me/dashboard` (or a `me_dashboard` route module) in this tree.
+#     Identifier/secret scans (checks 1, 3-5) cannot catch this class.
+run_check "Explorer-only cross-workspace dashboard route (premium: infona/api/routes/me_dashboard.py)" \
+  '/v1/me/dashboard|me_dashboard\.py'
+
 # Strings each pattern MUST match. They live only in a temp file, never in the
 # repo, and exist so a null result can be trusted: see verify_pattern. Each one
 # deliberately exercises the awkward part of its pattern — a case-folded host,

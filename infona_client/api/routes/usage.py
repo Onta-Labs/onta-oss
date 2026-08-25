@@ -15,6 +15,7 @@ interfaces (webapp / CLI / MCP) read THIS route — interface-convergence rule.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
@@ -109,32 +110,28 @@ def _top_labels(per_label_req: dict[str, float]) -> list[str]:
     return [label for label, _ in ranked[:MAX_BREAKDOWN]]
 
 
-@router.get("", response_model=UsageReport)
-async def get_usage(
-    days: int = Query(30, ge=1, le=MAX_DAYS, description="Window length in days."),
-    tenant: TenantContext = Depends(get_tenant),
-    job_store=Depends(get_enrichment_job_store),
+def assemble_usage_report(
+    buckets: list[UsageBucket],
+    jobs: Sequence,
+    days: int,
+    *,
+    kg_label: Callable[[str, str], str] | None = None,
+    today: Optional[date] = None,
 ) -> UsageReport:
-    """Day-aligned usage report for the tenant, newest day last.
+    """Build the day-aligned usage report from already-fetched buckets + jobs.
 
-    ``days`` sets the current window; the preceding window of equal length is
-    aggregated into ``prev_totals`` for period-over-period deltas.
+    Used by the per-tenant OSS ``GET /graphs/{tenant}/usage`` route and by the
+    premium Explorer dashboard rollup (which supplies buckets/jobs for every
+    granted workspace). Cost still comes from ``job.cost``, never from the
+    usage table.
     """
-    # Make sure buffered observations (including this morning's traffic) are
-    # visible before reading. Cheap no-op when the buffer is empty.
-    await get_usage_recorder().flush()
-
-    today = datetime.now(timezone.utc).date()
+    label_of = kg_label or (lambda _tenant_id, name: name)
+    today = today or datetime.now(timezone.utc).date()
     window_start = today - timedelta(days=days - 1)
     prev_start = window_start - timedelta(days=days)
     day_list = _day_range(window_start, days)
     month_start = today.replace(day=1)
 
-    buckets = await get_usage_store().query_range(
-        tenant.tenant_id, min(prev_start, month_start), today
-    )
-
-    # --- request/latency aggregation off the usage buckets ------------------
     req_total: dict[date, float] = {}
     dur_total: dict[date, float] = {}
     req_by_kg: dict[str, dict[date, float]] = {}
@@ -170,15 +167,16 @@ async def get_usage(
         )
         _acc(req_total, dur_total, b)
         if b.kg_name:
+            kg = label_of(b.tenant_id, b.kg_name)
             _acc(
-                req_by_kg.setdefault(b.kg_name, {}),
-                dur_by_kg.setdefault(b.kg_name, {}),
+                req_by_kg.setdefault(kg, {}),
+                dur_by_kg.setdefault(kg, {}),
                 b,
             )
-        key_label = b.api_key_hint or "default"
+        key_name = b.api_key_hint or "default"
         _acc(
-            req_by_key.setdefault(key_label, {}),
-            dur_by_key.setdefault(key_label, {}),
+            req_by_key.setdefault(key_name, {}),
+            dur_by_key.setdefault(key_name, {}),
             b,
         )
 
@@ -187,17 +185,16 @@ async def get_usage(
     )
     prev.avg_latency_ms = round(prev_dur / prev.requests, 1) if prev.requests else 0.0
 
-    # --- cost aggregation off the job store ---------------------------------
     cost_total: dict[date, float] = {}
     cost_by_kg: dict[str, dict[date, float]] = {}
-    try:
-        summaries = await job_store.list_for_tenant(tenant.tenant_id)
-    except Exception:  # noqa: BLE001 - cost is additive; report requests regardless
-        summaries = []
-    for s in summaries:
-        if not s.cost:
+    for s in jobs:
+        if not getattr(s, "cost", None):
             continue
-        ran_at: Optional[datetime] = s.last_run or s.completed_at or s.created_at
+        ran_at: Optional[datetime] = (
+            getattr(s, "last_run", None)
+            or getattr(s, "completed_at", None)
+            or getattr(s, "created_at", None)
+        )
         if ran_at is None:
             continue
         ran_day = ran_at.astimezone(timezone.utc).date() if ran_at.tzinfo else ran_at.date()
@@ -208,13 +205,14 @@ async def get_usage(
             continue
         totals.cost_usd += s.cost
         cost_total[ran_day] = cost_total.get(ran_day, 0.0) + s.cost
-        if s.kg_name:
-            kg_costs = cost_by_kg.setdefault(s.kg_name, {})
+        kg_name = getattr(s, "kg_name", "") or ""
+        if kg_name:
+            kg = label_of(getattr(s, "tenant_id", "") or "", kg_name)
+            kg_costs = cost_by_kg.setdefault(kg, {})
             kg_costs[ran_day] = kg_costs.get(ran_day, 0.0) + s.cost
     totals.cost_usd = round(totals.cost_usd, 2)
     prev.cost_usd = round(prev.cost_usd, 2)
 
-    # --- assemble day-aligned series ----------------------------------------
     kg_labels = _top_labels({k: sum(v.values()) for k, v in req_by_kg.items()})
     key_labels = _top_labels({k: sum(v.values()) for k, v in req_by_key.items()})
     cost_kg_labels = _top_labels({k: sum(v.values()) for k, v in cost_by_kg.items()})
@@ -247,7 +245,6 @@ async def get_usage(
             _series(k, cost_by_kg[k], day_list, sum(cost_by_kg[k].values()))
             for k in cost_kg_labels
         ],
-        # Job runs aren't attributable to an API key — no per-key cost lines.
         by_key=[],
     )
 
@@ -264,3 +261,32 @@ async def get_usage(
         ),
         month_requests=month_requests,
     )
+
+
+@router.get("", response_model=UsageReport)
+async def get_usage(
+    days: int = Query(30, ge=1, le=MAX_DAYS, description="Window length in days."),
+    tenant: TenantContext = Depends(get_tenant),
+    job_store=Depends(get_enrichment_job_store),
+) -> UsageReport:
+    """Day-aligned usage report for the tenant, newest day last.
+
+    ``days`` sets the current window; the preceding window of equal length is
+    aggregated into ``prev_totals`` for period-over-period deltas.
+    """
+    # Make sure buffered observations (including this morning's traffic) are
+    # visible before reading. Cheap no-op when the buffer is empty.
+    await get_usage_recorder().flush()
+
+    today = datetime.now(timezone.utc).date()
+    window_start = today - timedelta(days=days - 1)
+    prev_start = window_start - timedelta(days=days)
+    month_start = today.replace(day=1)
+    buckets = await get_usage_store().query_range(
+        tenant.tenant_id, min(prev_start, month_start), today
+    )
+    try:
+        summaries = await job_store.list_for_tenant(tenant.tenant_id)
+    except Exception:  # noqa: BLE001 - cost is additive; report requests regardless
+        summaries = []
+    return assemble_usage_report(buckets, summaries, days, today=today)
