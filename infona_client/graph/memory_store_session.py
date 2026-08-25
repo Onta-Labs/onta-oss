@@ -15,6 +15,7 @@ from infona_client.graph.memory_store_rows import (
     _SuppressionRow,
     _ValueHistoryRow,
 )
+from infona_client.graph.memory_store_validity import MemoryValiditySessionMixin
 from infona_client.graph.schema_bootstrap import get_template
 from infona_client.graph.scope import GraphScope, GraphScopeError
 from infona_client.graph.store import (
@@ -29,7 +30,7 @@ if TYPE_CHECKING:
     from infona_client.graph.memory_store import MemoryGraphStore
 
 
-class MemoryGraphSession:
+class MemoryGraphSession(MemoryValiditySessionMixin):
     def __init__(self, store: "MemoryGraphStore", scope: GraphScope) -> None:
         self._store = store
         self._scope = scope

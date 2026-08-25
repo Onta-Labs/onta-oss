@@ -247,14 +247,15 @@ def test_re_suppressing_the_same_value_is_idempotent():
 
 
 def test_warn_unported_no_longer_names_suppression():
-    """Valid-time stays unported and still warns; suppression must not."""
+    """Suppression and valid-time are both ported; neither still warns."""
     from infona_client.graph.kg_writer_session import _warn_unported_companions
 
     import inspect
 
     params = inspect.signature(_warn_unported_companions).parameters
     assert "suppression_triples" not in params
-    assert {"validity_triples", "reopen_facts"} <= set(params)
+    assert "validity_triples" not in params
+    assert "reopen_facts" not in params
 
 
 # --------------------------------------------------------------------------- #

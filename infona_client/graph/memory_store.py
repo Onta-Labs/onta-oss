@@ -73,6 +73,7 @@ from infona_client.graph.memory_store_norms import (  # noqa: F401 — public re
 from infona_client.graph.memory_store_ontology import MemoryOntologyMixin
 from infona_client.graph.memory_store_rels import MemoryRelsMixin
 from infona_client.graph.memory_store_suppression import MemorySuppressionMixin
+from infona_client.graph.memory_store_validity import MemoryValidityMixin
 from infona_client.graph.memory_store_rows import (  # noqa: F401 — public re-exports
     _AssertionRow,
     _CitationRow,
@@ -84,6 +85,7 @@ from infona_client.graph.memory_store_rows import (  # noqa: F401 — public re-
     _ProvRow,
     _RelRow,
     _SuppressionRow,
+    _ValidityRow,
     _ValueHistoryRow,
 )
 from infona_client.graph.memory_store_session import MemoryGraphSession
@@ -101,6 +103,7 @@ class MemoryGraphStore(
     MemoryRelsMixin,
     MemoryExploreMixin,
     MemorySuppressionMixin,
+    MemoryValidityMixin,
     MemoryNormalizeMixin,
     MemoryExecuteMixin,
 ):
@@ -116,6 +119,8 @@ class MemoryGraphStore(
         self._value_history: list[_ValueHistoryRow] = []
         # Suppression MERGE key: (tenant_id, kg, mark_id) — ONTA-279 sticky marks
         self._suppressions: dict[tuple[str, str, str], _SuppressionRow] = {}
+        # Validity MERGE key: (tenant_id, kg, interval_id) — ONTA-277 intervals
+        self._validity: dict[tuple[str, str, str], _ValidityRow] = {}
         # AttrCitation MERGE key: (tenant_id, kg, entity_id, attr, value_hash)
         self._citations: dict[tuple[str, str, str, str, str], _CitationRow] = {}
         # ADR 0013: Class / Property / Assertion
@@ -155,6 +160,7 @@ class MemoryGraphStore(
         self._prov.clear()
         self._value_history.clear()
         self._suppressions.clear()
+        self._validity.clear()
         self._citations.clear()
         self._classes.clear()
         self._properties.clear()
@@ -237,6 +243,7 @@ __all__ = [
     "_ProvRow",
     "_RelRow",
     "_SuppressionRow",
+    "_ValidityRow",
     "_ValueHistoryRow",
     "_norm_cypher",
 ]

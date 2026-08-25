@@ -8,7 +8,7 @@ Look up patched names on :mod:`infona_client.graph.provenance` via ``_host()``.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from infona_client.graph.parser import parse_sparql_results
 from infona_client.graph.provenance_uris import (
@@ -131,6 +131,37 @@ def parse_provenance_records(
     return out
 
 
+def stamp_authority_on_facts(facts, records):
+    """Copy ``ProvenanceRecord.authority`` onto empty ``Fact.provenance``.
+
+    GraphStore Assertions have no dedicated authority column; the free-text
+    ``provenance`` field carries the ``AuthorityLevel`` value so a later
+    conflict read can rank the stored fact. Existing non-empty labels win.
+    """
+    if not facts or not records:
+        return facts
+    by_key: dict[tuple[str, str, str], str] = {}
+    for r in records:
+        auth = str(getattr(r, "authority", "") or "")
+        if not auth:
+            continue
+        pred = str(getattr(r, "predicate", "") or "")
+        leaf = pred.rstrip("/").rsplit("/", 1)[-1] if pred else ""
+        obj = _strip_xsd(str(getattr(r, "obj", "") or ""))
+        subj = str(getattr(r, "subject", "") or "")
+        if subj and leaf:
+            by_key[(subj, leaf, obj)] = auth
+    out = []
+    for f in facts:
+        if getattr(f, "provenance", None):
+            out.append(f)
+            continue
+        obj = _strip_xsd("" if f.value is None else str(f.value))
+        auth = by_key.get((f.subject_id, f.key, obj))
+        out.append(replace(f, provenance=auth) if auth else f)
+    return out
+
+
 def _predicate_leaf(predicate: str) -> str:
     """Flatten a predicate URI to the attr leaf used on Assertion / ProvEvent."""
     if not predicate:
@@ -172,13 +203,15 @@ async def fetch_provenance_from_store(
     native = getattr(session, "read_assertions_for_subject", None)
     assertion_rows: list = []
     if callable(native):
-        assertion_rows = list(await native(subject, prop_id=predicate))
+        # Do not pass ``prop_id=predicate``: Assertions store ``property_uri(leaf)``,
+        # callers pass the original RDF predicate. Leaf-match below.
+        assertion_rows = list(await native(subject))
     else:
         try:
             from infona_client.graph.rdfs_helpers import session_assertions_for_subject
 
             assertion_rows = await session_assertions_for_subject(
-                session, subject, prop_id=predicate
+                session, subject
             )
         except Exception:  # noqa: BLE001 — best-effort read
             assertion_rows = []
@@ -218,6 +251,7 @@ async def fetch_provenance_from_store(
                 confidence=confidence,
                 timestamp=ts,
                 graph=graph_uri,
+                authority=str(d.get("provenance") or ""),
             )
         )
 

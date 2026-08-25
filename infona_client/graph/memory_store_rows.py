@@ -123,6 +123,47 @@ class _SuppressionRow:
 
 
 @dataclass
+class _ValidityRow:
+    """One valid-time interval (ONTA-277 property-graph port).
+
+    MERGE identity is ``(tenant_id, kg, interval_id)`` — ``interval_id`` is the
+    RDF interval-node URI, already ``sha1``-keyed on ``(s, p, o)``. Independent
+    of ``_AssertionRow``: closing an interval must not delete the assertion.
+    """
+
+    tenant_id: str
+    kg: str
+    interval_id: str
+    subject: str = ""
+    predicate: str = ""
+    object_repr: str = ""
+    valid_from: str = ""
+    valid_to: str = ""
+    superseded_by: str = ""
+    status: str = ""
+    statement_id: str = ""
+    graph_uri: str = ""
+
+    def as_record(self) -> GraphRecord:
+        return GraphRecord(
+            data={
+                "interval_id": self.interval_id,
+                "subject": self.subject,
+                "predicate": self.predicate,
+                "object_repr": self.object_repr,
+                "valid_from": self.valid_from,
+                "valid_to": self.valid_to,
+                "superseded_by": self.superseded_by,
+                "status": self.status,
+                "statement_id": self.statement_id,
+                "graph_uri": self.graph_uri,
+                "tenant_id": self.tenant_id,
+                "kg": self.kg,
+            }
+        )
+
+
+@dataclass
 class _CitationRow:
     tenant_id: str
     kg: str

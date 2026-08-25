@@ -26,13 +26,7 @@ import pytest
 from infona_client.api_registry.spec import AuthorityLevel
 from infona_client.graph.kg_writer import insert_facts
 from infona_client.graph.queries import kg_graph_uri
-from infona_client.graph.validity import (
-    VAL_VALID_TO,
-    _interval_uri,
-    current_objects_query,
-    fetch_history,
-    validity_graph_uri,
-)
+from infona_client.graph.validity import fetch_history
 from infona_client.pipeline.conflict import REASON_CONFIDENCE
 from infona_client.pipeline.corrections import UserAssertion, apply_user_assertion
 from infona_client.pipeline.mutations import (
@@ -83,8 +77,9 @@ def _quiet_housekeeping(monkeypatch):
 
 async def _current(n: PyoxiNeptune, subject: str, predicate: str) -> set[str]:
     """The "current facts" projection — objects with no CLOSED validity interval."""
-    raw = await n.query(current_objects_query(INSTANCE_GRAPH, subject, predicate))
-    return {b["o"]["value"] for b in raw["results"]["bindings"]}
+    from infona_client.graph.validity import fetch_current_object_terms
+
+    return set(await fetch_current_object_terms(n, INSTANCE_GRAPH, subject, predicate))
 
 
 async def _node_has_valid_to(
@@ -92,12 +87,12 @@ async def _node_has_valid_to(
 ) -> bool:
     """True iff the ``(subject, predicate, obj)`` interval node still carries a
     ``val:validTo`` (a stale closure) in the companion validity graph."""
-    node = _interval_uri(subject, predicate, obj)
-    val_graph = validity_graph_uri(INSTANCE_GRAPH)
-    raw = await n.query(
-        f"SELECT ?vt WHERE {{ GRAPH <{val_graph}> {{ <{node}> <{VAL_VALID_TO}> ?vt }} }}"
-    )
-    return len(raw["results"]["bindings"]) > 0
+    from infona_client.graph.validity_store import read_validity_records
+
+    rows = await read_validity_records(INSTANCE_GRAPH, subject, predicate)
+    if not rows:
+        return False
+    return any(r.object_repr == obj and bool(r.valid_to) for r in rows)
 
 
 async def _seed_open_fact(n: PyoxiNeptune, subject: str, predicate: str, value: str):

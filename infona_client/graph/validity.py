@@ -335,12 +335,21 @@ async def fetch_current_object_terms(
 ) -> list[str]:
     """The write-convention object terms currently valid for ``(subject, predicate)``.
 
-    Used by the supersede op to discover which existing value(s) a newer fact
-    closes when the caller does not name the old value explicitly. Reads the raw
-    SPARQL JSON (not ``parse_sparql_results``, which drops datatype) so each term
-    is reconstructed exactly and can be closed with a term-identical
-    ``val:object``. Best-effort: returns ``[]`` on any read failure.
+    GraphStore arm FIRST (E7 port): current = instance assertion terms whose
+    validity row has empty/absent ``valid_to`` (no row ⇒ current). Residual SPARQL
+    answers only when the store cannot be asked (pyoxigraph dual-arm tests).
+    Best-effort: returns ``[]`` on any read failure.
     """
+    try:
+        from infona_client.graph.validity_store import fetch_current_from_store
+
+        from_store = await fetch_current_from_store(
+            instance_graph, subject, predicate
+        )
+    except Exception:  # noqa: BLE001 — store asked-and-failed; try SPARQL
+        from_store = None
+    if from_store is not None:
+        return from_store
     try:
         raw = await neptune.query(current_objects_query(instance_graph, subject, predicate))
     except Exception:  # noqa: BLE001 — discovery read is best-effort
@@ -375,12 +384,20 @@ async def fetch_history(
 ) -> list[ValidityInterval]:
     """Read every value of ``(subject, predicate)`` with its validity interval.
 
-    A convenience over :func:`history_objects_query` returning parsed
-    :class:`ValidityInterval` rows (current values have an empty ``valid_to`` /
-    ``is_current`` True; superseded/retracted values carry a ``valid_to`` +
-    ``status``). Returns an empty list on any read failure so a history read never
-    breaks a caller.
+    GraphStore arm FIRST (E7 port): assertion objects LEFT JOIN validity row.
+    Residual SPARQL answers when the store cannot be asked. Returns an empty
+    list on any read failure so a history read never breaks a caller.
     """
+    try:
+        from infona_client.graph.validity_store import fetch_history_from_store
+
+        from_store = await fetch_history_from_store(
+            instance_graph, subject, predicate
+        )
+    except Exception:  # noqa: BLE001 — store asked-and-failed; try SPARQL
+        from_store = None
+    if from_store is not None:
+        return from_store
     try:
         raw = await neptune.query(history_objects_query(instance_graph, subject, predicate))
     except Exception:  # noqa: BLE001 — a history read is informational, never load-bearing
