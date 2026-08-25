@@ -94,6 +94,12 @@ def try_aggregate_query(
     if not op:
         return None
     prop = (m.group("prop") or "").strip() or None
+    if prop:
+        from infona_client.nlp.numeric_attr_resolve import strip_leading_agg_modifier
+
+        noun, peeled = strip_leading_agg_modifier(prop)
+        if peeled and noun:
+            prop = noun
     label = (m.group("label") or "").strip()
     peeled_from_number = False
     # "total number of grants" is a COUNT; "total number of seats" is SUM(seats)

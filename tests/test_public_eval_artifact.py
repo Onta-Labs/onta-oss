@@ -1,8 +1,9 @@
 """Hermetic smoke: the published eval claim parses and keeps its miss column.
 
 Does not call an LLM or a live API. Guards ONTA-541: docs/EVAL.md, the
-README fragment, and docs/eval/public_results.json stay schema-complete
-even when status is ``partial`` (no invented scores).
+ONTA-541 fragment (full table for EVAL.md), and docs/eval/public_results.json
+stay schema-complete even when status is ``partial`` (no invented scores).
+The README hero points at EVAL.md; it does not host the tier table.
 """
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ REPO = Path(__file__).resolve().parents[1]
 ARTIFACT = REPO / "docs" / "eval" / "public_results.json"
 EVAL_MD = REPO / "docs" / "EVAL.md"
 FRAGMENT = REPO / "docs" / "_fragments" / "ONTA-541.md"
+README = REPO / "README.md"
 WRAPPER = REPO / "scripts" / "run_public_eval.py"
 
 REQUIRED_TOP = {
@@ -97,7 +99,7 @@ def test_eval_md_has_table_and_stranger_command():
     assert text.count("| Multi-hop |") >= 1
 
 
-def test_fragment_is_readme_ready():
+def test_fragment_has_full_eval_table():
     text = FRAGMENT.read_text()
     assert FRAGMENT.is_file()
     assert "Visible misses" in text
@@ -106,6 +108,21 @@ def test_fragment_is_readme_ready():
     assert "docs/EVAL.md" in text
     assert "| Count/Lookup |" in text
     assert "| Multi-hop |" in text
+    assert "**6 / 8**" in text
+    assert "8 / 8" not in text
+
+
+def test_readme_points_at_eval_md_not_the_table():
+    """Homepage leads ingest → FLAURA2; the 6/8 table lives in EVAL.md."""
+    text = README.read_text()
+    assert README.is_file()
+    assert "docs/EVAL.md" in text
+    assert "FLAURA2" in text
+    assert "6 / 8" in text
+    assert "8 / 8" not in text
+    assert "| Count/Lookup |" not in text
+    assert "| Multi-hop |" not in text
+    assert "| Visible misses |" not in text
 
 
 def test_wrapper_is_thin_and_not_an_infona_eval_cli():

@@ -14,10 +14,11 @@ from infona_client.nlp.query_constraint_coverage_types import CoverageResult
 from infona_client.nlp.query_intent import QueryIntentSketch
 
 # List helpers that already have a named count twin. Do not include
-# literal_compare / related_entity_name_filter until those twins exist.
+# related_entity_name_filter until that twin exists.
 _COUNT_LIST_TWINS: dict[str, str] = {
     "literal_values": "literal_values_count",
     "entities_of_type": "entities_of_type_count",
+    "literal_compare": "literal_compare_count",
 }
 
 

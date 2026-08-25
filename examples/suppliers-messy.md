@@ -4,9 +4,10 @@
 and example.com emails. No real customer data. No spider-bench leakage.
 
 This file exists so a stranger can see URI merge: six rows become three
-suppliers, plus an explanatory field-conflict report (a winner, a reason, a
-timestamp, and one leftover conflict the system refused to guess). Field
-winners are not written as the sole current graph value.
+suppliers, plus a field-conflict report (a winner, a reason, a timestamp, and
+one leftover conflict the system refused to guess). Authority-axis winners
+become the current graph value; equal-trust leftovers stay dual-current and
+flagged.
 
 ## Intended entities
 
@@ -22,19 +23,19 @@ is the second pass that absorbs them. URI merge **is** applied (6→3).
 
 ## Intended field conflicts (Acme only)
 
-These lines are an **explanatory report**. They do not rewrite current
-graph values. Both HQ literals stay live; validity intervals are not on
-Neo4j yet.
+These lines land as graph state. Both HQ literals stay stored; only Austin
+is current. San Francisco is closed.
 
-**`headquarters` — reported winner.** ERP (`source_of_truth`, 2026-03-01, Austin)
+**`headquarters` — applied winner.** ERP (`source_of_truth`, 2026-03-01, Austin)
 beats the stale directory (`supplementary`, 2024-06-01, San Francisco).
 Winner **Austin**, reason **authority**, provenance is the ERP row
-(source + timestamp + authority).
+(source + timestamp + authority). Austin is current; SF is stored/closed.
 
 **`credit_rating` — left unresolved.** ERP says `A`, CRM says `BBB`.
 Same authority (`source_of_truth`), same timestamp. The only remaining
 tiebreak would be a lexical guess (`A` vs `BBB`). The report **flags**
-that pair instead of silently picking. A reviewer must decide.
+that pair instead of silently picking. Both stay dual-current. A reviewer
+must decide.
 
 Globex and Initech agree with themselves on every field.
 

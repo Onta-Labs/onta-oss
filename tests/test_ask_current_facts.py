@@ -24,6 +24,7 @@ from infona_client.graph.queries import kg_graph_uri
 from infona_client.graph.rdfs_helpers_templates import (
     LITERAL_AGGREGATE_CYPHER,
     LITERAL_ARGMAX_BY_DIM_CYPHER,
+    LITERAL_COMPARE_COUNT_CYPHER,
     LITERAL_COMPARE_CYPHER,
     LITERAL_DISTINCT_COUNT_CYPHER,
     LITERAL_VALUES_COUNT_CYPHER,
@@ -118,6 +119,7 @@ def test_literal_templates_optional_match_validity_interval():
         LITERAL_VALUES_CYPHER,
         LITERAL_VALUES_COUNT_CYPHER,
         LITERAL_COMPARE_CYPHER,
+        LITERAL_COMPARE_COUNT_CYPHER,
         LITERAL_AGGREGATE_CYPHER,
         LITERAL_ARGMAX_BY_DIM_CYPHER,
         LITERAL_DISTINCT_COUNT_CYPHER,

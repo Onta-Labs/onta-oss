@@ -58,6 +58,7 @@ _DIM_FILTER_TEMPLATES = frozenset(
         "literal_values",
         "literal_values_count",
         "literal_compare",
+        "literal_compare_count",
         "related_entity_name_filter",
         "related_entity_name_filter_inverse",
     }

@@ -776,7 +776,7 @@ def schema_valid_feedback(result: SchemaValidResult, *, previous_cypher: str = "
         "invent HAS_OFFERED_IN / HAS_* when the leaf is not literally has_*.",
         "3. Prefer ADR 0013 templates: related_entity_name_filter with "
         "$rel_attr from the schema + $target_name; literal_values / "
-        "literal_compare with $prop_key from Attributes.",
+        "literal_compare / literal_compare_count with $prop_key from Attributes.",
         "4. Assertion path is always valid: MATCH (a:Assertion)-[:SUBJECT]->(e) "
         "MATCH (a)-[:OBJECT]->(t) MATCH (a)-[:PREDICATE]->(p:Property) "
         "WHERE p.name = $rel_attr — p.name must be a declared leaf.",
