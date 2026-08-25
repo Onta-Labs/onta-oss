@@ -93,6 +93,43 @@ def plan_has_dimension_filter(
     return False
 
 
+_COUNT_DISTINCT_RE = re.compile(r"(?i)\bcount\s*\(\s*distinct\b")
+_YEAR_TOKEN_RE = re.compile(r"(?:19|20)\d{2}")
+
+
+def plan_has_distinct_count(cypher: str) -> bool:
+    """True when the plan counts DISTINCT — covers unique-count intent."""
+    return bool(_COUNT_DISTINCT_RE.search(cypher or ""))
+
+
+def effective_has_dim_filter(
+    cypher: str,
+    *,
+    params: dict[str, Any] | None = None,
+    template: str | None = None,
+    sketch: QueryIntentSketch | None = None,
+    unbound: Sequence[str] | None = None,
+) -> bool:
+    """Dim-filter signal for fail-closed, with unique-count / year overlays.
+
+    ``count(DISTINCT …)`` covers unique/distinct count intent. An unbound
+    19xx/20xx year on an aggregate is still missing — another dim must not
+    mask it.
+    """
+    has = plan_has_dimension_filter(cypher, params=params, template=template)
+    if sketch is not None and getattr(sketch, "has_unique_count_intent", False):
+        if plan_has_distinct_count(cypher):
+            has = True
+    if has and sketch is not None and (
+        getattr(sketch, "has_aggregate_intent", False)
+        or getattr(sketch, "has_unique_count_intent", False)
+    ):
+        for tok in unbound or ():
+            if _YEAR_TOKEN_RE.fullmatch(str(tok).strip()):
+                return False
+    return has
+
+
 def _token_variants(token: str) -> set[str]:
     t = (token or "").strip().lower()
     if not t:

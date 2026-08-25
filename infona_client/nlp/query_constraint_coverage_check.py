@@ -64,7 +64,9 @@ def check_constraint_coverage(
     sk = sketch or sketch_query_intent(question)
     tokens = list(sk.filter_tokens)
     bound, unbound = _host().tokens_bound_in_plan(tokens, cypher, params)
-    has_dim = _host().plan_has_dimension_filter(cypher, params=params, template=tmpl)
+    has_dim = _host().effective_has_dim_filter(
+        cypher, params=params, template=tmpl, sketch=sk, unbound=unbound
+    )
     is_agg_or_count = _plan_is_aggregate_or_count(cypher, tmpl, sk)
     filterish = sk.has_filter_intent or bool(tokens) or question_has_filter_intent(
         question
@@ -214,10 +216,8 @@ def check_constraint_coverage(
         # unless pure type scan (handled below). Keep labels for later returns
         # by continuing with filterish path.
 
-    # --- Fail-closed core: filter intent + aggregate/count/type plan, no dim ---
-    # Product P0 is silent wrong *totals*. Entity-detail / free list plans with
-    # an unbound name token are softer (medium) so recovery paths like
-    # "show details for <id>" still execute after empty-query escalation.
+    # Fail-closed: filter intent + aggregate/count, no dim (silent totals).
+    # Entity-detail / free lists with an unbound name stay softer (medium).
     if filterish and not has_dim and is_agg_or_count:
         if tmpl in _MEASURE_ONLY_TEMPLATES:
             reason = (
