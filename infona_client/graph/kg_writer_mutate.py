@@ -290,7 +290,9 @@ async def rewrite_subject(
     indexes re-key cheaply. Dual-backend: GraphStore path re-keys Entity ``id`` +
     rel endpoints via :func:`pg_ops.rewrite_entity_id`; Neptune path uses
     ``rewrite_subject_update``. Provenance rewrite event gated by
-    ``INFONA_PROVENANCE_ENABLED``.
+    ``INFONA_PROVENANCE_ENABLED``. Also retargets ``:ValidityInterval`` rows
+    whose ``subject`` is ``old_uri`` (re-keying ``interval_id = sha1(s|p|o)``);
+    a failure there is logged and does not fail the URI rewrite.
 
     Does NOT itself touch derived secondary indexes: call
     :func:`refresh_after_write` with ``rewritten_subjects={old: new}`` once per
@@ -305,6 +307,18 @@ async def rewrite_subject(
     from infona_client.graph import pg_ops
 
     await pg_ops.rewrite_entity_id(gs, old_uri, new_uri)
+    try:
+        native = getattr(gs, "rewrite_validity_subject", None)
+        if callable(native):
+            await native(old_uri, new_uri)
+    except Exception:  # noqa: BLE001 — closures must not fail the URI rewrite
+        logger.warning(
+            "rewrite_subject_validity_rekey_failed",
+            instance_graph=instance_graph,
+            old_uri=old_uri,
+            new_uri=new_uri,
+            exc_info=True,
+        )
     if _host()._provenance_enabled(store_path=True):
         try:
             await pg_ops.create_prov_event(

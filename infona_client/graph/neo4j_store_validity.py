@@ -120,3 +120,93 @@ class Neo4jValidityMixin:
                 "object_repr": object_repr,
             },
         )
+
+    async def rewrite_validity_subject(self, old_id: str, new_id: str) -> None:
+        """Retarget ``:ValidityInterval.subject`` ``old_id`` → ``new_id``.
+
+        ``interval_id`` is ``sha1(s|p|o)`` (the MERGE key), so the rewrite
+        recomputes ``interval_id`` / ``statement_id`` from the new subject.
+        Occupied destination keys coalesce closures onto the survivor and
+        DELETE the loser node (companion only — no instance-graph DELETE).
+        """
+        if not old_id or not new_id or old_id == new_id:
+            return
+        from infona_client.graph.validity import _interval_uri, statement_id
+
+        rows = await self.read_validity_intervals(subject=old_id)
+        for row in rows:
+            pred = str(row.get("predicate") or "")
+            obj = str(row.get("object_repr") or "")
+            old_iid = str(row.get("interval_id") or "")
+            if not old_iid:
+                continue
+            new_iid = _interval_uri(new_id, pred, obj)
+            new_sid = statement_id(new_id, pred, obj)
+            await self._rekey_validity_interval(
+                old_interval_id=old_iid,
+                new_interval_id=new_iid,
+                new_subject=new_id,
+                new_statement_id=new_sid,
+            )
+
+    async def _rekey_validity_interval(
+        self,
+        *,
+        old_interval_id: str,
+        new_interval_id: str,
+        new_subject: str,
+        new_statement_id: str,
+    ) -> None:
+        """SET identity when free; coalesce+DELETE when ``new_interval_id`` exists."""
+        if old_interval_id == new_interval_id:
+            await self.execute_write(
+                "MATCH (v:ValidityInterval {tenant_id: $tenant_id, kg: $kg, "
+                "interval_id: $old_interval_id})\n"
+                "SET v.subject = $new_subject\n"
+                "RETURN v.interval_id AS interval_id",
+                {
+                    "old_interval_id": old_interval_id,
+                    "new_subject": new_subject,
+                },
+            )
+            return
+        occupied = await self.execute_read(
+            "MATCH (v:ValidityInterval {tenant_id: $tenant_id, kg: $kg, "
+            "interval_id: $new_interval_id})\n"
+            "RETURN v.interval_id AS interval_id",
+            {"new_interval_id": new_interval_id},
+        )
+        params = {
+            "old_interval_id": old_interval_id,
+            "new_interval_id": new_interval_id,
+            "new_subject": new_subject,
+            "new_statement_id": new_statement_id,
+        }
+        if not occupied:
+            await self.execute_write(
+                "MATCH (v:ValidityInterval {tenant_id: $tenant_id, kg: $kg, "
+                "interval_id: $old_interval_id})\n"
+                "SET v.subject = $new_subject,\n"
+                "    v.interval_id = $new_interval_id,\n"
+                "    v.statement_id = $new_statement_id\n"
+                "RETURN v.interval_id AS interval_id",
+                params,
+            )
+            return
+        # Companion-node DELETE after MERGE onto the existing identity — not
+        # an instance-graph removal (no Entity / Assertion touch).
+        await self.execute_write(
+            "MATCH (old:ValidityInterval {tenant_id: $tenant_id, kg: $kg, "
+            "interval_id: $old_interval_id})\n"
+            "MATCH (neu:ValidityInterval {tenant_id: $tenant_id, kg: $kg, "
+            "interval_id: $new_interval_id})\n"
+            "SET neu.subject = $new_subject,\n"
+            "    neu.valid_from = coalesce(neu.valid_from, old.valid_from),\n"
+            "    neu.valid_to = coalesce(neu.valid_to, old.valid_to),\n"
+            "    neu.superseded_by = coalesce(neu.superseded_by, old.superseded_by),\n"
+            "    neu.status = coalesce(neu.status, old.status),\n"
+            "    neu.statement_id = coalesce(neu.statement_id, $new_statement_id)\n"
+            "DELETE old\n"
+            "RETURN neu.interval_id AS interval_id",
+            params,
+        )

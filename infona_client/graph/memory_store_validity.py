@@ -91,6 +91,40 @@ class MemoryValidityMixin:
             n += 1
         return n
 
+    def _rewrite_validity_subject(
+        self, tenant_id: str, kg: str, old_id: str, new_id: str
+    ) -> None:
+        """Retarget intervals whose ``subject`` is ``old_id`` onto ``new_id``.
+
+        MERGE identity is ``(tenant_id, kg, interval_id)`` and ``interval_id``
+        is ``sha1(s|p|o)``, so a subject-only SET would fork a new node on the
+        next MERGE and leave closures invisible to current-read on the winner.
+        Occupied destination keys coalesce like :meth:`_upsert_validity`
+        (empty ``valid_to`` does not clear an existing closure).
+        """
+        from infona_client.graph.validity import _interval_uri, statement_id
+
+        if not old_id or not new_id or old_id == new_id:
+            return
+        pending: list[_ValidityRow] = []
+        drop: list[tuple[str, str, str]] = []
+        for key, row in self._validity.items():
+            if row.tenant_id != tenant_id or row.kg != kg:
+                continue
+            if row.subject != old_id:
+                continue
+            drop.append(key)
+            pending.append(row)
+        for key in drop:
+            self._validity.pop(key, None)
+        for row in pending:
+            row.subject = new_id
+            row.interval_id = _interval_uri(new_id, row.predicate, row.object_repr)
+            row.statement_id = statement_id(
+                new_id, row.predicate, row.object_repr
+            )
+            self._upsert_validity(row)
+
 
 class MemoryValiditySessionMixin:
     """Session natives for validity intervals — mixed into ``MemoryGraphSession``.
@@ -156,3 +190,8 @@ class MemoryValiditySessionMixin:
         self._store._reopen_validity(
             t, k, subject=subject, predicate=predicate, object_repr=object_repr
         )
+
+    async def rewrite_validity_subject(self, old_id: str, new_id: str) -> None:
+        """Retarget ``:ValidityInterval`` rows from ``old_id`` onto ``new_id``."""
+        t, k = self._scope_tk()
+        self._store._rewrite_validity_subject(t, k, str(old_id), str(new_id))
