@@ -7683,6 +7683,65 @@
         }
       }
     },
+    "/graphs/{tenant}/extract-sources/catalog": {
+      "get": {
+        "tags": [
+          "extract_sources"
+        ],
+        "summary": "Get Connector Catalog",
+        "description": "Prefill templates for the connect flow (ONTA-555).\n\nStatic data \u2014 the same list for every workspace \u2014 served from the backend\nrather than each client shipping a copy, so the Explorer, the CLI and MCP\noffer the identical catalog. No secrets: a template names the credential\nthe user must paste (BYOK), never one we hold.",
+        "operationId": "get_connector_catalog_graphs__tenant__extract_sources_catalog_get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ConnectorTemplate"
+                  },
+                  "title": "Response Get Connector Catalog Graphs  Tenant  Extract Sources Catalog Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/graphs/{tenant}/extract-sources": {
       "get": {
         "tags": [
@@ -8063,6 +8122,142 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/IngestResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/graphs/{tenant}/extract-sources/{slug}/schedule": {
+      "put": {
+        "tags": [
+          "extract_sources"
+        ],
+        "summary": "Put Extract Schedule",
+        "description": "Set (or replace) how often this source is re-read.",
+        "operationId": "put_extract_schedule_graphs__tenant__extract_sources__slug__schedule_put",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slug"
+            }
+          },
+          {
+            "name": "tenant",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtractScheduleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtractSourceSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "extract_sources"
+        ],
+        "summary": "Clear Extract Schedule",
+        "description": "Stop recurring reads. The source stays, runnable on demand.",
+        "operationId": "clear_extract_schedule_graphs__tenant__extract_sources__slug__schedule_delete",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slug"
+            }
+          },
+          {
+            "name": "tenant",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtractSourceSummary"
                 }
               }
             }
@@ -9910,6 +10105,233 @@
         ],
         "title": "ConflictReview"
       },
+      "ConnectorAuth": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "bearer",
+              "basic",
+              "api_key",
+              "none"
+            ],
+            "title": "Type"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "default": "API token"
+          },
+          "help": {
+            "type": "string",
+            "title": "Help",
+            "default": ""
+          },
+          "api_key_header": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key Header"
+          },
+          "username_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username Label"
+          },
+          "username_default": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username Default"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "title": "ConnectorAuth",
+        "description": "What credential the user pastes. Always BYOK \u2014 never a platform key."
+      },
+      "ConnectorPlaceholder": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "example": {
+            "type": "string",
+            "title": "Example",
+            "default": ""
+          },
+          "help": {
+            "type": "string",
+            "title": "Help",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "ConnectorPlaceholder",
+        "description": "One workspace-specific value that completes a template's base URL."
+      },
+      "ConnectorResource": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "suggested_type": {
+            "type": "string",
+            "title": "Suggested Type"
+          },
+          "id_field": {
+            "type": "string",
+            "title": "Id Field",
+            "default": "id"
+          },
+          "default": {
+            "type": "boolean",
+            "title": "Default",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "label",
+          "suggested_type"
+        ],
+        "title": "ConnectorResource",
+        "description": "A REST path (or SQL table) plus the ontology type it should land as."
+      },
+      "ConnectorTemplate": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "crm",
+              "payments",
+              "commerce",
+              "support",
+              "dev",
+              "marketing",
+              "project",
+              "productivity",
+              "database",
+              "custom"
+            ],
+            "title": "Category"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "rest_api",
+              "sql"
+            ],
+            "title": "Kind"
+          },
+          "blurb": {
+            "type": "string",
+            "title": "Blurb"
+          },
+          "docs_url": {
+            "type": "string",
+            "title": "Docs Url",
+            "default": ""
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "placeholders": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectorPlaceholder"
+            },
+            "type": "array",
+            "title": "Placeholders"
+          },
+          "headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Headers"
+          },
+          "auth": {
+            "$ref": "#/components/schemas/ConnectorAuth"
+          },
+          "resources": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectorResource"
+            },
+            "type": "array",
+            "title": "Resources"
+          },
+          "custom": {
+            "type": "boolean",
+            "title": "Custom",
+            "default": false
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "category",
+          "kind",
+          "blurb",
+          "auth"
+        ],
+        "title": "ConnectorTemplate",
+        "description": "A prefilled starting point for one extract source."
+      },
       "CoreSlot": {
         "properties": {
           "name": {
@@ -11413,6 +11835,105 @@
         "title": "EntitySpec",
         "description": "One real-world entity embedded in a (wide) CSV row.\n\nA denormalized row often packs several entities \u2014 e.g. a hotel PMS row holds\na guest (Person), a reservation (Reservation), and a property (Property).\nEach EntitySpec names one of them and how to key it: a single natural-key\ncolumn (`id_column`) or a deterministic composite of columns (`id_from`)."
       },
+      "ExtractScheduleInfo": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "interval_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Seconds"
+          },
+          "cron": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cron"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "next_run": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Run"
+          },
+          "last_run": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "ExtractScheduleInfo",
+        "description": "How a source's cadence is reported back on the summary / detail shapes."
+      },
+      "ExtractScheduleRequest": {
+        "properties": {
+          "interval_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Seconds"
+          },
+          "cron": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cron"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "ExtractScheduleRequest",
+        "description": "Body for ``PUT /extract-sources/{slug}/schedule``.\n\nExactly one of ``interval_seconds`` / ``cron`` \u2014 the same rule\n:class:`Schedule` enforces, checked here so the error names the field the\ncaller sent rather than a nested model path."
+      },
       "ExtractSourceSummary": {
         "properties": {
           "slug": {
@@ -11487,6 +12008,16 @@
               }
             ],
             "title": "Updated At"
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExtractScheduleInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -14654,6 +15185,7 @@
               "enrich",
               "suggest-relationships",
               "notify",
+              "extract",
               "semantic-embed-fill",
               "semantic-reconcile"
             ],
@@ -14749,6 +15281,7 @@
               "enrich",
               "suggest-relationships",
               "notify",
+              "extract",
               "semantic-embed-fill",
               "semantic-reconcile"
             ],
@@ -14828,6 +15361,7 @@
                   "enrich",
                   "suggest-relationships",
                   "notify",
+                  "extract",
                   "semantic-embed-fill",
                   "semantic-reconcile"
                 ]

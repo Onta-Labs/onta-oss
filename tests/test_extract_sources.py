@@ -128,7 +128,9 @@ def test_persist_403_when_not_entitled(_chk, _ent, client, auth_headers):
 
 
 def test_run_request_shape_is_dlt_ingest_request():
-    from infona_client.api.routes.extract_sources import _run_request
+    # ONTA-555: the builder moved to the SHARED saved-run path so the manual
+    # route and the scheduler's extract action construct the same body.
+    from infona_client.ingestion.saved_run import build_run_request
     from infona_client.ingestion.models import DltExtractSource, DltSourceSpec, DltResourceMap
 
     stored = DltExtractSource(
@@ -144,7 +146,7 @@ def test_run_request_shape_is_dlt_ingest_request():
         map={"v1/contacts": DltResourceMap(type="Contact", id_field="id")},
         kg="people",
     )
-    req = _run_request(stored, None)
+    req = build_run_request(stored, None)
     assert isinstance(req, DltIngestRequest)
     assert req.source.auth.secret_ref == "store:dlt:crm/token"
     assert req.kg == "people"

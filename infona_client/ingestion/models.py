@@ -53,6 +53,16 @@ CREDENTIAL_HEADER_NAMES = frozenset(
 DEFAULT_EXTRACT_LIMIT = 1000
 MAX_EXTRACT_LIMIT = 100_000
 
+#: Floor on how often a saved source may be re-read (ONTA-555). A minute-level
+#: extract would hammer the upstream API and the write path for no benefit; 15
+#: minutes is well inside every vendor's rate budget and still feels "live".
+MIN_SCHEDULE_INTERVAL_SECONDS = 900
+
+#: Named cadences the Explorer offers. Anything else goes through ``cron``.
+SCHEDULE_HOURLY = 3600
+SCHEDULE_DAILY = 86_400
+SCHEDULE_WEEKLY = 604_800
+
 SLUG_RE = re.compile(r"^[a-z][a-z0-9_-]{0,62}$")
 
 
@@ -184,6 +194,45 @@ class DltExtractSource(BaseModel):
         return s
 
 
+class ExtractScheduleRequest(BaseModel):
+    """Body for ``PUT /extract-sources/{slug}/schedule``.
+
+    Exactly one of ``interval_seconds`` / ``cron`` — the same rule
+    :class:`Schedule` enforces, checked here so the error names the field the
+    caller sent rather than a nested model path.
+    """
+
+    interval_seconds: Optional[int] = None
+    cron: Optional[str] = None
+    enabled: bool = True
+
+    @model_validator(mode="after")
+    def _one_recurrence(self) -> "ExtractScheduleRequest":
+        has_cron = bool(self.cron and self.cron.strip())
+        has_interval = self.interval_seconds is not None
+        if has_cron and has_interval:
+            raise ValueError("set exactly one of interval_seconds / cron, not both")
+        if not has_cron and not has_interval:
+            raise ValueError("set exactly one of interval_seconds / cron")
+        if has_interval and (self.interval_seconds or 0) < MIN_SCHEDULE_INTERVAL_SECONDS:
+            raise ValueError(
+                f"interval_seconds must be at least {MIN_SCHEDULE_INTERVAL_SECONDS} "
+                "(15 minutes) — use a cron expression for anything sparser"
+            )
+        return self
+
+
+class ExtractScheduleInfo(BaseModel):
+    """How a source's cadence is reported back on the summary / detail shapes."""
+
+    id: str
+    interval_seconds: Optional[int] = None
+    cron: Optional[str] = None
+    enabled: bool = True
+    next_run: Optional[datetime] = None
+    last_run: Optional[datetime] = None
+
+
 class ExtractSourceSummary(BaseModel):
     """List/get shape. Secret-free by construction (``has_secret`` only)."""
 
@@ -197,6 +246,9 @@ class ExtractSourceSummary(BaseModel):
     kg: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    #: The source's recurring-read cadence (ONTA-555), or None when it only
+    #: runs on demand. Joined from the shared schedule store, not stored here.
+    schedule: Optional[ExtractScheduleInfo] = None
 
 
 class CreateExtractSourceRequest(BaseModel):

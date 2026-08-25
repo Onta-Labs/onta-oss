@@ -12,10 +12,11 @@ import type { Schedule, ScheduleAction, UserSchedulableAction } from "../src/ind
 // system-managed arms, so exhaustive consumers don't break when a
 // `semantic-reconcile` row shows up in a schedules listing.
 
-describe("schedule action vocabulary (ONTA-173 / ONTA-235)", () => {
-  it("user-schedulable allowlist mirrors the backend: the action-endpoint actions + notify", () => {
+describe("schedule action vocabulary (ONTA-173 / ONTA-235 / ONTA-555)", () => {
+  it("user-schedulable allowlist mirrors the backend: action-endpoint actions + notify + extract", () => {
     expect([...USER_SCHEDULABLE_ACTIONS].sort()).toEqual([
       "enrich",
+      "extract",
       "find-merge-duplicates",
       "notify",
       "suggest-relationships",
@@ -47,6 +48,7 @@ describe("schedule action vocabulary (ONTA-173 / ONTA-235)", () => {
       enrich: "user",
       "suggest-relationships": "user",
       notify: "user",
+      extract: "user",
       "semantic-embed-fill": "system",
       "semantic-reconcile": "system",
     };

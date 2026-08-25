@@ -6,6 +6,8 @@ import type {
   ApiSourceTestResult,
   ApiSourceValidateResult,
   ApiSourceWrite,
+  ConnectorTemplate,
+  ExtractScheduleWrite,
   ExtractSourceSummary,
   ExtractSourceWrite,
   GrepResponse,
@@ -388,6 +390,36 @@ export class ClientExplore extends ClientApi {
       this.pExtractSourceRun(slug),
       body,
       300_000,
+    );
+  }
+
+  /** Connector templates for the connect flow (ONTA-555). Static per release —
+   *  served from the backend so every client offers the same catalog. */
+  async extractCatalog(): Promise<ConnectorTemplate[]> {
+    const data = await this.request<unknown>("GET", this.pExtractCatalog(), undefined, 15_000);
+    return Array.isArray(data) ? (data as ConnectorTemplate[]) : [];
+  }
+
+  /** Set how often a saved source is re-read (ONTA-555). */
+  async extractScheduleSet(
+    slug: string,
+    body: ExtractScheduleWrite,
+  ): Promise<ExtractSourceSummary> {
+    return this.request<ExtractSourceSummary>(
+      "PUT",
+      this.pExtractSourceSchedule(slug),
+      body,
+      15_000,
+    );
+  }
+
+  /** Stop recurring reads. The source stays, runnable on demand. */
+  async extractScheduleClear(slug: string): Promise<ExtractSourceSummary> {
+    return this.request<ExtractSourceSummary>(
+      "DELETE",
+      this.pExtractSourceSchedule(slug),
+      undefined,
+      15_000,
     );
   }
 }

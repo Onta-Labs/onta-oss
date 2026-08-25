@@ -2,6 +2,7 @@ export {
   Client,
   InfonaError,
   RawApi,
+  RawExtractApi,
   USER_SCHEDULABLE_ACTIONS,
   // The terminal job-status set + predicate — the TS mirror of the backend's
   // `JobStatus.is_terminal()`. A `wait_for_job` caller uses these to decide
@@ -72,6 +73,9 @@ export type {
   DltSourceSpec,
   DltResourceMap,
   DltIngestRequest,
+  ConnectorTemplate,
+  ExtractSchedule,
+  ExtractScheduleWrite,
   ExtractSourceSummary,
   ExtractSourceWrite,
   // ONTA-173 — schedules: user-schedulable vs system-managed action split

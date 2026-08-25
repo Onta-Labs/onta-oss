@@ -601,6 +601,22 @@ Export KG instance data as JSON or CSV (OSS launch F10).
 
 ## Extract_Sources
 
+### `GET /graphs/{tenant}/extract-sources/catalog`
+
+Get Connector Catalog
+
+Prefill templates for the connect flow (ONTA-555).
+
+Static data — the same list for every workspace — served from the backend
+rather than each client shipping a copy, so the Explorer, the CLI and MCP
+offer the identical catalog. No secrets: a template names the credential
+the user must paste (BYOK), never one we hold.
+
+**200:** Successful Response
+**422:** Validation Error
+
+---
+
 ### `GET /graphs/{tenant}/extract-sources`
 
 List Extract Sources
@@ -653,6 +669,30 @@ Delete Extract Source
 ### `POST /graphs/{tenant}/extract-sources/{slug}/run`
 
 Run Extract Source
+
+**200:** Successful Response
+**422:** Validation Error
+
+---
+
+### `PUT /graphs/{tenant}/extract-sources/{slug}/schedule`
+
+Put Extract Schedule
+
+Set (or replace) how often this source is re-read.
+
+**Request body:** `ExtractScheduleRequest`
+
+**200:** Successful Response
+**422:** Validation Error
+
+---
+
+### `DELETE /graphs/{tenant}/extract-sources/{slug}/schedule`
+
+Clear Extract Schedule
+
+Stop recurring reads. The source stays, runnable on demand.
 
 **200:** Successful Response
 **422:** Validation Error
@@ -2423,6 +2463,54 @@ Accept Invite By Token
 | `existing_source_url` | object | No |  |
 | `existing_verified_at` | object | No |  |
 
+### ConnectorAuth
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | Yes |  |
+| `label` | string | No |  |
+| `help` | string | No |  |
+| `api_key_header` | object | No |  |
+| `username_label` | object | No |  |
+| `username_default` | object | No |  |
+
+### ConnectorPlaceholder
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `key` | string | Yes |  |
+| `label` | string | Yes |  |
+| `example` | string | No |  |
+| `help` | string | No |  |
+
+### ConnectorResource
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `path` | string | Yes |  |
+| `label` | string | Yes |  |
+| `suggested_type` | string | Yes |  |
+| `id_field` | string | No |  |
+| `default` | boolean | No |  |
+
+### ConnectorTemplate
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | string | Yes |  |
+| `title` | string | Yes |  |
+| `category` | string | Yes |  |
+| `kind` | string | Yes |  |
+| `blurb` | string | Yes |  |
+| `docs_url` | string | No |  |
+| `base_url` | object | No |  |
+| `placeholders` | array | No |  |
+| `headers` | object | No |  |
+| `auth` | #/components/schemas/ConnectorAuth | Yes |  |
+| `resources` | array | No |  |
+| `custom` | boolean | No |  |
+| `note` | string | No |  |
+
 ### CoreSlot
 
 | Field | Type | Required | Description |
@@ -2702,6 +2790,25 @@ Accept Invite By Token
 | `confidence` | object | No | LLM confidence in this entity decision (v2 inference) |
 | `why` | object | No | Profile-evidence rationale for this entity decision (v2 inference) |
 
+### ExtractScheduleInfo
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | string | Yes |  |
+| `interval_seconds` | object | No |  |
+| `cron` | object | No |  |
+| `enabled` | boolean | No |  |
+| `next_run` | object | No |  |
+| `last_run` | object | No |  |
+
+### ExtractScheduleRequest
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `interval_seconds` | object | No |  |
+| `cron` | object | No |  |
+| `enabled` | boolean | No |  |
+
 ### ExtractSourceSummary
 
 | Field | Type | Required | Description |
@@ -2716,6 +2823,7 @@ Accept Invite By Token
 | `kg` | object | No |  |
 | `created_at` | object | No |  |
 | `updated_at` | object | No |  |
+| `schedule` | object | No |  |
 
 ### FactCitation
 

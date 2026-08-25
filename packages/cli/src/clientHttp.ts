@@ -155,6 +155,15 @@ export class ClientHttp {
   /** @internal */ pExtractSourceRun(slug: string): string {
     return `${this.pExtractSource(slug)}/run`;
   }
+  /** @internal ONTA-555: prefill templates for the connect flow. One list for
+   *  every client — the Explorer, the CLI and MCP all read this route. */
+  pExtractCatalog(): string {
+    return `${this.base()}/extract-sources/catalog`;
+  }
+  /** @internal ONTA-555: a source's recurring-read cadence. */
+  pExtractSourceSchedule(slug: string): string {
+    return `${this.pExtractSource(slug)}/schedule`;
+  }
   /** @internal */ pEnrichJobs(): string {
     return `${this.base()}/enrich/jobs`;
   }

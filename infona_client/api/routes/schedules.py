@@ -99,6 +99,22 @@ class ScheduleUpdateRequest(BaseModel):
 # --- Helpers ------------------------------------------------------------------
 
 
+def _gate_extract_action(action: Optional[str], tenant: TenantContext) -> None:
+    """An ``extract`` cadence is part of the gated extract family (ONTA-555).
+
+    Without this, ``/schedules`` would be a side door around
+    ``require_hosted_extract``: a workspace that lost (or never had) the hosted
+    entitlement cannot create an extract source through
+    ``/extract-sources``, but could still point a schedule at one it saved
+    earlier and keep the reads running. The gate is a no-op in OSS, where no
+    entitlement checker is registered.
+    """
+    if action == "extract":
+        from infona_client.ingestion.hosted import require_hosted_extract
+
+        require_hosted_extract(tenant)
+
+
 def _build_schedule(**kwargs) -> Schedule:
     """Construct a Schedule, mapping its validation error to a 422.
 
@@ -134,6 +150,7 @@ async def create_schedule(
     ``next_run`` is seeded from ``created_at`` so the firing loop can pick it up
     on the next sweep.
     """
+    _gate_extract_action(body.action, tenant)
     now = datetime.now(timezone.utc)
     schedule = _build_schedule(
         id=str(uuid.uuid4()),
@@ -214,6 +231,7 @@ async def update_schedule(
             ),
         )
 
+    _gate_extract_action(body.action or existing.action, tenant)
     updates = body.model_dump(exclude_unset=True)
     recurrence_changed = "cron" in updates or "interval_seconds" in updates
     merged = existing.model_dump()
