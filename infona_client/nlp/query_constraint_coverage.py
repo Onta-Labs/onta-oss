@@ -49,6 +49,9 @@ from infona_client.nlp.query_constraint_coverage_count import (  # noqa: F401
     count_vs_list_fail_closed,
     early_template_shape_fail_closed,
 )
+from infona_client.nlp.query_constraint_coverage_unique import (  # noqa: F401
+    unique_count_wrong_grain,
+)
 from infona_client.nlp.query_constraint_coverage_dim import (  # noqa: F401
     _dim_bind_label,
     _leaf_present_in_plan,
@@ -101,6 +104,7 @@ __all__ = [
     "argmax_vs_list_fail_closed",
     "count_vs_list_fail_closed",
     "early_template_shape_fail_closed",
+    "unique_count_wrong_grain",
     "coverage_feedback",
     "fail_closed_answer",
     "effective_has_dim_filter",

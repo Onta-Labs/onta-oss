@@ -86,7 +86,7 @@ def test_eval_md_has_table_and_stranger_command():
     assert "Visible misses" in text
     assert "examples/trials.csv" in text
     assert "openai/gpt-oss-120b" in text
-    assert "deepseek/deepseek-v3.2" in text
+    assert "deepseek/deepseek-v4-pro-0813" in text
     assert "python scripts/run_public_eval.py" in text
     assert "infona ingest" in text
     assert "always-LLM Cypher" in text
@@ -115,3 +115,5 @@ def test_wrapper_is_thin_and_not_an_infona_eval_cli():
     assert "run_full_eval" in text
     assert "does **not**" in text and "infona eval" in text
     assert "OPENROUTER_API_KEY" in text
+    assert 'DEFAULT_EVAL_MODEL = "deepseek/deepseek-v4-pro-0813"' in text
+    assert "cache_questions" in text

@@ -42,7 +42,12 @@ from infona_client.graph.ontology_queries import (
 )
 from infona_client.graph.store import resolve_optional_graph_store
 from infona_client.models.ontology import OntologyMutation, OntologyOpKind  # noqa: F401
-from infona_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat  # noqa: F401
+from infona_client.resolver.llm_router import (  # noqa: F401
+    EXTRACT_MODEL_DEFAULT,
+    PRIMARY_MODEL,
+    is_reasoning_extract_model,
+    openrouter_chat,
+)
 from infona_client.resolver.models import (  # noqa: F401 — public re-exports
     AttrAction,
     CleanFact,
@@ -187,7 +192,7 @@ class SchemaResolver(
 ):
     """Deterministic layer: extract → resolve types/attrs → insert_facts."""
 
-    EXTRACT_MODEL = os.environ.get("INFONA_EXTRACT_MODEL", PRIMARY_MODEL)
+    EXTRACT_MODEL = os.environ.get("INFONA_EXTRACT_MODEL", EXTRACT_MODEL_DEFAULT)
     EXTRACT_PROVIDER = os.environ.get("INFONA_EXTRACT_PROVIDER", "openrouter")
     INFER_MODEL = os.environ.get("INFONA_INFER_MODEL", "claude-opus-4-8")
     ONTOLOGY_REFRESH_INTERVAL = int(os.environ.get("INFONA_ONTOLOGY_REFRESH_INTERVAL", "50"))

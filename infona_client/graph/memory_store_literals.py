@@ -441,3 +441,53 @@ class MemoryLiteralsMixin:
             return []
         winner = sorted(totals.items(), key=lambda kv: (-kv[1], kv[0]))[0]
         return [GraphRecord(data={"name": winner[0], "value": winner[1]})]
+
+    def _literal_distinct_count(
+        self,
+        tenant_id: str,
+        kg: str,
+        type_names: Any,
+        prop_key: str,
+    ) -> list[GraphRecord]:
+        """Uncapped count of distinct non-empty values of a datatype leaf."""
+        from infona_client.graph.assertion_model import property_uri
+
+        if not prop_key:
+            return [GraphRecord(data={"n": 0})]
+        matched = self._entity_ids_via_instance_of(tenant_id, kg, type_names)
+        prop_id = property_uri(prop_key)
+        per_entity: dict[str, str] = {}
+
+        def _norm(raw: Any) -> str:
+            if raw is None:
+                return ""
+            text = str(raw).strip()
+            if "^^" in text:
+                text = text.split("^^", 1)[0].strip()
+            return text
+
+        for (t, k, _), a in self._assertions.items():
+            if t != tenant_id or k != kg:
+                continue
+            if a.subject_id not in matched or a.literal_value is None:
+                continue
+            if a.property_id != prop_id:
+                prop_row = self._properties.get((tenant_id, kg, a.property_id))
+                if prop_row is None or prop_row.name != prop_key:
+                    continue
+            val = _norm(a.literal_value)
+            if not val or a.subject_id in per_entity:
+                continue
+            per_entity[a.subject_id] = val
+
+        for eid in matched:
+            if eid in per_entity:
+                continue
+            r = self._entities.get((tenant_id, kg, eid))
+            if r is None:
+                continue
+            val = _norm(self._entity_prop_value(r, prop_key))
+            if val:
+                per_entity[eid] = val
+
+        return [GraphRecord(data={"n": len(set(per_entity.values()))})]

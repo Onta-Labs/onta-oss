@@ -69,11 +69,15 @@ CEREBRAS_BASE = _cerebras_base()
 
 # Primary model for all LLM calls, and the automatic fallback applied via
 # OpenRouter's `models` routing. Env-overridable; defaults are the production
-# choice. Per-role knobs (INFONA_EXTRACT_MODEL, INFONA_MATCH_MODEL, …) default to
-# PRIMARY_MODEL, so INFONA_LLM_MODEL flips every role at once unless individually
-# overridden.
+# choice. Per-role knobs other than extract (INFONA_MATCH_MODEL, …) default to
+# PRIMARY_MODEL, so INFONA_LLM_MODEL flips those roles at once unless
+# individually overridden. Extract is its own DeepSeek reasoning default.
 PRIMARY_MODEL = os.environ.get("INFONA_LLM_MODEL", "anthropic/claude-opus-4.8")
 FALLBACK_MODEL = os.environ.get("INFONA_LLM_FALLBACK_MODEL", "openai/gpt-5.5")
+# Latest DeepSeek reasoning flagship (V4 Pro GA, 2026-08-12). INFONA_EXTRACT_MODEL
+# overrides. Must request thinking — see EXTRACT_REASONING.
+EXTRACT_MODEL_DEFAULT = "deepseek/deepseek-v4-pro-0813"
+EXTRACT_REASONING: dict = {"enabled": True, "effort": "high", "exclude": True}
 
 # A reasoning model (e.g. Cerebras gpt-oss-120b) spends part of its token budget on
 # a hidden reasoning phase before emitting content; too small a budget yields an
@@ -81,6 +85,12 @@ FALLBACK_MODEL = os.environ.get("INFONA_LLM_FALLBACK_MODEL", "openai/gpt-5.5")
 # caller value can't starve reasoning. max_tokens is a CEILING, not a target — a
 # non-reasoning model that finishes early stops well under this and is unaffected.
 REASONING_MIN_TOKENS = 2048   # matches #164's Cerebras SPARQL budget
+
+
+def is_reasoning_extract_model(model: str | None) -> bool:
+    """True for DeepSeek V4 / R1 slugs that need an OpenRouter thinking payload."""
+    m = (model or "").lower()
+    return "deepseek-v4" in m or "deepseek-r1" in m
 
 
 def _llm_provider() -> str:
@@ -211,6 +221,8 @@ async def openrouter_chat(
     active_provider = "cerebras" if "cerebras.ai" in base else "openrouter"
     if response_format is not None:
         body["response_format"] = response_format
+    if is_reasoning_extract_model(effective_model):
+        body["reasoning"] = dict(EXTRACT_REASONING)
     chat_url = f"{base}/chat/completions"
     # Fail closed under INFONA_OFFLINE=1 unless base is allowlisted (localhost by
     # default — self-hosted vLLM/Ollama). Cloud OpenRouter / Cerebras hosts raise.

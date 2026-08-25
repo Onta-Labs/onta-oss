@@ -69,6 +69,7 @@ _MEASURE_ONLY_TEMPLATES = frozenset(
     {
         "literal_aggregate",
         "literal_argmax_by_dim",
+        "literal_distinct_count",
     }
 )
 

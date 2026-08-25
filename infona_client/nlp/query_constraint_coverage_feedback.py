@@ -96,7 +96,9 @@ def coverage_feedback(result: CoverageResult, *, previous_cypher: str = "") -> s
         "when a dimension filter is required. Never set template literal_values "
         "on a how-many/count question (that helper returns rows). "
         "For which-X-has-the-highest-total-Y use literal_argmax_by_dim "
-        "($group_key, $prop_key) — never a list helper.",
+        "($group_key, $prop_key) — never a list helper. "
+        "For how-many unique/distinct values of a leaf use "
+        "literal_distinct_count ($prop_key), not a type-scan DISTINCT entity.",
         "3. Put filter values in params (or equality predicates) so they appear "
         "in the plan. Do not invent ontology fields — use names from the schema.",
         "4. If you cannot tell which field a filter token binds to, still prefer "

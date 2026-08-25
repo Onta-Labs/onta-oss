@@ -8,198 +8,166 @@
     "note": "Synthetic TRIAL-* IDs; public program names; no patient data."
   },
   "models": {
-    "eval_judge": "deepseek/deepseek-v3.2",
-    "question_gen": "deepseek/deepseek-v3.2",
+    "eval_judge": "deepseek/deepseek-v4-pro-0813",
+    "question_gen": "deepseek/deepseek-v4-pro-0813",
     "query_model": "openai/gpt-oss-120b",
-    "extraction": "deepseek/deepseek-v3.2"
+    "extraction": "deepseek/deepseek-v4-pro-0813",
+    "eval_reasoning": "high"
   },
   "kg_name": "eval-public-trials",
   "tenant": "default",
   "num_questions": 8,
-  "timestamp": "2026-08-17T17:00:16.246935",
-  "duration_s": 174.1,
-  "git_sha": "c5a320a",
-  "notes": [
-    "Query accuracy is KG-scoped (eval-public-trials).",
-    "Ontology judge fetched tenant-wide /ontology/types (no kg filter), so 17/60 mixes other demo KGs on this local store. Not a trials-only ontology score.",
-    "Judge emitted decomposition=-1 (outside 0-10). Published as returned; not clamped.",
-    "Harness ground-truth step imports pandas."
-  ],
+  "timestamp": "2026-08-19T15:58:38.757890",
+  "duration_s": 202.2,
+  "git_sha": "1c531e8",
   "ontology": {
-    "total": 17,
+    "total": 27,
     "max_total": 60,
     "dimensions": [
       {
         "name": "decomposition",
-        "score": -1,
-        "explanation": "The ontology shows inconsistent decomposition with many composite values remaining as flat string attributes.",
+        "score": 4,
+        "explanation": "Some composite values are decomposed (e.g., ClinicalTrial.has_phase, has_sponsor), but many object-valued attributes remain flat strings (e.g., Trial.sponsor, Trial.site, Artifact.artist, Book.author).",
         "issues": [
-          "Properties like 'sponsor', 'drug', 'brand', 'target', 'indication', 'setting', 'site' in ClinicalTrial are flat strings instead of being decomposed into separate entities.",
-          "Many types have string attributes that should be relationships to entities (e.g., 'artist' in Artifact/Artwork, 'publisher' in Book).",
-          "Location information is often flat (e.g., 'yard_code', 'campus', 'hub') rather than hierarchical."
+          "Trial.sponsor and Trial.site are string literals despite Sponsor and Location/Site entities existing.",
+          "Artifact.artist and Book.author remain string attributes even though Author/Person entities exist.",
+          "Many location-related fields (Depot.located_at, Hub.located_at, Yard.is_located_in) are flat strings rather than relationships to Place entities.",
+          "Panel.lab, Panel.kit, Panel.ready are string fields while Lab, Kit, and ReadyStatus entities exist."
         ]
       },
       {
         "name": "reusability",
-        "score": 3,
-        "explanation": "Some shareable concepts are entities, but many important ones are buried as string attributes.",
+        "score": 5,
+        "explanation": "Several shareable concepts are modeled as entities (Country, Drug, Sponsor, Department, Term), but many others remain string attributes or are not consistently reused.",
         "issues": [
-          "Key reusable concepts like 'Sponsor', 'Drug', 'Site', 'Target', 'Indication' are strings in ClinicalTrial rather than entities.",
-          "Person subtypes exist but many person-like references remain strings (e.g., 'operator_name', 'artist').",
-          "Organizations are inconsistently modeled - sometimes entities, sometimes strings."
+          "Trial.sponsor is a string, not linked to Sponsor/Organization entity.",
+          "Artifact.artist and Book.author are strings instead of Person/Organization references.",
+          "CourseOffering.campus is a string while Campus entity exists.",
+          "Vehicle.depot is a string while Depot entity exists."
         ]
       },
       {
         "name": "hierarchy",
-        "score": 4,
-        "explanation": "A few hierarchies exist but many obvious ones are missing or incomplete.",
+        "score": 3,
+        "explanation": "Only a few subClassOf relationships are declared (e.g., AccountManager->Person, City->Place), but most natural hierarchies are missing.",
         "issues": [
-          "Person has subtypes (AccountManager, Chef) but other person types like Agent, Operator are not subclasses.",
-          "Organization has Company subtype but Sponsor, Agency, Publisher are not connected.",
-          "Place hierarchy is minimal (City subClassOf Place) but lacks Country, Site, Location connections.",
-          "Product-related types have no clear hierarchy."
+          "Sponsor, Agency, Department, Lab, and Vendor are not subclasses of Organization.",
+          "ClinicalTrial and Trial are separate flat types with no hierarchy or equivalence link.",
+          "Artwork is not related to Artifact despite overlapping fields.",
+          "Product, Part, InventoryItem, and InventoryLine have overlapping semantics but no shared supertype."
         ]
       },
       {
         "name": "predicate_consistency",
         "score": 2,
-        "explanation": "Significant predicate duplication exists with inconsistent naming patterns.",
+        "explanation": "Multiple predicate names are used for the same semantic relationship across the ontology, causing duplication and inconsistency.",
         "issues": [
-          "Multiple predicates for same relationship: 'has_author' and 'written_by' in Book, 'has_genre' and 'belongs_to_genre', 'has_department' and 'is_in_department'.",
-          "Inconsistent patterns: 'has_' vs direct verbs vs 'belongs_to' vs 'is_in'.",
-          "Redundant predicates: 'identified_bench' and 'identifies' in BenchIdentifier, 'offered_by' and 'offerer' in Offering."
+          "located_at vs stored_at (Part), located_at vs is_located_in (Asset/Yard).",
+          "has_department vs is_in_department (Course), offered_by vs offerer (Offering/CourseOffering).",
+          "has_status vs in_status (Product), supplied_by vs has_supplier (Product), has_author vs written_by (Book).",
+          "identifies vs identified_bench/identified_kit (identifiers), for_product vs priced_product (ListPrice)."
         ]
       },
       {
         "name": "entity_first",
-        "score": 2,
-        "explanation": "Many real-world things are modeled as string literals rather than entities.",
+        "score": 5,
+        "explanation": "Some real-world references are modeled as entities (e.g., ClinicalTrial.has_sponsor, Product.has_supplier), but many key references remain string literals.",
         "issues": [
-          "In ClinicalTrial: sponsor, drug, brand, target, indication, setting, site are all strings.",
-          "In Artwork/Artifact: artist is a string.",
-          "In Book: author and publisher are strings despite having Author and Publisher entities.",
-          "Operator_name in Asset is string despite Operator entity."
+          "Trial.sponsor and Trial.site are string literals instead of links to Sponsor/Site entities.",
+          "Artifact.artist and Book.author are dead-end strings despite Author entity existing.",
+          "Asset.operator_name duplicates has_operator, indicating a string fallback.",
+          "Panel.lab and Panel.ready are strings despite Lab and ReadyStatus entities."
         ]
       },
       {
         "name": "type_naming",
-        "score": 7,
-        "explanation": "Most type names use PascalCase and are singular, but some inconsistencies exist.",
+        "score": 8,
+        "explanation": "Most type names are PascalCase, singular, and descriptive, but there are a few violations such as the lowercase 'number' type and overly generic names.",
         "issues": [
-          "Type 'number' (lowercase) breaks convention.",
-          "'BayIdentifier' vs 'DockIdentifier' - inconsistent suffix usage.",
-          "Some types could be more descriptive (e.g., 'Thing', 'OfferedThing')."
+          "Type 'number' is lowercase and appears to be a primitive rather than a class.",
+          "Generic types like 'Thing', 'OfferedThing', and 'Role' are vague and not self-descriptive.",
+          "Duplicate/ambiguous pairs like 'Trial' and 'ClinicalTrial' or 'Artifact' and 'Artwork' create naming confusion."
         ]
       }
     ],
     "weak_points": [
-      "Convert ClinicalTrial string attributes (sponsor, drug, site, etc.) to entity relationships - this is the most critical improvement.",
-      "Establish consistent predicate naming and eliminate duplicates (e.g., choose between has_author/written_by).",
-      "Build out proper hierarchies for Person, Organization, Place, and Product domains."
+      "Consolidate duplicate predicates (located_at/stored_at, has_status/in_status, offered_by/offerer, has_author/written_by, etc.) into a single canonical property for each relationship.",
+      "Replace string reference fields (Trial.sponsor, Trial.site, Artifact.artist, Book.author, Panel.lab, Panel.ready) with object properties to the existing entity types.",
+      "Introduce missing subClassOf relationships: make Sponsor, Agency, Department, Lab, Vendor subclasses of Organization; link ClinicalTrial/Trial and Artifact/Artwork where appropriate.",
+      "Resolve duplicate/overlapping types (e.g., Product, Part, InventoryItem; ClinicalTrial, Trial; Artifact, Artwork) by merging or creating explicit hierarchies.",
+      "Remove or rename non-entity types such as 'number' and generic stubs like 'Thing' and 'Role' to improve semantic clarity."
     ]
   },
   "tiers": [
     {
       "tier": 1,
       "name": "Count/Lookup",
-      "passed": 1,
+      "passed": 2,
       "total": 2,
-      "accuracy_pct": 50,
-      "misses": [
-        "How many unique sponsors are involved in clinical trials?"
-      ]
+      "accuracy_pct": 100,
+      "misses": []
     },
     {
       "tier": 2,
       "name": "Filter",
-      "passed": 0,
+      "passed": 1,
       "total": 2,
-      "accuracy_pct": 0,
+      "accuracy_pct": 50,
       "misses": [
-        "How many clinical trials have status 'Active'?",
         "How many clinical trials started in or after 2019?"
       ]
     },
     {
       "tier": 3,
       "name": "Join",
-      "passed": 1,
+      "passed": 2,
       "total": 2,
-      "accuracy_pct": 50,
-      "misses": [
-        "Which drugs are evaluated in trials sponsored by AstraZeneca?"
-      ]
+      "accuracy_pct": 100,
+      "misses": []
     },
     {
       "tier": 4,
       "name": "Multi-hop",
-      "passed": 0,
+      "passed": 1,
       "total": 2,
-      "accuracy_pct": 0,
+      "accuracy_pct": 50,
       "misses": [
-        "What is the average enrollment for Phase 3 trials targeting NSCLC?",
-        "Which sponsor has the highest total enrollment across all their completed trials?"
+        "What is the average enrollment for Phase 3 trials targeting NSCLC?"
       ]
     }
   ],
   "failures": [
     {
-      "tier": 1,
-      "question": "How many unique sponsors are involved in clinical trials?",
-      "expected": "8",
-      "got": "Could not answer with confidence: the generated plan does not cover filter constraints from the question, so executing it risked a silent wrong total (unfiltered aggregate/count). Unbound constraint token(s): 'involved', 'clinical trials'. ",
-      "verdict": "error",
-      "failure_category": "other",
-      "explanation": "The system returned an error message instead of an answer, indicating it could not generate a proper query."
-    },
-    {
-      "tier": 2,
-      "question": "How many clinical trials have status 'Active'?",
-      "expected": "4",
-      "got": "id: TRIAL-CROWN, name: TRIAL-CROWN, primary_type: Trial, literal_value: Active\nid: TRIAL-FLAURA2, name: TRIAL-FLAURA2, primary_type: Trial, literal_value: Active\nid: TRIAL-IMVIGOR011, name: TRIAL-IMVIGOR011, primary_type: Trial, literal_val",
-      "verdict": "wrong",
-      "failure_category": "wrong_aggregation",
-      "explanation": "The system returned individual trial records instead of the requested count of trials with status 'Active'."
-    },
-    {
       "tier": 2,
       "question": "How many clinical trials started in or after 2019?",
       "expected": "4",
-      "got": "Could not answer with confidence: the generated plan does not cover filter constraints from the question, so executing it risked a silent wrong total (unfiltered aggregate/count). Unbound constraint token(s): 'or after 2019', 'after 2019'. ",
+      "got": "id: TRIAL-CM9ER, name: TRIAL-CM9ER, primary_type: Trial, title: TRIAL-CM9ER, value: 2019.0\nid: TRIAL-FLAURA2, name: TRIAL-FLAURA2, primary_type: Trial, title: TRIAL-FLAURA2, value: 2019.0\nid: TRIAL-IMVIGOR011, name: TRIAL-IMVIGOR011, primar",
       "verdict": "error",
-      "failure_category": "other",
-      "explanation": "The system returned an error message instead of providing a numerical answer."
-    },
-    {
-      "tier": 3,
-      "question": "Which drugs are evaluated in trials sponsored by AstraZeneca?",
-      "expected": "['osimertinib', 'durvalumab']",
-      "got": "drug_name: osimertinib\ndrug_name: osimertinib_Tagrisso\ndrug_name: durvalumab\ndrug_name: durvalumab_Imfinzi",
-      "verdict": "partial",
-      "failure_category": "uri_instead_of_value",
-      "explanation": "The system returned extra brand-suffixed names instead of just the drug names, but it did identify the correct drugs."
+      "failure_category": "",
+      "explanation": ""
     },
     {
       "tier": 4,
       "question": "What is the average enrollment for Phase 3 trials targeting NSCLC?",
       "expected": "792.88",
-      "got": "Could not answer with confidence: the generated plan does not cover filter constraints from the question, so executing it risked a silent wrong total (unfiltered aggregate/count). Unbound constraint token(s): 'Phase 3 trials'. Which field s",
+      "got": "\n\nNote: requested column [average_enrollment] not present on any matching entity \u2014 the attribute may be unpopulated or named differently.",
       "verdict": "error",
-      "failure_category": "other",
-      "explanation": "The system returned an error message indicating it could not apply the necessary filters to the query."
-    },
-    {
-      "tier": 4,
-      "question": "Which sponsor has the highest total enrollment across all their completed trials?",
-      "expected": "Bristol Myers Squibb",
-      "got": "id: TRIAL-ALEX, name: TRIAL-ALEX, primary_type: Trial, literal_value: Completed\nid: TRIAL-CASPIAN, name: TRIAL-CASPIAN, primary_type: Trial, literal_value: Completed\nid: TRIAL-CM227, name: TRIAL-CM227, primary_type: Trial, literal_value: Co",
-      "verdict": "wrong",
-      "failure_category": "other",
-      "explanation": "The system returned a list of trial IDs instead of the sponsor with highest total enrollment."
+      "failure_category": "empty_result",
+      "explanation": "The system returned an error message instead of the numeric average enrollment, so it did not answer the question."
     }
   ],
   "repro": {
     "command": "python scripts/run_public_eval.py --dataset examples/trials.csv --kg eval-public-trials --questions 8",
-    "ingest": "infona ingest examples/trials.csv --kg eval-public-trials -y"
-  }
+    "ingest": "infona ingest examples/trials.csv --kg eval-public-trials -y",
+    "note": "This pin reused the published 8 questions via eval_reports/question_cache/eval-public-trials-8.json (--cache-questions). Judge is DeepSeek V4 Pro 0813 with OpenRouter reasoning effort=high (json_object, thinking excluded from the response body)."
+  },
+  "notes": [
+    "Query accuracy is KG-scoped (eval-public-trials).",
+    "Ontology judge fetched tenant-wide /ontology/types (no kg filter), so 27/60 mixes other demo KGs on this local store. Not a trials-only ontology score.",
+    "Judge and extract default are deepseek/deepseek-v4-pro-0813 (V4 Pro GA, 2026-08-12) with reasoning effort high. Same eight questions as the 2/8 and 5/8 pins.",
+    "Extract default changed after this KG was ingested; the 6/8 query scores are not from a re-ingest.",
+    "T3 AstraZeneca still returns extra brand-suffixed names (osimertinib_Tagrisso, durvalumab_Imfinzi). This judge marked it correct; v3.2 had marked partial. Not claimed as a product fix.",
+    "T2 year>=2019 still returns trial rows, not COUNT. Judge marked error.",
+    "Harness ground-truth step imports pandas."
+  ]
 }

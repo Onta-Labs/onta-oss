@@ -81,6 +81,7 @@ class OntologyEvaluator:
             prompt=user_prompt,
             system=ONTOLOGY_JUDGE_PROMPT,
             api_key=self._openrouter_key,
+            json_mode=True,
         )
 
         # Parse response

@@ -145,7 +145,7 @@ For ontology quality, the judge receives:
   - The source data sample (to understand what was ingested)
   - The 6 scoring dimensions with examples
 
-The judge uses a reasoning model (DeepSeek R1 or Claude Sonnet 4.6) for accuracy.
+The judge uses a reasoning model (DeepSeek V4 Pro, thinking enabled) for accuracy.
 
 Report Format
 =============
@@ -155,7 +155,7 @@ The eval produces a JSON report and a human-readable summary::
     ════════════════════════════════════════════════════════════
     Dataset:      trials.csv (shipped example)
     KG:           trials
-    Model:        deepseek/deepseek-v3.2
+    Model:        deepseek/deepseek-v4-pro-0813
 
     ONTOLOGY QUALITY (45/60)
     ────────────────────────────────────────────────────────────
@@ -198,7 +198,7 @@ To add a new question tier:
   3. Update the report formatting in _format_report()
 
 To change the judge model:
-  Set INFONA_EVAL_MODEL env var (default: uses the same provider as query generation)
+  Set INFONA_EVAL_MODEL env var (default: deepseek/deepseek-v4-pro-0813, reasoning high)
 """
 
 from __future__ import annotations
@@ -206,8 +206,10 @@ from __future__ import annotations
 from infona_client.eval_bank import rebuild_example_bank
 from infona_client.eval_llm import _compute_ground_truth, _llm_call, _parse_json
 from infona_client.eval_models import (
+    EVAL_MAX_TOKENS,
     EVAL_MODEL,
     EVAL_PROVIDER,
+    EVAL_REASONING,
     OPENROUTER_URL,
     SOURCE_SAMPLE_CHARS,
     SOURCE_SAMPLE_ROWS,
@@ -233,6 +235,8 @@ from infona_client.eval_run import run_full_eval
 __all__ = [
     "EVAL_MODEL",
     "EVAL_PROVIDER",
+    "EVAL_REASONING",
+    "EVAL_MAX_TOKENS",
     "OPENROUTER_URL",
     "SOURCE_SAMPLE_CHARS",
     "SOURCE_SAMPLE_ROWS",
