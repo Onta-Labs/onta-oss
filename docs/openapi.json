@@ -9357,6 +9357,16 @@
             "title": "Datatype",
             "description": "string, integer, float, boolean, datetime, uri, geo (WKT point / 'lat,lon'), or a type name for relationships",
             "default": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "literal",
+              "relationship"
+            ],
+            "title": "Kind",
+            "description": "literal = datatype property; relationship = node-valued (datatype is the target type name)",
+            "default": "literal"
           }
         },
         "type": "object",
@@ -10335,6 +10345,25 @@
         ],
         "title": "ConnectorTemplate",
         "description": "A prefilled starting point for one extract source."
+      },
+      "ConversationTurn": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "pattern": "^(user|assistant)$",
+            "title": "Role",
+            "default": "user"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Text",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "ConversationTurn",
+        "description": "One prior chat turn for /ask follow-ups (same shape as agent Turn)."
       },
       "CoreSlot": {
         "properties": {
@@ -13793,6 +13822,26 @@
             "type": "array",
             "title": "Exclude Questions",
             "description": "Questions to exclude from example bank retrieval (anti-cheat for evals)"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id",
+            "description": "Optional conversation id; loads prior turns from the agent store"
+          },
+          "conversation": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationTurn"
+            },
+            "type": "array",
+            "title": "Conversation",
+            "description": "Optional prior turns when the client already has the transcript"
           }
         },
         "type": "object",

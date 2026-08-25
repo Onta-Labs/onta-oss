@@ -31,15 +31,26 @@ _CONSTRAINT_RE = re.compile(
     r")\b|[<>=]"
 )
 
-# Follow-up asks that only make sense against a prior turn. Generic English —
-# no domain nouns. ``we`` / ``they`` / ``that meeting`` / ``who else``.
-_ANAPHORA_RE = re.compile(
+# Follow-up asks whose referent is ONLY a prior turn. Bare ``we`` / ``their``
+# is not enough: "list companies and their revenue" / "how many do we have"
+# bind in the same sentence.
+_FOLLOWUP_RE = re.compile(
     r"(?ix)(?:"
-    r"\b(?:we|us|they|them|their)\b|"
-    r"\b(?:this|that|those|these)\s+(?:one|meeting|call|person|event)\b|"
-    r"\bthe\s+last\s+(?:one|time|call|meeting)\b|"
     r"\bwho\s+else\b|"
-    r"\bwhat\s+about\s+(?:them|him|her|that|it)\b"
+    r"\bwhat\s+about\s+(?:them|him|her|that|it)\b|"
+    r"\b(?:this|that|those|these)\s+(?:one|entity|record|item|event)\b|"
+    r"\bthe\s+last\s+(?:one|time)\b|"
+    r"\bwhat\s+did\s+we\s+(?:talk|discuss|cover|say)\b|"
+    r"\bwhat\s+were\s+their\b|"
+    r"\b(?:when|where)\s+was\s+(?:that|this)\b|"
+    r"\bthey\s+were\s+(?:met|seen|held)\b"
+    r")"
+)
+_INTRA_SENTENTIAL_RE = re.compile(
+    r"(?ix)(?:"
+    r"\b[A-Za-z][A-Za-z0-9_]*\s+and\s+their\b|"
+    r"\b(?:do|did|can|have|are)\s+we\s+(?:have|got|need)\b|"
+    r"\bhow\s+many\b[\s\S]{0,40}\bwe\b"
     r")"
 )
 
@@ -103,11 +114,13 @@ def format_type_count_clarification(
 
 
 def question_is_anaphoric(question: str) -> bool:
-    """True when the ask is a pronoun / 'that meeting' follow-up, not a standalone."""
+    """True when the ask is a follow-up whose referent is a prior turn."""
     q = (question or "").strip()
     if not q:
         return False
-    return bool(_ANAPHORA_RE.search(q))
+    if _INTRA_SENTENTIAL_RE.search(q):
+        return False
+    return bool(_FOLLOWUP_RE.search(q))
 
 
 def conversation_has_prior_turn(conversation: object | None) -> bool:
@@ -142,8 +155,8 @@ def ambiguous_anaphora_needs_clarify(
 def format_anaphora_clarification() -> str:
     """User-facing clarify for an unbound follow-up."""
     return (
-        "Which meeting or person do you mean? Name them in this question, "
-        "or ask as a follow-up in the same thread so I can use the previous turn."
+        "Which entity do you mean? Name it in this question, or ask as a "
+        "follow-up in the same thread so I can use the previous turn."
     )
 
 

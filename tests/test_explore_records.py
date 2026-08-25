@@ -438,7 +438,7 @@ def test_records_relationship_leaf_is_not_a_literal_column(
     """
     person_type = "SynthCast"
     person = entity_uri(person_type, "p1")
-    rel_pred = f"{ONTO}starring"
+    rel_pred = f"{ONTO}has_lead"
 
     async def declare():
         from infona_client.graph.ontology_catalog import (
@@ -450,7 +450,7 @@ def test_records_relationship_leaf_is_not_a_literal_column(
         await upsert_type(name=person_type, tenant_id=TENANT, layer="tenant")
         await upsert_attribute(
             type_name=TYPE,
-            attr_name="starring",
+            attr_name="has_lead",
             datatype=person_type,
             tenant_id=TENANT,
             layer="tenant",
@@ -475,7 +475,8 @@ def test_records_relationship_leaf_is_not_a_literal_column(
     )
 
     data = _get(client, auth_headers).json()
-    assert "starring" not in data["columns"], data["columns"]
-    assert "cast" not in data["columns"], data["columns"]
+    assert "has_lead" not in data["columns"], data["columns"]
+    # Old overlay also minted the has_* strip as a second column.
+    assert "lead" not in data["columns"], data["columns"]
     assert "year" in data["columns"]
     assert data["rows"][0]["name"] == "The Picture"

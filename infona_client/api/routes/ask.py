@@ -115,15 +115,12 @@ async def ask_question(
     if body.session_id and not conversation:
         try:
             from infona_client.agent.conversation_store import make_conversation_store
+            from infona_client.agent.planner_history import query_followup_turns
 
             prior = await make_conversation_store().load(
                 body.session_id, tenant.tenant_id
             )
-            conversation = [
-                {"role": t.role, "text": t.text}
-                for t in prior[-8:]
-                if t.text and t.role in ("user", "assistant")
-            ]
+            conversation = query_followup_turns(prior, body.kg_name)
         except Exception:
             logger.debug("ask_session_history_load_failed", exc_info=True)
     try:

@@ -66,8 +66,16 @@ def test_anaphoric_followup_without_history_needs_clarify():
     assert question_is_anaphoric("what did we talk about?")
     assert question_is_anaphoric("who else was there?")
     assert question_is_anaphoric("when was that meeting?")
+    assert question_is_anaphoric("what were their names and when were they met")
     assert not question_is_anaphoric("how many SynthWidget entities are there?")
     assert not question_is_anaphoric("when did I meet Ada Example?")
+    # Intra-sentential "their" / "we" is bound in the same question.
+    assert not question_is_anaphoric("list SynthWidget entities and their weights")
+    assert not question_is_anaphoric("how many records do we have?")
+    assert not ambiguous_anaphora_needs_clarify(
+        "show SynthWidget entities and their weights"
+    )
+    assert not ambiguous_anaphora_needs_clarify("how many records do we have?")
     assert ambiguous_anaphora_needs_clarify("what did we talk about?")
     assert ambiguous_anaphora_needs_clarify("who else was there?")
     # A named person is a standalone question, not an unbound pronoun.
