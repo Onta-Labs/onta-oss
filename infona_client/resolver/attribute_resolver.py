@@ -441,16 +441,20 @@ def resolve_attribute(
     """
     existing = _find_existing_attr(attr.name, existing_attrs)
 
+    from infona_client.graph.ontology_catalog_models import canonicalize_literal_datatype
+
+    datatype = canonicalize_literal_datatype(attr.datatype)
+
     if existing is None:
         # New attribute → extend the type
         return ResolvedAttribute(
             name=_normalize_attr_name(attr.name),
             value=attr.value,
-            datatype=attr.datatype,
+            datatype=datatype,
             action=AttrAction.EXTEND,
         )
 
-    if existing.datatype == attr.datatype:
+    if existing.datatype == datatype:
         # Same datatype → reuse
         return ResolvedAttribute(
             name=existing.name,
@@ -475,7 +479,7 @@ def resolve_attribute(
         "attr_type_mismatch",
         attr=attr.name,
         expected=existing.datatype,
-        got=attr.datatype,
+        got=datatype,
         value=attr.value,
     )
     return ResolvedAttribute(
@@ -537,6 +541,12 @@ def check_promotion(
         # CamelCase the prefix: "address" → "Address", "instruction" → "Instruction"
         promoted_type = prefix[:1].upper() + prefix[1:] if prefix else prefix
 
+        # Same-type cluster (event_id / event_title / …) is the mapped type
+        # itself, not a nested Address-style concept. Promoting it mints a
+        # shadow ``{key}-{type}`` node and ``has_{type}`` self-rel.
+        if (entity.type_name or "").lower() == promoted_type.lower():
+            continue
+
         # --- Junk-type guard -------------------------------------------------
         if is_junk_type_name(promoted_type):
             logger.info(
@@ -590,11 +600,16 @@ def check_promotion(
             has_identity=has_identity,
             type_already_exists=type_already_exists,
         )
+        from infona_client.graph.facts import RESERVED_ENTITY_PROPERTY_KEYS
+
         for attr in attrs:
             # Strip the prefix from the attribute name for the promoted entity
             short_name = _normalize_attr_name(attr.name)
             if short_name.startswith(prefix + "_"):
                 short_name = short_name[len(prefix) + 1 :]
+            # ``order_id`` / ``address_id`` must not collapse onto reserved ``id``.
+            if short_name in RESERVED_ENTITY_PROPERTY_KEYS:
+                short_name = _normalize_attr_name(attr.name)
 
             promotions.append(
                 ResolvedAttribute(

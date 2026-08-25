@@ -100,6 +100,21 @@ from infona_client.spatiotemporal.routing import (
 logger = structlog.stdlib.get_logger("infona.nlp.pipeline")
 
 
+def _cypher_is_assertion_shaped(cypher: str) -> bool:
+    """True when free-form Cypher is an Assertion SUBJECT/PREDICATE plan.
+
+    Template rescue stays for invented typed edges (``[:lead_sponsor]``). A
+    schema-valid Assertion-shaped body must still ``execute_read`` so its
+    ``RETURN`` aliases (person_name, date, …) are not discarded.
+    """
+    c = cypher or ""
+    if ":Assertion" not in c:
+        return False
+    if "[:SUBJECT]" not in c or "[:PREDICATE]" not in c:
+        return False
+    return "[:OBJECT]" in c or "literal_value" in c
+
+
 class PipelineCypherExecMixin:
     # ------------------------------------------------ generated-query confinement
 
@@ -171,21 +186,39 @@ class PipelineCypherExecMixin:
         cypher: str,
         forced_params: dict,
     ) -> tuple[list, str]:
-        """Run confined Cypher: prefer allowlisted template, else execute_read.
+        """Run confined Cypher: template rescue for invented rels, else execute_read.
 
         Session already forces tenant/kg; ``forced_params`` must come from
         :func:`confine_generated_cypher`. Never trusts model tenant/kg values.
+
+        Allowlisted ``template`` still supersedes invented typed edges
+        (``[:lead_sponsor]`` → template). Schema-valid Assertion-shaped
+        Cypher with no invented rel types prefers ``execute_read`` only
+        when ``gen.template`` is the generic ``related_entities`` dump so
+        generated ``RETURN`` columns are not dropped. Constrained helpers
+        (``related_entity_name_filter``, ``literal_values``, …) still
+        supersede.
         """
         from infona_client.graph.schema_bootstrap import TEMPLATES
         from infona_client.graph.store import GraphQueryError
 
         template = gen.get("template")
         is_fixture = bool(gen.get("stub") or gen.get("fixture"))
+        invented = _cypher_invented_rel_types(cypher)
+        # Unconstrained related_entities drops generated RETURN aliases;
+        # constrained helpers (name filter, literal eq/compare, …) must run.
+        prefer_generated = (
+            (not is_fixture)
+            and (not invented)
+            and _cypher_is_assertion_shaped(cypher)
+            and template == "related_entities"
+        )
         if (
             template
             and isinstance(template, str)
             and template in TEMPLATES
             and not TEMPLATES[template].writing
+            and not prefer_generated
         ):
             tmpl_params = {
                 k: v
@@ -221,11 +254,8 @@ class PipelineCypherExecMixin:
 
         # Last gate before free-form Cypher actually runs. Deliberately HERE and
         # not next to `_cypher_uses_forbidden_shapes` in the retry loop: an
-        # allowlisted template above supersedes the model's raw Cypher, and that
-        # rescue must keep working — a model that invents an edge but also sets a
-        # usable `template` already returned correct rows in production, so
-        # flagging it earlier would break answers that work today.
-        invented = _cypher_invented_rel_types(cypher)
+        # allowlisted template above still rescues invented typed edges. The
+        # invented check is skipped when that template already ran.
         if invented and not is_fixture:
             shown = invented[:MAX_REPORTED_REL_TYPES]
             more = "" if len(invented) == len(shown) else ", …"

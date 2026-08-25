@@ -1,3 +1,40 @@
+from __future__ import annotations
+
+import re
+
+_RETURN_BODY_RE = re.compile(
+    r"(?is)\bRETURN\b\s+(?:DISTINCT\s+)?(.+?)"
+    r"(?=\bORDER\s+BY\b|\bLIMIT\b|\bUNION\b|$)"
+)
+_AS_ALIAS_RE = re.compile(r"(?i)\bAS\s+([A-Za-z_][A-Za-z0-9_]*)\s*$")
+_TRAILING_IDENT_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*$")
+_CYPHER_RETURN_SKIP = frozenset(
+    {
+        "distinct",
+        "null",
+        "true",
+        "false",
+        "count",
+        "sum",
+        "avg",
+        "min",
+        "max",
+        "collect",
+        "coalesce",
+        "tostring",
+        "tofloat",
+        "tointeger",
+        "type",
+        "labels",
+        "keys",
+        "size",
+        "head",
+        "last",
+        "as",
+    }
+)
+
+
 def parse_sparql_results(raw: dict) -> tuple[list[str], list[dict[str, str]]]:
     """Parse SPARQL JSON results into (variable_names, bindings).
 
@@ -53,3 +90,85 @@ def unbound_projection_vars(
     for row in bindings:
         bound.update(row.keys())
     return [var for var in variables if var not in bound]
+
+
+def _split_top_level_csv(body: str) -> list[str]:
+    """Split a RETURN body on commas that are not inside ``()`` / ``[]`` / ``{}``."""
+    items: list[str] = []
+    buf: list[str] = []
+    depth = 0
+    for ch in body or "":
+        if ch in "([{":
+            depth += 1
+            buf.append(ch)
+        elif ch in ")]}":
+            depth = max(0, depth - 1)
+            buf.append(ch)
+        elif ch == "," and depth == 0:
+            item = "".join(buf).strip()
+            if item:
+                items.append(item)
+            buf = []
+        else:
+            buf.append(ch)
+    item = "".join(buf).strip()
+    if item:
+        items.append(item)
+    return items
+
+
+def cypher_return_aliases(cypher: str) -> list[str]:
+    """Return aliases from the last Cypher ``RETURN`` clause, first-seen order.
+
+    Used to detect columns a template rescue silently dropped (generated
+    ``RETURN person_name, date`` vs ``template:related_entities`` rows).
+    """
+    matches = list(_RETURN_BODY_RE.finditer(cypher or ""))
+    if not matches:
+        return []
+    body = matches[-1].group(1).strip()
+    if not body or body == "*":
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in _split_top_level_csv(body):
+        as_m = _AS_ALIAS_RE.search(item)
+        name = as_m.group(1) if as_m else None
+        if name is None:
+            ident = _TRAILING_IDENT_RE.search(item)
+            name = ident.group(1) if ident else None
+        if not name or name.lower() in _CYPHER_RETURN_SKIP:
+            continue
+        if name not in seen:
+            seen.add(name)
+            out.append(name)
+    return out
+
+
+def dropped_projection_aliases(
+    cypher: str,
+    variables: list[str],
+    bindings: list[dict[str, str]],
+) -> list[str]:
+    """Generated ``RETURN`` aliases that never appeared in the executed rows."""
+    present: set[str] = set(variables or ())
+    for row in bindings or ():
+        present.update(row.keys())
+    return [a for a in cypher_return_aliases(cypher) if a not in present]
+
+
+def apply_unbound_confidence(
+    missing_vars: list[str],
+    confidence: str,
+    reason: str = "",
+) -> tuple[str, str]:
+    """Never report ``query_confidence: high`` when projected columns never bound."""
+    if not missing_vars:
+        return confidence, reason
+    extra = "projected columns unbound: " + ", ".join(missing_vars)
+    conf = (confidence or "").strip().lower()
+    if conf == "high" or not conf:
+        confidence = "low"
+    if extra not in (reason or ""):
+        reason = extra if not reason else f"{reason}; {extra}"
+    return confidence, reason

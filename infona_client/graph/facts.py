@@ -62,6 +62,38 @@ _RESERVED_ONTOLOGY_ATTR_RENAMES: dict[str, str] = {
 }
 
 
+def entity_display_label(entity_id: str, attributes: Iterable[Any] | None) -> str:
+    """Human ``Entity.name`` / ``rdfs:label`` — not the ``_safe_id`` URI slug.
+
+    Prefer a title / ``*_name`` / ``*_title`` cell. Else an attribute whose
+    raw value slugs to ``entity_id`` (the unsanitized key). Opaque machine
+    ids have no distinct human cell and keep the slug.
+    """
+    from infona_client.graph.ontology_queries import _safe_id
+
+    attrs = tuple(attributes or ())
+    for attr in attrs:
+        name = getattr(attr, "name", None)
+        value = getattr(attr, "value", None)
+        if not name or not isinstance(value, str) or not value.strip():
+            continue
+        leaf = str(name).strip().lower().replace(" ", "_").replace("-", "_")
+        if leaf in {"title", "name", "label", "display_name"} or leaf.endswith(
+            ("_name", "_title")
+        ):
+            return value
+    for attr in attrs:
+        value = getattr(attr, "value", None)
+        if (
+            isinstance(value, str)
+            and value.strip()
+            and _safe_id(value) == entity_id
+            and value != entity_id
+        ):
+            return value
+    return entity_id
+
+
 def coerce_ontology_attr_leaf(name: str) -> str:
     """Rewrite reserved Entity property keys to ontology-safe attribute leaves.
 
@@ -470,6 +502,8 @@ __all__ = [
     "Fact",
     "FactKind",
     "classify_triple",
+    "coerce_ontology_attr_leaf",
+    "entity_display_label",
     "group_facts_by_subject",
     "is_er_index_leaf",
     "is_internal_property_key",

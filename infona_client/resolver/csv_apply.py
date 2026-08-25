@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import structlog
 
+from infona_client.graph.facts import RESERVED_ENTITY_PROPERTY_KEYS, coerce_ontology_attr_leaf
 from infona_client.graph.ontology_queries import _safe_id
 from infona_client.resolver.csv_extensions import _ExtensionApplier
 from infona_client.resolver.csv_helpers import (
@@ -29,6 +30,26 @@ from infona_client.resolver.models import (
 
 
 logger = structlog.stdlib.get_logger("infona.resolver.csv")
+
+
+def _ontology_attr_name(col: ColumnMapping | None, fallback: str) -> str:
+    """Ontology leaf for a mapped column.
+
+    Key columns named ``id`` / ``order_id`` / ``*_id`` are entity keys, not
+    the reserved Entity property ``id``. Prefer the mapping's attribute
+    name, then the column name, and never emit a reserved leaf.
+    """
+    raw = (col.attribute_name if col and col.attribute_name else fallback) or fallback
+    name = _snake_case(raw)
+    if name not in RESERVED_ENTITY_PROPERTY_KEYS:
+        return name
+    col_name = _snake_case(col.column_name) if col and col.column_name else ""
+    if col_name and col_name not in RESERVED_ENTITY_PROPERTY_KEYS:
+        return col_name
+    fb = _snake_case(fallback)
+    if fb and fb not in RESERVED_ENTITY_PROPERTY_KEYS:
+        return fb
+    return coerce_ontology_attr_leaf(name)
 
 
 def _host():
@@ -131,7 +152,7 @@ class CSVApplyMixin:
                 if not raw_value:
                     continue
 
-                attr_name = col.attribute_name or _snake_case(col.column_name)
+                attr_name = _ontology_attr_name(col, col.column_name)
 
                 if col.role == ColumnRole.TYPE_ID:
                     # The key is URI + label material AND a regular attribute.
@@ -208,10 +229,10 @@ class CSVApplyMixin:
         # Opaque machine ids (C1001, R-WEST, P77) must NOT be written as attrs/name:
         # the full dimension-table row later adds the human name (Alice, West), and
         # multi-valued name then makes FILTER(CONTAINS(...)) fan-out SUM/AVG
-        # rows (dogfood S5: West revenue 2×). Stubs still get rdfs:label=id at
-        # write time in schema_resolver. Human-readable relationship cells
-        # (Austin, Acme Corp) keep a name attr so NL can filter them before a
-        # dim table arrives.
+        # rows (dogfood S5: West revenue 2×). Display ``Entity.name`` is chosen
+        # at write time from a human cell, not the URI slug. Human-readable
+        # relationship cells (Austin, Acme Corp) keep a name attr so NL can
+        # filter them before a dim table arrives.
         for target_id, target_type in seen_rel_entities.items():
             raw_name = rel_entity_names.get(target_id, target_id.replace("_", " "))
             stub_attrs: list[ExtractedAttribute] = []
@@ -367,11 +388,7 @@ class CSVApplyMixin:
                             None,
                         )
                         attrs.append(ExtractedAttribute(
-                            name=(
-                                key_col.attribute_name
-                                if key_col and key_col.attribute_name
-                                else _snake_case(spec.id_column)
-                            ),
+                            name=_ontology_attr_name(key_col, spec.id_column),
                             value=key_value,
                             datatype=key_col.datatype if key_col else "string",
                         ))
@@ -381,7 +398,7 @@ class CSVApplyMixin:
                         raw = raw.strip()
                     if not raw:
                         continue
-                    attr_name = col.attribute_name or _snake_case(col.column_name)
+                    attr_name = _ontology_attr_name(col, col.column_name)
                     if col.role == ColumnRole.RELATIONSHIP and col.target_type:
                         # Out-of-row reference (e.g. country) → stub target + edge.
                         # Same opaque-id rule as single-entity stubs (dogfood S5).

@@ -70,7 +70,6 @@ STRUCTURAL_PROP_KEYS: frozenset[str] = frozenset(
         "id",
         "name",
         "display_name",
-        "title",
         "primary_type",
         "tenant_id",
         "kg",
@@ -677,8 +676,8 @@ def check_schema_valid_cypher(
       (declared catalog leaf **or** instance-populated prop/rel for this KG).
 
     Known ADR 0013 **templates** still validate ``prop_key`` / ``rel_attr``
-    params (a template name does not license inventing a leaf), but free-form
-    pattern rel types are the primary invent class.
+    params. Empty-cache runs on executing Cypher (``related_entities`` dump);
+    constrained helpers and invented-rel rescue stay template-ok.
     """
     inv = inventory or OntologyLeafInventory.from_ontology(ontology_summary)
     if inv.empty:
@@ -728,7 +727,9 @@ def check_schema_valid_cypher(
                 invented_rel_types=tuple(invented_rels),
                 inventory=inv,
             )
-        return SchemaValidResult(ok=True, reason="template schema ok", inventory=inv)
+        # Constrained helpers supersede; related_entities executes unless rescue.
+        if tmpl != "related_entities" or any(any(c.islower() for c in r) for r in rels_used):
+            return SchemaValidResult(ok=True, reason="template schema ok", inventory=inv)
 
     if invented_rels or invented_props:
         parts: list[str] = []
@@ -755,6 +756,23 @@ def check_schema_valid_cypher(
             ),
             invented_rel_types=tuple(invented_rels),
             invented_prop_keys=tuple(invented_props),
+            inventory=inv,
+        )
+
+    from infona_client.nlp.populated_leaf_plan import (
+        empty_cache_schema_reason,
+        empty_entity_cache_hits,
+    )
+
+    cache_hits = empty_entity_cache_hits(
+        cypher, ontology_summary or "", params=params
+    )
+    if cache_hits:
+        empty_keys = tuple(h[1] for h in cache_hits)
+        return SchemaValidResult(
+            ok=False,
+            reason=empty_cache_schema_reason(cache_hits),
+            invented_prop_keys=empty_keys,
             inventory=inv,
         )
 

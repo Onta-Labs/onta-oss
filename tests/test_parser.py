@@ -1,4 +1,10 @@
-from infona_client.graph.parser import parse_sparql_results, unbound_projection_vars
+from infona_client.graph.parser import (
+    apply_unbound_confidence,
+    cypher_return_aliases,
+    dropped_projection_aliases,
+    parse_sparql_results,
+    unbound_projection_vars,
+)
 
 
 def test_parse_empty_results():
@@ -85,3 +91,44 @@ def test_unbound_projection_vars_preserves_projection_order():
     variables = ["a", "b", "c"]
     bindings = [{"b": "1"}]
     assert unbound_projection_vars(variables, bindings) == ["a", "c"]
+
+
+def test_cypher_return_aliases_from_as_and_bare_idents():
+    cypher = (
+        "MATCH (a:Assertion)-[:SUBJECT]->(e) "
+        "RETURN to_e.name AS person_name, da.literal_value AS date "
+        "ORDER BY date LIMIT 10"
+    )
+    assert cypher_return_aliases(cypher) == ["person_name", "date"]
+
+
+def test_cypher_return_aliases_coalesce_as():
+    cypher = (
+        "RETURN coalesce(from_e.display_name, from_e.title, from_e.name) "
+        "AS from_name, to_e.id AS to_id"
+    )
+    assert cypher_return_aliases(cypher) == ["from_name", "to_id"]
+
+
+def test_dropped_projection_aliases_when_template_omits_return_keys():
+    cypher = (
+        "MATCH (a:Assertion)-[:SUBJECT]->(e) "
+        "RETURN to_e.name AS person_name, da.literal_value AS date"
+    )
+    # related_entities template rows have from_name/to_name, not the gen RETURN.
+    variables = ["from_id", "from_name", "to_id", "to_name"]
+    bindings = [{"from_name": "Ada_Lovelace", "to_name": "Acme"}]
+    assert dropped_projection_aliases(cypher, variables, bindings) == [
+        "person_name",
+        "date",
+    ]
+
+
+def test_apply_unbound_confidence_never_stays_high():
+    conf, reason = apply_unbound_confidence(["date"], "high", "coverage ok")
+    assert conf == "low"
+    assert "date" in reason
+    conf2, _ = apply_unbound_confidence(["date"], "medium", "partial")
+    assert conf2 == "medium"
+    conf3, _ = apply_unbound_confidence([], "high", "ok")
+    assert conf3 == "high"

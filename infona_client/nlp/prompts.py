@@ -216,6 +216,17 @@ OBJECT → Entity (object props) or `literal_value` on the Assertion (datatype p
 Provenance (`source_url`, `verified_at`, `confidence`, `run_id`) lives ON the Assertion.
 - Derived caches (optional): `INSTANCE_OF`, denormalized Entity props, typed shortcut \
 rels (e.g. `HAS_GENRE`) — only valid when kept consistent with Assertions.
+- Entity denorm cache that is ALWAYS present: `id`, `name`, `primary_type`, \
+`tenant_id`, `kg`. Other keys (`title`, `date_end`, …) are NOT structural — \
+they are empty unless that exact leaf is unmarked as populated in the schema. \
+Never `RETURN e.title` / `e.date_end` when a sibling unmarked leaf exists \
+(`event_title`, `date`, …). Bind `a.literal_value` with `p.name` set to the \
+populated leaf. Empty aliases are marked `[no instances]` — do not treat them \
+as live Entity properties.
+- Kind / class / "what type of X" filters: prefer a **populated typed enum or \
+select leaf on the asked entity** (listed `[values: …]` / `*_type` / `*_kind` \
+with instances) over an unstructured `category` string on a **related** type. \
+Bind the exact stored enum values. Do not invent category lists.
 
 FORBIDDEN relationship / property shapes (they do not exist in this graph):
 - NEVER invent `HAS_ASSERTION`, `predicate_key`, or `Assertion.prop_key`.
@@ -258,7 +269,9 @@ a field or returning a silent unfiltered total.
 
 - Correct datatype read pattern:
   `(a:Assertion {tenant_id:$tenant_id, kg:$kg, subject_id:e.id})-[:PREDICATE]->(p:Property)`
-  with `a.literal_value` (or denorm `e[p.name]` / `e.price`).
+  with `a.literal_value` (preferred SoT). Denorm `e[p.name]` / `e.price` only \
+when that exact `p.name` is an unmarked populated leaf — never a `[no instances]` \
+alias and never an assumed `title` / `date_end` cache.
 - Correct object-rel read pattern (three separate MATCHes off the SAME Assertion \
 `a` — do NOT chain OBJECT off the subject node):
   `MATCH (a:Assertion {tenant_id:$tenant_id, kg:$kg})-[:SUBJECT]->(from)`

@@ -25,8 +25,31 @@ LayerName = Literal["public", "enhanced", "tenant"]
 AttrKind = Literal["literal", "relationship"]
 
 LITERAL_DATATYPES: frozenset[str] = frozenset(
-    {"string", "integer", "float", "boolean", "datetime", "uri", "geo"}
+    {"string", "integer", "float", "boolean", "datetime", "uri", "geo", "number"}
 )
+
+# CSV / API aliases → canonical primitives in ``PRIMITIVE_TYPES``. ``number``
+# is the ingest-model spelling of the integer/float family; treating it as a
+# type leaf minted a fake ``:number`` class and an object-property.
+_LITERAL_DATATYPE_ALIASES: dict[str, str] = {
+    "number": "float",
+}
+_LITERAL_DATATYPES_LOWER: frozenset[str] = frozenset(
+    item.lower() for item in LITERAL_DATATYPES
+)
+
+
+def canonicalize_literal_datatype(datatype: str) -> str:
+    """Map ingest aliases onto canonical primitive names.
+
+    Unknown / relationship-range names pass through unchanged.
+    """
+    if not isinstance(datatype, str):
+        return datatype
+    raw = datatype.strip()
+    if not raw:
+        return raw
+    return _LITERAL_DATATYPE_ALIASES.get(raw.lower(), raw)
 
 VALID_CARDINALITIES: frozenset[str] = frozenset({"1:1", "1:N", "N:1", "N:N"})
 
@@ -148,8 +171,8 @@ def classify_attr_range(
     if not isinstance(datatype, str) or not datatype.strip():
         raise GraphScopeError("Attribute datatype / range must be a non-empty string")
     dt = datatype.strip()
-    if dt in LITERAL_DATATYPES:
-        return "literal", dt, None
+    if dt.lower() in _LITERAL_DATATYPES_LOWER:
+        return "literal", canonicalize_literal_datatype(dt), None
     # Relationship range — validate as a type leaf (also rejects reserved labels).
     target = _validate_type_leaf(dt)
     return "relationship", None, target

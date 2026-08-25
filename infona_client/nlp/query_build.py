@@ -126,7 +126,11 @@ def format_query_build_for_prompt(ctx: QueryBuildContext | None) -> str:
         "(5) If Graph build notes / probe list dim values, equality-filter with "
         "those exact strings. (6) If money candidates are listed for cost/price, "
         "use that prop_key. (7) Multi-constraint questions MUST constrain all "
-        "listed dims before aggregate."
+        "listed dims before aggregate. (8) Project Assertion.literal_value (or a "
+        "cache key unmarked as populated). Never Entity.title / Entity.date_end "
+        "when a sibling unmarked leaf exists. (9) Kind/class filters: prefer a "
+        "populated typed enum/select on the asked type over unstructured "
+        "category on a related type."
     )
     return "\n".join(lines)
 
