@@ -13,12 +13,15 @@
   Luna (or your configured model) sees the file once and names types, attributes, relationships.
   Every cell maps through that schema via <code>insert_facts</code>. Then
   <code>ask</code> compiles English to Cypher on the populated graph.
+  Ingest does not merge intra-file fragments — <code>er rebuild</code> is the second pass.
+  Ontology extend and field-conflict handling are part of the same loop.
 </p>
 
 <p align="center">
   <a href="https://infona.ai">infona.ai</a> (waitlist / demo) ·
   <a href="docs/BOUNDARY.md">what's free</a> ·
-  <a href="docs/API.md">API</a>
+  <a href="docs/API.md">API</a> ·
+  <a href="AGENTS.md">agents</a>
 </p>
 
 <p align="center">
@@ -34,13 +37,17 @@
   <img src="docs/readme/hero.png" alt="English question compiled to Cypher on Neo4j: AstraZeneca runs FLAURA2, indication NSCLC."/>
 </p>
 
-<p align="center"><em>Ask in English, get Cypher, get the row. <code>ingest</code> → <code>ask</code> is the payoff. The graph is the trials.csv sample.</em></p>
+<p align="center"><em>Ask in English → Cypher on Neo4j. The graph is the <code>trials.csv</code> sample. Zero-key FLAURA2 is a <strong>cached-plan replay</strong>, not live inference.</em></p>
+
+This repo is the **OSS runtime** (`infona_client`, `@infona-ai/cli`, `@infona-ai/mcp`). Paid adapters, production Clerk, Explorer, billing/entitlement, and cloud infra live in the **private parent**, not here. Full table: [docs/BOUNDARY.md](docs/BOUNDARY.md).
 
 ---
 
 ## 10-minute quickstart
 
 Need: Docker + Node 20+ (for the `infona` CLI). A stranger gets a real answer with **no API key**.
+
+`./scripts/oss_up.sh` compose-ups Neo4j + API, waits until `/health` reports Neo4j up, writes `~/.infona/config.json`, and loads the prebuilt trials graph. After that, **bare `infona` works**. `--local` / `--no-login` are first-run / one-off flags; they do **not** rewrite config. Re-connect without compose: `infona init --local`.
 
 ### Zero-key (cached-plan replay)
 
@@ -51,12 +58,11 @@ The prebuilt path **replays a cached Cypher plan**. It is **not live inference**
 git clone https://github.com/infona-ai/infona-oss.git && cd infona-oss
 cp .env.example .env          # leave OPENROUTER_API_KEY empty / as the placeholder
 npm i -g @infona-ai/cli       # or use npx @infona-ai/cli in place of infona
-./scripts/oss_up.sh           # Neo4j + API + loads the prebuilt trials graph
+./scripts/oss_up.sh           # Neo4j + API + ~/.infona/config.json + prebuilt trials graph
 infona ask "Which Phase 3 NSCLC trials is AstraZeneca running?" --kg trials
 ```
 
 That question should return **FLAURA2**, labelled as a **cached-plan replay** (not live inference).
-`./scripts/oss_up.sh` compose-ups, waits until `/health` reports Neo4j up, writes `~/.infona/config.json`, and runs `./scripts/load_prebuilt_trials.sh`.
 
 Reload the snapshot later (still no key):
 
@@ -65,7 +71,7 @@ Reload the snapshot later (still no key):
 infona ask "Which Phase 3 NSCLC trials is AstraZeneca running?" --kg trials
 ```
 
-Advertised bound stays **10 minutes**. Measured **1 min 42 s** cold on **macOS 26.5.1 + Colima** (Ubuntu 24.04 VM, 4 CPU, 6 GB; warm daemon, empty project, `docker compose build --no-cache`) from `git clone` to that zero-key ask. Native Linux was **not** measured. First-time `neo4j:5-community` pull is extra; 10 minutes still covers it.
+Advertised bound stays **10 minutes**. Measured **1 min 42 s** cold on **macOS 26.5.1 + Colima** (Ubuntu 24.04 VM, 4 CPU, 6 GB; warm daemon, empty project, `docker compose build --no-cache`) from `git clone` to that zero-key ask. Native Linux was **not** measured. First-time `neo4j:5-community` pull is extra; 10 minutes still covers it. Timing notes: [docs/quickstart-timing.md](docs/quickstart-timing.md).
 
 Placeholder keys from `.env.example` (`sk-or-...`) count as **no key**.
 `INFONA_ASK_CACHED_PLAN=1` forces replay even with a key (tests). `=0` disables it.
@@ -136,7 +142,7 @@ That question should return **FLAURA2**. `examples/trials.csv` is a 16-row oncol
 
 ![infona ask compiling English to Cypher and lighting three sponsor paths — FLAURA2, MARIPOSA, CROWN — into NSCLC](docs/readme/demo-ask.svg)
 
-The looping SVGs are generated from [`scripts/render_readme_demos.py`](scripts/render_readme_demos.py). Local Neo4j notes: [docs/neo4j-local.md](docs/neo4j-local.md). `infona init --local` connects without starting Docker. If something fails, the CLI should name the next command.
+The looping SVGs are generated from [`scripts/render_readme_demos.py`](scripts/render_readme_demos.py). Local Neo4j notes: [docs/neo4j-local.md](docs/neo4j-local.md). If something fails, the CLI should name the next command.
 
 Python package (library, not the `infona` CLI — that is `@infona-ai/cli`). Same version as the npm packages:
 
@@ -144,9 +150,37 @@ Python package (library, not the `infona` CLI — that is `@infona-ai/cli`). Sam
 pip install infona-client
 ```
 
-Import path is `infona_client`. Graph IRIs live under `https://graph.infona.ai/`.
+Import path is `infona_client`. Graph IRIs live under `https://graph.infona.ai/`. Env prefix is `INFONA_*` only.
 
 ---
+
+## How to use
+
+CLI, MCP, and HTTP share **one canonical route per operation**. Do not invent a bespoke path.
+
+| Command | What it does |
+|---|---|
+| `infona use <kg>` | Save the working graph. Later `ingest` / `ask` can drop `--kg`. |
+| `infona ingest <file> --kg <kg>` | Schema once, then deterministic rows. Does **not** merge intra-file fragments. |
+| `infona er rebuild --kg <kg>` | Second-pass URI collapse + field-conflict report. **`--kg` is required** (does not read `infona use`). |
+| `infona ask "…" --kg <kg>` | Always-LLM Cypher with a key; cached-plan replay with none. |
+| `infona ontology types` | List types / attributes. |
+| `infona ontology resolve "…"` | Evolve the ontology from English (`--kg` is optional context; not the `use` default). |
+| `infona export --kg <kg>` | JSON or CSV out. **`--kg` is required.** |
+
+```bash
+infona use trials
+infona ingest examples/trials.csv
+infona ask "Which Phase 3 NSCLC trials is AstraZeneca running?"
+infona ontology types
+infona ontology resolve "add a runs relationship from Sponsor to Trial"
+infona er rebuild --kg trials
+infona export --kg trials -f json -o trials.json
+```
+
+Writes go through `insert_facts` + `refresh_after_write`. Entity URIs via `graph.ontology_queries.entity_uri`. Instance relationships use `https://graph.infona.ai/onto/<leaf>`.
+
+More CLI: [packages/cli/README.md](packages/cli/README.md). HTTP: [docs/API.md](docs/API.md).
 
 ### Optional: 3rd-party REST / SQL extract (dlt)
 
@@ -170,6 +204,29 @@ infona ingest --dlt spec.json --kg crm
 ```
 
 SQL is the same shape with `"kind": "sql"` and `"dsn": "env:EXAMPLE_DSN"`. Hosted Explorer Connect / Run is premium (ONTA-554) and hits this same route.
+
+---
+
+## MCP (agents)
+
+Same `ask`, same graph, same exact rows — as a tool result. Same HTTP routes the CLI hits.
+
+```json
+{
+  "mcpServers": {
+    "infona": {
+      "command": "npx",
+      "args": ["-y", "-p", "@infona-ai/mcp", "infona-mcp"],
+      "env": {
+        "INFONA_API_URL": "http://localhost:8000",
+        "INFONA_TENANT": "default"
+      }
+    }
+  }
+}
+```
+
+`ask`, `search`, `agent`, `ingest_csv`, `ingest_dlt`, `er_rebuild`, `export_kg`, ontology, jobs. [packages/mcp/README.md](packages/mcp/README.md).
 
 ---
 
@@ -211,6 +268,8 @@ Full contract: [docs/TELEMETRY.md](docs/TELEMETRY.md).
 
 Infona is **not** a memory or context layer that stuffs retrieved chunks into a prompt window. This repo registers **no** default open-web page fetcher; you bring retrieval or you skip web fetch ([docs/BOUNDARY.md](docs/BOUNDARY.md)). It is **not** RAG over a vector index, and it is **not** "chat with your CSV."
 
+Product path is **Neo4j GraphStore / Cypher**. SPARQL is not the product query language. Neptune is not the product store.
+
 ---
 
 ## What you get
@@ -235,7 +294,7 @@ CSV / JSON / text
   → ask (cached-plan replay with no key; always-LLM Cypher with a key)
 ```
 
-Writes go through `insert_facts` / `refresh_after_write`. Instance relationships use `https://graph.infona.ai/onto/<leaf>`. Ask is always-LLM Cypher when a model is configured. Grounding, probes, and few-shots **inform** the model; they do not replace it.
+Ask is always-LLM Cypher when a model is configured. Grounding, probes, and few-shots **inform** the model; they do not replace it.
 
 ```bash
 export OPENROUTER_API_KEY=sk-or-...
@@ -243,36 +302,42 @@ export INFONA_QUERY_PROVIDER=openrouter
 export INFONA_QUERY_MODEL=openai/gpt-oss-120b
 ```
 
-### MCP (agents)
-
-Same `ask`, same graph, same exact rows — as a tool result:
-
-```json
-{
-  "mcpServers": {
-    "infona": {
-      "command": "npx",
-      "args": ["-y", "-p", "@infona-ai/mcp", "infona-mcp"],
-      "env": {
-        "INFONA_API_URL": "http://localhost:8000",
-        "INFONA_TENANT": "default"
-      }
-    }
-  }
-}
-```
-
-`ask`, `search`, `agent`, `ingest_csv`, `ingest_dlt`, `export_kg`, ontology, jobs — same backend the CLI hits. [packages/mcp/README.md](packages/mcp/README.md).
-
 ### What's free
 
 - **OSS (this repo):** ingest, ontology, ask, MCP / CLI / HTTP, export, free sources, BYOK registry, plugin seams.
 - **Bring your own retrieval:** OSS registers **no** open-web page fetcher. Enrichment that needs a URL fetch declines unless *you* register one — or you use hosted Infona.
-- **Hosted-only:** managed keys Infona bills, paid search/scrape ladders, curated Enhanced ontology, Explorer, billing.
+- **Hosted-only:** managed keys Infona bills, paid search/scrape ladders, curated Enhanced ontology, Explorer, billing, Clerk, cloud infra.
 
 Full table: **[docs/BOUNDARY.md](docs/BOUNDARY.md)**.
 
 **Product path:** FastAPI + **Neo4j GraphStore (Cypher)**. SPARQL / Neptune are not product backends.
+
+---
+
+## For coding agents
+
+Humans and coding agents follow the same contract. Read **[AGENTS.md](AGENTS.md)** before writing code. How to set up a clone and open a PR: **[CONTRIBUTING.md](CONTRIBUTING.md)**. First-time authors sign **[CLA.md](CLA.md)** on the PR (`I have read the CLA Document and I hereby sign the CLA`). Apache-2.0; public publication is a one-way door. Never commit secrets.
+
+**Do**
+
+- Import `infona_client`. npm: `@infona-ai/cli`, `@infona-ai/mcp`. Env: `INFONA_*`. IRIs: `https://graph.infona.ai/…`.
+- Writes through `insert_facts` + `refresh_after_write`. Mint entities with `entity_uri` only.
+- File budget ~500 lines; hard **550** for **new** `infona_client` / `packages` / `tests` files. Oversized files are pinned in `tests/test_file_size_budget.py` and must not grow.
+- Hermetic tests (`MemoryGraphStore`, mocks). No live Neo4j required. Optional: [docs/neo4j-local.md](docs/neo4j-local.md).
+- Run `scripts/check_boundary.sh` and the tests that import what you touched.
+
+```bash
+pytest tests/test_file_size_budget.py -q
+pytest tests/<touched>.py -q
+npm test --workspace packages/cli   # if you touched TS
+```
+
+**Do not**
+
+- `from infona.*` / `import infona.*` (this package imports on its own).
+- Short-circuit production `/ask` with golden-string Cypher, or hardcode persona-CSV answers.
+- Treat SPARQL as the product query language, or Neptune as the product store. Residual `NeptuneClient` imports stay — do not delete them in drive-by cleanup.
+- Re-register a default `StaticHttpFetcher` (BYOR). Do not ship or imply a shared platform key (BYOK = the caller's env).
 
 ---
 
