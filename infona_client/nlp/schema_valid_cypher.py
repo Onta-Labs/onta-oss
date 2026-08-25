@@ -676,8 +676,8 @@ def check_schema_valid_cypher(
       (declared catalog leaf **or** instance-populated prop/rel for this KG).
 
     Known ADR 0013 **templates** still validate ``prop_key`` / ``rel_attr``
-    params (a template name does not license inventing a leaf). Empty-cache
-    checks still run on Cypher that will execute; invented-rel rescue stays.
+    params. Empty-cache runs on executing Cypher (``related_entities`` dump);
+    constrained helpers and invented-rel rescue stay template-ok.
     """
     inv = inventory or OntologyLeafInventory.from_ontology(ontology_summary)
     if inv.empty:
@@ -727,8 +727,8 @@ def check_schema_valid_cypher(
                 invented_rel_types=tuple(invented_rels),
                 inventory=inv,
             )
-        # Lowercase typed hops are template-rescued at execute; skip them.
-        if any(any(c.islower() for c in r) for r in rels_used):
+        # Constrained helpers supersede; related_entities executes unless rescue.
+        if tmpl != "related_entities" or any(any(c.islower() for c in r) for r in rels_used):
             return SchemaValidResult(ok=True, reason="template schema ok", inventory=inv)
 
     if invented_rels or invented_props:

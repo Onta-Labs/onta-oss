@@ -256,7 +256,7 @@ async def test_two_serialless_gadgets_do_not_share_a_fabricated_serial(tmp_path)
     # The two records stayed distinct nodes (keyed by id, not by a fake serial).
     assert entity_uri("Gadget", "g1") != entity_uri("Gadget", "g2")
     labels = {o for _s, p, o in triples_all if p == RDFS_LABEL}
-    assert {"g1", "g2"} <= labels
+    assert {"Widget One", "Widget Two"} <= labels
 
 
 async def test_legitimate_serial_passes_through_with_backstop_on(tmp_path):

@@ -438,3 +438,40 @@ def test_ontology_leaf_inventory_allowed_tokens():
     assert "INSTANCE_OF" in inv.allowed_rel_tokens
     assert "offered_in" in inv.allowed_prop_keys
     assert "seat_count" in inv.allowed_prop_keys
+
+
+def test_constrained_literal_values_template_skips_body_prop_check():
+    """literal_values supersedes; ValidityInterval keys in the body must not fail-close."""
+    from infona_client.graph.rdfs_helpers_templates import LITERAL_VALUES_CYPHER
+
+    r = check_schema_valid_cypher(
+        LITERAL_VALUES_CYPHER,
+        SYNTH_OFFERING_ONTO,
+        params={
+            "type_names": ["SynthOffering"],
+            "prop_key": "term_code",
+            "prop_value": "F24",
+            "limit": 25,
+        },
+        template="literal_values",
+    )
+    assert r.ok, r.reason
+    assert r.reason == "template schema ok"
+
+
+def test_literal_values_invented_prop_key_still_rejected():
+    from infona_client.graph.rdfs_helpers_templates import LITERAL_VALUES_CYPHER
+
+    r = check_schema_valid_cypher(
+        LITERAL_VALUES_CYPHER,
+        SYNTH_OFFERING_ONTO,
+        params={
+            "type_names": ["SynthOffering"],
+            "prop_key": "not_a_leaf",
+            "prop_value": "x",
+            "limit": 25,
+        },
+        template="literal_values",
+    )
+    assert not r.ok
+    assert "not_a_leaf" in (r.reason or "")

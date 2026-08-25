@@ -192,9 +192,12 @@ class PipelineCypherExecMixin:
         :func:`confine_generated_cypher`. Never trusts model tenant/kg values.
 
         Allowlisted ``template`` still supersedes invented typed edges
-        (``[:lead_sponsor]`` → ``template:related_entities``). Schema-valid
-        Assertion-shaped Cypher with no invented rel types is executed as
-        written so generated ``RETURN`` columns are not dropped.
+        (``[:lead_sponsor]`` → template). Schema-valid Assertion-shaped
+        Cypher with no invented rel types prefers ``execute_read`` only
+        when ``gen.template`` is the generic ``related_entities`` dump so
+        generated ``RETURN`` columns are not dropped. Constrained helpers
+        (``related_entity_name_filter``, ``literal_values``, …) still
+        supersede.
         """
         from infona_client.graph.schema_bootstrap import TEMPLATES
         from infona_client.graph.store import GraphQueryError
@@ -202,10 +205,13 @@ class PipelineCypherExecMixin:
         template = gen.get("template")
         is_fixture = bool(gen.get("stub") or gen.get("fixture"))
         invented = _cypher_invented_rel_types(cypher)
+        # Unconstrained related_entities drops generated RETURN aliases;
+        # constrained helpers (name filter, literal eq/compare, …) must run.
         prefer_generated = (
             (not is_fixture)
             and (not invented)
             and _cypher_is_assertion_shaped(cypher)
+            and template == "related_entities"
         )
         if (
             template

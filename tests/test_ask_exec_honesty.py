@@ -234,3 +234,53 @@ def test_assertion_shape_helper_and_rephrase_skip():
     ) is False
     assert skip_narrative_rephrase(["date"]) is True
     assert skip_narrative_rephrase([]) is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "template",
+    [
+        "related_entity_name_filter",
+        "literal_values",
+        "literal_compare",
+        "entities_of_type",
+    ],
+)
+async def test_constrained_templates_supersede_assertion_cypher(template: str):
+    """Assertion-shaped body skips only related_entities, not constrained helpers."""
+
+    class _Sess:
+        def __init__(self) -> None:
+            self.reads: list = []
+            self.templates: list = []
+
+        async def execute_read(self, cypher, params):
+            self.reads.append((cypher, params))
+            raise AssertionError(f"{template} must still supersede Assertion Cypher")
+
+        async def execute_template(self, name, params):
+            self.templates.append((name, params))
+            return [GraphRecord(data={"id": "e1"})]
+
+    session = _Sess()
+    gen = {
+        "cypher": ASSERTION_LIST,
+        "template": template,
+        "params": {
+            "type_names": ["SynthEvent"],
+            "rel_attr": "attendee",
+            "target_name": "Ada Lovelace",
+            "prop_key": "date",
+            "prop_value": "2024-06-01",
+            "op": "ge",
+            "threshold": 1.0,
+            "limit": 25,
+        },
+    }
+    records, path = await PipelineCypherExecMixin()._execute_confined_cypher(
+        session, gen, ASSERTION_LIST, {"tenant_id": "t", "kg": "k"}
+    )
+    assert path == f"template:{template}"
+    assert session.reads == []
+    assert session.templates and session.templates[0][0] == template
+    assert records
