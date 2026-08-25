@@ -229,6 +229,7 @@ class PipelineAskMixin:
                         from infona_client.nlp.ask_process_log import (
                             apply_money_leaf_params,
                             log_ask_event,
+                            rewrite_agg_prefixed_leaf,
                         )
 
                         before = dict(params)
@@ -236,6 +237,9 @@ class PipelineAskMixin:
                             params,
                             money_leaf=money_leaf_bound,
                             money_cue=money_cue_bound,
+                        )
+                        cypher_raw = rewrite_agg_prefixed_leaf(
+                            cypher_raw, money_leaf_bound
                         )
                         timing["money_leaf_hard_bound"] = money_leaf_bound
                         log_ask_event(
@@ -254,12 +258,16 @@ class PipelineAskMixin:
                     except Exception:
                         from infona_client.nlp.ask_process_log import (
                             apply_money_leaf_params,
+                            rewrite_agg_prefixed_leaf,
                         )
 
                         params = apply_money_leaf_params(
                             params,
                             money_leaf=money_leaf_bound,
                             money_cue=money_cue_bound,
+                        )
+                        cypher_raw = rewrite_agg_prefixed_leaf(
+                            cypher_raw, money_leaf_bound
                         )
                         timing["money_leaf_hard_bound"] = money_leaf_bound
                 else:

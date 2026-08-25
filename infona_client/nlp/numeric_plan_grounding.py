@@ -30,6 +30,7 @@ from infona_client.nlp.numeric_attr_resolve import (
     known_empty_types,
     normalize_populated_types,
     resolve_numeric_attr,
+    strip_leading_agg_modifier,
 )
 
 _SAFE_PROP_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -628,13 +629,17 @@ def _try_ground_agg(
     }:
         return None
 
-    # Normalize multi-word prop ("unit cost" → unit_cost mention)
+    # Normalize multi-word prop ("unit cost" → unit_cost mention).
+    # Peel average/avg/mean so "average_headcount" is the noun leaf, not a column.
     prop_mention = None
     if prop_raw:
         prop_mention = re.sub(r"\s+", "_", prop_raw.strip())
         if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", prop_mention):
-            # keep spaced for family resolve
             prop_mention = prop_raw.strip()
+        noun, peeled = strip_leading_agg_modifier(prop_mention)
+        if peeled and noun:
+            prop_mention = noun
+            agg_op = agg_op or peeled
 
     matched = resolve_type_name(label, type_names, ontology_summary)
     if matched is None:
@@ -674,6 +679,8 @@ def _try_ground_agg(
         matched, ontology_summary=ontology_summary, include_subclasses=True
     )
     cand_names = [c.leaf for c in resolved.candidates]
+    if resolved.agg_op:
+        agg_op = agg_op or resolved.agg_op
 
     if resolved.confidence == "unique" and resolved.prop_key:
         params = {
@@ -745,6 +752,11 @@ def format_numeric_grounding_for_prompt(plan: GroundedNumericPlan | None) -> str
             if plan.agg_op:
                 lines.append(f"  agg_op: {plan.agg_op}")
             lines.append(f"  preferred_template: {TEMPLATE_LITERAL_AGGREGATE}")
+            if plan.agg_op == "avg" and plan.prop_key:
+                lines.append(
+                    f"  MUST AVG the noun leaf {plan.prop_key!r}; never invent "
+                    f"average_{plan.prop_key} as a column."
+                )
         if plan.params:
             bits = [f"{k}={plan.params[k]!r}" for k in sorted(plan.params.keys())]
             lines.append(f"  template_params: {{{', '.join(bits)}}}")

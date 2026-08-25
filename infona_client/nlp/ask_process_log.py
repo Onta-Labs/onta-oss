@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -77,6 +78,23 @@ def log_ask_event(event: str, **fields: Any) -> None:
         pass
 
 
+def rewrite_agg_prefixed_leaf(text: str, leaf: str) -> str:
+    """Replace ``average_<leaf>`` / ``avg_<leaf>`` / ``mean_<leaf>`` with ``leaf``.
+
+    NL average/avg/mean + noun is AVG of the noun, not a minted column.
+    """
+    raw = text or ""
+    key = (leaf or "").strip()
+    if not raw or not key or not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", key):
+        return raw
+    return re.sub(
+        rf"\b(?:average|avg|mean)[_-]+{re.escape(key)}\b",
+        key,
+        raw,
+        flags=re.I,
+    )
+
+
 def apply_money_leaf_params(
     params: dict[str, Any] | None,
     *,
@@ -88,11 +106,18 @@ def apply_money_leaf_params(
     Only keys already present in ``params`` are touched. Does not invent
     ``$prop`` / ``$cost_prop`` the plan never used. Does not pick a leaf
     when resolve was ambiguous — caller must pass a unique ``money_leaf``.
+    Also rewrites ``average_<leaf>`` minted as a missing column.
     """
+    from infona_client.nlp.numeric_attr_resolve import (
+        normalize_leaf_key,
+        strip_leading_agg_modifier,
+    )
+
     out = dict(params or {})
     leaf = (money_leaf or "").strip()
     if not leaf:
         return out
+    leaf_n = normalize_leaf_key(leaf)
     bare = frozenset(
         {
             "",
@@ -110,13 +135,20 @@ def apply_money_leaf_params(
         "cost_prop_key",
         "price_prop",
         "measure_prop",
+        "prop",
     )
     rewritten = False
     for k in keys:
         if k not in out:
             continue
         cur = out.get(k)
-        if cur is None or str(cur).strip().lower() in bare:
+        cur_s = "" if cur is None else str(cur).strip()
+        if cur is None or cur_s.lower() in bare:
+            out[k] = leaf
+            rewritten = True
+            continue
+        noun, agg = strip_leading_agg_modifier(cur_s)
+        if agg and normalize_leaf_key(noun) == leaf_n:
             out[k] = leaf
             rewritten = True
     if rewritten:
@@ -130,4 +162,5 @@ __all__ = [
     "apply_money_leaf_params",
     "ask_log_enabled",
     "log_ask_event",
+    "rewrite_agg_prefixed_leaf",
 ]
