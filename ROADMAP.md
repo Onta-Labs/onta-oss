@@ -3,9 +3,10 @@
 This is the public plan. It is **not** a launch checklist, and it is not a
 pointer at a private document.
 
-Infona leads with **trust**, not text-to-Cypher. When two sources disagree
-about the same entity, Infona resolves it and shows **which source won**,
-**why**, and **when that fact was last verified**.
+Infona leads with **trust**, not text-to-Cypher. URI merge is applied
+today. Field winners are not the sole current Neo4j values yet —
+valid-time is not ported. The remaining gap is writing that report as
+graph state: which source won, why, and when the fact was last verified.
 
 What ships in this repo vs hosted Infona is in
 **[docs/BOUNDARY.md](docs/BOUNDARY.md)**. Granular work lives in
@@ -16,9 +17,10 @@ or pick one up. Do not add checkboxes here.
 
 Three themes, in this order:
 
-1. **Entity resolution, conflict, provenance, and freshness.** Same entity,
-   two sources, one answer — plus the audit trail. Who won, why the winner
-   won, and how stale the winning fact is.
+1. **Entity resolution, conflict, provenance, and freshness.** Fragment
+   URIs already collapse. Field-conflict winners as the sole current
+   fact, plus valid-time, are the gap — same entity, two sources, one
+   current answer as graph state, not only a rebuild report.
 2. **Honest eval.** Measure whether we actually resolve conflicts and keep
    provenance, not whether we can paraphrase a table. Public, synthetic
    fixtures only. No golden-string theatre.

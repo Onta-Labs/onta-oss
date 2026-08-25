@@ -35,8 +35,10 @@ def test_workflow_is_clean_room_and_gates_live_key() -> None:
     assert "pull_request" not in live_if
     assert "workflow_dispatch" in live_if
     assert "refs/heads/main" in live_if
-    assert "secrets.OPENROUTER_API_KEY" in live_if
-    assert "!= ''" in live_if or '!= ""' in live_if
+    assert "secrets." not in live_if
+    assert "if: env.OPENROUTER_API_KEY != ''" in live
+    assert "exit 1" not in live
+    assert "live ingest+ask skipped" in live
 
 
 def test_script_and_fragment_guard_readme_claims() -> None:

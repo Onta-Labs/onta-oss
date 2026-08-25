@@ -31,8 +31,8 @@ want the tag series to catch up.
 - README and launch-surface docs: the product loop is schema → Neo4j →
   ask. `er rebuild` URI merge is applied; field-conflict lines are an
   explanatory report (validity intervals are not on Neo4j yet).
-- Live OSS quickstart job skips when `OPENROUTER_API_KEY` is empty so
-  main is not red without the secret.
+- Live OSS quickstart steps skip when `OPENROUTER_API_KEY` is empty
+  (job `if:` cannot read `secrets`; empty key is not a failure).
 
 ## [0.1.21–0.1.42] - 2026-08-18 – 2026-08-25
 
