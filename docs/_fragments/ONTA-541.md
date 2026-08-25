@@ -7,10 +7,12 @@ Two misses stay visible. n=8 is too small to sell as the public score.
 Going forward: n≥32, generated not hand-picked, same
 `run_public_eval.py` (default `--questions 32`). Reproduce:
 
+A live n=32 run is not in this tree. Reproduce:
+
 ```bash
 infona ingest examples/trials.csv --kg eval-public-trials -y
-python scripts/run_public_eval.py --dataset examples/trials.csv --kg eval-public-trials --questions 8
-python scripts/run_public_eval.py --dataset examples/trials.csv --kg eval-public-trials --questions 32
+python scripts/run_public_eval.py --dataset examples/trials.csv --kg eval-public-trials --questions 8 --out docs/eval/public_results.json
+python scripts/run_public_eval.py --dataset examples/trials.csv --kg eval-public-trials --questions 32 --out docs/eval/public_results_n32.json
 ```
 
 | Tier | Skill | Passed | Asked | Accuracy | Visible misses |

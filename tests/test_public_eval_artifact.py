@@ -102,9 +102,11 @@ def test_eval_md_has_table_and_stranger_command():
     assert "2026-08-19" in text
     assert "Public pin going forward" in text
     assert "--questions 32" in text
-    assert "--questions 8" in text
+    assert "--questions 8 --out docs/eval/public_results.json" in text
     assert "public_results_n32.json" in text
     assert "A live n=32 run is **not** in this tree" in text
+    n32 = REPO / "docs" / "eval" / "public_results_n32.json"
+    assert not n32.exists(), "do not invent an n=32 artifact"
 
 
 def test_fragment_has_full_eval_table():
@@ -120,6 +122,8 @@ def test_fragment_has_full_eval_table():
     assert "8 / 8" not in text
     assert "historical pin" in text.lower()
     assert "--questions 32" in text
+    assert "--questions 8 --out docs/eval/public_results.json" in text
+    assert "not in this tree" in text.lower()
 
 
 def test_readme_points_at_eval_md_not_the_table():
