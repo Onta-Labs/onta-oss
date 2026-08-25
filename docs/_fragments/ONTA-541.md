@@ -1,13 +1,18 @@
-Published pin: **6 / 8** (75%) on
+**Historical pin (2026-08-19, n=8):** **6 / 8** (75%) on
 [`examples/trials.csv`](examples/trials.csv) (16 synthetic oncology rows).
 Query model `openai/gpt-oss-120b`, judge `deepseek/deepseek-v4-pro-0813`
 (reasoning, effort high). `/ask` is always-LLM Cypher — these scores are
 not golden-string shortcuts. Same eight questions as the prior 2/8 pin.
-Two misses stay visible. Reproduce:
+Two misses stay visible. n=8 is too small to sell as the public score.
+Going forward: n≥32, generated not hand-picked, same
+`run_public_eval.py` (default `--questions 32`). Reproduce:
+
+A live n=32 run is not in this tree. Reproduce:
 
 ```bash
 infona ingest examples/trials.csv --kg eval-public-trials -y
-python scripts/run_public_eval.py --dataset examples/trials.csv --kg eval-public-trials --questions 8
+python scripts/run_public_eval.py --dataset examples/trials.csv --kg eval-public-trials --questions 8 --out docs/eval/public_results.json
+python scripts/run_public_eval.py --dataset examples/trials.csv --kg eval-public-trials --questions 32 --out docs/eval/public_results_n32.json
 ```
 
 | Tier | Skill | Passed | Asked | Accuracy | Visible misses |

@@ -55,7 +55,11 @@ want the tag series to catch up.
   ask. `er rebuild` URI merge is applied. Authority-axis field winners
   are the current graph value (Austin HQ; San Francisco stored/closed);
   equal-trust `credit_rating` stays dual-current and flagged. Homepage
-  eval table demoted to a pointer at `docs/EVAL.md` (pin remains 6/8).
+  eval table demoted to a pointer at `docs/EVAL.md`.
+- README eval blurb no longer headlines 6/8. Query accuracy is a live
+  always-LLM Cypher pin; the 2026-08-19 6/8 table is a historical n=8
+  artifact in `docs/EVAL.md`. `scripts/run_public_eval.py` defaults to
+  `--questions 32`. Live n=32 was not run in this change.
 - Live OSS quickstart steps skip when `OPENROUTER_API_KEY` is empty
   (job `if:` cannot read `secrets`; empty key is not a failure).
 
