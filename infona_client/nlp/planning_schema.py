@@ -412,7 +412,11 @@ def format_planning_ontology(
         f'"{NO_INSTANCES_MARK}" (they hold data in this KG). '
         f"Slots marked {NO_INSTANCES_MARK} are declared in the tenant ontology "
         "but unpopulated here — use them only when the question requires that "
-        "exact declared leaf; otherwise plan on the populated leaves above them."
+        "exact declared leaf; otherwise plan on the populated leaves above them. "
+        "Duplicate aliases (title vs event_title): project the unmarked leaf via "
+        "Assertion.literal_value; do not read the empty alias as Entity.title. "
+        "Kind filters: prefer a populated typed enum/select on the asked type "
+        "over unstructured category on a related type."
     )
     return f"{note}\n{body}"
 

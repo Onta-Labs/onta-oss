@@ -70,7 +70,6 @@ STRUCTURAL_PROP_KEYS: frozenset[str] = frozenset(
         "id",
         "name",
         "display_name",
-        "title",
         "primary_type",
         "tenant_id",
         "kg",
@@ -755,6 +754,23 @@ def check_schema_valid_cypher(
             ),
             invented_rel_types=tuple(invented_rels),
             invented_prop_keys=tuple(invented_props),
+            inventory=inv,
+        )
+
+    from infona_client.nlp.populated_leaf_plan import (
+        empty_cache_schema_reason,
+        empty_entity_cache_hits,
+    )
+
+    cache_hits = empty_entity_cache_hits(
+        cypher, ontology_summary or "", params=params
+    )
+    if cache_hits:
+        empty_keys = tuple(h[1] for h in cache_hits)
+        return SchemaValidResult(
+            ok=False,
+            reason=empty_cache_schema_reason(cache_hits),
+            invented_prop_keys=empty_keys,
             inventory=inv,
         )
 
