@@ -221,13 +221,13 @@ export async function fetchHealthSnapshot(
     const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/health`, {
       signal: AbortSignal.timeout(3000),
     });
-    if (!res.ok) return { ok: false };
     const data = (await res.json()) as { status?: unknown; neo4j?: unknown };
-    return {
-      ok: true,
-      status: typeof data.status === "string" ? data.status : undefined,
-      neo4j: typeof data.neo4j === "boolean" ? data.neo4j : undefined,
-    };
+    const neo4j = typeof data.neo4j === "boolean" ? data.neo4j : undefined;
+    const status = typeof data.status === "string" ? data.status : undefined;
+    // 503 JSON is a live process with Neo4j down. ok:true so callers
+    // surface MSG_NEO4J_DOWN instead of ECONNREFUSED.
+    if (!res.ok && neo4j === undefined) return { ok: false };
+    return { ok: true, status, neo4j };
   } catch {
     return { ok: false };
   }

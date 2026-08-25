@@ -769,7 +769,10 @@ reads the API key off it for the per-key bucket.
 
 Health
 
-**200:** Successful Response
+Graph-store readiness. **200** only when Neo4j answers; **503** with `status: degraded` when it does not (so a load balancer stops routing). `neo4j_uri_kind` is `hostname` / `private_ip` / `loopback` / `public_ip` / `missing` — never the raw host.
+
+**200:** Graph store up
+**503:** Graph store down or unconfigured
 
 ---
 

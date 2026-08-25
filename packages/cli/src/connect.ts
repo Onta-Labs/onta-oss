@@ -86,6 +86,14 @@ export async function probeBackend(
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) {
+      try {
+        const data = (await res.json()) as { neo4j?: unknown; status?: unknown };
+        if (typeof data.neo4j === "boolean") {
+          return { ok: true, requiresAuth: false, url };
+        }
+      } catch {
+        /* not JSON */
+      }
       return { ok: false, requiresAuth: false, url, error: `HTTP ${res.status}` };
     }
   } catch (err) {

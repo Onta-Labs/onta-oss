@@ -6,6 +6,7 @@ import {
   MSG_NOT_LOGGED_IN,
   diagnoseAskResult,
   emptyKgMessage,
+  fetchHealthSnapshot,
   mapFirstHourError,
 } from "../src/firstHourErrors.js";
 
@@ -41,6 +42,28 @@ describe("first-hour diagnoses", () => {
       answer: "Could not answer: Neo4j GraphStore is not configured.",
     });
     expect(viaText).toContain("docker compose up -d neo4j");
+  });
+
+  it("2b. HTTP 503 /health JSON is Neo4j down, not API down", async () => {
+    const orig = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({ status: "degraded", neo4j: false, backend: "neo4j" }),
+        { status: 503, headers: { "Content-Type": "application/json" } },
+      )) as typeof fetch;
+    try {
+      const snap = await fetchHealthSnapshot("http://localhost:8000");
+      expect(snap).toEqual({ ok: true, status: "degraded", neo4j: false });
+      expect(
+        mapFirstHourError({
+          status: 503,
+          baseUrl: "http://localhost:8000",
+          health: snap,
+        }),
+      ).toBe(MSG_NEO4J_DOWN);
+    } finally {
+      globalThis.fetch = orig;
+    }
   });
 
   it("3. Missing LLM key when calling /ask", () => {
