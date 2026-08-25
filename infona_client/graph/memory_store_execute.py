@@ -23,6 +23,7 @@ from infona_client.graph.memory_store_norms import (
     _LIST_NORM,
     _LIST_PAGE_NORM,
     _LITERAL_AGGREGATE_NORM,
+    _LITERAL_ARGMAX_BY_DIM_NORM,
     _LITERAL_COMPARE_NORM,
     _LITERAL_GREP_NORM,
     _LITERAL_VALUES_COUNT_NORM,
@@ -289,6 +290,15 @@ class MemoryExecuteMixin:
                 params.get("type_names"),
                 str(params.get("prop_key") or ""),
                 str(params.get("agg_op") or "sum"),
+            )
+
+        if norm == _LITERAL_ARGMAX_BY_DIM_NORM:
+            return self._literal_argmax_by_dim(
+                tenant_id,
+                kg,
+                params.get("type_names"),
+                str(params.get("group_key") or ""),
+                str(params.get("prop_key") or ""),
             )
 
         if norm == _RELATED_ENTITIES_NORM:

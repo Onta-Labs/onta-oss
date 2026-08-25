@@ -71,19 +71,15 @@ def test_list_template_on_list_question_still_ok():
 
 
 def test_argmax_list_template_not_caught_by_count_gate():
-    """Highest-total entity answers are not how-many; leave for a later lift."""
-    r = check_constraint_coverage(
-        _ARGMAX_Q,
-        _LIST_CYPHER,
-        params={
-            "type_names": ["Gadget"],
-            "prop_key": "status_label",
-            "prop_value": "ready",
-        },
-        template="literal_values",
+    """Highest-total is not how-many; the count twin must stay silent."""
+    from infona_client.nlp.query_constraint_coverage_count import (
+        count_vs_list_fail_closed,
     )
-    assert r.ok
-    assert not r.fail_closed
+    from infona_client.nlp.query_intent import sketch_query_intent
+
+    sk = sketch_query_intent(_ARGMAX_Q)
+    assert "count" not in sk.aggregate_ops
+    assert count_vs_list_fail_closed(sk, "literal_values") is None
 
 
 def test_entities_of_type_on_how_many_fail_closes():

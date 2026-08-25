@@ -22,6 +22,7 @@ TEMPLATE_LITERAL_VALUES_COUNT = "literal_values_count"
 TEMPLATE_LITERAL_COMPARE = "literal_compare"
 TEMPLATE_RELATED_ENTITY_NAME_FILTER_INVERSE = "related_entity_name_filter_inverse"
 TEMPLATE_LITERAL_AGGREGATE = "literal_aggregate"
+TEMPLATE_LITERAL_ARGMAX_BY_DIM = "literal_argmax_by_dim"
 TEMPLATE_RELATED_ENTITIES = "related_entities"
 TEMPLATE_RELATED_ENTITY_NAME_FILTER = "related_entity_name_filter"
 TEMPLATE_ASSERTIONS_FOR_SUBJECT = "assertions_for_subject"
@@ -216,6 +217,33 @@ RETURN CASE
   WHEN $agg_op = 'max' THEN max(num)
   ELSE null
 END AS value
+""".strip()
+
+# Group by a datatype leaf, SUM a measure, return the dim with the max sum.
+# No equality filter in this helper (constrain first, or free-form).
+LITERAL_ARGMAX_BY_DIM_CYPHER = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
+  tenant_id: $tenant_id, kg: $kg
+})
+WHERE c.name IN $type_names OR c.id IN $type_names
+OPTIONAL MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg, subject_id: e.id})
+  -[:PREDICATE]->(p:Property {tenant_id: $tenant_id, kg: $kg})
+WHERE p.name = $prop_key
+WITH e, coalesce(a.literal_value, e[$prop_key]) AS raw
+WHERE raw IS NOT NULL
+WITH e, toFloat(
+  CASE
+    WHEN toString(raw) CONTAINS '^^' THEN split(toString(raw), '^^')[0]
+    ELSE toString(raw)
+  END
+) AS num
+WHERE num IS NOT NULL
+WITH e, max(num) AS num
+WITH coalesce(toString(e[$group_key]), '') AS grp, sum(num) AS total
+WHERE grp <> ''
+RETURN grp AS name, total AS value
+ORDER BY total DESC, grp ASC
+LIMIT 1
 """.strip()
 
 # Filter subjects of a type by a related entity's display name / name
@@ -426,6 +454,7 @@ def semantic_templates() -> dict[str, tuple[str, bool]]:
         TEMPLATE_LITERAL_VALUES_COUNT: (LITERAL_VALUES_COUNT_CYPHER, False),
         TEMPLATE_LITERAL_COMPARE: (LITERAL_COMPARE_CYPHER, False),
         TEMPLATE_LITERAL_AGGREGATE: (LITERAL_AGGREGATE_CYPHER, False),
+        TEMPLATE_LITERAL_ARGMAX_BY_DIM: (LITERAL_ARGMAX_BY_DIM_CYPHER, False),
         TEMPLATE_RELATED_ENTITIES: (RELATED_ENTITIES_CYPHER, False),
         TEMPLATE_RELATED_ENTITY_NAME_FILTER: (RELATED_ENTITY_NAME_FILTER_CYPHER, False),
         TEMPLATE_RELATED_ENTITY_NAME_FILTER_INVERSE: (

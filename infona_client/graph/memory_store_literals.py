@@ -375,3 +375,69 @@ class MemoryLiteralsMixin:
         else:
             val = float(max(nums))
         return [GraphRecord(data={"value": val})]
+
+    def _literal_argmax_by_dim(
+        self,
+        tenant_id: str,
+        kg: str,
+        type_names: Any,
+        group_key: str,
+        prop_key: str,
+    ) -> list[GraphRecord]:
+        """Uncapped group-by SUM, then top-1 dim value."""
+        from infona_client.graph.assertion_model import property_uri
+
+        if not group_key or not prop_key:
+            return []
+        matched = self._entity_ids_via_instance_of(tenant_id, kg, type_names)
+        meas_id = property_uri(prop_key)
+        totals: dict[str, float] = {}
+        seen: set[str] = set()
+
+        def _grp_of(eid: str) -> str:
+            r = self._entities.get((tenant_id, kg, eid))
+            if r is None:
+                return ""
+            raw = self._entity_prop_value(r, group_key)
+            if raw is None:
+                raw = getattr(r, group_key, None)
+            text = str(raw or "").strip()
+            return text
+
+        for (t, k, _), a in self._assertions.items():
+            if t != tenant_id or k != kg:
+                continue
+            if a.subject_id not in matched or a.literal_value is None:
+                continue
+            if a.property_id != meas_id:
+                prop_row = self._properties.get((tenant_id, kg, a.property_id))
+                if prop_row is None or prop_row.name != prop_key:
+                    continue
+            num = self._to_float_legacy(a.literal_value)
+            if num is None or a.subject_id in seen:
+                continue
+            grp = _grp_of(a.subject_id)
+            if not grp:
+                continue
+            seen.add(a.subject_id)
+            totals[grp] = totals.get(grp, 0.0) + num
+
+        for eid in matched:
+            if eid in seen:
+                continue
+            r = self._entities.get((tenant_id, kg, eid))
+            if r is None:
+                continue
+            num = self._to_float_legacy(self._entity_prop_value(r, prop_key))
+            if num is None:
+                continue
+            grp = _grp_of(eid)
+            if not grp:
+                continue
+            seen.add(eid)
+            totals[grp] = totals.get(grp, 0.0) + num
+
+        if not totals:
+            return []
+        winner = sorted(totals.items(), key=lambda kv: (-kv[1], kv[0]))[0]
+        return [GraphRecord(data={"name": winner[0], "value": winner[1]})]

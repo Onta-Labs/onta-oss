@@ -67,7 +67,7 @@ OVERSIZE_ALLOWLIST: dict[str, int] = {
     "infona_client/graph/schema_bootstrap.py": 840,
     "infona_client/graph/sparql_scope.py": 648,
     "infona_client/models/ontology.py": 960,
-    "infona_client/nlp/cypher_example_seeds.py": 761,
+
     "infona_client/nlp/numeric_attr_resolve.py": 872,
     "infona_client/nlp/numeric_plan_grounding.py": 793,
     "infona_client/nlp/ontology_embeddings.py": 900,

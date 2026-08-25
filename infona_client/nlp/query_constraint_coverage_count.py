@@ -42,3 +42,17 @@ def count_vs_list_fail_closed(
         sketch=sketch,
         extra={"count_vs_list": tmpl, "count_twin": twin},
     )
+
+
+def early_template_shape_fail_closed(
+    sketch: QueryIntentSketch,
+    template: str | None,
+) -> CoverageResult | None:
+    """Count-vs-list then argmax-vs-list. Single hook for the 549-line checker."""
+    from infona_client.nlp.query_constraint_coverage_argmax import (
+        argmax_vs_list_fail_closed,
+    )
+
+    return count_vs_list_fail_closed(sketch, template) or argmax_vs_list_fail_closed(
+        sketch, template
+    )
