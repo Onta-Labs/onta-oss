@@ -109,6 +109,20 @@ async def ask_question(
     # Log the question + traceback at the boundary and return a 200 NLResult
     # explaining that the question couldn't be answered.
     start = time.monotonic()
+    conversation = [
+        {"role": t.role, "text": t.text} for t in (body.conversation or []) if t.text
+    ]
+    if body.session_id and not conversation:
+        try:
+            from infona_client.agent.conversation_store import make_conversation_store
+            from infona_client.agent.planner_history import query_followup_turns
+
+            prior = await make_conversation_store().load(
+                body.session_id, tenant.tenant_id
+            )
+            conversation = query_followup_turns(prior, body.kg_name)
+        except Exception:
+            logger.debug("ask_session_history_load_failed", exc_info=True)
     try:
         result = await pipeline.ask(
             body.question,
@@ -116,6 +130,7 @@ async def ask_question(
             instance_graph,
             exclude_questions=body.exclude_questions,
             layer_graph_uris=layer_graph_uris,
+            conversation=conversation or None,
         )
         _emit_query_executed(tenant, body.kg_name, start, result, ok=True)
         # ONTA-389: mint answer run so operators can open Job Trace (P7 + P0/A9).

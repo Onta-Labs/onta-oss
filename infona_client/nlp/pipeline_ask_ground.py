@@ -34,6 +34,44 @@ class PipelineAskGroundMixin:
         t0 = st.t0
         token_ledger = st.token_ledger
 
+        # Unbound pronoun follow-up with no prior turn → clarify, don't dump
+        # the whole type as if it answered "what did we talk about?".
+        try:
+            from infona_client.nlp.query_ambiguity import (
+                ambiguous_anaphora_needs_clarify,
+                format_anaphora_clarification,
+            )
+
+            if ambiguous_anaphora_needs_clarify(
+                question, getattr(st, "conversation", None)
+            ):
+                clarify = format_anaphora_clarification()
+                timing["query_ambiguity_clarify"] = 1.0
+                timing["query_confidence"] = "low"
+                timing["query_confidence_reason"] = (
+                    "anaphoric follow-up with no prior turn to bind"
+                )
+                timing.update(token_ledger.totals_for_timing())
+                return NLResult(
+                    answer=clarify,
+                    sparql="",
+                    explanation="clarification: anaphoric follow-up",
+                    ontology=ontology,
+                    timing={
+                        **timing,
+                        "total_ms": round((time.time() - t0) * 1000, 1),
+                        "attempts": 0,
+                    },
+                    token_usage=token_ledger.to_list(),
+                    query_confidence="low",
+                    query_confidence_reason=str(
+                        timing["query_confidence_reason"]
+                    ),
+                    clarification_prompt=clarify,
+                )
+        except Exception:
+            logger.debug("anaphora_ambiguity_check_failed", exc_info=True)
+
         # Ontology-subgraph + numeric grounding (planning layer) — structured
         # prompt context only. Never short-circuits the LLM (always-LLM rule).
         grounding_text = ""

@@ -383,6 +383,7 @@ def build_cypher_generation_prompt(
     examples_text: str = "",
     error_feedback: str = "",
     grounding_text: str = "",
+    conversation_text: str = "",
 ) -> str:
     """Build the user prompt for Cypher generation (Neo4j ADR 0013 path).
 
@@ -396,8 +397,14 @@ def build_cypher_generation_prompt(
     ``grounding_text`` is optional structured ontology-subgraph grounding from
     :func:`infona_client.nlp.ontology_subgraph_match.ground_ask_plan` — hints
     only; the model still produces the final Cypher (always-LLM product rule).
+
+    ``conversation_text`` is optional prior-turn context for pronoun / anaphora
+    follow-ups. Empty (the default) keeps the prompt byte-identical.
     """
     examples_section = f"\n{examples_text}\n" if examples_text else ""
+    convo_section = ""
+    if conversation_text and conversation_text.strip():
+        convo_section = f"\n{conversation_text.strip()}\n"
     error_section = ""
     if error_feedback:
         error_section = (
@@ -428,7 +435,7 @@ def build_cypher_generation_prompt(
     )
     return f"""{kg_header}Ontology schema:
 {ontology_summary}{scope_line}
-{examples_section}{grounding_section}{error_section}
+{examples_section}{grounding_section}{convo_section}{error_section}
 User question: {question}
 
 BUILD a read-only Cypher answer from the Graph build notes + ontology above \

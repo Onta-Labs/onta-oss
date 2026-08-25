@@ -253,6 +253,7 @@ def test_relationship_attribute_keeps_its_target_type(
     assert detail.status_code == 200
     by_name = {a["name"]: a for a in detail.json()["attributes"]}
     assert by_name["located_in"]["datatype"] == "Region"
+    assert by_name["located_in"]["kind"] == "relationship"
     mock_neptune.query.assert_not_called()
 
 

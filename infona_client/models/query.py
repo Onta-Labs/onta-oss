@@ -14,6 +14,13 @@ class SPARQLUpdate(BaseModel):
     update: str = Field(description="SPARQL 1.1 Update string")
 
 
+class ConversationTurn(BaseModel):
+    """One prior chat turn for /ask follow-ups (same shape as agent Turn)."""
+
+    role: str = Field(default="user", pattern=r"^(user|assistant)$")
+    text: str = Field(default="", max_length=4000)
+
+
 class NLQuery(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     # ONTA-414: the SAME pattern create enforces (KGCreate.name). kg_name is
@@ -28,6 +35,14 @@ class NLQuery(BaseModel):
     )
     model: str | None = Field(default=None, description="Override the query generation model (OpenRouter model ID)")
     exclude_questions: list[str] = Field(default_factory=list, description="Questions to exclude from example bank retrieval (anti-cheat for evals)")
+    session_id: str | None = Field(
+        default=None,
+        description="Optional conversation id; loads prior turns from the agent store",
+    )
+    conversation: list[ConversationTurn] = Field(
+        default_factory=list,
+        description="Optional prior turns when the client already has the transcript",
+    )
 
 
 class FactCitation(BaseModel):

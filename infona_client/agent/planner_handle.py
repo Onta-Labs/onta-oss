@@ -28,6 +28,7 @@ from infona_client.agent.planner_history import (
     _effective_instruction,
     _recent_window,
     _same_kg_turns,
+    query_followup_turns,
 )
 from infona_client.agent.planner_intent import (
     _DEFAULT_ACTION_OPTIONS,
@@ -240,6 +241,9 @@ async def _respond(
     # A read-only question is terminal and does not compose with actions.
     if "question" in intents:
         cap = _host().get_capability("query") or QueryCapability()
+        ctx.extras["conversation_turns"] = query_followup_turns(
+            history, getattr(ctx, "kg_name", None)
+        )
         out = await cap.answer(ctx, message)  # type: ignore[attr-defined]
         # The capability may return its OWN kind. ONTA-413 short-circuits a
         # question about a NONEXISTENT kg_name to {kind:"clarify"} naming the

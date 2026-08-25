@@ -83,6 +83,34 @@ def test_build_cypher_user_prompt_names_params_not_literal_scope():
     assert "Generate a SPARQL" not in user
 
 
+def test_build_cypher_user_prompt_includes_conversation_only_when_given():
+    bare = build_cypher_generation_prompt(
+        "How many books?",
+        "Type: Book",
+        tenant_id="t",
+        kg_name="kg",
+    )
+    assert "Prior conversation" not in bare
+    from infona_client.nlp.query_ambiguity import format_conversation_for_prompt
+
+    convo = format_conversation_for_prompt(
+        [
+            {"role": "user", "text": "when did I last meet Ada Example?"},
+            {"role": "assistant", "text": "2026-08-12"},
+        ]
+    )
+    with_hist = build_cypher_generation_prompt(
+        "what did we talk about?",
+        "Type: Book",
+        tenant_id="t",
+        kg_name="kg",
+        conversation_text=convo,
+    )
+    assert "Ada Example" in with_hist
+    assert "what did we talk about?" in with_hist
+    assert "ignore prior" in with_hist.lower()
+
+
 def test_build_cypher_user_prompt_retry_forbids_sparql_fallback():
     user = build_cypher_generation_prompt(
         "How many books?",

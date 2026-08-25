@@ -173,6 +173,34 @@ def test_type_counts_and_summary_agree_on_entity_count(store):
         assert rels[REL_STORED_IN].count == 2
         assert rels[REL_STORED_IN].target_type == TYPE_BIN
         assert rels[REL_STORED_IN].avg_degree == round(2 / 3, 2)
+        # A relationship leaf is never also an attribute chip.
+        assert REL_STORED_IN not in attrs
+
+    asyncio.run(run())
+
+
+def test_type_summary_drops_dual_written_literal_of_relationship_leaf(store):
+    """Legacy ingest that also set Entity.<rel-leaf> as a string must not
+    surface a second attribute chip next to the relationship."""
+
+    async def run():
+        uris = await _seed_synth(store)
+        w1 = uris["w1"]
+        # Dual-write a literal of the SAME leaf the relationship already uses.
+        await insert_facts(
+            None,
+            GRAPH,
+            [(w1, f"{IRI_BASE}/types/{TYPE_WIDGET}/attrs/{REL_STORED_IN}", "Bin Alpha")],
+            store=store,
+        )
+        summary = await type_summary(
+            store=store, tenant_id=TENANT, kg=KG, type_name=TYPE_WIDGET
+        )
+        assert summary is not None
+        rels = {r.name for r in summary.relationships}
+        attrs = {a.name for a in summary.attributes}
+        assert REL_STORED_IN in rels
+        assert REL_STORED_IN not in attrs
 
     asyncio.run(run())
 

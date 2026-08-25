@@ -94,6 +94,7 @@ from infona_client.agent.planner_history import (  # noqa: F401
     _recent_window,
     _same_kg_turns,
     _turn_matches_kg,
+    query_followup_turns,
 )
 from infona_client.agent.planner_intent import (  # noqa: F401
     _CLAUSE_BOUNDARY,

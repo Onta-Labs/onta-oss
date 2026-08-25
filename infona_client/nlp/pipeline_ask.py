@@ -40,6 +40,7 @@ class PipelineAskMixin:
         exclude_questions: list[str] | None = None,
         layer_graph_uris: list[str] | None = None,
         run_manifest: "object | None" = None,
+        conversation: list | None = None,
     ) -> NLResult:
         """Neo4j /ask path with SPARQL-parity recovery mechanisms (ONTA-530).
 
@@ -104,6 +105,7 @@ class PipelineAskMixin:
         st.tenant_id = tenant_id
         st.kg_name = kg_name
         st.store = store
+        st.conversation = list(conversation or [])
 
         # ONTA-544: no-key / fixture-flag only. When a model is configured
         # this returns None and /ask stays always-LLM Cypher.
@@ -191,6 +193,7 @@ class PipelineAskMixin:
                     examples_text=examples_text,
                     error_feedback=error_feedback,
                     grounding_text=grounding_text,
+                    conversation=getattr(st, "conversation", None),
                     **gen_recovery,
                 )
 

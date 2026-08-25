@@ -2321,6 +2321,7 @@ Accept Invite By Token
 | `name` | string | Yes |  |
 | `description` | string | No |  |
 | `datatype` | string | No | string, integer, float, boolean, datetime, uri, geo (WKT point / 'lat,lon'), or a type name for relationships |
+| `kind` | string | No | literal = datatype property; relationship = node-valued (datatype is the target type name) |
 
 ### AttributeUsage
 
@@ -2513,6 +2514,13 @@ Accept Invite By Token
 | `resources` | array | No |  |
 | `custom` | boolean | No |  |
 | `note` | string | No |  |
+
+### ConversationTurn
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `role` | string | No |  |
+| `text` | string | No |  |
 
 ### CoreSlot
 
@@ -3224,6 +3232,8 @@ Accept Invite By Token
 | `kg_name` | object | No | Query a specific knowledge graph |
 | `model` | object | No | Override the query generation model (OpenRouter model ID) |
 | `exclude_questions` | array | No | Questions to exclude from example bank retrieval (anti-cheat for evals) |
+| `session_id` | object | No | Optional conversation id; loads prior turns from the agent store |
+| `conversation` | array | No | Optional prior turns when the client already has the transcript |
 
 ### NLResult
 

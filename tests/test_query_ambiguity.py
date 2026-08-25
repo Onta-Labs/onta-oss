@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from infona_client.nlp.query_ambiguity import (
+    ambiguous_anaphora_needs_clarify,
     ambiguous_count_needs_clarify,
+    format_anaphora_clarification,
+    format_conversation_for_prompt,
     format_type_count_clarification,
+    question_is_anaphoric,
     question_is_vague_count,
 )
 from infona_client.nlp.query_build import TypePopulation
@@ -56,3 +60,42 @@ def test_clarification_lists_types_not_a_number():
     assert "What do you mean" in text
     # Must not pick a single total as the answer
     assert "18" not in text  # 8+8+2 would be a guessed total
+
+
+def test_anaphoric_followup_without_history_needs_clarify():
+    assert question_is_anaphoric("what did we talk about?")
+    assert question_is_anaphoric("who else was there?")
+    assert question_is_anaphoric("when was that meeting?")
+    assert question_is_anaphoric("what were their names and when were they met")
+    assert not question_is_anaphoric("how many SynthWidget entities are there?")
+    assert not question_is_anaphoric("when did I meet Ada Example?")
+    # Intra-sentential "their" / "we" is bound in the same question.
+    assert not question_is_anaphoric("list SynthWidget entities and their weights")
+    assert not question_is_anaphoric("how many records do we have?")
+    assert not ambiguous_anaphora_needs_clarify(
+        "show SynthWidget entities and their weights"
+    )
+    assert not ambiguous_anaphora_needs_clarify("how many records do we have?")
+    assert ambiguous_anaphora_needs_clarify("what did we talk about?")
+    assert ambiguous_anaphora_needs_clarify("who else was there?")
+    # A named person is a standalone question, not an unbound pronoun.
+    assert not ambiguous_anaphora_needs_clarify(
+        "what did we talk about with Ada Example?"
+    )
+
+
+def test_anaphoric_followup_with_history_does_not_clarify():
+    prior = [
+        {"role": "user", "text": "when was the last time I met Ada Example?"},
+        {"role": "assistant", "text": "2026-08-12"},
+    ]
+    assert not ambiguous_anaphora_needs_clarify("what did we talk about?", prior)
+    text = format_conversation_for_prompt(prior)
+    assert "Ada Example" in text
+    assert "what did we talk about" not in text
+    assert format_anaphora_clarification()
+
+
+def test_conversation_prompt_ignores_empty():
+    assert format_conversation_for_prompt(None) == ""
+    assert format_conversation_for_prompt([]) == ""
