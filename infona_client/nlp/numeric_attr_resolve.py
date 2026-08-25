@@ -180,6 +180,8 @@ _NUMERIC_GENERIC_STEMS: frozenset[str] = frozenset(
 )
 
 _TOKEN_SPLIT_RE = re.compile(r"[_\-\s]+|(?<=[a-z0-9])(?=[A-Z])")
+# "average enrollment" / average_enrollment / avgHeadcount → noun + AVG.
+_LEADING_AGG_MOD_RE = re.compile(r"^(average|avg|mean)_(.+)$")
 
 
 def normalize_leaf_key(name: str) -> str:
@@ -193,6 +195,19 @@ def normalize_leaf_key(name: str) -> str:
     s = re.sub(r"[\s\-]+", "_", s)
     s = re.sub(r"_+", "_", s)
     return s.strip("_").lower()
+
+
+def strip_leading_agg_modifier(mention: str) -> tuple[str, str | None]:
+    """Peel leading average/avg/mean so the noun matches an existing leaf.
+
+    ``average_headcount`` / ``avg headcount`` → ``("headcount", "avg")``.
+    Bare ``average`` is unchanged (a leaf named average can still exact-match).
+    """
+    raw = (mention or "").strip()
+    m = _LEADING_AGG_MOD_RE.match(normalize_leaf_key(raw)) if raw else None
+    if not m or not m.group(2):
+        return raw, None
+    return m.group(2), "avg"
 
 
 def leaf_tokens(name: str) -> list[str]:
@@ -477,6 +492,7 @@ class NumericAttrResolve:
     confidence: str = "none"  # "unique" | "ambiguous" | "none"
     candidates: list[ScoredLeaf] = field(default_factory=list)
     explanation: str = ""
+    agg_op: str | None = None  # "avg" when NL was average/avg/mean + noun
 
     @property
     def is_unique(self) -> bool:
@@ -685,6 +701,7 @@ def resolve_numeric_attr(
     on empty SynthCourse for NL ``price``).
     """
     mention = (mention or "").strip()
+    mention, peeled_agg = strip_leading_agg_modifier(mention)
     if not mention:
         return NumericAttrResolve(
             mention=mention,
@@ -821,6 +838,7 @@ def resolve_numeric_attr(
         confidence="unique",
         candidates=scored[:5],
         explanation=f"resolved {mention!r} → {top.leaf} ({', '.join(top.reasons)})",
+        agg_op=peeled_agg,
     )
 
 
@@ -869,4 +887,5 @@ __all__ = [
     "normalize_populated_types",
     "resolve_cost_prop",
     "resolve_numeric_attr",
+    "strip_leading_agg_modifier",
 ]

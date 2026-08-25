@@ -26,6 +26,11 @@ want the tag series to catch up.
 
 ## [Unreleased]
 
+### Fixed
+
+- NL average/avg/mean + a numeric noun resolves the noun leaf (not a minted
+  `average_<noun>` column) and grounds aggregate AVG.
+
 ### Added
 
 - MCP `er_rebuild` (`Client.erRebuild`) runs the same second-pass
