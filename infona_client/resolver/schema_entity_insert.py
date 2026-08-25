@@ -11,7 +11,9 @@ in the ontology.
 
 from datetime import datetime, timezone
 
+from infona_client.graph.facts import entity_display_label
 from infona_client.graph.iri import IRI_BASE
+from infona_client.graph.ontology_catalog_models import canonicalize_literal_datatype
 from infona_client.graph.ontology_queries import PRIMITIVE_TYPES, attr_uri, type_uri
 from infona_client.graph.store import resolve_optional_graph_store
 from infona_client.graph.provenance import (
@@ -169,7 +171,7 @@ class SchemaEntityInsertMixin:
         else:
             triples_to_insert: list[tuple[str, str, str]] = [
                 (entity_uri, rdf_type, type_uri(resolved_type)),
-                (entity_uri, rdfs_label, entity.id),
+                (entity_uri, rdfs_label, entity_display_label(entity.id, entity.attributes)),
             ]
             # Multi-typing: emit an additional asserted rdf:type per genuine
             # co-classification (ADR rule 1). Ancestors are NOT asserted here —
@@ -185,11 +187,22 @@ class SchemaEntityInsertMixin:
         attr_facts: list[tuple[str, str, str]] = []
 
         for attr in entity.attributes:
+            canon_dt = canonicalize_literal_datatype(attr.datatype)
+            if canon_dt != attr.datatype:
+                attr = attr.model_copy(update={"datatype": canon_dt})
+            _norm = attr.name.lower().replace(" ", "_")
+            _short = _norm.split("_", 1)[-1]
             promo_match = next(
-                (p for p in promotions if p.name == attr.name.lower().replace(" ", "_").split("_", 1)[-1]
-                 and p.promoted_type is not None),
+                (
+                    p for p in promotions
+                    if p.promoted_type is not None and p.name in (_norm, _short)
+                ),
                 None,
             )
+            if promo_match and promo_match.promoted_type:
+                ptype = promo_match.promoted_type
+                if ptype.lower() == resolved_type.lower():
+                    promo_match = None
             if promo_match and promo_match.promoted_type:
                 ptype = promo_match.promoted_type
                 if ptype not in promoted_entities:
