@@ -29,10 +29,12 @@ want the tag series to catch up.
 ### Fixed
 
 - NL average/avg/mean + a numeric noun resolves the noun leaf (not a minted
-  `average_<noun>` column) and grounds aggregate AVG.
-- How-many + year inequality uses named `literal_compare_count` (count of
-  distinct entities). The list helper `literal_compare` fail-closes on
-  how-many so it cannot dump rows.
+  `average_<noun>` column) and grounds aggregate AVG. Post-plan repair also
+  unwraps invented `average_*`/`avg_*`/`mean_*`/`total_*` keys onto a
+  declared/populated leaf of the same noun.
+- How-many + a row-returning list helper (`literal_compare`,
+  `literal_values`) is rewritten to the named count twin before execute
+  (same filters). Leftover list names still fail-close.
 - `rewrite_subject` rekeys `:ValidityInterval` subject, `interval_id`,
   and `statement_id` so ER merge does not leave closed intervals on
   the loser URI.

@@ -287,6 +287,21 @@ class PipelineAskMixin:
                         )
                     except Exception:
                         pass
+                if not (gen.get("stub") or gen.get("fixture")):
+                    from infona_client.nlp.ask_plan_repair import apply_ask_plan_repair
+
+                    params, cypher_raw, plan_repaired = apply_ask_plan_repair(
+                        gen,
+                        question=question,
+                        params=params,
+                        cypher=cypher_raw,
+                        inventory=getattr(st, "schema_inventory", None),
+                        extra_leaves=(
+                            (money_leaf_bound,) if money_leaf_bound else ()
+                        ),
+                    )
+                    if plan_repaired:
+                        timing["ask_plan_repaired"] = 1.0
                 last_params = params
                 explanation = gen.get("explanation") or explanation
                 functions_needed = gen.get("functions_needed") or functions_needed

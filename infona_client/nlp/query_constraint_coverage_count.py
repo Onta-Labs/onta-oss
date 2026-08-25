@@ -10,16 +10,9 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from infona_client.nlp.ask_plan_repair import LIST_COUNT_TWINS as _COUNT_LIST_TWINS
 from infona_client.nlp.query_constraint_coverage_types import CoverageResult
 from infona_client.nlp.query_intent import QueryIntentSketch
-
-# List helpers that already have a named count twin. Do not include
-# related_entity_name_filter until that twin exists.
-_COUNT_LIST_TWINS: dict[str, str] = {
-    "literal_values": "literal_values_count",
-    "entities_of_type": "entities_of_type_count",
-    "literal_compare": "literal_compare_count",
-}
 
 
 def count_vs_list_fail_closed(
