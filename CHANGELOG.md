@@ -30,6 +30,12 @@ want the tag series to catch up.
 
 - NL average/avg/mean + a numeric noun resolves the noun leaf (not a minted
   `average_<noun>` column) and grounds aggregate AVG.
+- How-many + year inequality uses named `literal_compare_count` (count of
+  distinct entities). The list helper `literal_compare` fail-closes on
+  how-many so it cannot dump rows.
+- `rewrite_subject` rekeys `:ValidityInterval` subject, `interval_id`,
+  and `statement_id` so ER merge does not leave closed intervals on
+  the loser URI.
 
 ### Added
 
@@ -52,12 +58,6 @@ want the tag series to catch up.
   eval table demoted to a pointer at `docs/EVAL.md` (pin remains 6/8).
 - Live OSS quickstart steps skip when `OPENROUTER_API_KEY` is empty
   (job `if:` cannot read `secrets`; empty key is not a failure).
-
-### Fixed
-
-- `rewrite_subject` rekeys `:ValidityInterval` subject, `interval_id`,
-  and `statement_id` so ER merge does not leave closed intervals on
-  the loser URI.
 
 ## [0.1.21–0.1.42] - 2026-08-18 – 2026-08-25
 
