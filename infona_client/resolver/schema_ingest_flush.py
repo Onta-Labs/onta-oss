@@ -322,12 +322,18 @@ class SchemaIngestFlushMixin:
                 exc_info=True,
             )
             # instance_graph resolved once at method top (ONTA-268 call-local).
-            # ONTA-528: no SPARQL HTTP update / delete_batch — see
-            # the extract-path rollback note above.
-            _sr.logger.info(
-                "csv_batch_rollback_skipped",
-                batch_id=batch_id,
-                instance_graph=instance_graph,
-                reason="delete_batch not ported to GraphStore (ONTA-528)",
-            )
+            try:
+                await _sr.rollback_ingest_batch(
+                    instance_graph,
+                    batch_id,
+                    store=resolve_optional_graph_store(),
+                    neptune=getattr(self, "_neptune", None),
+                )
+            except Exception:  # noqa: BLE001 — never mask the ingest failure
+                _sr.logger.warning(
+                    "csv_batch_rollback_failed",
+                    batch_id=batch_id,
+                    instance_graph=instance_graph,
+                    exc_info=True,
+                )
             raise

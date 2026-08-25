@@ -423,19 +423,20 @@ class SchemaIngestMixin:
                 exc_info=True,
             )
             instance_graph = target_instance_graph  # ONTA-268: call-local, not self
-            # ONTA-528: batch delete-by-id is not yet ported to GraphStore. The
-            # old path called ``await self._neptune.update(delete_batch_query(...))``
-            # — a dead SPARQL client on Neo4j-only that either ConnectError'd
-            # (masking the original failure) or silently no-op'd. Do not call
-            # SPARQL HTTP update here; re-raise the original ingest failure.
-            # Partial writes for this batch_id may remain until a GraphStore
-            # batch-rollback lands; never claim rollback succeeded via SPARQL.
-            _sr.logger.info(
-                "batch_rollback_skipped",
-                batch_id=batch_id,
-                instance_graph=instance_graph,
-                reason="delete_batch not ported to GraphStore (ONTA-528)",
-            )
+            try:
+                await _sr.rollback_ingest_batch(
+                    instance_graph,
+                    batch_id,
+                    store=_sr.resolve_optional_graph_store(),
+                    neptune=getattr(self, "_neptune", None),
+                )
+            except Exception:  # noqa: BLE001 — never mask the ingest failure
+                _sr.logger.warning(
+                    "batch_rollback_failed",
+                    batch_id=batch_id,
+                    instance_graph=instance_graph,
+                    exc_info=True,
+                )
             raise
     async def _ingest_csv(
         self,
