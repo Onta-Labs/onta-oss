@@ -97,6 +97,11 @@ async def _records_from_explore_store(
                 continue
             if is_internal_property_key(label):
                 continue
+            # Relationship-kind catalog leaves are type-summary chips
+            # (``works_at →``), not literal table columns. Including them
+            # here made Explorer pin the same leaf twice.
+            if getattr(a, "kind", None) == "relationship":
+                continue
             if label not in declared_set:
                 declared_set.add(label)
                 declared_display.append(label)
@@ -157,17 +162,17 @@ async def _records_from_explore_store(
                 row[display] = ", ".join(str(x) for x in v)
             else:
                 row[display] = "" if v is None else str(v)
-        # Surface outbound relationship targets as columns (export/CSV honesty).
-        # Prefer entity display names from has_* edges over slugified dual-written
-        # literals (e.g. author="George_Orwell_Secker___Warburg" from ingest).
+        # Overlay relationship *display names* onto a column that already
+        # exists as a literal property (legacy dual-written slug repair).
+        # Do not mint new columns — and never a ``has_*`` alias — for
+        # outbound edges; those belong on type-summary.relationships.
         if detail is not None:
             for rel in getattr(detail, "outgoing", ()) or ():
                 leaf = str(getattr(rel, "attr", None) or getattr(rel, "rel_type", "") or "")
-                if not leaf:
+                if not leaf or leaf not in col_set:
                     continue
                 if is_internal_property_key(leaf):
                     continue
-                friendly = leaf[4:] if leaf.startswith("has_") else leaf
                 label = (
                     getattr(rel, "other_name", None)
                     or (getattr(rel, "other_id", "") or "").rstrip("/").split("/")[-1]
@@ -175,21 +180,11 @@ async def _records_from_explore_store(
                 )
                 if not label:
                     continue
-                for col in dict.fromkeys((leaf, friendly)):
-                    if not col or is_internal_property_key(col):
-                        continue
-                    if col not in col_set:
-                        if col not in declared_set:
-                            extras = len(col_set) - len(declared_set)
-                            if extras >= _MAX_EXTRA_COLS:
-                                continue
-                        col_set.add(col)
-                        col_display.append(col)
-                    prev = str(row.get(col) or "")
-                    if not prev or "___" in prev:
-                        row[col] = label
-                    elif label not in prev.split(", "):
-                        row[col] = f"{prev}, {label}"
+                prev = str(row.get(leaf) or "")
+                if not prev or "___" in prev:
+                    row[leaf] = label
+                elif label not in prev.split(", "):
+                    row[leaf] = f"{prev}, {label}"
         # Fill blanks for columns already discovered on earlier rows.
         for c in col_display:
             row.setdefault(c, "")

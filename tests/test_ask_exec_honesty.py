@@ -104,6 +104,13 @@ async def test_ask_assertion_cypher_keeps_generated_return_despite_template():
         graph_uri=f"{IRI_BASE}/graphs/demo-tenant",
         instance_graph=KG,
         use_cypher=True,
+        conversation=[
+            {
+                "role": "user",
+                "text": "how many SynthEvent meetings with Ada Lovelace?",
+            },
+            {"role": "assistant", "text": "1"},
+        ],
     )
 
     assert str(result.timing.get("cypher_exec_path") or "").startswith("execute_read")
@@ -181,19 +188,43 @@ def test_related_entities_cypher_projects_display_label_not_only_slug():
     assert _coalesce(None, None, "Ada_Lovelace") == "Ada_Lovelace"
 
 
-def test_pronoun_followup_has_no_session_coref_on_ask():
-    """`/ask` has no session_id; do not invent a coref engine this sprint."""
-    assert "session_id" not in NLQuery.model_fields
-    assert "session" not in NLQuery.model_fields
-    assert "conversation_id" not in NLQuery.model_fields
+def test_ask_body_accepts_session_and_conversation():
+    """Follow-ups bind through session_id / conversation, not a one-off coref engine."""
+    assert "session_id" in NLQuery.model_fields
+    assert "conversation" in NLQuery.model_fields
+    body = NLQuery(
+        question="what did we talk about?",
+        kg_name="syn-events",
+        conversation=[{"role": "user", "text": "when did I meet Ada?"}],
+    )
+    assert body.conversation[0].text.startswith("when did I meet")
 
 
 @pytest.mark.asyncio
-async def test_pronoun_question_is_forwarded_verbatim_to_generator():
-    captured: dict[str, str] = {}
+async def test_pronoun_followup_without_history_clarifies():
+    """Anaphoric /ask with no prior turn must not dump the graph."""
+    pipe = _pipe()
+    pipe._try_llm_cypher = AsyncMock(  # type: ignore[method-assign]
+        side_effect=AssertionError("generator must not run for unbound anaphora")
+    )
+    result = await pipe.ask(
+        "what were their names and when were they met",
+        graph_uri=f"{IRI_BASE}/graphs/demo-tenant",
+        instance_graph=KG,
+        use_cypher=True,
+    )
+    assert result.query_confidence == "low"
+    assert "which" in (result.answer or "").lower()
+    assert result.sparql == ""
+
+
+@pytest.mark.asyncio
+async def test_pronoun_followup_with_history_reaches_generator():
+    captured: dict = {}
 
     async def fake_llm(question, ontology, **kw):
         captured["question"] = question
+        captured["conversation"] = kw.get("conversation")
         return {
             "cypher": ASSERTION_LIST,
             "template": "related_entities",
@@ -218,13 +249,19 @@ async def test_pronoun_question_is_forwarded_verbatim_to_generator():
     pipe._rephrase_via_openrouter = AsyncMock(return_value="")  # type: ignore[method-assign]
 
     q = "what were their names and when were they met"
+    prior = [
+        {"role": "user", "text": "when was the last SynthEvent with Ada Lovelace?"},
+        {"role": "assistant", "text": "2024-06-01"},
+    ]
     await pipe.ask(
         q,
         graph_uri=f"{IRI_BASE}/graphs/demo-tenant",
         instance_graph=KG,
         use_cypher=True,
+        conversation=prior,
     )
     assert captured["question"] == q
+    assert captured["conversation"] == prior
 
 
 def test_assertion_shape_helper_and_rephrase_skip():

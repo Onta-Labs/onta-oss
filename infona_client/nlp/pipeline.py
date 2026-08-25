@@ -230,6 +230,7 @@ class NLQueryPipeline(
         run_manifest: "RunManifest | RunCoverage | None" = None,
         *,
         use_cypher: bool | None = None,
+        conversation: list | None = None,
     ) -> NLResult:
         """Answer a natural-language question over the graph.
 
@@ -273,6 +274,7 @@ class NLQueryPipeline(
                 exclude_questions=exclude_questions,
                 layer_graph_uris=layer_graph_uris,
                 run_manifest=run_manifest,
+                conversation=conversation,
             )
 
         raise SparqlAskPathRetired(

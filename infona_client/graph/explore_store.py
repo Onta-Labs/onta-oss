@@ -676,6 +676,13 @@ async def type_summary_pg(
                 )
             )
 
+        # A leaf that is a relationship is not also an attribute chip.
+        # Dual-written Entity props of the same name (legacy ingest) would
+        # otherwise appear twice in Explorer (``works_at`` and ``works_at →``).
+        rel_names = {r.name for r in relationships}
+        if rel_names:
+            attributes = [a for a in attributes if a.name not in rel_names]
+
     return TypeSummaryRow(
         name=leaf,
         entity_count=entity_count,

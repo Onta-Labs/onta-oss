@@ -278,6 +278,7 @@ class PipelineCypherExecMixin:
         examples_text: str = "",
         error_feedback: str = "",
         grounding_text: str = "",
+        conversation: list | None = None,
         max_completion_tokens: int | None = None,
         prefer_fallback: bool = False,
     ) -> dict | None:
@@ -314,6 +315,8 @@ class PipelineCypherExecMixin:
             if not key:
                 return None
 
+        from infona_client.nlp.query_ambiguity import format_conversation_for_prompt
+
         prompt = build_cypher_generation_prompt(
             question,
             ontology,
@@ -322,6 +325,7 @@ class PipelineCypherExecMixin:
             examples_text=examples_text,
             error_feedback=error_feedback,
             grounding_text=grounding_text,
+            conversation_text=format_conversation_for_prompt(conversation),
         )
         attempts = self._cypher_generator_chain(
             prompt,

@@ -55,17 +55,20 @@ def _type_response(t: WorkspaceOntologyType) -> TypeResponse:
                 name=a.name,
                 description=a.description or "",
                 datatype=a.datatype,
+                kind="literal",
             )
             for a in t.attributes
         ]
         + [
-            # Relationships surface as attributes with the target type name as
-            # datatype — matching the pre-layered TypeResponse shape used by
-            # the CLI / Explorer (no separate relationships field).
+            # Relationships still surface in ``attributes`` (legacy TypeResponse
+            # has no separate relationships field) with the target type as
+            # datatype. ``kind="relationship"`` lets clients skip pinning them
+            # as literal chips next to the arrow chip from type-summary.
             AttributeDefinition(
                 name=r.name,
                 description=r.description or "",
                 datatype=r.target_type,
+                kind="relationship",
             )
             for r in t.relationships
         ],

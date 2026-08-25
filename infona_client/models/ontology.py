@@ -10,6 +10,10 @@ class AttributeDefinition(BaseModel):
     name: str = Field(min_length=1)
     description: str = ""
     datatype: str = Field(default="string", description="string, integer, float, boolean, datetime, uri, geo (WKT point / 'lat,lon'), or a type name for relationships")
+    kind: Literal["literal", "relationship"] = Field(
+        default="literal",
+        description="literal = datatype property; relationship = node-valued (datatype is the target type name)",
+    )
 
 
 class TypeCreate(BaseModel):

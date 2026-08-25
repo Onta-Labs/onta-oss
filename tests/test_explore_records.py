@@ -425,3 +425,57 @@ def test_records_name_falls_back_to_slug_when_neither(store, client, auth_header
     data = _get(client, auth_headers).json()
     # E1 = ".../Movie/m1" → leaf is "m1"
     assert data["rows"][0]["name"] == "m1"
+
+
+def test_records_relationship_leaf_is_not_a_literal_column(
+    store, client, auth_headers
+):
+    """A declared object property must not appear as a records column.
+
+    Explorer already pins it as a relationship chip (``starring →``). Listing
+    the same leaf in records.columns made the collection table show it twice.
+    Synthetic types only — no production ontology names.
+    """
+    person_type = "SynthCast"
+    person = entity_uri(person_type, "p1")
+    rel_pred = f"{ONTO}starring"
+
+    async def declare():
+        from infona_client.graph.ontology_catalog import (
+            upsert_attribute,
+            upsert_type,
+        )
+
+        await upsert_type(name=TYPE, tenant_id=TENANT, layer="tenant")
+        await upsert_type(name=person_type, tenant_id=TENANT, layer="tenant")
+        await upsert_attribute(
+            type_name=TYPE,
+            attr_name="starring",
+            datatype=person_type,
+            tenant_id=TENANT,
+            layer="tenant",
+        )
+        await upsert_attribute(
+            type_name=TYPE,
+            attr_name="year",
+            datatype="string",
+            tenant_id=TENANT,
+            layer="tenant",
+        )
+
+    asyncio.get_event_loop_policy().new_event_loop().run_until_complete(declare())
+    _seed(
+        store,
+        [
+            *_movie(E1, label="The Picture", title="The Picture", year="1999"),
+            (person, RDF_TYPE, TYPES + person_type),
+            (person, LABEL_PRED, "Ada Example"),
+            (E1, rel_pred, person),
+        ],
+    )
+
+    data = _get(client, auth_headers).json()
+    assert "starring" not in data["columns"], data["columns"]
+    assert "cast" not in data["columns"], data["columns"]
+    assert "year" in data["columns"]
+    assert data["rows"][0]["name"] == "The Picture"

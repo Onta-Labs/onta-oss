@@ -2290,6 +2290,19 @@ def test_effective_instruction_resets_after_answered_question():
     assert "Widget" not in eff
 
 
+def test_query_followup_turns_keep_answered_question():
+    """Query follow-ups need the finished turn that enrich/clean must not inherit."""
+    history = [
+        _turn("user", "when was the last time I met Ada Example?"),
+        _turn("assistant", "2026-08-12", kind="answer"),
+    ]
+    turns = planner_mod.query_followup_turns(history)
+    assert any("Ada Example" in t["text"] for t in turns)
+    # Enrich extraction still drops the finished ask.
+    eff = planner_mod._effective_instruction(history, "enrich Sprocket weights")
+    assert "Ada Example" not in eff
+
+
 def test_effective_instruction_keeps_open_clarify_chain():
     """A clarify does NOT close the window: the field named before the clarify
     still accumulates so a terse answer converges (the COG-130 behavior we must

@@ -102,7 +102,15 @@ class QueryCapability:
             kg_graph_uri(ctx.tenant_id, ctx.kg_name) if ctx.kg_name else ontology_graph
         )
         try:
-            result = await pipeline.ask(question, ontology_graph, instance_graph)
+            conversation = (getattr(ctx, "extras", None) or {}).get(
+                "conversation_turns"
+            )
+            result = await pipeline.ask(
+                question,
+                ontology_graph,
+                instance_graph,
+                conversation=conversation or None,
+            )
         except CrossTenantQueryError:
             # ONTA-424: the generated query reached outside this workspace and
             # was refused before the store saw it. `/ask` has a route-level

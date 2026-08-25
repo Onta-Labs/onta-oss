@@ -40,6 +40,28 @@ def _same_kg_turns(history: list[Turn] | None, kg_name: str | None) -> list[Turn
     return [t for t in history or [] if _turn_matches_kg(t, kg_name)]
 
 
+_QUERY_FOLLOWUP_TURNS = 6
+
+
+def query_followup_turns(
+    history: list[Turn] | None, kg_name: str | None = None
+) -> list[dict[str, str]]:
+    """Recent same-graph turns for the NL query planner, including answers.
+
+    ``_effective_instruction`` RESETS after an ``answer`` so a new enrich/clean
+    ask cannot inherit a finished question's type names. Query follow-ups
+    ("what did we talk about?") NEED that finished turn. This window is
+    query-only and does not change capability-extraction bleed guards.
+    """
+    out: list[dict[str, str]] = []
+    for t in _same_kg_turns(history, kg_name)[-_QUERY_FOLLOWUP_TURNS:]:
+        text = (t.text or "").strip()
+        if not text or t.role not in ("user", "assistant"):
+            continue
+        out.append({"role": t.role, "text": text})
+    return out
+
+
 # A KG name is rendered INTO the classifier's transcript block, which is a
 # line-oriented, role-prefixed format. Anything outside this class (most of all a
 # newline) could forge a turn the model reads as the user's own words, so the
