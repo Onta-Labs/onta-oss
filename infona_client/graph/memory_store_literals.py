@@ -136,12 +136,7 @@ class MemoryLiteralsMixin:
         return out
 
     def _literal_values_count(
-        self,
-        tenant_id: str,
-        kg: str,
-        type_names: Any,
-        prop_key: str,
-        prop_value: Any,
+        self, tenant_id: str, kg: str, type_names: Any, prop_key: str, prop_value: Any
     ) -> list[GraphRecord]:
         """Uncapped equality count — never use the list helper's default 25."""
         rows = self._literal_values_eq(
@@ -174,7 +169,7 @@ class MemoryLiteralsMixin:
         prop_key: str,
         op: str,
         threshold: Any,
-        limit: int,
+        limit: int | None,
     ) -> list[GraphRecord]:
         """Numeric inequality over Assertion SoT + Entity property cache."""
         from infona_client.graph.assertion_model import property_uri
@@ -273,6 +268,15 @@ class MemoryLiteralsMixin:
         rows.sort(key=lambda x: (x[0], str(x[1].get("id") or "")))
         return [rec for _, rec in rows[:limit]]
 
+    def _literal_compare_count(
+        self, tenant_id: str, kg: str, type_names: Any, prop_key: str, op: str, threshold: Any
+    ) -> list[GraphRecord]:
+        """Uncapped compare count — never inherit the list helper's LIMIT 25."""
+        rows = self._literal_compare(
+            tenant_id, kg, type_names, prop_key, op, threshold, limit=None
+        )
+        return [GraphRecord(data={"n": len(rows)})]
+
     def _related_entity_name_filter(
         self,
         tenant_id: str,
@@ -340,7 +344,6 @@ class MemoryLiteralsMixin:
             if len(out) >= limit:
                 return out
         return out
-
 
     def _literal_aggregate(
         self,

@@ -51,7 +51,7 @@ def plan_has_dimension_filter(
         # filter needs target_name.
         if tmpl == "literal_values" and _param_nonempty(params, "prop_value"):
             return True
-        if tmpl == "literal_compare" and (
+        if tmpl in ("literal_compare", "literal_compare_count") and (
             _param_nonempty(params, "threshold") or _param_nonempty(params, "op")
         ):
             return True

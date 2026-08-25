@@ -25,6 +25,7 @@ from infona_client.graph.memory_store_norms import (
     _LITERAL_AGGREGATE_NORM,
     _LITERAL_ARGMAX_BY_DIM_NORM,
     _LITERAL_DISTINCT_COUNT_NORM,
+    _LITERAL_COMPARE_COUNT_NORM,
     _LITERAL_COMPARE_NORM,
     _LITERAL_GREP_NORM,
     _LITERAL_VALUES_COUNT_NORM,
@@ -282,6 +283,16 @@ class MemoryExecuteMixin:
                 str(params.get("op") or "lt"),
                 params.get("threshold"),
                 int(lim) if lim is not None else 25,
+            )
+
+        if norm == _LITERAL_COMPARE_COUNT_NORM:
+            return self._literal_compare_count(
+                tenant_id,
+                kg,
+                params.get("type_names"),
+                str(params.get("prop_key") or ""),
+                str(params.get("op") or "lt"),
+                params.get("threshold"),
             )
 
         if norm == _LITERAL_AGGREGATE_NORM:

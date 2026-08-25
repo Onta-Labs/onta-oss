@@ -233,10 +233,11 @@ an **unfiltered total** (wrong). Fail closed is better than a silent wrong total
 - For required property/value filters (equality, "how many X that are Y", \
 "sum Z for active", …) you MUST use one of:
   1. **template** `literal_values_count` (how-many/count + equality), \
-`literal_values` (list/show/which + equality), `literal_compare` / \
-`related_entity_name_filter` (preferred — set the JSON `template` field + params). \
-Never set `template` to `literal_values` on a how-many/count question (that helper \
-returns rows). OR
+`literal_values` (list/show/which + equality), `literal_compare_count` \
+(how-many/count + inequality), `literal_compare` / \
+`related_entity_name_filter` (list + inequality / related name — set the JSON \
+`template` field + params). Never set `template` to `literal_values` or \
+`literal_compare` on a how-many/count question (those helpers return rows). OR
   2. **entity denorm**: `WHERE e.<prop_key> = $prop_value` (or compare) on the \
 Entity after type MATCH, OR
   3. **required MATCH** (not OPTIONAL) on Assertion with the value predicate, OR
@@ -248,9 +249,10 @@ aggregate the measure attribute. Never OPTIONAL-filter the status/phase predicat
 NL), Cypher MUST constrain those values — never emit an unfiltered sum/avg/count \
 of a measure as a silent total. Template `literal_aggregate` alone is ONLY for \
 unfiltered measure aggregates; when a dimension filter is required, constrain \
-first (`literal_values_count` for a filtered count; free-form filter then \
-aggregate for sum/avg). Never set template `literal_values` on a how-many/count \
-question. If you cannot tell which field a filter \
+first (`literal_values_count` for equality count; `literal_compare_count` for \
+inequality count; free-form filter then aggregate for sum/avg). Never set \
+template `literal_values` or `literal_compare` on a how-many/count question. \
+If you cannot tell which field a filter \
 token binds to, prefer an honest constrained plan or fail closed over inventing \
 a field or returning a silent unfiltered total.
 
@@ -289,7 +291,12 @@ property (vendor_code), not the scanned type.
 `RETURN grp AS name, total AS value ORDER BY total DESC LIMIT 1`. Use for \
 "which X has the highest/greatest/largest total/sum Y". Never set \
 `literal_values` or `literal_aggregate` on that intent.
-- literal_compare — numeric inequality (`$prop_key`, `$op` in lt/le/gt/ge/eq, `$threshold`)
+- literal_compare — numeric inequality **list** (`$prop_key`, `$op` in \
+lt/le/gt/ge/eq, `$threshold`) — list/show/which. Not for how-many/count.
+- literal_compare_count — same compare params; `RETURN count(DISTINCT e) AS n` \
+— how-many/count + inequality. `in or after` / `since` / `at least` YYYY → \
+`$op=ge` and `$threshold` that year (not a year list). Never pair a count \
+RETURN with template `literal_compare`.
 - related_entities — 1-hop object relationships (`$from_types`, `$to_types`, optional `$rel_attr`)
 - related_entity_name_filter — subjects linked to a related entity by display name \
   (`$rel_attr`, `$target_name`) e.g. books with genre "Classic Fiction"

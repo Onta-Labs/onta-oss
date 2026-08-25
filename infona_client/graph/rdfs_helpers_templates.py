@@ -27,6 +27,7 @@ TEMPLATE_ENTITIES_OF_TYPE_COUNT = "entities_of_type_count"
 TEMPLATE_LITERAL_VALUES = "literal_values"
 TEMPLATE_LITERAL_VALUES_COUNT = "literal_values_count"
 TEMPLATE_LITERAL_COMPARE = "literal_compare"
+TEMPLATE_LITERAL_COMPARE_COUNT = "literal_compare_count"
 TEMPLATE_RELATED_ENTITY_NAME_FILTER_INVERSE = "related_entity_name_filter_inverse"
 TEMPLATE_LITERAL_AGGREGATE = "literal_aggregate"
 TEMPLATE_LITERAL_ARGMAX_BY_DIM = "literal_argmax_by_dim"
@@ -196,7 +197,7 @@ WHERE raw IS NOT NULL
 # Numeric / inequality compare on a datatype property. Handles both native
 # store numbers and legacy SPARQL-era ``lexical^^xsd-uri`` strings still in
 # older graphs (split off the suffix before toFloat).
-LITERAL_COMPARE_CYPHER = (
+_LITERAL_COMPARE_MATCH = (
     _LITERAL_RAW_CURRENT
     + """
 WITH e, raw,
@@ -213,10 +214,23 @@ WHERE num IS NOT NULL AND (
   ($op = 'ge' AND num >= $threshold) OR
   ($op = 'eq' AND num = $threshold)
 )
+"""
+).strip()
+
+LITERAL_COMPARE_CYPHER = (
+    _LITERAL_COMPARE_MATCH
+    + """
 RETURN e.id AS id, e.name AS name, e.primary_type AS primary_type,
        coalesce(e.title, e.name) AS title, num AS value
 ORDER BY num, e.id
 LIMIT $limit
+"""
+).strip()
+
+LITERAL_COMPARE_COUNT_CYPHER = (
+    _LITERAL_COMPARE_MATCH
+    + """
+RETURN count(DISTINCT e) AS n
 """
 ).strip()
 
@@ -497,6 +511,7 @@ def semantic_templates() -> dict[str, tuple[str, bool]]:
         TEMPLATE_LITERAL_VALUES: (LITERAL_VALUES_CYPHER, False),
         TEMPLATE_LITERAL_VALUES_COUNT: (LITERAL_VALUES_COUNT_CYPHER, False),
         TEMPLATE_LITERAL_COMPARE: (LITERAL_COMPARE_CYPHER, False),
+        TEMPLATE_LITERAL_COMPARE_COUNT: (LITERAL_COMPARE_COUNT_CYPHER, False),
         TEMPLATE_LITERAL_AGGREGATE: (LITERAL_AGGREGATE_CYPHER, False),
         TEMPLATE_LITERAL_ARGMAX_BY_DIM: (LITERAL_ARGMAX_BY_DIM_CYPHER, False),
         TEMPLATE_LITERAL_DISTINCT_COUNT: (LITERAL_DISTINCT_COUNT_CYPHER, False),
