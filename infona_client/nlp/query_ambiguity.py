@@ -39,7 +39,7 @@ _FOLLOWUP_RE = re.compile(
     r"\bwho\s+else\b|"
     r"\bwhat\s+about\s+(?:them|him|her|that|it)\b|"
     r"\b(?:this|that|those|these)\s+(?:one|entity|record|item|event)\b|"
-    r"\bthe\s+last\s+(?:one|time)\b|"
+    r"\bthe\s+last\s+one\b|"
     r"\bwhat\s+did\s+we\s+(?:talk|discuss|cover|say)\b|"
     r"\bwhat\s+were\s+their\b|"
     r"\b(?:when|where)\s+was\s+(?:that|this)\b|"
