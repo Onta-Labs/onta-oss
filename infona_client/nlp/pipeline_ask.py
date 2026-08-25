@@ -322,6 +322,17 @@ class PipelineAskMixin:
                 if alias_map:
                     cypher_raw = self._rewrite_cypher_alias_leaves(cypher_raw, alias_map)
 
+                if not (gen.get("stub") or gen.get("fixture")):
+                    from infona_client.nlp.cypher_filter_integrity import (
+                        rewrite_optional_value_filters,
+                    )
+
+                    cypher_raw, opt_rewritten = rewrite_optional_value_filters(
+                        cypher_raw
+                    )
+                    if opt_rewritten:
+                        timing["cypher_optional_match_rewritten"] = 1.0
+
                 if store is None:
                     return NLResult(
                         answer=(

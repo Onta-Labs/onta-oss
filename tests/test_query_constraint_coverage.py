@@ -101,6 +101,14 @@ WHERE c.name IN $type_names AND e.status_label = $prop_value
 RETURN count(e) AS n
 """.strip()
 
+PURE_TYPE_COUNT = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
+  tenant_id: $tenant_id, kg: $kg
+})
+WHERE c.name IN $type_names OR c.id IN $type_names
+RETURN count(DISTINCT e) AS n
+""".strip()
+
 
 # ---------------------------------------------------------------------------
 # Intent sketch
@@ -575,7 +583,7 @@ async def test_pipeline_accepts_filtered_plan_after_retry():
 
 @pytest.mark.asyncio
 async def test_pipeline_integrity_regression_still_fail_closes():
-    """OPTIONAL MATCH smell still fail-closes (coverage composes, does not drop)."""
+    """Unrewritable type-scan still fail-closes (coverage composes, does not drop)."""
     store = MemoryGraphStore()
     neptune = MagicMock()
     neptune.query = AsyncMock(side_effect=AssertionError("no sparql"))
@@ -584,13 +592,9 @@ async def test_pipeline_integrity_regression_still_fail_closes():
 
     async def fake_llm(question, ontology, **kw):
         return {
-            "cypher": BAD_OPTIONAL_EQ,
-            "params": {
-                "type_names": ["Widget"],
-                "prop_key": "status_label",
-                "prop_value": "active",
-            },
-            "explanation": "bad optional",
+            "cypher": PURE_TYPE_COUNT,
+            "params": {"type_names": ["Widget"]},
+            "explanation": "unfiltered type scan",
             "functions_needed": [],
         }
 

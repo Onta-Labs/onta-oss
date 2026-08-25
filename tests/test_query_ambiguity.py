@@ -94,10 +94,26 @@ def test_anaphoric_followup_with_history_does_not_clarify():
         {"role": "assistant", "text": "2026-08-12"},
     ]
     assert not ambiguous_anaphora_needs_clarify("what did we talk about?", prior)
-    text = format_conversation_for_prompt(prior)
+    text = format_conversation_for_prompt(prior, question="what did we talk about?")
     assert "Ada Example" in text
     assert "what did we talk about" not in text
+    assert "FOLLOW-UP" in text
+    assert "required MATCH" in text
     assert format_anaphora_clarification()
+
+
+def test_specified_question_does_not_inherit_prior_filters():
+    prior = [
+        {"role": "user", "text": "when was the last time I met Ada Example?"},
+        {"role": "assistant", "text": "2026-08-12"},
+    ]
+    text = format_conversation_for_prompt(
+        prior, question="when was the last time I met Bea Sample?"
+    )
+    assert "Ada Example" in text
+    assert "fully specified" in text.lower()
+    assert "FOLLOW-UP" not in text
+    assert "do not inherit" in text.lower()
 
 
 def test_conversation_prompt_ignores_empty():

@@ -11,6 +11,7 @@ Synthetic types/attrs only — no persona CSV gold labels. Proves:
 
 from __future__ import annotations
 
+import re
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -28,6 +29,7 @@ from infona_client.nlp.cypher_filter_integrity import (
     optional_match_filter_smell,
     pure_type_scan_without_filter,
     question_has_filter_intent,
+    rewrite_optional_value_filters,
 )
 from infona_client.nlp.pipeline import NLQueryPipeline
 
@@ -221,6 +223,65 @@ def test_pure_type_template_rejected_under_filter_intent():
     assert "entities_of_type_count" in reason
 
 
+def test_rewrite_promotes_optional_value_filter_to_required_match():
+    rewritten, changed = rewrite_optional_value_filters(BAD_OPTIONAL_EQ)
+    assert changed is True
+    assert "OPTIONAL MATCH" not in rewritten
+    assert re.search(r"(?i)\bMATCH\s*\(\s*a:Assertion", rewritten)
+    assert optional_match_filter_smell(rewritten) is None
+    assert (
+        check_cypher_filter_integrity(
+            rewritten,
+            question="how many widgets where status_label is active",
+        )
+        is None
+    )
+
+
+def test_rewrite_leaves_post_constrained_and_prop_key_only():
+    assert rewrite_optional_value_filters(GOOD_OPTIONAL_WITH_POST)[1] is False
+    agg_read = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
+  tenant_id: $tenant_id, kg: $kg
+})
+WHERE c.name IN $type_names
+OPTIONAL MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg, subject_id: e.id})
+  -[:PREDICATE]->(p:Property {tenant_id: $tenant_id, kg: $kg})
+WHERE p.name = $prop_key
+WITH e, coalesce(a.literal_value, e[$prop_key]) AS raw
+WHERE raw IS NOT NULL
+RETURN sum(toFloat(raw)) AS value
+""".strip()
+    assert rewrite_optional_value_filters(agg_read)[1] is False
+    assert rewrite_optional_value_filters(GOOD_REQUIRED_MATCH)[1] is False
+
+
+def test_anaphoric_followup_rejects_type_scan():
+    reason = check_cypher_filter_integrity(
+        PURE_TYPE_COUNT,
+        question="what did we talk about?",
+        anaphoric_followup=True,
+    )
+    assert reason is not None
+    assert "prior turn" in reason.lower() or "follow-up" in reason.lower()
+    assert (
+        check_cypher_filter_integrity(
+            PURE_TYPE_COUNT,
+            question="what did we talk about?",
+            anaphoric_followup=False,
+        )
+        is None
+    )
+    assert (
+        check_cypher_filter_integrity(
+            GOOD_REQUIRED_MATCH,
+            question="what did we talk about?",
+            anaphoric_followup=True,
+        )
+        is None
+    )
+
+
 def test_feedback_mentions_rewrite_rules():
     fb = filter_integrity_feedback(
         "OPTIONAL MATCH value filter does not constrain primary rows",
@@ -232,20 +293,15 @@ def test_feedback_mentions_rewrite_rules():
 
 
 @pytest.mark.asyncio
-async def test_pipeline_retries_then_fail_closes_on_filter_smell():
-    """Bad free Cypher never executes; retry once then honest fail-closed answer."""
+async def test_pipeline_rewrites_optional_value_filter_instead_of_fail_close():
+    """OPTIONAL MATCH value filter is promoted to MATCH and executed."""
     store = MemoryGraphStore()
     neptune = MagicMock()
     neptune.query = AsyncMock(side_effect=AssertionError("no sparql"))
     pipe = NLQueryPipeline(neptune, anthropic_key="test-key", graph_store=store)
     pipe._fetch_ontology = AsyncMock(return_value=SYN_ONTO)  # type: ignore[method-assign]
 
-    calls: list[str] = []
-
     async def fake_llm(question, ontology, **kw):
-        calls.append(kw.get("error_feedback") or "")
-        # Always emit the bad OPTIONAL MATCH plan (never self-heals) to prove
-        # fail-closed after retries — not silent execute.
         return {
             "cypher": BAD_OPTIONAL_EQ,
             "params": {
@@ -258,7 +314,50 @@ async def test_pipeline_retries_then_fail_closes_on_filter_smell():
         }
 
     pipe._try_llm_cypher = fake_llm  # type: ignore[method-assign]
-    # Avoid rephrase / embedding side effects.
+    pipe._rephrase_via_openrouter = AsyncMock(return_value=None)  # type: ignore[method-assign]
+    exec_cypher: list[str] = []
+
+    async def fake_exec(session, gen, cypher, forced):
+        exec_cypher.append(cypher)
+        return ([{"n": 0}], "freeform:mock")
+
+    pipe._execute_confined_cypher = fake_exec  # type: ignore[method-assign]
+
+    result = await pipe.ask(
+        "how many widgets where status_label is active",
+        graph_uri=f"{IRI_BASE}/graphs/demo-tenant",
+        instance_graph=f"{IRI_BASE}/graphs/demo-tenant/kg/syn-widgets",
+        use_cypher=True,
+    )
+
+    assert result.timing.get("cypher_optional_match_rewritten") == 1.0
+    assert result.timing.get("cypher_filter_integrity_reject") in (None, 0, 0.0)
+    assert exec_cypher
+    assert "OPTIONAL MATCH" not in exec_cypher[0]
+    assert "OPTIONAL MATCH value filter" not in (result.answer or "")
+
+
+@pytest.mark.asyncio
+async def test_pipeline_retries_then_fail_closes_on_unrewritable_type_scan():
+    """Pure type scan under filter intent still fail-closes (rewrite cannot help)."""
+    store = MemoryGraphStore()
+    neptune = MagicMock()
+    neptune.query = AsyncMock(side_effect=AssertionError("no sparql"))
+    pipe = NLQueryPipeline(neptune, anthropic_key="test-key", graph_store=store)
+    pipe._fetch_ontology = AsyncMock(return_value=SYN_ONTO)  # type: ignore[method-assign]
+
+    calls: list[str] = []
+
+    async def fake_llm(question, ontology, **kw):
+        calls.append(kw.get("error_feedback") or "")
+        return {
+            "cypher": PURE_TYPE_COUNT,
+            "params": {"type_names": ["Widget"]},
+            "explanation": "count widgets with no status filter",
+            "functions_needed": [],
+        }
+
+    pipe._try_llm_cypher = fake_llm  # type: ignore[method-assign]
     pipe._rephrase_via_openrouter = AsyncMock(return_value=None)  # type: ignore[method-assign]
 
     result = await pipe.ask(
@@ -269,13 +368,47 @@ async def test_pipeline_retries_then_fail_closes_on_filter_smell():
     )
 
     assert len(calls) == 3  # max_attempts
-    # Attempts 2+ receive filter-integrity feedback.
     assert any("FILTER INTEGRITY" in (fb or "") for fb in calls[1:])
     assert result.timing.get("cypher_filter_integrity_reject") == 1.0
     assert "Could not answer" in result.answer
-    assert "unfiltered" in result.answer.lower() or "incorrectly" in result.answer.lower()
-    # Must not have successfully executed a silent wrong count.
     assert result.timing.get("rows") in (None, 0) or "rows" not in result.timing
+
+
+@pytest.mark.asyncio
+async def test_pipeline_followup_type_scan_fail_closes_rather_than_dump():
+    """Anaphoric follow-up + type scan never executes an unfiltered dump."""
+    store = MemoryGraphStore()
+    neptune = MagicMock()
+    neptune.query = AsyncMock(side_effect=AssertionError("no sparql"))
+    pipe = NLQueryPipeline(neptune, anthropic_key="test-key", graph_store=store)
+    pipe._fetch_ontology = AsyncMock(return_value=SYN_ONTO)  # type: ignore[method-assign]
+
+    async def fake_llm(question, ontology, **kw):
+        return {
+            "cypher": PURE_TYPE_COUNT,
+            "params": {"type_names": ["Widget"]},
+            "explanation": "list widgets",
+            "functions_needed": [],
+        }
+
+    pipe._try_llm_cypher = fake_llm  # type: ignore[method-assign]
+    pipe._rephrase_via_openrouter = AsyncMock(return_value=None)  # type: ignore[method-assign]
+    exec_mock = AsyncMock(side_effect=AssertionError("must not dump the type"))
+    pipe._execute_confined_cypher = exec_mock  # type: ignore[method-assign]
+
+    result = await pipe.ask(
+        "what did we talk about?",
+        graph_uri=f"{IRI_BASE}/graphs/demo-tenant",
+        instance_graph=f"{IRI_BASE}/graphs/demo-tenant/kg/syn-widgets",
+        use_cypher=True,
+        conversation=[
+            {"role": "user", "text": "when was the last Widget with Ada Example?"},
+            {"role": "assistant", "text": "2024-06-01"},
+        ],
+    )
+    assert result.timing.get("cypher_filter_integrity_reject") == 1.0
+    assert "Could not answer" in result.answer
+    exec_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio

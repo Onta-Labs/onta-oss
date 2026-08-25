@@ -325,7 +325,9 @@ class PipelineCypherExecMixin:
             examples_text=examples_text,
             error_feedback=error_feedback,
             grounding_text=grounding_text,
-            conversation_text=format_conversation_for_prompt(conversation),
+            conversation_text=format_conversation_for_prompt(
+                conversation, question=question
+            ),
         )
         attempts = self._cypher_generator_chain(
             prompt,

@@ -20,8 +20,11 @@ entity denorm property (``e.phase_label = $v``).
 
 **Product rules:**
 
-* Always-LLM for user-facing ``/ask`` — this module never short-circuits
-  generation; it only **rejects** bad plans so the retry loop can regenerate.
+* Always-LLM for user-facing ``/ask`` — generation is never skipped. After
+  generation, :func:`rewrite_optional_value_filters` is a **compiler pass**
+  (OPTIONAL MATCH → MATCH when the optional WHERE is a required value
+  filter). Remaining unrewritable plans are **rejected** so the retry loop
+  can regenerate.
 * Fail closed: honest empty / "could not answer" beats silent wrong total.
 * Anti-overfit: detectors use structural Cypher shape + general NL filter cues,
   not persona CSV gold labels.
@@ -351,20 +354,75 @@ def pure_type_scan_without_filter(cypher: str) -> bool:
     return False
 
 
+def rewrite_optional_value_filters(cypher: str) -> tuple[str, bool]:
+    """Promote smelly OPTIONAL MATCH value-filters to required MATCH.
+
+    Cypher ``WHERE`` on ``OPTIONAL MATCH`` only nulls the optional bind; it
+    does not drop primary rows. When that WHERE is a value filter and the
+    trailing query has no post-constraint (``a IS NOT NULL`` / denorm
+    equality), the generated plan meant a required filter. Rewriting the
+    clause keyword is the mechanical form of the required-MATCH rule, so a
+    well-intentioned plan does not fail-closed waiting for the LLM to
+    self-heal.
+
+    Prop-key-only OPTIONAL MATCH (aggregate reads) and already-post-
+    constrained OPTIONAL MATCH are left unchanged. Returns
+    ``(cypher, changed)``.
+    """
+    c = cypher or ""
+    if not c.strip():
+        return c, False
+    pieces: list[str] = []
+    last = 0
+    changed = False
+    for m in re.finditer(r"(?i)OPTIONAL\s+MATCH", c):
+        start = m.end()
+        window = c[start : start + 500]
+        if not re.search(r"(?i)\b(?:Assertion|Property)\b", window):
+            continue
+        rest = c[start:]
+        bound = _CLAUSE_BOUNDARY_RE.search(rest)
+        if bound:
+            region = rest[: bound.start()]
+            trailing = rest[bound.start() :]
+        else:
+            region = rest
+            trailing = ""
+        if not _region_has_value_filter(region):
+            continue
+        if _trailing_has_post_constraint(trailing):
+            continue
+        pieces.append(c[last : m.start()])
+        pieces.append("MATCH")
+        last = m.end()
+        changed = True
+    if not changed:
+        return c, False
+    pieces.append(c[last:])
+    return "".join(pieces), True
+
+
 def check_cypher_filter_integrity(
     cypher: str,
     *,
     question: str = "",
     template: str | None = None,
     params: dict[str, Any] | None = None,
+    anaphoric_followup: bool = False,
 ) -> str | None:
     """Return a human-readable rejection reason, or ``None`` if the plan is OK.
 
     Callers should retry generation with this reason as ``error_feedback`` when
     non-``None``. Known-good filter templates skip free-form shape checks.
+
+    ``anaphoric_followup`` — the live question refers to a prior turn
+    (``what did we talk about?``) and history is present. That is filter
+    intent: a type-only scan would dump the whole graph instead of binding
+    the prior referent.
     """
     tmpl = (template or "").strip()
     params = params or {}
+    filterish = question_has_filter_intent(question) or bool(anaphoric_followup)
 
     # Allowlisted filter templates always constrain (ADR 0013 bodies).
     if tmpl in _FILTERING_TEMPLATES:
@@ -372,7 +430,7 @@ def check_cypher_filter_integrity(
 
     # Pure type templates are only OK when the question has no filter intent.
     if tmpl in _PURE_TYPE_TEMPLATES:
-        if question_has_filter_intent(question):
+        if filterish:
             # Exception: template still carries filter params (shouldn't for pure
             # type templates, but be defensive).
             if any(
@@ -380,6 +438,14 @@ def check_cypher_filter_integrity(
                 for k in ("prop_key", "prop_value", "needle", "threshold", "op", "rel_attr")
             ):
                 return None
+            if anaphoric_followup and not question_has_filter_intent(question):
+                return (
+                    "follow-up refers to a prior turn but plan is a pure type "
+                    f"scan ({tmpl}) with no constraining filter — that dumps "
+                    "the whole type instead of binding the prior entity. Use "
+                    "required MATCH / related_entity_name_filter / e.prop = "
+                    "$value against the referent named in the prior turn."
+                )
             return (
                 "question has filter intent but plan is a pure type scan "
                 f"({tmpl}) with no property/value constraint — that yields a "
@@ -397,7 +463,15 @@ def check_cypher_filter_integrity(
     if smell:
         return smell
 
-    if question_has_filter_intent(question) and pure_type_scan_without_filter(cypher):
+    if filterish and pure_type_scan_without_filter(cypher):
+        if anaphoric_followup and not question_has_filter_intent(question):
+            return (
+                "follow-up refers to a prior turn but Cypher is a type-only "
+                "scan with no constraining property filter — results would "
+                "dump the whole type. Bind the prior-turn entity with a "
+                "required MATCH, related_entity_name_filter, or e.<prop> = "
+                "$value (never an unfiltered type scan)."
+            )
         return (
             "question has filter intent but Cypher is a type-only scan with no "
             "constraining property filter — results would be a silent unfiltered "
@@ -449,4 +523,5 @@ __all__ = [
     "optional_match_filter_smell",
     "pure_type_scan_without_filter",
     "question_has_filter_intent",
+    "rewrite_optional_value_filters",
 ]
