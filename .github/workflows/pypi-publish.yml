@@ -2,7 +2,9 @@ name: Publish
 
 # One version, three packages: @infona-ai/cli, @infona-ai/mcp, infona-client.
 # PyPI auth is repo secret PYPI_API_TOKEN. Re-runs are idempotent: already
-# published npm versions are skipped; PyPI skip-existing is on.
+# published npm versions are skipped; PyPI skip-existing is on. After a
+# successful bump + npm + PyPI publish, tags v${VERSION} and opens a
+# GitHub Release (skip if the tag exists). Do not backfill 0.1.17–0.1.42.
 
 on:
   push:
@@ -128,3 +130,23 @@ jobs:
           packages-dir: dist/
           password: ${{ secrets.PYPI_API_TOKEN }}
           skip-existing: true
+
+      - name: Tag and GitHub Release
+        if: steps.skip.outputs.skip != 'true' && steps.skip.outputs.bump == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          TAG="v${VERSION}"
+          if [ -z "$VERSION" ]; then
+            echo "no bumped version — skipping tag"
+            exit 0
+          fi
+          if git ls-remote --exit-code origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "${TAG} already exists — skipping"
+            exit 0
+          fi
+          gh release create "${TAG}" \
+            --target "$(git rev-parse HEAD)" \
+            --title "${TAG}" \
+            --notes "See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/CHANGELOG.md)."

@@ -28,6 +28,9 @@ want the tag series to catch up.
 
 ### Changed
 
+- Going-forward lockstep publishes create a `v*` git tag and GitHub
+  Release after a successful npm + PyPI bump (notes point at this
+  file). `v0.1.17`–`v0.1.42` are not backfilled.
 - README and launch-surface docs: the product loop is schema → Neo4j →
   ask. `er rebuild` URI merge is applied; field-conflict lines are an
   explanatory report (validity intervals are not on Neo4j yet).
