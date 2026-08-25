@@ -1,6 +1,6 @@
 {
   "name": "@infona-ai/cli",
-  "version": "0.1.50",
+  "version": "0.1.51",
   "description": "Infona SDK and CLI \u2014 context graph platform for structured data",
   "type": "module",
   "main": "./dist/index.js",
