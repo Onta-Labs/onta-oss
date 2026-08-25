@@ -26,16 +26,31 @@ want the tag series to catch up.
 
 ## [Unreleased]
 
+### Added
+
+- MCP `er_rebuild` (`Client.erRebuild`) runs the same second-pass
+  entity-resolution path as `infona er rebuild`.
+- GraphStore ingest batch rollback: a failed ingest removes subjects
+  stamped with that `batch_id` via `delete_facts` (ONTA-528).
+
 ### Changed
 
+- Ask and explore GraphStore reads keep current valid-time literals
+  (`valid_to` null/absent). Closed facts stay stored.
 - Going-forward lockstep publishes create a `v*` git tag and GitHub
   Release after a successful npm + PyPI bump (notes point at this
   file). `v0.1.17`–`v0.1.42` are not backfilled.
 - README and launch-surface docs: the product loop is schema → Neo4j →
   ask. `er rebuild` URI merge is applied; field-conflict lines are an
-  explanatory report (validity intervals are not on Neo4j yet).
+  explanatory report.
 - Live OSS quickstart steps skip when `OPENROUTER_API_KEY` is empty
   (job `if:` cannot read `secrets`; empty key is not a failure).
+
+### Fixed
+
+- `rewrite_subject` rekeys `:ValidityInterval` subject, `interval_id`,
+  and `statement_id` so ER merge does not leave closed intervals on
+  the loser URI.
 
 ## [0.1.21–0.1.42] - 2026-08-18 – 2026-08-25
 
