@@ -82,3 +82,26 @@ def test_compose_has_neo4j_and_api_depends_on_healthy():
     assert ".env" in api_block
     fuseki = text.split("\n  fuseki:", 1)[1]
     assert "legacy-sparql" in fuseki
+    # Inside the container uvicorn must listen on all interfaces so the
+    # published host port can reach it. The *host* bind is loopback (below).
+    assert '"0.0.0.0"' in api_block
+
+
+def test_compose_host_ports_bind_loopback():
+    """Host mappings for 7474/7687/8000/3030 must start with 127.0.0.1:."""
+    text = _read(COMPOSE)
+    wanted = ("7474", "7687", "8000", "3030")
+    seen: set[str] = set()
+    for ip, host, container in re.findall(
+        r'^\s+-\s+"(?:(\d+\.\d+\.\d+\.\d+):)?(\d+):(\d+)"',
+        text,
+        re.M,
+    ):
+        if host in wanted or container in wanted:
+            assert ip == "127.0.0.1", (
+                f"host mapping {ip or '*'}:{host}:{container} must start with 127.0.0.1:"
+            )
+            seen.add(host)
+            seen.add(container)
+    missing = [p for p in wanted if p not in seen]
+    assert not missing, f"missing loopback host mappings for {missing}"

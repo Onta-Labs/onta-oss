@@ -14,8 +14,8 @@ services:
   neo4j:
     image: neo4j:5-community
     ports:
-      - "7474:7474"   # HTTP browser
-      - "7687:7687"   # Bolt
+      - "127.0.0.1:7474:7474"   # HTTP browser
+      - "127.0.0.1:7687:7687"   # Bolt
     environment:
       NEO4J_AUTH: neo4j/infona-dev-password
       NEO4J_server_memory_heap_initial__size: 512m
@@ -32,7 +32,7 @@ services:
   api:
     build: .
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     env_file:
       - path: .env
         required: false
@@ -80,7 +80,7 @@ services:
     profiles: ["legacy-sparql"]
     image: stain/jena-fuseki:latest
     ports:
-      - "3030:3030"
+      - "127.0.0.1:3030:3030"
     environment:
       - ADMIN_PASSWORD=admin
       - FUSEKI_DATASET_1=ds
