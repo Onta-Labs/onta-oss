@@ -121,6 +121,24 @@ SHAPE_ARGMAX = "argmax_by_dim"
 SHAPE_GRAPH_EXISTS = "graph_exists"
 SHAPE_GRAPH_DEGREE = "graph_degree"
 SHAPE_GRAPH_PATH = "graph_shortest_path"
+SHAPE_GRAPH_REL_COUNT = "graph_typed_rel_count"
+SHAPE_GRAPH_NEIGHBOR = "graph_neighbor_outgoing_count"
+
+
+def _entity_name_pred(alias: str, param: str) -> str:
+    """Space/underscore-insensitive entity label bind (display_name first)."""
+    return (
+        f"replace(toLower(coalesce({alias}.display_name, {alias}.display_label, "
+        f"{alias}.name, '')), '_', ' ') = replace(toLower(${param}), '_', ' ')"
+    )
+
+
+def _rel_name_pred(alias: str = "p", param: str = "rel_attr") -> str:
+    """Space/underscore-insensitive Property.name bind (member of / member_of)."""
+    return (
+        f"replace(toLower({alias}.name), '_', ' ') = "
+        f"replace(toLower(${param}), '_', ' ')"
+    )
 
 REQUIRED_CYPHER_SHAPES: frozenset[str] = frozenset(
     {
@@ -350,15 +368,15 @@ CYPHER_SEEDS: list[dict[str, Any]] = [
         ),
         kg_name="synthetic-cypher-shapes",
         cypher=_one_line(
-            """
-MATCH (from_e:Entity {tenant_id: $tenant_id, kg: $kg})
-WHERE toLower(coalesce(from_e.display_name, from_e.name, '')) = toLower($from_name)
-MATCH (to_e:Entity {tenant_id: $tenant_id, kg: $kg})
-WHERE toLower(coalesce(to_e.display_name, to_e.name, '')) = toLower($to_name)
-MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg})-[:SUBJECT]->(from_e)
+            f"""
+MATCH (from_e:Entity {{tenant_id: $tenant_id, kg: $kg}})
+WHERE {_entity_name_pred("from_e", "from_name")}
+MATCH (to_e:Entity {{tenant_id: $tenant_id, kg: $kg}})
+WHERE {_entity_name_pred("to_e", "to_name")}
+MATCH (a:Assertion {{tenant_id: $tenant_id, kg: $kg}})-[:SUBJECT]->(from_e)
 MATCH (a)-[:OBJECT]->(to_e)
-MATCH (a)-[:PREDICATE]->(p:Property {tenant_id: $tenant_id, kg: $kg})
-WHERE p.name = $rel_attr
+MATCH (a)-[:PREDICATE]->(p:Property {{tenant_id: $tenant_id, kg: $kg}})
+WHERE {_rel_name_pred()}
 RETURN CASE WHEN count(a) > 0 THEN 'Yes' ELSE 'No' END AS answer
 """
         ),
@@ -375,10 +393,11 @@ RETURN CASE WHEN count(a) > 0 THEN 'Yes' ELSE 'No' END AS answer
             """
 MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})
 MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg})-[:SUBJECT]->(e)
-WITH e, count(a) AS deg
+MATCH (a)-[:OBJECT]->(:Entity {tenant_id: $tenant_id, kg: $kg})
+WITH e, count(DISTINCT a) AS deg
 ORDER BY deg DESC
 LIMIT 1
-RETURN coalesce(e.display_name, e.name) AS name
+RETURN 'Answer: ' + coalesce(e.display_name, e.display_label, e.name) AS answer
 """
         ),
         ontology_context="Type: Entity\n  - related_to → Entity",
@@ -388,15 +407,60 @@ RETURN coalesce(e.display_name, e.name) AS name
         question="What is the shortest path between Widget A and Widget B?",
         kg_name="synthetic-cypher-shapes",
         cypher=_one_line(
-            """
-MATCH (s:Entity {tenant_id: $tenant_id, kg: $kg})
-WHERE toLower(coalesce(s.display_name, s.name, '')) = toLower($start_name)
-MATCH (t:Entity {tenant_id: $tenant_id, kg: $kg})
-WHERE toLower(coalesce(t.display_name, t.name, '')) = toLower($end_name)
+            f"""
+MATCH (s:Entity {{tenant_id: $tenant_id, kg: $kg}})
+WHERE {_entity_name_pred("s", "start_name")}
+MATCH (t:Entity {{tenant_id: $tenant_id, kg: $kg}})
+WHERE {_entity_name_pred("t", "end_name")}
 MATCH p = shortestPath((s)-[:SUBJECT|OBJECT*..12]-(t))
-RETURN [n IN nodes(p) WHERE n:Entity | coalesce(n.display_name, n.name)] AS path
+WITH [n IN nodes(p) WHERE n:Entity | coalesce(n.display_name, n.display_label, n.name)] AS labels
+RETURN 'SHORTEST PATH: [' + reduce(acc = '', x IN labels | acc + CASE WHEN acc = '' THEN "'" + toString(x) + "'" ELSE ", '" + toString(x) + "'" END) + ']' AS answer
 """
         ),
         ontology_context="Type: Widget\n  - related_to → Widget",
+    ),
+    _seed(
+        shape=SHAPE_GRAPH_REL_COUNT,
+        question=(
+            "How many outgoing relations of type 'made_by' does Widget A have? "
+            "Answer in the format 'Answer: <number>'."
+        ),
+        kg_name="synthetic-cypher-shapes",
+        cypher=_one_line(
+            f"""
+MATCH (e:Entity {{tenant_id: $tenant_id, kg: $kg}})
+WHERE {_entity_name_pred("e", "entity_name")}
+MATCH (a:Assertion {{tenant_id: $tenant_id, kg: $kg}})-[:SUBJECT]->(e)
+MATCH (a)-[:OBJECT]->(:Entity {{tenant_id: $tenant_id, kg: $kg}})
+MATCH (a)-[:PREDICATE]->(p:Property {{tenant_id: $tenant_id, kg: $kg}})
+WHERE {_rel_name_pred()}
+RETURN 'Answer: ' + toString(count(DISTINCT a)) AS answer
+"""
+        ),
+        ontology_context="Type: Widget\n  - made_by → Maker",
+    ),
+    _seed(
+        shape=SHAPE_GRAPH_NEIGHBOR,
+        question=(
+            "How many of the directly connected entities to Widget A have an "
+            "outgoing property of type 'made_by'?"
+        ),
+        kg_name="synthetic-cypher-shapes",
+        cypher=_one_line(
+            f"""
+MATCH (e:Entity {{tenant_id: $tenant_id, kg: $kg}})
+WHERE {_entity_name_pred("e", "entity_name")}
+MATCH (hop:Assertion {{tenant_id: $tenant_id, kg: $kg}})-[:SUBJECT|OBJECT]->(e)
+MATCH (hop)-[:SUBJECT|OBJECT]->(nbr:Entity {{tenant_id: $tenant_id, kg: $kg}})
+WHERE nbr <> e
+WITH DISTINCT nbr
+MATCH (out:Assertion {{tenant_id: $tenant_id, kg: $kg}})-[:SUBJECT]->(nbr)
+MATCH (out)-[:OBJECT]->(:Entity {{tenant_id: $tenant_id, kg: $kg}})
+MATCH (out)-[:PREDICATE]->(p:Property {{tenant_id: $tenant_id, kg: $kg}})
+WHERE {_rel_name_pred()}
+RETURN 'Answer: ' + toString(count(DISTINCT nbr)) AS answer
+"""
+        ),
+        ontology_context="Type: Widget\n  - made_by → Maker\n  - related_to → Widget",
     ),
 ]

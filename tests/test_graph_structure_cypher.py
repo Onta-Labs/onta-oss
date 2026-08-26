@@ -8,10 +8,14 @@ from infona_client.nlp.cypher_example_seeds_data import (
     CYPHER_SEEDS,
     SHAPE_GRAPH_DEGREE,
     SHAPE_GRAPH_EXISTS,
+    SHAPE_GRAPH_NEIGHBOR,
     SHAPE_GRAPH_PATH,
+    SHAPE_GRAPH_REL_COUNT,
 )
 from infona_client.nlp.query_constraint_coverage_check import check_constraint_coverage
+from infona_client.nlp.query_constraint_coverage_dim import plan_has_dimension_filter
 from infona_client.nlp.query_intent import (
+    extract_filter_tokens,
     question_has_graph_structure_intent,
     sketch_query_intent,
 )
@@ -119,11 +123,176 @@ def test_seed_table_includes_graph_structure_shapes():
     assert SHAPE_GRAPH_EXISTS in present
     assert SHAPE_GRAPH_DEGREE in present
     assert SHAPE_GRAPH_PATH in present
-    for shape in (SHAPE_GRAPH_EXISTS, SHAPE_GRAPH_DEGREE, SHAPE_GRAPH_PATH):
+    assert SHAPE_GRAPH_REL_COUNT in present
+    assert SHAPE_GRAPH_NEIGHBOR in present
+    for shape in (
+        SHAPE_GRAPH_EXISTS,
+        SHAPE_GRAPH_DEGREE,
+        SHAPE_GRAPH_PATH,
+        SHAPE_GRAPH_REL_COUNT,
+        SHAPE_GRAPH_NEIGHBOR,
+    ):
         body = next(s["cypher"] for s in CYPHER_SEEDS if s["shape"] == shape)
         assert "$tenant_id" in body
         assert "$kg" in body
         assert "HAS_ASSERTION" not in body
         assert "apoc" not in body.lower()
+        assert ":KgNode" not in body
         if shape == SHAPE_GRAPH_PATH:
             assert "shortestPath" in body
+            assert "AS answer" in body
+            assert "toString([" not in body
+        if shape == SHAPE_GRAPH_DEGREE:
+            assert "[:OBJECT]" in body
+            assert "Answer:" in body
+        if shape in (SHAPE_GRAPH_EXISTS, SHAPE_GRAPH_REL_COUNT, SHAPE_GRAPH_NEIGHBOR):
+            assert "replace(toLower(" in body
+        if shape == SHAPE_GRAPH_NEIGHBOR:
+            assert "[:SUBJECT|OBJECT]" in body
+
+
+_REL_COUNT_Q = (
+    "How many outgoing relations of type 'made_by' does Acme have? "
+    "Answer in the format 'Answer: <number>'. Do not output anything other "
+    "than 'Answer: <number>'"
+)
+_REL_COUNT_CYPHER = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})
+WHERE replace(toLower(coalesce(e.display_name, e.display_label, e.name, '')), '_', ' ')
+  = replace(toLower($entity_name), '_', ' ')
+MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg})-[:SUBJECT]->(e)
+MATCH (a)-[:OBJECT]->(:Entity {tenant_id: $tenant_id, kg: $kg})
+MATCH (a)-[:PREDICATE]->(p:Property {tenant_id: $tenant_id, kg: $kg})
+WHERE replace(toLower(p.name), '_', ' ') = replace(toLower($rel_attr), '_', ' ')
+RETURN 'Answer: ' + toString(count(DISTINCT a)) AS answer
+""".strip()
+
+_NEIGHBOR_Q = (
+    "How many of the directly connected entities to Widget A have an outgoing "
+    "property of type 'made_by' in the knowledge graph? You must respond in "
+    "the format 'Answer: <number>'."
+)
+_NEIGHBOR_CYPHER = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})
+WHERE replace(toLower(coalesce(e.display_name, e.name, '')), '_', ' ')
+  = replace(toLower($entity_name), '_', ' ')
+MATCH (hop:Assertion {tenant_id: $tenant_id, kg: $kg})-[:SUBJECT|OBJECT]->(e)
+MATCH (hop)-[:SUBJECT|OBJECT]->(nbr:Entity {tenant_id: $tenant_id, kg: $kg})
+WHERE nbr <> e
+WITH DISTINCT nbr
+MATCH (out:Assertion {tenant_id: $tenant_id, kg: $kg})-[:SUBJECT]->(nbr)
+MATCH (out)-[:OBJECT]->(:Entity {tenant_id: $tenant_id, kg: $kg})
+MATCH (out)-[:PREDICATE]->(p:Property {tenant_id: $tenant_id, kg: $kg})
+WHERE replace(toLower(p.name), '_', ' ') = replace(toLower($rel_attr), '_', ' ')
+RETURN 'Answer: ' + toString(count(DISTINCT nbr)) AS answer
+""".strip()
+
+
+def test_answer_format_prose_is_not_a_filter_token():
+    lows = {t.lower() for t in extract_filter_tokens(_REL_COUNT_Q)}
+    assert "answer: <number>" not in lows
+    assert "format" not in lows
+    assert "made_by" in lows or "made by" in lows
+
+
+def test_knowledge_graph_boilerplate_is_not_a_filter_token():
+    lows = {t.lower() for t in extract_filter_tokens(_NEIGHBOR_Q)}
+    assert "knowledge graph" not in lows
+    assert "answer: <number>" not in lows
+    assert "format" not in lows
+
+
+def test_typed_rel_count_plan_does_not_fail_closed():
+    r = check_constraint_coverage(
+        _REL_COUNT_Q,
+        _REL_COUNT_CYPHER,
+        params={"entity_name": "Acme", "rel_attr": "made_by"},
+    )
+    assert r.ok
+    assert not r.fail_closed
+
+
+def test_typed_rel_count_unfiltered_still_fail_closes():
+    r = check_constraint_coverage(
+        _REL_COUNT_Q,
+        _UNFILTERED_COUNT,
+        params={"type_names": ["Entity"]},
+    )
+    assert not r.ok
+    assert r.fail_closed
+
+
+def test_space_underscore_rel_attr_is_a_dim_filter():
+    cypher = (
+        "MATCH (a:Assertion)-[:PREDICATE]->(p:Property) "
+        "WHERE replace(toLower(p.name), '_', ' ') = replace(toLower($rel_attr), '_', ' ') "
+        "RETURN count(a) AS n"
+    )
+    assert plan_has_dimension_filter(
+        cypher, params={"rel_attr": "member_of"}
+    )
+    r = check_constraint_coverage(
+        "How many incoming relations of type 'member of' does Widget A have?",
+        """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})
+WHERE toLower(coalesce(e.display_name, e.name, '')) = toLower($entity_name)
+MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg})-[:OBJECT]->(e)
+MATCH (a)-[:PREDICATE]->(p:Property {tenant_id: $tenant_id, kg: $kg})
+WHERE replace(toLower(p.name), '_', ' ') = replace(toLower($rel_attr), '_', ' ')
+RETURN count(DISTINCT a) AS n
+""".strip(),
+        params={"entity_name": "Widget A", "rel_attr": "member_of"},
+    )
+    assert r.ok
+    assert not r.fail_closed
+
+
+def test_neighbor_outgoing_plan_does_not_fail_closed():
+    r = check_constraint_coverage(
+        _NEIGHBOR_Q,
+        _NEIGHBOR_CYPHER,
+        params={"entity_name": "Widget A", "rel_attr": "made_by"},
+    )
+    assert r.ok
+    assert not r.fail_closed
+
+
+def test_repair_shortest_path_filters_entity_nodes():
+    from infona_client.nlp.graph_structure_cypher import repair_graph_structure_cypher
+
+    raw = (
+        "MATCH p = shortestPath((s)-[:SUBJECT|OBJECT*..12]-(t)) "
+        "WITH nodes(p) AS path_nodes "
+        "RETURN 'SHORTEST PATH: [' + reduce(acc = '', x IN path_nodes | "
+        "acc + coalesce(x.display_name, x.name)) + ']' AS answer"
+    )
+    out, changed = repair_graph_structure_cypher(raw, "shortest path between A and B")
+    assert changed
+    assert "[n IN nodes(p) WHERE n:Entity]" in out
+    assert "WITH nodes(p) AS" not in out
+    assert "coalesce(x.display_name, x.name, '')" in out
+
+
+def test_repair_neighbor_first_hop_is_undirected():
+    from infona_client.nlp.graph_structure_cypher import repair_graph_structure_cypher
+
+    q = "How many of the directly connected entities to Widget A have an outgoing property of type 'made_by'?"
+    raw = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})
+MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg})-[:SUBJECT]->(e)
+MATCH (a)-[:OBJECT]->(neighbor:Entity)
+MATCH (out:Assertion)-[:SUBJECT]->(neighbor)
+RETURN count(DISTINCT neighbor) AS n
+""".strip()
+    out, changed = repair_graph_structure_cypher(raw, q)
+    assert changed
+    assert out.count("[:SUBJECT|OBJECT]") >= 2
+    assert "-[:SUBJECT]->(neighbor)" in out or "-[:SUBJECT]->(neighbor" in out
+    assert "neighbor <> e" in out or "<> e" in out
+
+
+def test_path_seed_returns_answer_string_not_path_alias():
+    body = next(s["cypher"] for s in CYPHER_SEEDS if s["shape"] == SHAPE_GRAPH_PATH)
+    assert "AS answer" in body
+    assert "AS path" not in body
+    assert "reduce(" in body

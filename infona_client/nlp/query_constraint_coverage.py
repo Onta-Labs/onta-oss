@@ -91,6 +91,7 @@ from infona_client.nlp.query_constraint_coverage_types import (  # noqa: F401
     _DimEntryLike,
     _DimValueLike,
     _MEASURE_ONLY_TEMPLATES,
+    _NAME_PARAM_KEYS,
     _PURE_TYPE_TEMPLATES,
     _host,
 )

@@ -18,6 +18,7 @@ from infona_client.nlp.query_constraint_coverage_types import (
     _DIM_PARAM_KEYS,
     _DIM_VALUE_IN_CYPHER_RE,
     _MEASURE_ONLY_TEMPLATES,
+    _NAME_PARAM_KEYS,
     _PURE_TYPE_TEMPLATES,
 )
 from infona_client.nlp.query_intent import QueryIntentSketch
@@ -77,6 +78,14 @@ def plan_has_dimension_filter(
         return True
 
     c = cypher or ""
+    # Typed-rel / entity-name binds are dimension filters (how-many incoming
+    # relations of type X does Y have) — not silent unfiltered totals.
+    if _param_nonempty(params, "rel_attr") and "$rel_attr" in c:
+        return True
+    if _param_nonempty(params, "property_name") and "$property_name" in c:
+        return True
+    if any(_param_nonempty(params, k) and f"${k}" in c for k in _NAME_PARAM_KEYS):
+        return True
     if _DIM_VALUE_IN_CYPHER_RE.search(c):
         return True
 
@@ -197,11 +206,15 @@ def _leaf_present_in_plan(
     if not leaf_l:
         return False
     params = params or {}
-    for key in ("prop_key", "rel_attr", "filter_prop_key", "filter_key"):
+    leaf_vars = _token_variants(leaf_l)
+    for key in ("prop_key", "rel_attr", "property_name", "filter_prop_key", "filter_key"):
         raw = params.get(key)
         if raw is None:
             continue
-        if str(raw).strip().lower() == leaf_l:
+        raw_l = str(raw).strip().lower()
+        if raw_l == leaf_l:
+            return True
+        if leaf_vars and (_token_variants(raw_l) & leaf_vars):
             return True
     c = (cypher or "").lower()
     # Free-form entity property: e.leaf / e[`leaf`] / p.name = 'leaf' / rel type.
@@ -230,10 +243,18 @@ def _leaf_present_in_plan(
     # prop_key / rel_attr params already checked; also accept when $prop_key is
     # used and params.prop_key equals leaf (done above). When cypher has
     # p.name = $prop_key and prop_key is the leaf — covered by params.
-    if "$prop_key" in c and str(params.get("prop_key", "")).strip().lower() == leaf_l:
+    if "$prop_key" in c and (
+        str(params.get("prop_key", "")).strip().lower() == leaf_l
+        or (_token_variants(str(params.get("prop_key", ""))) & leaf_vars)
+    ):
         return True
-    if "$rel_attr" in c and str(params.get("rel_attr", "")).strip().lower() == leaf_l:
-        return True
+    for rel_key in ("rel_attr", "property_name"):
+        dollar = f"${rel_key}"
+        if dollar in c and (
+            str(params.get(rel_key, "")).strip().lower() == leaf_l
+            or (_token_variants(str(params.get(rel_key, ""))) & leaf_vars)
+        ):
+            return True
     # Whole-word leaf token in cypher body (template free-form).
     if re.search(rf"(?i)(?<![A-Za-z0-9_]){re.escape(leaf_l)}(?![A-Za-z0-9_])", c):
         return True
@@ -266,7 +287,7 @@ def _value_present_in_plan(
             return True
         return False
 
-    for key in ("prop_value", "needle", "target_name"):
+    for key in ("prop_value", "needle", *_NAME_PARAM_KEYS):
         if key in params and _matches(params.get(key)):
             return True
 
@@ -336,6 +357,10 @@ def plan_covers_dim_bind(
             return True
         # Some plans only put $target_name when rel is in cypher as type.
         if value_ok and leaf_ok:
+            return True
+        # Named subject of the question (start/entity/from) — the registry may
+        # guess a relationship leaf the plan does not traverse.
+        if value_ok and any(f"${k}" in (cypher or "") for k in _NAME_PARAM_KEYS):
             return True
         return False
 

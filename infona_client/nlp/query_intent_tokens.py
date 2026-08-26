@@ -74,6 +74,31 @@ def _normalize_token(raw: str) -> str:
     return re.sub(r"\s+", " ", t)
 
 
+# Answer-format / task-boilerplate quoted in the question ("Answer: <number>",
+# "in the format", "in the knowledge graph"). These are not dimension values.
+_INSTRUCTION_TOKEN_RE = re.compile(
+    r"(?ix)^(?:"
+    r"answer\s*:.*"
+    r"|format"
+    r"|knowledge\s+graph"
+    r"|shortest\s+path(?:\s*:.*)?"
+    r"|yes\s*/\s*no"
+    r"|nothing\s+else"
+    r"|entity\s+label"
+    r"|<number>"
+    r"|<entity(?:\s+label)?>"
+    r")$"
+)
+
+
+def _is_instruction_token(tok: str) -> bool:
+    """True for answer-format / task-boilerplate tokens, not real dim values."""
+    low = (tok or "").strip().lower()
+    if not low:
+        return False
+    return bool(_INSTRUCTION_TOKEN_RE.fullmatch(low))
+
+
 def _is_stop_token(tok: str) -> bool:
     low = tok.lower().strip()
     if not low or len(low) < 2:
@@ -175,7 +200,13 @@ def extract_filter_tokens(question: str) -> list[str]:
     seen: set[str] = set()
     out: list[str] = []
 
-    def _add(raw: str, *, allow_measure_head: bool = False, allow_year: bool = False) -> None:
+    def _add(
+        raw: str,
+        *,
+        allow_measure_head: bool = False,
+        allow_year: bool = False,
+        allow_snake: bool = False,
+    ) -> None:
         tok = _normalize_token(raw)
         if not tok:
             return
@@ -187,6 +218,8 @@ def extract_filter_tokens(question: str) -> list[str]:
                 break
         if not tok:
             return
+        if _is_instruction_token(tok):
+            return
         if allow_year and re.fullmatch(r"\d{4}", tok):
             pass
         elif _is_stop_token(tok):
@@ -194,7 +227,12 @@ def extract_filter_tokens(question: str) -> list[str]:
         low = tok.lower()
         if not allow_measure_head and low in _MEASURE_HEAD_STOP and " " not in low:
             return
-        if " " not in low and "_" in low and low not in _STATUS_VALUE_ALLOW:
+        if (
+            not allow_snake
+            and " " not in low
+            and "_" in low
+            and low not in _STATUS_VALUE_ALLOW
+        ):
             return
         if low in seen:
             return
@@ -205,7 +243,9 @@ def extract_filter_tokens(question: str) -> list[str]:
         _add(m.group("year"), allow_measure_head=True, allow_year=True)
 
     for m in _QUOTED_RE.finditer(q):
-        _add(m.group(1), allow_measure_head=True)
+        # Quoted snake_case is a real constraint (rel leaf 'made_by'), not a
+        # schema-chatter skip.
+        _add(m.group(1), allow_measure_head=True, allow_snake=True)
 
     for m in _VALUE_AFTER_COPULA_RE.finditer(q):
         if _copula_is_verb_prep(q, m):
@@ -281,7 +321,7 @@ def collapse_filter_tokens(tokens: list[str] | tuple[str, ...]) -> list[str]:
         if stripped:
             tok = stripped
         key = tok.lower()
-        if key in seen or _is_stop_token(tok):
+        if key in seen or _is_stop_token(tok) or _is_instruction_token(tok):
             continue
         seen.add(key)
         cleaned.append(tok)

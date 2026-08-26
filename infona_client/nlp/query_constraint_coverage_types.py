@@ -91,6 +91,26 @@ _DIM_PARAM_KEYS = (
     "threshold",
     "op",
     "rel_attr",
+    "property_name",
+    "entity_name",
+    "from_name",
+    "to_name",
+    "start_name",
+    "end_name",
+    "start_node_name",
+    "end_node_name",
+)
+
+# Entity-label params used by graph-structure / typed-rel free-form plans.
+_NAME_PARAM_KEYS = (
+    "target_name",
+    "entity_name",
+    "from_name",
+    "to_name",
+    "start_name",
+    "end_name",
+    "start_node_name",
+    "end_node_name",
 )
 
 # Aggregate shapes in free-form Cypher.
@@ -109,6 +129,24 @@ _DIM_VALUE_IN_CYPHER_RE = re.compile(
     r"=\s*\$target_name\b"
     r"|"
     r"=\s*\$threshold\b"
+    r"|"
+    r"\b\$rel_attr\b"
+    r"|"
+    r"\b\$property_name\b"
+    r"|"
+    r"\b\$entity_name\b"
+    r"|"
+    r"\b\$from_name\b"
+    r"|"
+    r"\b\$to_name\b"
+    r"|"
+    r"\b\$start_name\b"
+    r"|"
+    r"\b\$end_name\b"
+    r"|"
+    r"\b\$start_node_name\b"
+    r"|"
+    r"\b\$end_node_name\b"
     r"|"
     r"\b\$op\b"
     r"|"
