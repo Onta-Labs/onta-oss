@@ -510,3 +510,44 @@ def test_records_relationship_without_has_prefix_is_one_column(
     assert data["columns"].count("synth_sponsor") == 1, data["columns"]
     assert "year" in data["columns"]
     assert data["rows"][0]["synth_sponsor"] == "Ada Labs"
+
+
+def test_records_declared_relationship_with_no_edge_is_still_a_column(
+    store, client, auth_headers
+):
+    """Declared object properties are columns even with no instance edge.
+
+    Same COG-112 analog as ``test_records_declared_attribute_with_no_value_is_still_a_column``.
+    Overlay-only minting would hide an unfilled enrich target from the table.
+    """
+    org_type = "SynthOrg"
+    _declare_rel(TYPE, "synth_sponsor", org_type)
+    _seed(store, _movie(E1, label="The Picture", title="The Picture", year="1999"))
+
+    data = _get(client, auth_headers).json()
+    assert "synth_sponsor" in data["columns"], data["columns"]
+    assert data["rows"][0]["synth_sponsor"] == ""
+    assert "year" in data["columns"]
+
+
+def test_records_declared_relationship_survives_extra_column_budget(
+    store, client, auth_headers
+):
+    """Declared rels are exempt from the 24 observed-extra cap."""
+    org_type = "SynthOrg"
+    org = entity_uri(org_type, "o1")
+    _declare_rel(TYPE, "synth_sponsor", org_type)
+    triples = [
+        *_movie(E1, label="The Picture", title="The Picture", year="1999"),
+        (org, RDF_TYPE, TYPES + org_type),
+        (org, LABEL_PRED, "Ada Labs"),
+        (E1, f"{ONTO}synth_sponsor", org),
+    ]
+    for i in range(24):
+        leaf = f"extra_{i:02d}"
+        triples.append((E1, f"{TYPES}{TYPE}/attrs/{leaf}", f"v{i}"))
+    _seed(store, triples)
+
+    data = _get(client, auth_headers).json()
+    assert "synth_sponsor" in data["columns"], data["columns"]
+    assert data["rows"][0]["synth_sponsor"] == "Ada Labs"
