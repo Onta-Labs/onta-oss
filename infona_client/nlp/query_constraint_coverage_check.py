@@ -11,7 +11,7 @@ from infona_client.nlp.cypher_filter_integrity import (
 )
 from infona_client.nlp.query_constraint_coverage_dim import (
     _dim_bind_label,
-    _plan_is_aggregate_or_count,
+    plan_is_silent_total_risk,
 )
 from infona_client.nlp.query_constraint_coverage_types import (
     CoverageResult,
@@ -68,7 +68,7 @@ def check_constraint_coverage(
     has_dim = _host().effective_has_dim_filter(
         cypher, params=params, template=tmpl, sketch=sk, unbound=unbound
     )
-    is_agg_or_count = _plan_is_aggregate_or_count(cypher, tmpl, sk)
+    is_agg_or_count = plan_is_silent_total_risk(cypher, tmpl, sk)
     filterish = sk.has_filter_intent or bool(tokens) or question_has_filter_intent(
         question
     )

@@ -286,6 +286,26 @@ dual-written shortcut for leaf `lead_sponsor` is `LEAD_SPONSOR`. Prefer the \
 Assertion pattern (source of truth) or the `related_entities` / \
 `related_entity_name_filter` template; the shortcut rel is a derived cache.
 
+GRAPH-STRUCTURE questions (exists / highest-degree / shortest-path) — always \
+read-only Assertion Cypher. Never APOC, never CALL, never CREATE/SET, never \
+HAS_ASSERTION, never lowercase typed rels like `[:diplomatic_relation]`. \
+Bind entities with \
+`toLower(coalesce(e.display_name, e.display_label, e.name, '')) = toLower($name)`.
+- EXISTS / "is this triple present" (Yes/No): MATCH both entities by label, \
+then MATCH (a:Assertion)-[:SUBJECT]->(from) MATCH (a)-[:OBJECT]->(to) \
+MATCH (a)-[:PREDICATE]->(p) WHERE p.name = $rel_attr \
+RETURN CASE WHEN count(a) > 0 THEN 'Yes' ELSE 'No' END AS answer. \
+Required MATCH, not OPTIONAL.
+- HIGHEST DEGREE / "which entity has the most (incoming|outgoing|total) edges": \
+outgoing = count Assertions where (a)-[:SUBJECT]->(e); incoming = \
+(a)-[:OBJECT]->(e); total = either. MATCH not OPTIONAL MATCH. \
+`WITH e, count(a) AS deg ORDER BY deg DESC LIMIT 1 \
+RETURN coalesce(e.display_name, e.display_label, e.name) AS name`.
+- SHORTEST PATH between two entity labels: MATCH both nodes, then \
+`MATCH p = shortestPath((s)-[:SUBJECT|OBJECT*..12]-(t)) \
+RETURN [n IN nodes(p) WHERE n:Entity | coalesce(n.display_name, n.display_label, n.name)] AS path`. \
+Never `apoc.*`.
+
 Prefer allowlisted semantic helper templates (set the JSON ``template`` field when \
 the shape matches; params must match the template). Helpers include:
 - entities_of_type / entities_of_type_count — type membership ONLY when the \

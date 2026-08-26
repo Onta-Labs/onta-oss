@@ -118,6 +118,9 @@ SHAPE_SUM = "sum"
 SHAPE_AVG = "avg"
 SHAPE_RELATED_1HOP = "related_entities_1hop"
 SHAPE_ARGMAX = "argmax_by_dim"
+SHAPE_GRAPH_EXISTS = "graph_exists"
+SHAPE_GRAPH_DEGREE = "graph_degree"
+SHAPE_GRAPH_PATH = "graph_shortest_path"
 
 REQUIRED_CYPHER_SHAPES: frozenset[str] = frozenset(
     {
@@ -338,5 +341,62 @@ CYPHER_SEEDS: list[dict[str, Any]] = [
         kg_name="synthetic-cypher-shapes",
         cypher=_ARGMAX_BY_DIM,
         ontology_context="Type: Product\n  - region_code (string)\n  - price (float)",
+    ),
+    _seed(
+        shape=SHAPE_GRAPH_EXISTS,
+        question=(
+            "Is the following triplet fact present in the knowledge graph "
+            "(Yes/No)? (Widget A, made_by, Acme)"
+        ),
+        kg_name="synthetic-cypher-shapes",
+        cypher=_one_line(
+            """
+MATCH (from_e:Entity {tenant_id: $tenant_id, kg: $kg})
+WHERE toLower(coalesce(from_e.display_name, from_e.name, '')) = toLower($from_name)
+MATCH (to_e:Entity {tenant_id: $tenant_id, kg: $kg})
+WHERE toLower(coalesce(to_e.display_name, to_e.name, '')) = toLower($to_name)
+MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg})-[:SUBJECT]->(from_e)
+MATCH (a)-[:OBJECT]->(to_e)
+MATCH (a)-[:PREDICATE]->(p:Property {tenant_id: $tenant_id, kg: $kg})
+WHERE p.name = $rel_attr
+RETURN CASE WHEN count(a) > 0 THEN 'Yes' ELSE 'No' END AS answer
+"""
+        ),
+        ontology_context="Type: Widget\n  - made_by → Maker\nType: Maker\n  - name (string)",
+    ),
+    _seed(
+        shape=SHAPE_GRAPH_DEGREE,
+        question=(
+            "Which entity has the highest number of outgoing edges in the "
+            "provided knowledge graph?"
+        ),
+        kg_name="synthetic-cypher-shapes",
+        cypher=_one_line(
+            """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})
+MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg})-[:SUBJECT]->(e)
+WITH e, count(a) AS deg
+ORDER BY deg DESC
+LIMIT 1
+RETURN coalesce(e.display_name, e.name) AS name
+"""
+        ),
+        ontology_context="Type: Entity\n  - related_to → Entity",
+    ),
+    _seed(
+        shape=SHAPE_GRAPH_PATH,
+        question="What is the shortest path between Widget A and Widget B?",
+        kg_name="synthetic-cypher-shapes",
+        cypher=_one_line(
+            """
+MATCH (s:Entity {tenant_id: $tenant_id, kg: $kg})
+WHERE toLower(coalesce(s.display_name, s.name, '')) = toLower($start_name)
+MATCH (t:Entity {tenant_id: $tenant_id, kg: $kg})
+WHERE toLower(coalesce(t.display_name, t.name, '')) = toLower($end_name)
+MATCH p = shortestPath((s)-[:SUBJECT|OBJECT*..12]-(t))
+RETURN [n IN nodes(p) WHERE n:Entity | coalesce(n.display_name, n.name)] AS path
+"""
+        ),
+        ontology_context="Type: Widget\n  - related_to → Widget",
     ),
 ]
