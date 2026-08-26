@@ -150,7 +150,15 @@ def dropped_projection_aliases(
     variables: list[str],
     bindings: list[dict[str, str]],
 ) -> list[str]:
-    """Generated ``RETURN`` aliases that never appeared in the executed rows."""
+    """Generated ``RETURN`` aliases that never appeared in the executed rows.
+
+    Zero-row results are "no signal" (same as :func:`unbound_projection_vars`):
+    every alias is absent, and the empty-result path is reported elsewhere.
+    Computed aliases like ``path`` / ``answer`` on a miss must not be framed
+    as unpopulated entity attributes.
+    """
+    if not bindings:
+        return []
     present: set[str] = set(variables or ())
     for row in bindings or ():
         present.update(row.keys())

@@ -286,25 +286,46 @@ dual-written shortcut for leaf `lead_sponsor` is `LEAD_SPONSOR`. Prefer the \
 Assertion pattern (source of truth) or the `related_entities` / \
 `related_entity_name_filter` template; the shortcut rel is a derived cache.
 
-GRAPH-STRUCTURE questions (exists / highest-degree / shortest-path) — always \
-read-only Assertion Cypher. Never APOC, never CALL, never CREATE/SET, never \
-HAS_ASSERTION, never lowercase typed rels like `[:diplomatic_relation]`. \
-Bind entities with \
-`toLower(coalesce(e.display_name, e.display_label, e.name, '')) = toLower($name)`.
+GRAPH-STRUCTURE questions (exists / highest-degree / shortest-path / typed-rel \
+count / neighbor-outgoing count) — always read-only Assertion Cypher. Never \
+APOC, never CALL, never CREATE/SET, never HAS_ASSERTION, never `:KgNode`, never \
+lowercase typed rels like `[:diplomatic_relation]`. Dual-write shortcuts are \
+UPPER_SNAKE_CASE. Relationship leaves are `:Property` names (`p.name`), never \
+rel types. Bind entity labels space/underscore-insensitively: \
+`replace(toLower(coalesce(e.display_name, e.display_label, e.name, '')), '_', ' ') \
+= replace(toLower($name), '_', ' ')`. Bind relationship leaves the same way: \
+`replace(toLower(p.name), '_', ' ') = replace(toLower($rel_attr), '_', ' ')` \
+so NL `member of` matches ingested `member_of`. Object-property Assertions \
+have an `:OBJECT` Entity; datatype literals do not — never count literals as \
+graph edges. Instruction prose (`Answer: <number>`, `format`, \
+`in the knowledge graph`) is not a filter.
 - EXISTS / "is this triple present" (Yes/No): MATCH both entities by label, \
 then MATCH (a:Assertion)-[:SUBJECT]->(from) MATCH (a)-[:OBJECT]->(to) \
-MATCH (a)-[:PREDICATE]->(p) WHERE p.name = $rel_attr \
+MATCH (a)-[:PREDICATE]->(p) WHERE replace(toLower(p.name), '_', ' ') = \
+replace(toLower($rel_attr), '_', ' ') \
 RETURN CASE WHEN count(a) > 0 THEN 'Yes' ELSE 'No' END AS answer. \
 Required MATCH, not OPTIONAL.
 - HIGHEST DEGREE / "which entity has the most (incoming|outgoing|total) edges": \
-outgoing = count Assertions where (a)-[:SUBJECT]->(e); incoming = \
-(a)-[:OBJECT]->(e); total = either. MATCH not OPTIONAL MATCH. \
-`WITH e, count(a) AS deg ORDER BY deg DESC LIMIT 1 \
-RETURN coalesce(e.display_name, e.display_label, e.name) AS name`.
+count only object-property Assertions (required MATCH \
+`(a)-[:OBJECT]->(:Entity)`). Outgoing = (a)-[:SUBJECT]->(e); incoming = \
+(a)-[:OBJECT]->(e); total = either. MATCH not OPTIONAL MATCH. Never `:KgNode`. \
+`WITH e, count(DISTINCT a) AS deg ORDER BY deg DESC LIMIT 1 \
+RETURN 'Answer: ' + coalesce(e.display_name, e.display_label, e.name) AS answer`.
 - SHORTEST PATH between two entity labels: MATCH both nodes, then \
-`MATCH p = shortestPath((s)-[:SUBJECT|OBJECT*..12]-(t)) \
-RETURN [n IN nodes(p) WHERE n:Entity | coalesce(n.display_name, n.display_label, n.name)] AS path`. \
-Never `apoc.*`.
+`MATCH p = shortestPath((s)-[:SUBJECT|OBJECT*..12]-(t))`. Collect Entity \
+labels only, then RETURN one string \
+`'SHORTEST PATH: [' + reduce(acc='', x IN labels | acc + CASE WHEN acc='' \
+THEN \"'\"+x+\"'\" ELSE \", '\"+x+\"'\" END) + ']' AS answer`. Never \
+`toString(list)` (Neo4j type error). Never `AS path`. Never `apoc.*`.
+- TYPED RELATION COUNT ("how many incoming|outgoing relations of type 'X' \
+does Y have"): bind Y by label, MATCH Assertions on OBJECT (incoming) or \
+SUBJECT (outgoing), bind p.name to $rel_attr as above, \
+`RETURN 'Answer: ' + toString(count(DISTINCT a)) AS answer`.
+- NEIGHBOR OUTGOING COUNT ("how many directly connected entities to X have \
+an outgoing property of type Y"): 1-hop neighbors of X via ANY object-property \
+Assertion (either SUBJECT or OBJECT), THEN count DISTINCT neighbors that \
+themselves have an outgoing $rel_attr Assertion. Do not apply $rel_attr on \
+the first hop.
 
 Prefer allowlisted semantic helper templates (set the JSON ``template`` field when \
 the shape matches; params must match the template). Helpers include:

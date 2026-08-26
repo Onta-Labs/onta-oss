@@ -396,6 +396,7 @@ class PipelineAskMixin:
                 if gate[0] == "return":
                     return gate[1]
                 last_gen = st.last_gen
+                cypher_raw = st.cypher_raw
 
                 try:
                     cypher, forced_params = confine_generated_cypher(

@@ -110,6 +110,15 @@ def test_cypher_return_aliases_coalesce_as():
     assert cypher_return_aliases(cypher) == ["from_name", "to_id"]
 
 
+def test_dropped_projection_aliases_empty_result_is_no_signal():
+    cypher = (
+        "MATCH p = shortestPath((s)-[:SUBJECT|OBJECT*..12]-(t)) "
+        "RETURN [n IN nodes(p) WHERE n:Entity | n.name] AS path"
+    )
+    assert dropped_projection_aliases(cypher, [], []) == []
+    assert dropped_projection_aliases(cypher, ["path"], []) == []
+
+
 def test_dropped_projection_aliases_when_template_omits_return_keys():
     cypher = (
         "MATCH (a:Assertion)-[:SUBJECT]->(e) "

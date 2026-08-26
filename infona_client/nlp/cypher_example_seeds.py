@@ -74,7 +74,9 @@ from infona_client.nlp.cypher_example_seeds_data import (  # noqa: F401
     SHAPE_SUM,
     SHAPE_GRAPH_DEGREE,
     SHAPE_GRAPH_EXISTS,
+    SHAPE_GRAPH_NEIGHBOR,
     SHAPE_GRAPH_PATH,
+    SHAPE_GRAPH_REL_COUNT,
 )
 
 def seed_shapes_present(seeds: list[dict[str, Any]] | None = None) -> set[str]:
