@@ -58,9 +58,8 @@ def test_degree_exists_path_are_graph_structure():
 
 def test_filtered_how_many_is_not_graph_structure():
     assert not question_has_graph_structure_intent(_FILTERED_COUNT_Q)
-    assert not question_has_graph_structure_intent(
-        "How many outgoing relations of type 'made_by' does Acme have?"
-    )
+    rel_q = "How many outgoing relations of type 'made_by' does Acme have?"
+    assert not question_has_graph_structure_intent(rel_q)
     sk = sketch_query_intent(_FILTERED_COUNT_Q)
     assert not sk.has_graph_structure_intent
     r = check_constraint_coverage(
@@ -68,12 +67,30 @@ def test_filtered_how_many_is_not_graph_structure():
     )
     assert not r.ok
     assert r.fail_closed
+    r2 = check_constraint_coverage(
+        rel_q, _UNFILTERED_COUNT, params={"type_names": ["Entity"]}
+    )
+    assert not r2.ok
+    assert r2.fail_closed
 
 
 def test_highest_degree_count_does_not_fail_closed_as_silent_total():
     r = check_constraint_coverage(_DEGREE_Q, _DEGREE_CYPHER)
     assert r.ok
     assert not r.fail_closed
+    # RETURN count(...) is the agg regex; skip must still apply.
+    r_count = check_constraint_coverage(
+        _DEGREE_Q,
+        """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})
+MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg})-[:SUBJECT]->(e)
+RETURN count(a) AS n, coalesce(e.display_name, e.name) AS name
+ORDER BY n DESC
+LIMIT 1
+""".strip(),
+    )
+    assert r_count.ok
+    assert not r_count.fail_closed
 
 
 def test_exists_question_does_not_fail_closed_as_silent_total():

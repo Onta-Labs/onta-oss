@@ -62,7 +62,7 @@ def test_cypher_system_teaches_graph_structure_ops():
     assert "highest" in low and "degree" in low
     assert "yes" in low and "no" in low
     assert "HAS_ASSERTION" in s
-    assert "coalesce(e.display_name, e.name" in s or "coalesce(e.display_name, e.name, ''))" in s
+    assert "coalesce(e.display_name, e.display_label, e.name" in s
 
 
 def test_sparql_prompt_unchanged_still_present():

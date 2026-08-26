@@ -290,7 +290,7 @@ GRAPH-STRUCTURE questions (exists / highest-degree / shortest-path) — always \
 read-only Assertion Cypher. Never APOC, never CALL, never CREATE/SET, never \
 HAS_ASSERTION, never lowercase typed rels like `[:diplomatic_relation]`. \
 Bind entities with \
-`toLower(coalesce(e.display_name, e.name, '')) = toLower($name)`.
+`toLower(coalesce(e.display_name, e.display_label, e.name, '')) = toLower($name)`.
 - EXISTS / "is this triple present" (Yes/No): MATCH both entities by label, \
 then MATCH (a:Assertion)-[:SUBJECT]->(from) MATCH (a)-[:OBJECT]->(to) \
 MATCH (a)-[:PREDICATE]->(p) WHERE p.name = $rel_attr \
@@ -300,10 +300,10 @@ Required MATCH, not OPTIONAL.
 outgoing = count Assertions where (a)-[:SUBJECT]->(e); incoming = \
 (a)-[:OBJECT]->(e); total = either. MATCH not OPTIONAL MATCH. \
 `WITH e, count(a) AS deg ORDER BY deg DESC LIMIT 1 \
-RETURN coalesce(e.display_name, e.name) AS name`.
+RETURN coalesce(e.display_name, e.display_label, e.name) AS name`.
 - SHORTEST PATH between two entity labels: MATCH both nodes, then \
 `MATCH p = shortestPath((s)-[:SUBJECT|OBJECT*..12]-(t)) \
-RETURN [n IN nodes(p) WHERE n:Entity | coalesce(n.display_name, n.name)] AS path`. \
+RETURN [n IN nodes(p) WHERE n:Entity | coalesce(n.display_name, n.display_label, n.name)] AS path`. \
 Never `apoc.*`.
 
 Prefer allowlisted semantic helper templates (set the JSON ``template`` field when \
