@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { InfonaError } from "@infona-ai/cli";
 import { searchHandler } from "../src/index.js";
 import type { SemanticSearchResponse } from "@infona-ai/cli";
 
@@ -114,5 +115,19 @@ describe("search tool — SDK forwarding", () => {
       entityUris: [],
       topK: undefined,
     });
+  });
+
+  it("surfaces a backend 403 as isError and does not return victim data", async () => {
+    const { client } = stubClient(() => {
+      throw new InfonaError(
+        "API key does not grant access to tenant 'victim-ws'. This key can access: stranger-ws.",
+        { status: 403 },
+      );
+    });
+    const res = await searchHandler({ query: "UNIQUE_VICTIM_SECRET_TOKEN_7f3a" }, () => client);
+    expect(res.isError).toBe(true);
+    const text = res.content.map((c) => c.text).join("\n");
+    expect(text).toMatch(/does not grant access/i);
+    expect(text).not.toContain("UNIQUE_VICTIM_SECRET_TOKEN_7f3a");
   });
 });
