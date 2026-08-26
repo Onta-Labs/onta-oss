@@ -291,6 +291,59 @@ RETURN count(DISTINCT neighbor) AS n
     assert "neighbor <> e" in out or "<> e" in out
 
 
+class _FakeDim:
+    leaf = "located_in"
+    kind = "entity_dim"
+    subject_type = "Widget"
+    range_type = "Yard"
+
+
+class _FakeVal:
+    display = "YardX"
+    normalized = "yardx"
+
+
+class _FakeBind:
+    token = "YardX"
+    dim = _FakeDim()
+    matched_value = _FakeVal()
+
+
+def test_entity_name_without_rel_attr_does_not_cover_related_entity_dim():
+    """Name-only COUNT must not satisfy a registry related-entity bind."""
+    from infona_client.nlp.query_constraint_coverage_dim import plan_covers_dim_bind
+
+    cypher = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})
+WHERE toLower(coalesce(e.display_name, e.name, '')) = toLower($entity_name)
+RETURN count(e) AS n
+""".strip()
+    assert not plan_covers_dim_bind(
+        _FakeBind(),
+        cypher,
+        params={"entity_name": "YardX"},
+    )
+    r = check_constraint_coverage(
+        "How many Widgets targeting YardX?",
+        cypher,
+        params={"entity_name": "YardX"},
+        dim_binds=[_FakeBind()],
+    )
+    assert not r.ok
+    assert r.fail_closed
+
+
+def test_unused_rel_attr_param_does_not_save_unfiltered_count():
+    """params.rel_attr with no $rel_attr in Cypher is not a dim filter."""
+    r = check_constraint_coverage(
+        _REL_COUNT_Q,
+        _UNFILTERED_COUNT,
+        params={"type_names": ["Entity"], "rel_attr": "made_by", "entity_name": "Acme"},
+    )
+    assert not r.ok
+    assert r.fail_closed
+
+
 def test_path_seed_returns_answer_string_not_path_alias():
     body = next(s["cypher"] for s in CYPHER_SEEDS if s["shape"] == SHAPE_GRAPH_PATH)
     assert "AS answer" in body

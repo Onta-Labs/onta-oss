@@ -157,10 +157,12 @@ def _token_variants(token: str) -> set[str]:
 def _plan_blob(cypher: str, params: dict[str, Any] | None) -> str:
     parts = [cypher or ""]
     if params:
+        c = cypher or ""
+        used = {k: v for k, v in params.items() if f"${k}" in c}
         try:
-            parts.append(json.dumps(params, default=str, sort_keys=True))
+            parts.append(json.dumps(used, default=str, sort_keys=True))
         except Exception:
-            parts.append(str(params))
+            parts.append(str(used))
     return " ".join(parts).lower()
 
 
@@ -358,9 +360,22 @@ def plan_covers_dim_bind(
         # Some plans only put $target_name when rel is in cypher as type.
         if value_ok and leaf_ok:
             return True
-        # Named subject of the question (start/entity/from) — the registry may
-        # guess a relationship leaf the plan does not traverse.
-        if value_ok and any(f"${k}" in (cypher or "") for k in _NAME_PARAM_KEYS):
+        # Named *subject* of a typed-rel / neighbor plan. Registry may guess a
+        # relationship leaf (founded_by) the question never asked; only skip
+        # leaf when the plan also binds $rel_attr / $property_name. Do not use
+        # $target_name here — that is the related-entity filter itself.
+        c = cypher or ""
+        subject_bound = any(
+            f"${k}" in c
+            for k in (
+                "entity_name",
+                "from_name",
+                "start_name",
+                "start_node_name",
+            )
+        )
+        rel_bound = "$rel_attr" in c or "$property_name" in c
+        if value_ok and subject_bound and rel_bound:
             return True
         return False
 
