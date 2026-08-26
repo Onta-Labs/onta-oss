@@ -54,6 +54,17 @@ def test_cypher_system_mentions_golden_answers_not_string_match():
     assert "sparql look-alike" in s or "not sparql" in s
 
 
+def test_cypher_system_teaches_graph_structure_ops():
+    s = CYPHER_GENERATION_SYSTEM
+    low = s.lower()
+    assert "shortestpath" in low.replace(" ", "")
+    assert "apoc" in low
+    assert "highest" in low and "degree" in low
+    assert "yes" in low and "no" in low
+    assert "HAS_ASSERTION" in s
+    assert "coalesce(e.display_name, e.name" in s or "coalesce(e.display_name, e.name, ''))" in s
+
+
 def test_sparql_prompt_unchanged_still_present():
     """Default Neptune path must keep SPARQL rules (do not delete SPARQL)."""
     assert "FROM" in SPARQL_GENERATION_SYSTEM

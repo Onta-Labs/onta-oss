@@ -36,6 +36,21 @@ def test_rejects_write_clauses():
         )
 
 
+def test_rejects_apoc_shortestpath_as_write():
+    assert not is_read_only_cypher(
+        "MATCH (s:Entity {tenant_id: $tenant_id, kg: $kg}) "
+        "CALL apoc.algo.shortestPath(s, t, '') YIELD path RETURN path"
+    )
+
+
+def test_allows_native_shortestpath():
+    assert is_read_only_cypher(
+        "MATCH (s:Entity {tenant_id: $tenant_id, kg: $kg}) "
+        "MATCH (t:Entity {tenant_id: $tenant_id, kg: $kg}) "
+        "MATCH p = shortestPath((s)-[:SUBJECT|OBJECT*..12]-(t)) RETURN p"
+    )
+
+
 def test_rejects_create_merge_delete():
     for bad in (
         "CREATE (e:Entity {tenant_id: $tenant_id, kg: $kg}) RETURN e",

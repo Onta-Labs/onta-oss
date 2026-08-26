@@ -381,3 +381,17 @@ def _plan_is_aggregate_or_count(cypher: str, template: str | None, sketch: Query
     if pure_type_scan_without_filter(c):
         return True
     return False
+
+
+def plan_is_silent_total_risk(
+    cypher: str, template: str | None, sketch: QueryIntentSketch
+) -> bool:
+    """True when uncovered filters would be a silent unfiltered total.
+
+    Graph-structure asks (exists / shortest-path / highest-degree) often
+    contain ``count()`` and instruction tokens; they are not analytic
+    COUNT-with-filters. Schema/integrity fail-closed still applies upstream.
+    """
+    if getattr(sketch, "has_graph_structure_intent", False):
+        return False
+    return _plan_is_aggregate_or_count(cypher, template, sketch)
