@@ -4,7 +4,7 @@ Each method returns the backend Response VERBATIM (no throw on non-2xx,
 no reshape). Paths come from Client path builders so they stay shared
 with the typed methods.
 */
-import { RawExtractApi } from "./clientRawExtract.js";
+import { RawSkillsApi } from "./clientRawSkills.js";
 import type { RawInit } from "./clientTypesExtra.js";
 
 // --- Raw / passthrough API (COG-128) ----------------------------------------- #
@@ -37,7 +37,7 @@ import type { RawInit } from "./clientTypesExtra.js";
  * if (r.status === 404) { ... }            // no try/catch needed
  * ```
  */
-export class RawApi extends RawExtractApi {
+export class RawApi extends RawSkillsApi {
   // The extract family (ingest/dlt + extract-sources + catalog + schedule) lives
   // in the RawExtractApi base so neither file outgrows the size budget; the
   // surface callers see is unchanged.

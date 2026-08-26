@@ -20,8 +20,9 @@ Public surface:
 * :func:`resolve_skills` — Tenant > Enhanced > Public resolution for one tenant.
 * :func:`skills_prompt_block` — **the agent-injection seam**: resolved skills
   rendered for a prompt, never raising, empty when there is nothing to say.
-  Wiring into production prompts is a separate founder decision (out of scope
-  for ONTA-399).
+  Always-on at /ask Cypher (and residual SPARQL) generation, agent extractors
+  via ``list_type_schema["skills"]``, and planner classify when ``type_name``
+  is set. Empty block is a no-op.
 """
 
 from .global_store import (

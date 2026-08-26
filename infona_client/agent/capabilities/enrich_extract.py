@@ -23,6 +23,7 @@ from infona_client.agent.capabilities.enrich_validate import (
 )
 from infona_client.agent.registry import AgentContext
 from infona_client.resolver.llm_router import PRIMARY_MODEL
+from infona_client.skills.inject import schema_skills_suffix
 
 # --- LLM extraction grounded in the type's real schema ----------------------- #
 
@@ -81,7 +82,7 @@ sponsor) when the user names a role-qualified field.
 _EXTRACT_USER_TEMPLATE = """\
 Type: {type_name}
 Attributes: {attributes}
-Relationships: {relationships}
+Relationships: {relationships}{skills}
 
 Instruction: {instruction}
 
@@ -114,6 +115,7 @@ async def _extract_enrich_request(
             type_name=type_name,
             attributes=", ".join(attr_names) or "(none)",
             relationships=rels_block,
+            skills=schema_skills_suffix(schema),
             instruction=instruction,
         )
         try:

@@ -542,6 +542,79 @@
         }
       }
     },
+    "/graphs/{tenant}/functions/{function_name}": {
+      "delete": {
+        "tags": [
+          "functions"
+        ],
+        "summary": "Delete Function",
+        "description": "Detach a TENANT-layer function attachment.\n\nIdentity is ``(tenant_id, entity_type, name)`` \u2014 the same key as upsert \u2014\nso ``entity_type`` is required. Enhanced and Public attachments are\nrefused (403); a missing tenant attachment is 404.\n\nMutating: ``require_tenant_write`` refuses a ``reader`` member with 403.",
+        "operationId": "delete_function_graphs__tenant__functions__function_name__delete",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "function_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Function Name"
+            }
+          },
+          {
+            "name": "tenant",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant"
+            }
+          },
+          {
+            "name": "entity_type",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Type the function is attached to. Required because attachment identity is (tenant_id, entity_type, name).",
+              "title": "Entity Type"
+            },
+            "description": "Type the function is attached to. Required because attachment identity is (tenant_id, entity_type, name)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/functions/sec-latest-filing": {
       "post": {
         "tags": [

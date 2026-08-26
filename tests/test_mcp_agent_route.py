@@ -103,7 +103,7 @@ def _stub_classifier(monkeypatch, intent: str, clarify: str = ""):
 
 
 def _stub_schema(monkeypatch):
-    async def fake_schema(neptune, tenant_id, type_name):
+    async def fake_schema(neptune, tenant_id, type_name, **_kw):
         return {
             "attributes": ["title", "skills"],
             "relationships": [{"name": "speaks", "target_type": "Language"}],

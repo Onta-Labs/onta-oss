@@ -3,6 +3,7 @@ export {
   InfonaError,
   RawApi,
   RawExtractApi,
+  RawSkillsApi,
   USER_SCHEDULABLE_ACTIONS,
   // The terminal job-status set + predicate — the TS mirror of the backend's
   // `JobStatus.is_terminal()`. A `wait_for_job` caller uses these to decide
@@ -50,6 +51,8 @@ export type {
   // data in ONE graph), as opposed to the tenant-wide declaration-only ontology.
   KgSchema,
   KgSchemaType,
+  // Per-type explore summary (`Client.exploreSummary` / MCP explore_summary).
+  TypeSummary,
   SchemaAttribute,
   SchemaRelationship,
   NormalizationRule,
@@ -87,4 +90,19 @@ export type {
   UsageMetricBlock,
   UsageTotals,
   UsageReport,
+  SkillSummary,
+  SkillDetail,
+  SkillWrite,
+  SkillPatch,
+  SkillValidateResult,
+  SkillsPromptBlock,
+  FunctionRef,
+  FunctionRegister,
+  FunctionRegisterResult,
+  FunctionInvokeRequest,
+  FunctionInvokeResult,
+  EntityDetail,
+  EntityRel,
+  TenantInfo,
+  RecomputeStatsResult,
 } from "./client.js";

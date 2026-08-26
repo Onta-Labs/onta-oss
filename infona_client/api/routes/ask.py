@@ -95,6 +95,7 @@ async def ask_question(
     stack = layer_stack_for(tenant)
     layer_graph_uris = stack.visible_graph_uris()
     pipeline = NLQueryPipeline(client, settings.anthropic_api_key)
+    pipeline._tenant_ctx = tenant
     if body.model:
         pipeline._query_model = body.model
         # Auto-detect provider from model ID format

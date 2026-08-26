@@ -187,41 +187,29 @@ async def skills_prompt_block(
       unconditionally from a hot prompt path.
     * Deduped across the requested types, precedence-ordered, budget-capped.
 
-    THE INJECTION POINTS (surveyed, exact, and currently UNWIRED — see below).
-    Today **no per-type prose reaches any prompt in this product**: the ontology
-    read used for prompts (``ontology_queries.get_full_ontology_query``) does not
-    even project ``rdfs:comment``, and the two templates that would render a type
-    description (``resolver/ontology_resolver._parse_intents``,
-    ``resolver/type_matcher._initial_match``) are handed ``""`` on every
-    production path. So these four are net-new context, not a swap:
+    THE INJECTION POINTS (surveyed and exact). Today no per-type prose reached
+    any prompt: the ontology read used for prompts
+    (``ontology_queries.get_full_ontology_query``) does not even project
+    ``rdfs:comment``. These four are net-new context, not a swap. Empty block
+    == noop (prompts stay byte-identical).
 
-    1. **NL→SPARQL ask** — ``nlp/pipeline.py::NLQueryPipeline._generate_sparql``
-       builds ``prompt = build_generation_prompt(question, ontology, ...)``. The
-       seam is the ``ontology`` summary string assembled by ``_fetch_ontology``:
-       append this block to it. Covers every ``/ask`` query.
+    1. **NL→Cypher /ask** (production) — ``nlp/pipeline_cypher_exec._try_llm_cypher``
+       appends this block to the ontology string handed to
+       ``build_cypher_generation_prompt``. Residual SPARQL
+       ``_generate_sparql`` / ``build_generation_prompt`` does the same.
     2. **Unified agent capabilities** — all three NL→params extractors
-       (``agent/capabilities/enrich_cap._extract_enrich_request``,
+       (``enrich_extract._extract_enrich_request``,
        ``normalize_cap._extract_normalize_directive``,
-       ``ontology_cap._extract_directive``) format the same
-       ``Type / Attributes / Relationships`` template from
-       ``normalization/inference.list_type_schema(neptune, tenant_id, type_name)``.
-       That shared primitive already carries ``tenant_id``, so it is the single
-       highest-leverage insertion point for the agent side: one ``skills`` key on
-       its result feeds all three templates.
-    3. **Agent planner** — ``agent/planner.py::_classify`` injects only capability
-       one-liners plus the transcript; a skills block for ``ctx.type_name`` gives
-       intent classification the type semantics it currently lacks.
-    4. **MCP ``view_ontology``** — ``packages/mcp/src/index.ts`` renders
-       ``Type: / Attributes: / Relationships:`` and today DROPS the
-       ``description`` the backend already returns. It should call the canonical
-       ``GET /graphs/{tenant}/skills/prompt-block`` route rather than render
-       anything itself.
+       ``ontology_cap._extract_directive``) format
+       ``Type / Attributes / Relationships`` from
+       ``normalization/inference.list_type_schema``. That primitive now carries
+       a ``skills`` key; extractors append it when non-empty.
+    3. **Agent planner** — ``agent/planner_classify._classify`` appends this
+       block when ``ctx.type_name`` is set.
+    4. **MCP ``view_ontology``** — appends the SDK ``skillsPromptBlock``
+       text (canonical backend prompt-block; not re-rendered locally).
 
-    **Wiring status: deliberately not yet wired.** This function is complete and
-    tested, and ``GET /graphs/{tenant}/skills/prompt-block`` is a real consumer
-    of it, but the four call sites above are untouched: each one changes a
-    production prompt, and those land better as reviewed per-surface prompt diffs
-    than as one commit that silently alters every prompt in the product.
+    **Wiring status:** 1–4 are always-on.
     """
     # dict.fromkeys is the dedup: it collapses a repeated type (an agent that
     # names the same type twice) into ONE resolution. No second dedup pass over

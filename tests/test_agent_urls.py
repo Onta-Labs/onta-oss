@@ -135,7 +135,7 @@ def _stub_classifier(monkeypatch, intent: str, clarify: str = ""):
 def _stub_enrich(monkeypatch, payload: dict):
     """Stub the enrich capability's schema + extraction so plan() can ground."""
 
-    async def fake_schema(neptune, tenant_id, type_name):
+    async def fake_schema(neptune, tenant_id, type_name, **_kw):
         return {"attributes": ["website"], "relationships": []}
 
     monkeypatch.setattr(

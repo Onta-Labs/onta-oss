@@ -116,7 +116,7 @@ def _track_bg_tasks(monkeypatch):
 
 
 def _stub_schema(monkeypatch):
-    async def fake_schema(neptune, tenant_id, type_name):
+    async def fake_schema(neptune, tenant_id, type_name, **_kw):
         return _SCHEMA
 
     monkeypatch.setattr(

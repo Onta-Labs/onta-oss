@@ -24,6 +24,51 @@ function renderSlot(s: {
   return `${s.name}${kind} ${cov}`;
 }
 
+export async function viewOntologyHandler(
+  _args: Record<string, never> = {},
+  makeClient: () => Client = client,
+) {
+  try {
+    const c = makeClient();
+    const types = await c.ontologyTypes();
+    if (!types.length) return textResult("No ontology types defined yet.");
+    const lines: string[] = [];
+    const typeNames: string[] = [];
+    for (const t of types) {
+      const name = String(t.name ?? "?");
+      typeNames.push(name);
+      lines.push(`Type: ${name}`);
+      const desc = typeof t.description === "string" ? t.description.trim() : "";
+      if (desc) lines.push(`  ${desc}`);
+      const attrs = (t.attributes ?? []) as Array<Record<string, unknown>>;
+      if (attrs.length) {
+        lines.push(
+          `  Attributes: ${attrs.map((a) => String(a.name ?? "?")).join(", ")}`,
+        );
+      }
+      const rels = (t.relationships ?? []) as Array<Record<string, unknown>>;
+      if (rels.length) {
+        lines.push(
+          `  Relationships: ${rels
+            .map(
+              (r) =>
+                `${String(r.predicate ?? r.name ?? "?")} -> ${String(r.target_type ?? "?")}`,
+            )
+            .join(", ")}`,
+        );
+      }
+    }
+    // Canonical skill injection text — do not re-render markdown locally.
+    const block = await c.skillsPromptBlock(typeNames);
+    if (block.text) {
+      lines.push("", block.text);
+    }
+    return textResult(lines.join("\n"));
+  } catch (err) {
+    return errorResult(err);
+  }
+}
+
 export async function inspectGraphSchemaHandler(
   {
     kg_name,
@@ -117,37 +162,7 @@ export function registerSchemaTools(server: McpServer): void {
         "View the ontology (types, attributes, relationships) across all context graphs.",
       inputSchema: {},
     },
-    async () => {
-      try {
-        const types = await client().ontologyTypes();
-        if (!types.length) return textResult("No ontology types defined yet.");
-        const lines: string[] = [];
-        for (const t of types) {
-          const name = String(t.name ?? "?");
-          lines.push(`Type: ${name}`);
-          const attrs = (t.attributes ?? []) as Array<Record<string, unknown>>;
-          if (attrs.length) {
-            lines.push(
-              `  Attributes: ${attrs.map((a) => String(a.name ?? "?")).join(", ")}`,
-            );
-          }
-          const rels = (t.relationships ?? []) as Array<Record<string, unknown>>;
-          if (rels.length) {
-            lines.push(
-              `  Relationships: ${rels
-                .map(
-                  (r) =>
-                    `${String(r.predicate ?? "?")} -> ${String(r.target_type ?? "?")}`,
-                )
-                .join(", ")}`,
-            );
-          }
-        }
-        return textResult(lines.join("\n"));
-      } catch (err) {
-        return errorResult(err);
-      }
-    },
+    () => viewOntologyHandler(),
   );
   server.registerTool(
     "inspect_graph_schema",

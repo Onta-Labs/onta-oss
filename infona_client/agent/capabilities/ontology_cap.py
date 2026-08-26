@@ -38,6 +38,7 @@ from infona_client.models.ontology import OntologyMutation, OntologyOpKind
 from infona_client.graph.queries import tenant_graph_uri
 from infona_client.normalization.inference import list_type_schema
 from infona_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
+from infona_client.skills.inject import schema_skills_suffix
 
 logger = structlog.stdlib.get_logger("infona.agent.ontology")
 
@@ -73,7 +74,9 @@ class OntologyCapability:
         Read-only — a single bounded ontology query, never an instance scan.
         """
         if ctx.type_name:
-            schema = await list_type_schema(ctx.neptune, ctx.tenant_id, ctx.type_name)
+            schema = await list_type_schema(
+                ctx.neptune, ctx.tenant_id, ctx.type_name, tenant=ctx
+            )
             attributes = schema.get("attributes", [])
             relationships = schema.get("relationships", [])
             answer = _format_type_schema(ctx.type_name, attributes, relationships)
@@ -302,7 +305,7 @@ class OntologyCapability:
         if ctx.type_name:
             try:
                 schema = await list_type_schema(
-                    ctx.neptune, ctx.tenant_id, ctx.type_name
+                    ctx.neptune, ctx.tenant_id, ctx.type_name, tenant=ctx
                 )
             except Exception:  # noqa: BLE001 — schema is only for grounding
                 logger.warning("agent_ontology_schema_failed", exc_info=True)
@@ -319,6 +322,7 @@ class OntologyCapability:
                 type_name=ctx.type_name or "(none selected)",
                 attributes=", ".join(attr_names) or "(none)",
                 relationships=rels_block,
+                skills=schema_skills_suffix(schema),
                 instruction=instruction,
             )
             try:
@@ -412,7 +416,7 @@ uses it). "parent_type" only if the user says "under X" / "a kind of X".
 _EXTRACT_USER_TEMPLATE = """\
 Active type: {type_name}
 Attributes: {attributes}
-Relationships: {relationships}
+Relationships: {relationships}{skills}
 
 Instruction: {instruction}
 
