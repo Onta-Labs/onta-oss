@@ -130,7 +130,7 @@ describe("functions — path builders + typed methods", () => {
     expect(calls[0]!.init.method).toBe("POST");
   });
 
-  it("deleteFunction encodes name and optional entity_type", async () => {
+  it("deleteFunction encodes name and always sends entity_type", async () => {
     const { calls } = installFetch(jsonResponse({ ok: true }));
     await makeClient().deleteFunction("widget lookup", { entityType: "SynthWidget" });
     expect(calls[0]!.init.method).toBe("DELETE");

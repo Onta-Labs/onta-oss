@@ -737,6 +737,23 @@ cannot discover them by listing functions.
 
 ---
 
+### `DELETE /graphs/{tenant}/functions/{function_name}`
+
+Delete Function
+
+Detach a TENANT-layer function attachment.
+
+Identity is ``(tenant_id, entity_type, name)`` — the same key as upsert —
+so ``entity_type`` is required. Enhanced and Public attachments are
+refused (403); a missing tenant attachment is 404.
+
+Mutating: ``require_tenant_write`` refuses a ``reader`` member with 403.
+
+**200:** Successful Response
+**422:** Validation Error
+
+---
+
 ## Grep
 
 ### `POST /graphs/{tenant}/grep`

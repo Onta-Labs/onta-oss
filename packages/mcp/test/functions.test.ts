@@ -102,3 +102,14 @@ describe("function tool sources do not hardcode backend paths", () => {
     expect(code).not.toMatch(/\bfetch\s*\(/);
   });
 });
+
+describe("delete_function requires entity_type", () => {
+  it("inputSchema entity_type is not optional", () => {
+    const src = readFileSync(join(here, "../src/mcpFunctions.ts"), "utf8");
+    const start = src.indexOf('"delete_function"');
+    expect(start).toBeGreaterThanOrEqual(0);
+    const block = src.slice(start, start + 800);
+    expect(block).toMatch(/entity_type:\s*z\s*\.\s*string\s*\(/);
+    expect(block).not.toMatch(/entity_type:\s*z\s*\.\s*string\s*\([^)]*\)\s*\.\s*optional\s*\(/);
+  });
+});

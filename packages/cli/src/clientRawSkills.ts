@@ -96,15 +96,13 @@ export class RawSkillsApi extends RawExtractApi {
     });
   }
 
-  /** `DELETE /graphs/{tenant}/functions/{name}?entity_type`. */
+  /** `DELETE /graphs/{tenant}/functions/{name}?entity_type=` (required). */
   deleteFunction(
     name: string,
-    opts: { entityType?: string } = {},
+    opts: { entityType: string },
     init?: RawInit,
   ): Promise<Response> {
-    const qs = opts.entityType
-      ? `?entity_type=${encodeURIComponent(opts.entityType)}`
-      : "";
+    const qs = `?entity_type=${encodeURIComponent(opts.entityType)}`;
     return this.client.requestRaw(
       "DELETE",
       `${this.client.pFunction(name)}${qs}`,

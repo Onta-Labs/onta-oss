@@ -84,7 +84,7 @@ export async function invokeFunctionHandler(
 }
 
 export async function deleteFunctionHandler(
-  { name, entity_type }: { name: string; entity_type?: string },
+  { name, entity_type }: { name: string; entity_type: string },
   makeClient: () => Client = client,
 ) {
   try {
@@ -141,10 +141,13 @@ export function registerFunctionsTools(server: McpServer): void {
     "delete_function",
     {
       description:
-        "Delete a function attachment (writes the function registry).",
+        "Delete a function attachment (writes the function registry). " +
+        "entity_type is required: attachment identity is (tenant, type, name).",
       inputSchema: {
-        name: z.string(),
-        entity_type: z.string().optional().describe("Disambiguate when names collide."),
+        name: z.string().describe("Registered function name."),
+        entity_type: z
+          .string()
+          .describe("Type the function is attached to."),
       },
     },
     (args) => deleteFunctionHandler(args),

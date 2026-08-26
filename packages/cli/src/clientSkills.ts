@@ -177,16 +177,14 @@ export class ClientSkills extends ClientExplore {
   }
 
   /**
-   * Delete a function attachment (`DELETE …/functions/{name}`).
-   * Optional `entityType` is forwarded as `?entity_type=`.
+   * Delete a function attachment (`DELETE …/functions/{name}?entity_type=`).
+   * `entityType` is required: attachment identity is (tenant, type, name).
    */
   async deleteFunction(
     name: string,
-    opts: { entityType?: string } = {},
+    opts: { entityType: string },
   ): Promise<Record<string, unknown>> {
-    const qs = opts.entityType
-      ? `?entity_type=${encodeURIComponent(opts.entityType)}`
-      : "";
+    const qs = `?entity_type=${encodeURIComponent(opts.entityType)}`;
     return this.request<Record<string, unknown>>(
       "DELETE",
       `${this.pFunction(name)}${qs}`,
