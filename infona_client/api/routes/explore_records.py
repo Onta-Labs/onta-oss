@@ -57,7 +57,9 @@ async def _records_from_explore_store(
     (via :func:`~infona_client.graph.explore_store._public_properties`).
     Ontology-declared attributes always become columns (COG-112), even when
     empty on the current page — joined from the tenant catalog, same as the
-    SPARQL branch's ``attr_def`` query.
+    SPARQL branch's ``attr_def`` query. Declared *relationships* are columns
+    too (one leaf, target display name) so Explorer browse can render a filled
+    edge instead of an empty dash. The ``has_*`` alias is never minted.
     """
     from infona_client.graph.explore_store import (
         get_entity_detail as pg_entity_detail,
@@ -84,6 +86,8 @@ async def _records_from_explore_store(
     # attr stays visible in the Explorer table.
     declared_display: list[str] = []
     declared_set: set[str] = set()
+    declared_rel_display: list[str] = []
+    declared_rel_set: set[str] = set()
     try:
         from infona_client.graph.ontology_catalog import list_attributes as cat_list_attrs
 
@@ -97,22 +101,29 @@ async def _records_from_explore_store(
                 continue
             if is_internal_property_key(label):
                 continue
-            # Relationship-kind catalog leaves are type-summary chips
-            # (``works_at →``), not literal table columns. Including them
-            # here made Explorer pin the same leaf twice.
+            # Object properties are relationship columns, not literal ones.
+            # Folding them into the literal list made Explorer pin the same
+            # leaf twice (``works_at`` + ``works_at →``). They still belong
+            # in the table — Browse looks up rec[rel.label] — just once.
             if getattr(a, "kind", None) == "relationship":
+                if label not in declared_rel_set:
+                    declared_rel_set.add(label)
+                    declared_rel_display.append(label)
                 continue
             if label not in declared_set:
                 declared_set.add(label)
                 declared_display.append(label)
         declared_display.sort()
+        declared_rel_display.sort()
     except Exception:
         # Catalog is best-effort: page-observed columns still work without it.
         declared_display = []
         declared_set = set()
+        declared_rel_display = []
+        declared_rel_set = set()
 
     _EMPTY = {
-        "columns": ["name"] + declared_display,
+        "columns": ["name"] + declared_display + declared_rel_display,
         "rows": [],
         "total": 0,
         "next_cursor": None,
@@ -122,10 +133,11 @@ async def _records_from_explore_store(
 
     # Column budget for observed-but-undeclared extras only (mirrors SPARQL path).
     _MAX_EXTRA_COLS = 24
+    n_declared = len(declared_set) + len(declared_rel_set)
 
     # Collect per-entity properties for table columns (page-sized, ≤ 200).
-    col_set: set[str] = set(declared_set)
-    col_display: list[str] = list(declared_display)
+    col_set: set[str] = set(declared_set) | set(declared_rel_set)
+    col_display: list[str] = list(declared_display) + list(declared_rel_display)
     rows_out: list[dict] = []
     for ent in page.entities:
         detail = await pg_entity_detail(
@@ -151,9 +163,9 @@ async def _records_from_explore_store(
             if is_internal_property_key(display):
                 continue
             if display not in col_set:
-                # Declared attrs are unlimited; extras cap at _MAX_EXTRA_COLS.
-                if display not in declared_set:
-                    extras = len(col_set) - len(declared_set)
+                # Declared attrs/rels are unlimited; extras cap at _MAX_EXTRA_COLS.
+                if display not in declared_set and display not in declared_rel_set:
+                    extras = len(col_set) - n_declared
                     if extras >= _MAX_EXTRA_COLS:
                         continue
                 col_set.add(display)
@@ -162,29 +174,37 @@ async def _records_from_explore_store(
                 row[display] = ", ".join(str(x) for x in v)
             else:
                 row[display] = "" if v is None else str(v)
-        # Overlay relationship *display names* onto a column that already
-        # exists as a literal property (legacy dual-written slug repair).
-        # Do not mint new columns — and never a ``has_*`` alias — for
-        # outbound edges; those belong on type-summary.relationships.
+        # Overlay relationship *target display names* onto the relationship
+        # column. One column per leaf (declared object property or observed
+        # edge). Never mint a ``has_*`` strip alias — that was the duplicate
+        # #470 closed. Omitting the column entirely made Explorer render a
+        # filled edge as empty dashes (Browse looks up rec[rel.label]).
         if detail is not None:
             for rel in getattr(detail, "outgoing", ()) or ():
                 leaf = str(getattr(rel, "attr", None) or getattr(rel, "rel_type", "") or "")
-                if not leaf or leaf not in col_set:
+                if not leaf:
                     continue
                 if is_internal_property_key(leaf):
                     continue
-                label = (
+                target = (
                     getattr(rel, "other_name", None)
                     or (getattr(rel, "other_id", "") or "").rstrip("/").split("/")[-1]
                     or ""
                 )
-                if not label:
+                if not target:
                     continue
+                if leaf not in col_set:
+                    if leaf not in declared_set and leaf not in declared_rel_set:
+                        extras = len(col_set) - n_declared
+                        if extras >= _MAX_EXTRA_COLS:
+                            continue
+                    col_set.add(leaf)
+                    col_display.append(leaf)
                 prev = str(row.get(leaf) or "")
                 if not prev or "___" in prev:
-                    row[leaf] = label
-                elif label not in prev.split(", "):
-                    row[leaf] = f"{prev}, {label}"
+                    row[leaf] = target
+                elif target not in prev.split(", "):
+                    row[leaf] = f"{prev}, {target}"
         # Fill blanks for columns already discovered on earlier rows.
         for c in col_display:
             row.setdefault(c, "")
@@ -197,8 +217,10 @@ async def _records_from_explore_store(
 
     # Declared first (stable alpha), then observed extras (alpha) — matches
     # the SPARQL branch's "declared always shown" contract.
-    extras = sorted(c for c in col_display if c not in declared_set)
-    columns = ["name"] + list(declared_display) + extras
+    extras = sorted(
+        c for c in col_display if c not in declared_set and c not in declared_rel_set
+    )
+    columns = ["name"] + list(declared_display) + list(declared_rel_display) + extras
     return {
         "columns": columns,
         "rows": rows_out,

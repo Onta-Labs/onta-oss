@@ -427,43 +427,45 @@ def test_records_name_falls_back_to_slug_when_neither(store, client, auth_header
     assert data["rows"][0]["name"] == "m1"
 
 
-def test_records_relationship_leaf_is_not_a_literal_column(
-    store, client, auth_headers
-):
-    """A declared object property must not appear as a records column.
-
-    Explorer already pins it as a relationship chip (``starring →``). Listing
-    the same leaf in records.columns made the collection table show it twice.
-    Synthetic types only — no production ontology names.
-    """
-    person_type = "SynthCast"
-    person = entity_uri(person_type, "p1")
-    rel_pred = f"{ONTO}has_lead"
+def _declare_rel(type_name: str, attr_name: str, target_type: str, literal: str = "year"):
+    """Catalog a Movie + target type with one object property and one literal."""
+    from infona_client.graph.ontology_catalog import upsert_attribute, upsert_type
 
     async def declare():
-        from infona_client.graph.ontology_catalog import (
-            upsert_attribute,
-            upsert_type,
-        )
-
-        await upsert_type(name=TYPE, tenant_id=TENANT, layer="tenant")
-        await upsert_type(name=person_type, tenant_id=TENANT, layer="tenant")
+        await upsert_type(name=type_name, tenant_id=TENANT, layer="tenant")
+        await upsert_type(name=target_type, tenant_id=TENANT, layer="tenant")
         await upsert_attribute(
-            type_name=TYPE,
-            attr_name="has_lead",
-            datatype=person_type,
+            type_name=type_name,
+            attr_name=attr_name,
+            datatype=target_type,
             tenant_id=TENANT,
             layer="tenant",
         )
         await upsert_attribute(
-            type_name=TYPE,
-            attr_name="year",
+            type_name=type_name,
+            attr_name=literal,
             datatype="string",
             tenant_id=TENANT,
             layer="tenant",
         )
 
     asyncio.get_event_loop_policy().new_event_loop().run_until_complete(declare())
+
+
+def test_records_relationship_leaf_is_one_column_with_target_name(
+    store, client, auth_headers
+):
+    """A declared object property is a records column with the target's name.
+
+    Explorer Browse pins type-summary relationships as table columns and looks
+    up rec[rel.label]. Omitting the leaf made a filled edge render as empty
+    dashes. The ``has_*`` strip alias must still not appear as a second column
+    (infona-oss #470). Synthetic types only — no production ontology names.
+    """
+    person_type = "SynthCast"
+    person = entity_uri(person_type, "p1")
+    rel_pred = f"{ONTO}has_lead"
+    _declare_rel(TYPE, "has_lead", person_type)
     _seed(
         store,
         [
@@ -475,8 +477,36 @@ def test_records_relationship_leaf_is_not_a_literal_column(
     )
 
     data = _get(client, auth_headers).json()
-    assert "has_lead" not in data["columns"], data["columns"]
-    # Old overlay also minted the has_* strip as a second column.
+    assert data["columns"].count("has_lead") == 1, data["columns"]
     assert "lead" not in data["columns"], data["columns"]
     assert "year" in data["columns"]
     assert data["rows"][0]["name"] == "The Picture"
+    assert data["rows"][0]["has_lead"] == "Ada Example"
+
+
+def test_records_relationship_without_has_prefix_is_one_column(
+    store, client, auth_headers
+):
+    """Object properties that are not ``has_*`` still emit exactly one column.
+
+    Mirrors the production enrich path (a type-ranged leaf written as an
+    ``onto/<leaf>`` edge + target node). Synthetic names only.
+    """
+    org_type = "SynthOrg"
+    org = entity_uri(org_type, "o1")
+    rel_pred = f"{ONTO}synth_sponsor"
+    _declare_rel(TYPE, "synth_sponsor", org_type)
+    _seed(
+        store,
+        [
+            *_movie(E1, label="The Picture", title="The Picture", year="1999"),
+            (org, RDF_TYPE, TYPES + org_type),
+            (org, LABEL_PRED, "Ada Labs"),
+            (E1, rel_pred, org),
+        ],
+    )
+
+    data = _get(client, auth_headers).json()
+    assert data["columns"].count("synth_sponsor") == 1, data["columns"]
+    assert "year" in data["columns"]
+    assert data["rows"][0]["synth_sponsor"] == "Ada Labs"
