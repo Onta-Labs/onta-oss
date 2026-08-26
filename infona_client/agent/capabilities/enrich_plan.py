@@ -88,7 +88,9 @@ class EnrichPlanMixin:
         )
         if not type_name:
             return []
-        schema = await _host().list_type_schema(ctx.neptune, ctx.tenant_id, type_name)
+        schema = await _host().list_type_schema(
+            ctx.neptune, ctx.tenant_id, type_name, tenant=ctx
+        )
         req = parsed or await _host()._extract_enrich_request(
             ctx, instruction, type_name, schema
         )

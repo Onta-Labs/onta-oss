@@ -181,7 +181,9 @@ class QueryCapability:
         # pipeline module (and its anthropic client) at app-boot registration.
         from infona_client.nlp.pipeline import NLQueryPipeline
 
-        return NLQueryPipeline(ctx.neptune, ctx.anthropic_key)
+        pipe = NLQueryPipeline(ctx.neptune, ctx.anthropic_key)
+        pipe._tenant_ctx = (ctx.extras or {}).get("tenant")
+        return pipe
 
     async def plan(self, ctx: AgentContext, instruction: str) -> list[PlanStep]:
         # A question is read-only: a single no-write step the planner can also

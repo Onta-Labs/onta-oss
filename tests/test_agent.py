@@ -161,7 +161,7 @@ def _stub_schema(monkeypatch, schema: dict | None = None):
     """Stub ``list_type_schema`` in BOTH capabilities to the Mentor schema."""
     schema = schema if schema is not None else _MENTOR_SCHEMA
 
-    async def fake_schema(neptune, tenant_id, type_name):
+    async def fake_schema(neptune, tenant_id, type_name, **_kw):
         return schema
 
     monkeypatch.setattr(
@@ -458,7 +458,7 @@ async def test_enrich_infers_type_from_message_over_selection(monkeypatch):
 
     captured: dict = {}
 
-    async def fake_schema(neptune, tenant_id, type_name):
+    async def fake_schema(neptune, tenant_id, type_name, **_kw):
         captured["schema_type"] = type_name
         return {"attributes": ["website"], "relationships": []}
 
@@ -486,7 +486,7 @@ async def test_enrich_infers_type_with_no_selection(monkeypatch):
     _stub_classifier(monkeypatch, "enrich")
     _stub_kg_types(monkeypatch, ["Broker", "PropertyListing"])
 
-    async def fake_schema(neptune, tenant_id, type_name):
+    async def fake_schema(neptune, tenant_id, type_name, **_kw):
         return {"attributes": ["website"], "relationships": []}
 
     monkeypatch.setattr(
@@ -533,7 +533,7 @@ async def test_enrich_resolves_ranked_subset_to_entity_uris(monkeypatch):
     _stub_classifier(monkeypatch, "enrich")
     _stub_kg_types(monkeypatch, ["Broker", "PropertyListing"])
 
-    async def fake_schema(neptune, tenant_id, type_name):
+    async def fake_schema(neptune, tenant_id, type_name, **_kw):
         return {"attributes": ["website"], "relationships": []}
 
     monkeypatch.setattr(
@@ -577,7 +577,7 @@ async def test_enrich_unresolvable_subset_fails_closed(monkeypatch):
     _stub_classifier(monkeypatch, "enrich")
     _stub_kg_types(monkeypatch, ["Broker"])
 
-    async def fake_schema(neptune, tenant_id, type_name):
+    async def fake_schema(neptune, tenant_id, type_name, **_kw):
         return {"attributes": ["website"], "relationships": []}
 
     monkeypatch.setattr(
@@ -756,7 +756,7 @@ async def test_multi_value_scope_matches_case_insensitively(monkeypatch):
     still resolves. Drives the enrich cap directly through EnrichCapability.plan."""
     _stub_kg_types(monkeypatch, ["Vendor"])
 
-    async def fake_schema(neptune, tenant_id, type_name):
+    async def fake_schema(neptune, tenant_id, type_name, **_kw):
         # ``region`` must be a real schema predicate or the extractor's scope is
         # (correctly) dropped as unknown before it can be split.
         return {"attributes": ["rating", "region"], "relationships": []}
@@ -806,7 +806,7 @@ async def test_replace_intent_plan_sets_overwrite_param(monkeypatch):
     overwrite (asserted above). Drives EnrichCapability.plan directly."""
     _stub_kg_types(monkeypatch, ["Vendor"])
 
-    async def fake_schema(neptune, tenant_id, type_name):
+    async def fake_schema(neptune, tenant_id, type_name, **_kw):
         return {"attributes": ["rating", "region"], "relationships": []}
 
     monkeypatch.setattr(
@@ -2341,7 +2341,7 @@ async def test_completed_prior_request_does_not_bleed_through_planner(monkeypatc
     _stub_classifier(monkeypatch, "enrich")
     _stub_kg_types(monkeypatch, ["Widget", "Sprocket"])
 
-    async def fake_schema(neptune, tenant_id, type_name):
+    async def fake_schema(neptune, tenant_id, type_name, **_kw):
         return {"attributes": ["price", "weight"], "relationships": []}
 
     monkeypatch.setattr(
@@ -2983,7 +2983,7 @@ async def test_history_does_not_leak_across_kgs_through_planner(monkeypatch):
     though both share ONE session id (the MCP single-session shape)."""
     _stub_kg_types(monkeypatch, ["Widget", "Sprocket"])
 
-    async def fake_schema(neptune, tenant_id, type_name):
+    async def fake_schema(neptune, tenant_id, type_name, **_kw):
         return {"attributes": ["price", "weight"], "relationships": []}
 
     monkeypatch.setattr(
@@ -3044,7 +3044,7 @@ async def test_open_clarify_on_one_kg_still_accumulates(monkeypatch):
     clarify chain on graph B still accumulates the field named before it."""
     _stub_kg_types(monkeypatch, ["Widget", "Sprocket"])
 
-    async def fake_schema(neptune, tenant_id, type_name):
+    async def fake_schema(neptune, tenant_id, type_name, **_kw):
         return {"attributes": ["price", "weight"], "relationships": []}
 
     monkeypatch.setattr(

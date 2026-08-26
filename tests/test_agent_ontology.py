@@ -117,7 +117,7 @@ def _stub_directive(monkeypatch, payload: dict):
 def _stub_schema(monkeypatch, schema: dict | None = None):
     schema = schema if schema is not None else _MENTOR_SCHEMA
 
-    async def fake_schema(neptune, tenant_id, type_name):
+    async def fake_schema(neptune, tenant_id, type_name, **_kw):
         return schema
 
     monkeypatch.setattr(ontology_mod, "list_type_schema", fake_schema)

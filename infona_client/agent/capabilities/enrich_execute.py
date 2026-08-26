@@ -110,6 +110,7 @@ class EnrichExecuteMixin:
         from infona_client.nlp.pipeline import NLQueryPipeline
 
         pipeline = NLQueryPipeline(ctx.neptune, ctx.anthropic_key)
+        pipeline._tenant_ctx = (ctx.extras or {}).get("tenant")
         onto_graph = tenant_graph_uri(ctx.tenant_id)
         instance_graph = (
             kg_graph_uri(ctx.tenant_id, ctx.kg_name) if ctx.kg_name else onto_graph

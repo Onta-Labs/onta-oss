@@ -345,7 +345,7 @@ def _stub_plan_deps(monkeypatch, *, schema=None, extract=None):
     async def fake_list_types(ctx):
         return ["Broker"]
 
-    async def fake_schema(neptune, tenant_id, type_name):
+    async def fake_schema(neptune, tenant_id, type_name, **_kw):
         return schema
 
     async def fake_chat(*args, **kwargs):

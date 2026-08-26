@@ -128,7 +128,9 @@ class NormalizeCapability:
             return await self._plan_from_inference(ctx, type_name, predicate_leaves)
 
         # User-instruction mode: schema-grounded direct extraction.
-        schema = await list_type_schema(ctx.neptune, ctx.tenant_id, type_name)
+        schema = await list_type_schema(
+            ctx.neptune, ctx.tenant_id, type_name, tenant=ctx
+        )
         directive = await _extract_normalize_directive(
             ctx, instruction, type_name, schema
         )

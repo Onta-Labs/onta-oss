@@ -206,10 +206,10 @@ async def skills_prompt_block(
        a ``skills`` key; extractors append it when non-empty.
     3. **Agent planner** — ``agent/planner_classify._classify`` appends this
        block when ``ctx.type_name`` is set.
-    4. **MCP ``view_ontology``** — still unwired (clients must call
-       ``GET /graphs/{tenant}/skills/prompt-block`` rather than render).
+    4. **MCP ``view_ontology``** — appends the SDK ``skillsPromptBlock``
+       text (canonical backend prompt-block; not re-rendered locally).
 
-    **Wiring status:** 1–3 are always-on. MCP (4) is out of this surface.
+    **Wiring status:** 1–4 are always-on.
     """
     # dict.fromkeys is the dedup: it collapses a repeated type (an agent that
     # names the same type twice) into ONE resolution. No second dedup pass over
