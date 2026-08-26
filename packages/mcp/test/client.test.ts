@@ -128,4 +128,17 @@ describe("client() — local OSS / hosted key", () => {
     expect(c.baseUrl).toBe("http://localhost:8000");
     expect(c.tenant).toBe("default");
   });
+
+  it("process INFONA_TENANT is the only workspace selector (no per-tool override)", () => {
+    // A tool argument cannot retarget the Client; pointing INFONA_TENANT at a
+    // foreign workspace is the only way MCP would even *attempt* /graphs/victim-ws.
+    // The backend still 403s that (OSS test_mcp_tools_contract).
+    process.env.INFONA_API_URL = "http://localhost:8000";
+    process.env.INFONA_API_KEY = "stranger-key";
+    process.env.INFONA_TENANT = "victim-ws";
+
+    const c = client();
+    expect(c.tenant).toBe("victim-ws");
+    expect(c.apiKey).toBe("stranger-key");
+  });
 });

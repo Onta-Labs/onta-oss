@@ -289,3 +289,85 @@ def test_ingest_dlt_tool_target_exists(client, auth_headers):
     # Mounted + dispatched: 503 (extra missing) or 502 (extract fail), never 404.
     assert resp.status_code != 404
     assert resp.status_code != 405
+
+
+# --- workspace access: MCP has no tenant back door --------------------------- #
+#
+# MCP tools always use the process Client (INFONA_TENANT / env / config). A
+# tool argument must not retarget /graphs/{tenant} onto a workspace the key
+# does not grant. Even if Client.tenant *is* pointed at a foreign workspace
+# (the interpolation MCP would do), get_tenant 403s — same gate as every
+# other client. Pin both: no override in the tool surface, and no leak if
+# the path is forced.
+
+
+VICTIM_WS = "victim-ws"
+VICTIM_MARKER = "UNIQUE_VICTIM_SECRET_TOKEN_7f3a"
+
+# Canonical routes the MCP tools actually ride via the SDK. Bodies are empty
+# JSON so FastAPI still dispatches; auth runs before the handler.
+_MCP_TOOL_ROUTES = (
+    ("GET", f"/graphs/{VICTIM_WS}/kgs"),  # list_knowledge_graphs
+    ("POST", f"/graphs/{VICTIM_WS}/ask"),  # ask
+    ("POST", f"/graphs/{VICTIM_WS}/agent"),  # agent
+    ("POST", f"/graphs/{VICTIM_WS}/search"),  # search
+    ("GET", f"/graphs/{VICTIM_WS}/jobs"),  # list_jobs
+    ("GET", f"/graphs/{VICTIM_WS}/ontology/types"),  # view_ontology
+)
+
+
+def _mcp_code_without_comments_or_strings(src: str) -> str:
+    """Strip block/line comments and quoted strings so `tenant:` in a
+    description cannot look like an inputSchema field."""
+    code = re.sub(r"/\*[\s\S]*?\*/", "", src)
+    code = re.sub(r"//.*?$", "", code, flags=re.MULTILINE)
+    code = re.sub(r"`(?:\\.|[^`\\])*`", "``", code)
+    code = re.sub(r'"(?:\\.|[^"\\])*"', '""', code)
+    code = re.sub(r"'(?:\\.|[^'\\])*'", "''", code)
+    return code
+
+
+def test_mcp_tools_have_no_per_tool_tenant_override():
+    """MCP is process-scoped: Client.tenant comes from INFONA_TENANT, not a
+    tool argument. No ``tenant`` inputSchema field, no switch-tenant tool,
+    no handmade ``/graphs/${...}`` interpolation, no ``c.tenant =`` write."""
+    src = _mcp_src()
+    code = _mcp_code_without_comments_or_strings(src)
+
+    assert not re.search(r"(?<![.\w])tenant\s*:", code), (
+        "MCP tool schemas must not take a tenant override; the process "
+        "Client.tenant is the only workspace selector"
+    )
+    assert not re.search(r"\.tenant\s*=", code), (
+        "MCP must not reassign Client.tenant from a tool argument"
+    )
+    assert "new Client()" in src
+    assert not re.search(r"new Client\(\s*\{[^}]*\btenant\s*:", code)
+
+    tools = re.findall(r'registerTool\(\s*"([^"]+)"', src)
+    assert "list_tenants" in tools and "create_tenant" in tools
+    switch = [t for t in tools if re.search(r"(?:use|switch|set|select)_?tenant", t, re.I)]
+    assert not switch, f"MCP must not expose a tenant-switch tool: {switch}"
+
+    # SDK owns /graphs/{tenant}. Tools must not interpolate a path themselves
+    # (a template like /graphs/${args.tenant} would be the back door).
+    assert not re.search(r"/graphs/\$\{", code)
+
+
+def test_mcp_tool_routes_foreign_tenant_are_403(client, auth_headers):
+    """The MCP SDK interpolates Client.tenant into ``/graphs/{tenant}/…``.
+
+    Constructing that client with tenant=victim-ws (INFONA_TENANT, or a
+    hypothetical tool-arg override) while holding a key granted only to
+    test-tenant still 403s at get_tenant. Victim data is not returned —
+    MCP has no back door past the canonical routes.
+    """
+    for method, url in _MCP_TOOL_ROUTES:
+        kw = {"json": {}} if method == "POST" else {}
+        resp = client.request(method, url, headers=auth_headers, **kw)
+        assert resp.status_code == 403, (
+            f"{method} {url} -> {resp.status_code} {resp.text[:200]}"
+        )
+        body = (resp.text or "").lower()
+        assert VICTIM_MARKER.lower() not in body
+        assert "does not grant access" in body
