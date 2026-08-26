@@ -9,7 +9,7 @@ still mutate the workspace:
   web_ingest / enrich / normalize / dedup / ontology,
 * ``POST /graphs/{t}/explore/kgs/{kg}/er-rebuild`` and ``…/recompute-stats``,
 * ``POST/PATCH/DELETE /graphs/{t}/skills…``,
-* ``POST /graphs/{t}/functions``.
+* ``POST/DELETE /graphs/{t}/functions``.
 
 These tests pin the fix at the ROUTE level — a reader gets 403 from each — plus
 the two properties that make ``/agent`` different from the rest:
@@ -429,3 +429,23 @@ def test_register_function_allowed_for_owner(gate_client):
 def test_list_functions_still_allowed_for_reader(gate_client):
     r = gate_client.get(f"/graphs/{TENANT}/functions", headers=READER_KEY)
     assert r.status_code == 200, r.text
+
+
+def test_delete_function_denied_for_reader(gate_client):
+    _assert_read_only_403(
+        gate_client.delete(
+            f"/graphs/{TENANT}/functions/score",
+            params={"entity_type": "Mentor"},
+            headers=READER_KEY,
+        )
+    )
+
+
+def test_delete_function_allowed_for_owner(gate_client):
+    r = gate_client.delete(
+        f"/graphs/{TENANT}/functions/score",
+        params={"entity_type": "Mentor"},
+        headers=OWNER_KEY,
+    )
+    # Writer is not 403: 200 if a prior test registered it, 404 if not.
+    assert r.status_code in (200, 404), r.text

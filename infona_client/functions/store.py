@@ -35,6 +35,10 @@ class FunctionStore(Protocol):
 
     async def upsert(self, rec: StoredFunction) -> StoredFunction: ...
 
+    async def delete(
+        self, tenant_id: str, entity_type: str, name: str
+    ) -> bool: ...
+
 
 class InMemoryFunctionStore:
     def __init__(self) -> None:
@@ -69,6 +73,11 @@ class InMemoryFunctionStore:
             )
             self._rows[key] = stored
             return copy.deepcopy(stored)
+
+    async def delete(self, tenant_id: str, entity_type: str, name: str) -> bool:
+        key = (tenant_id, entity_type.casefold(), name.casefold())
+        async with self._lock:
+            return self._rows.pop(key, None) is not None
 
 
 _store: FunctionStore | None = None

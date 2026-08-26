@@ -41,6 +41,9 @@ want the tag series to catch up.
 
 ### Added
 
+- `DELETE /graphs/{tenant}/functions/{function_name}?entity_type=`
+  detaches a TENANT-layer function attachment (404 if missing; Enhanced
+  and Public attachments are refused).
 - MCP `er_rebuild` (`Client.erRebuild`) runs the same second-pass
   entity-resolution path as `infona er rebuild`.
 - GraphStore ingest batch rollback: a failed ingest removes subjects
