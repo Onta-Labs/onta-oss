@@ -19,6 +19,8 @@ from infona_client.agent.planner_intent import (
 from infona_client.agent.registry import AgentContext
 from infona_client.obs import timed
 from infona_client.resolver.llm_router import PRIMARY_MODEL
+from infona_client.skills.inject import entitled_from
+from infona_client.skills.resolve import skills_prompt_block
 
 logger = structlog.stdlib.get_logger("infona.agent.planner")
 
@@ -60,6 +62,15 @@ async def _classify(
         f"Available capabilities:\n{caps}\n\n{convo}{guard}"
         f"Latest user message: {message}"
     )
+    type_name = getattr(ctx, "type_name", None)
+    if type_name:
+        block = await skills_prompt_block(
+            [type_name],
+            tenant_id=ctx.tenant_id,
+            entitled=entitled_from(ctx),
+        )
+        if block:
+            user = f"{user}\n\n{block}"
     if not ctx.openrouter_key:
         return _ambiguous()
     try:
