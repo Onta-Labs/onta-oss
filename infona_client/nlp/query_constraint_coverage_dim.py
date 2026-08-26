@@ -154,11 +154,18 @@ def _token_variants(token: str) -> set[str]:
     return {v for v in variants if v}
 
 
+def _params_used_in_cypher(
+    cypher: str, params: dict[str, Any] | None
+) -> dict[str, Any]:
+    """Only params whose ``$key`` appears in Cypher — unused leftovers don't bind."""
+    c = cypher or ""
+    return {k: v for k, v in (params or {}).items() if f"${k}" in c}
+
+
 def _plan_blob(cypher: str, params: dict[str, Any] | None) -> str:
     parts = [cypher or ""]
-    if params:
-        c = cypher or ""
-        used = {k: v for k, v in params.items() if f"${k}" in c}
+    used = _params_used_in_cypher(cypher, params)
+    if used:
         try:
             parts.append(json.dumps(used, default=str, sort_keys=True))
         except Exception:
@@ -207,7 +214,7 @@ def _leaf_present_in_plan(
     leaf_l = leaf.strip().lower()
     if not leaf_l:
         return False
-    params = params or {}
+    params = _params_used_in_cypher(cypher, params)
     leaf_vars = _token_variants(leaf_l)
     for key in ("prop_key", "rel_attr", "property_name", "filter_prop_key", "filter_key"):
         raw = params.get(key)
@@ -270,7 +277,7 @@ def _value_present_in_plan(
     params: dict[str, Any] | None,
 ) -> bool:
     """True when the dim value is applied via params or an equality literal."""
-    params = params or {}
+    params = _params_used_in_cypher(cypher, params)
     val_norm = (value_normalized or normalize_dim_token(value_display) or "").strip()
     if not val_norm and not (value_display or "").strip():
         return False
