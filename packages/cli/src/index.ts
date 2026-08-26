@@ -51,6 +51,8 @@ export type {
   // data in ONE graph), as opposed to the tenant-wide declaration-only ontology.
   KgSchema,
   KgSchemaType,
+  // Per-type explore summary (`Client.exploreSummary` / MCP explore_summary).
+  TypeSummary,
   SchemaAttribute,
   SchemaRelationship,
   NormalizationRule,
