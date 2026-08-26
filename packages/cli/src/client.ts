@@ -9,6 +9,7 @@ export { InfonaError } from "./clientError.js";
 export { SCHEMA_SAMPLE_CAP, parseCsv } from "./clientCsv.js";
 export { RawApi } from "./clientRaw.js";
 export { RawExtractApi } from "./clientRawExtract.js";
+export { RawSkillsApi } from "./clientRawSkills.js";
 export type {
   AskOptions,
   AttributeSummary,
@@ -84,14 +85,31 @@ export type {
   TypeRecordsPage,
   UserSchedulableAction,
 } from "./clientTypesExtra.js";
+export type {
+  EntityDetail,
+  EntityRel,
+  FunctionInvokeRequest,
+  FunctionInvokeResult,
+  FunctionRef,
+  FunctionRegister,
+  FunctionRegisterResult,
+  RecomputeStatsResult,
+  SkillDetail,
+  SkillPatch,
+  SkillSummary,
+  SkillValidateResult,
+  SkillWrite,
+  SkillsPromptBlock,
+  TenantInfo,
+} from "./clientTypesSkills.js";
 export { TERMINAL_JOB_STATUSES, isTerminalJobStatus } from "./clientTypes.js";
 export { USER_SCHEDULABLE_ACTIONS } from "./clientTypesExtra.js";
 
-import { ClientExplore } from "./clientExplore.js";
+import { ClientSkills } from "./clientSkills.js";
 import { RawApi } from "./clientRaw.js";
 import type { ClientOptions } from "./clientTypes.js";
 
-export class Client extends ClientExplore {
+export class Client extends ClientSkills {
   /**
    * Raw / passthrough API — one method per canonical backend operation, with
    * the path encoded inside the SDK. Each method returns the backend

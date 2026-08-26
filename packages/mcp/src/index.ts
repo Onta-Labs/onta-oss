@@ -10,9 +10,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { registerAgentTools } from "./mcpAgent.js";
 import { registerErRebuildTools } from "./mcpErRebuild.js";
+import { registerExploreTools } from "./mcpExplore.js";
+import { registerFunctionsTools } from "./mcpFunctions.js";
 import { registerIngestTools } from "./mcpIngest.js";
 import { registerQueryTools } from "./mcpQuery.js";
 import { registerSchemaTools } from "./mcpSchema.js";
+import { registerSkillsTools } from "./mcpSkills.js";
 import { client, VERSION } from "./mcpShared.js";
 
 export { searchHandler, grepHandler } from "./mcpQuery.js";
@@ -23,8 +26,30 @@ export {
   exportKgHandler,
   listLocalFilesHandler,
 } from "./mcpIngest.js";
-export { inspectGraphSchemaHandler } from "./mcpSchema.js";
+export { inspectGraphSchemaHandler, viewOntologyHandler } from "./mcpSchema.js";
 export { erRebuildHandler } from "./mcpErRebuild.js";
+export {
+  listRecordsHandler,
+  getEntityHandler,
+  typeSummaryHandler,
+  listTenantsHandler,
+  createTenantHandler,
+  recomputeStatsHandler,
+} from "./mcpExplore.js";
+export {
+  listSkillsHandler,
+  getSkillHandler,
+  validateSkillHandler,
+  putSkillHandler,
+  deleteSkillHandler,
+  skillsPromptBlockHandler,
+} from "./mcpSkills.js";
+export {
+  listFunctionsHandler,
+  registerFunctionHandler,
+  invokeFunctionHandler,
+  deleteFunctionHandler,
+} from "./mcpFunctions.js";
 
 const server = new McpServer(
   {
@@ -43,6 +68,9 @@ registerIngestTools(server);
 registerSchemaTools(server);
 registerErRebuildTools(server);
 registerAgentTools(server);
+registerExploreTools(server);
+registerSkillsTools(server);
+registerFunctionsTools(server);
 // Exported so a caller can start the SAME server without re-implementing it
 // (e.g. a test that imports this package as a library): the `isEntrypoint` guard
 // below is (correctly) false there, so it calls main() explicitly. Direct

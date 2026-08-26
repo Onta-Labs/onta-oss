@@ -42,14 +42,14 @@ Hosted Infona also needs `INFONA_API_KEY` and your workspace id in `INFONA_TENAN
 
 ## Tools exposed
 
-The server registers **21** tools, plus **1 more** (`list_local_files`) when you opt in by configuring `INFONA_LOCAL_FILES_DIR` (see [Environment](#environment)):
+The server registers **37** tools, plus **1 more** (`list_local_files`) when you opt in by configuring `INFONA_LOCAL_FILES_DIR` (see [Environment](#environment)):
 
 - `agent` — the single conversational front door to the Ask-AI agent. Send a natural-language message; the agent classifies intent and either answers a question, asks a clarifying question, or proposes a multi-step plan (enrich attributes, clean/normalize values, merge duplicates, inspect/extend the ontology). A plan is **not executed** until you confirm it by calling `agent` again with the returned `plan_id` as `confirm_plan_id`. Planning is free; any paid step a plan contains (e.g. web enrichment) is authorized server-side at execute time, so confirming honors your tenant's entitlements.
 - `list_knowledge_graphs` — list available KGs and their descriptions.
 - `ask` — ask a natural-language question against a context graph; returns the answer (and an explanation when available).
 - `search` — semantic + keyword (hybrid) search over free-text attributes of entities: find *which* entities mention/discuss a topic, with a matching snippet as the citation. Reads the **derived index** (not live triples). When the embedding service is unavailable or the semantic index is off, the tool still answers keyword-only and **says so** (`reduced recall`); use `grep` for an index-free literal scan of one graph. Use `ask` for aggregate or structured questions.
 - `grep` — literal substring search across every literal value in **one** context graph, by scanning its triples directly (no index). The exact-string debugging counterpart to `search`: it finds values `search` cannot see because they were never indexed. Plain substring matching, not regex; unranked, and can be slow on a large graph, so it is bounded to one KG and rate-limited.
-- `view_ontology` — show the ontology (types, attributes, relationships) across your context graphs. Tenant-wide and declaration-only; for one graph's actual data coverage use `inspect_graph_schema`.
+- `view_ontology` — show the ontology (types, attributes, relationships, and type descriptions) across your context graphs, plus the canonical skills prompt-block for those types. Tenant-wide and declaration-only; for one graph's actual data coverage use `inspect_graph_schema`.
 - `inspect_graph_schema`: inspect ONE context graph's schema *with population data*, i.e. per type, which attributes and relationships actually carry data there and on what share of its entities. Declared-but-empty types and attributes are listed and marked `EMPTY`, so a missing slot is never confused with a non-existent one. Use it before asking for specific attributes so you never guess between similar names.
 - `create_knowledge_graph` — create a new, empty KG (optionally with a description).
 - `delete_knowledge_graph` — delete a KG and all of its data (irreversible).
@@ -66,6 +66,15 @@ The server registers **21** tools, plus **1 more** (`list_local_files`) when you
 - `get_job` — full record + live progress of a single background job by id (returns instantly with current status).
 - `wait_for_job` — block server-side until a background job settles (or a bounded timeout), then return its status + progress — so one call covers a whole wait window instead of polling `get_job` in a loop.
 - `list_local_files`: **opt-in, off by default.** List the `.csv` / `.json` / `.jsonl` files in a directory you have explicitly granted, so the agent can pass a real absolute path to `ingest_csv` instead of guessing one. Only registered when `INFONA_LOCAL_FILES_DIR` resolves to an existing directory; otherwise it does not appear at all.
+- `list_records` — one page of entity instances of a type (columns + rows). Same `Client.exploreRecords` path as the Explorer data table.
+- `get_entity` — one entity's properties and incident relationships (`Client.getEntity`).
+- `type_summary` — per-type inventory with the coverage (and samples, if any) the API already returns (`Client.exploreSummary`). Does not invent values.
+- `list_tenants` — workspaces this API key can access. The MCP process tenant is `INFONA_TENANT` (there is no mid-session switch).
+- `create_tenant` — create a workspace (writes the caller's tenant list). Does not change `INFONA_TENANT` for this process.
+- `recompute_stats` — schedule a type-stats recompute for a graph (writes the stats graph, not instance data).
+- `list_skills` / `get_skill` / `validate_skill` / `put_skill` / `delete_skill` — type-attached markdown skills. `put_skill` and `delete_skill` write the ontology overlay.
+- `skills_prompt_block` — the exact skill text an agent is handed (`GET …/skills/prompt-block`). Not re-rendered locally. `view_ontology` includes this block so inspect sees tenant skills.
+- `list_functions` / `register_function` / `invoke_function` / `delete_function` — type-attached HTTPS/Lambda endpoints. Register, invoke, and delete write the registry / graph.
 
 > Enrichment and cleaning/normalization are reached **through the `agent`
 > tool** — it plans them and, on confirm, runs them as background jobs, so any
