@@ -198,13 +198,15 @@ async def list_type_schema(
     neptune: NeptuneClient,
     tenant_id: str,
     type_name: str,
+    *,
+    tenant=None,
+    entitled: bool | None = None,
 ) -> dict:
     """List a type's declared ATTRIBUTES and RELATIONSHIPS for prompt grounding.
 
     Returns ``{"attributes": [<leaf>, ...], "relationships": [{"name": <leaf>,
-    "target_type": <type leaf or None>}, ...]}`` — exactly the schema the agent
-    planners need to map an NL phrase ("current company", "languages") onto a
-    REAL predicate of the active type instead of guessing a stray word.
+    "target_type": <type leaf or None>}, ...], "skills": <prompt block or "">}``.
+    ``skills`` is the type-attached prompt block (empty when none, never raises).
 
     **GraphStore / Neo4j:** reads the ontology catalog (same declarations as
     ``/ontology/*``). Under a configured GraphStore this never calls SPARQL, so
@@ -215,11 +217,12 @@ async def list_type_schema(
     scan.
     """
     from infona_client.normalization.inference_reads import declared_attributes
+    from infona_client.skills.inject import attach_type_skills
 
+    attributes: list[str] = []
+    relationships: list[dict] = []
     attrs = await declared_attributes(tenant_id, type_name)
     if attrs is not None:
-        attributes: list[str] = []
-        relationships: list[dict] = []
         seen: set[str] = set()
         for a in attrs:
             leaf = a.name
@@ -232,37 +235,40 @@ async def list_type_schema(
                 )
             else:
                 attributes.append(leaf)
-        return {"attributes": attributes, "relationships": relationships}
+    else:
+        from infona_client.graph.queries import tenant_graph_uri
 
-    from infona_client.graph.queries import tenant_graph_uri
-
-    onto_graph = tenant_graph_uri(tenant_id)
-    t_uri = type_uri(type_name)
-    q = (
-        f"SELECT ?attr ?range FROM <{onto_graph}> WHERE {{\n"
-        f"  ?attr <{RDF}#type> <{RDF}#Property> .\n"
-        f"  ?attr <{RDFS}#domain> <{t_uri}> .\n"
-        f"  OPTIONAL {{ ?attr <{RDFS}#range> ?range }}\n"
-        f"}}"
+        onto_graph = tenant_graph_uri(tenant_id)
+        t_uri = type_uri(type_name)
+        q = (
+            f"SELECT ?attr ?range FROM <{onto_graph}> WHERE {{\n"
+            f"  ?attr <{RDF}#type> <{RDF}#Property> .\n"
+            f"  ?attr <{RDFS}#domain> <{t_uri}> .\n"
+            f"  OPTIONAL {{ ?attr <{RDFS}#range> ?range }}\n"
+            f"}}"
+        )
+        _, rows = parse_sparql_results(await neptune.query(q))
+        seen = set()
+        for r in rows:
+            attr = r.get("attr", "")
+            if not attr or attr in seen:
+                continue
+            seen.add(attr)
+            leaf = _predicate_leaf(attr)
+            rng = r.get("range", "")
+            if rng.startswith(_TYPE_URI_PREFIX):
+                relationships.append(
+                    {"name": leaf, "target_type": rng[len(_TYPE_URI_PREFIX):] or None}
+                )
+            else:
+                attributes.append(leaf)
+    return await attach_type_skills(
+        {"attributes": attributes, "relationships": relationships},
+        type_name,
+        tenant_id,
+        tenant=tenant,
+        entitled=entitled,
     )
-    _, rows = parse_sparql_results(await neptune.query(q))
-    attributes = []
-    relationships = []
-    seen = set()
-    for r in rows:
-        attr = r.get("attr", "")
-        if not attr or attr in seen:
-            continue
-        seen.add(attr)
-        leaf = _predicate_leaf(attr)
-        rng = r.get("range", "")
-        if rng.startswith(_TYPE_URI_PREFIX):
-            relationships.append(
-                {"name": leaf, "target_type": rng[len(_TYPE_URI_PREFIX):] or None}
-            )
-        else:
-            attributes.append(leaf)
-    return {"attributes": attributes, "relationships": relationships}
 
 
 _SUPPORTED_RULE_TYPES = {"list_explode", "strip_emoji"}

@@ -281,6 +281,7 @@ class PipelineCypherExecMixin:
         conversation: list | None = None,
         max_completion_tokens: int | None = None,
         prefer_fallback: bool = False,
+        type_names: list[str] | None = None,
     ) -> dict | None:
         """Best-effort LLM Cypher generation, with provider FAILOVER.
 
@@ -316,7 +317,15 @@ class PipelineCypherExecMixin:
                 return None
 
         from infona_client.nlp.query_ambiguity import format_conversation_for_prompt
+        from infona_client.skills.inject import ontology_with_skills, type_names_for_skills
 
+        names = type_names if type_names is not None else type_names_for_skills(ontology)
+        ontology = await ontology_with_skills(
+            ontology,
+            names,
+            tenant_id=tenant_id,
+            tenant=getattr(self, "_tenant_ctx", None),
+        )
         prompt = build_cypher_generation_prompt(
             question,
             ontology,

@@ -230,6 +230,17 @@ class PipelineSparqlGenMixin:
         # here but empty". parse_kg_graph_uri returns None for a non-KG graph
         # (bare tenant/ontology graph), which leaves the prompt byte-identical.
         parsed_kg = parse_kg_graph_uri(graph_uri)
+        tenant_id = (
+            parsed_kg[0] if parsed_kg else None
+        ) or tenant_of_graph(graph_uri) or ""
+        from infona_client.skills.inject import ontology_with_skills, type_names_for_skills
+
+        ontology = await ontology_with_skills(
+            ontology,
+            type_names_for_skills(ontology),
+            tenant_id=tenant_id,
+            tenant=getattr(self, "_tenant_ctx", None),
+        )
         prompt = build_generation_prompt(
             question,
             ontology,

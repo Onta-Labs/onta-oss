@@ -42,6 +42,7 @@ from infona_client.normalization.rules import (
     make_rule_id,
 )
 from infona_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
+from infona_client.skills.inject import schema_skills_suffix
 
 logger = structlog.stdlib.get_logger("infona.agent.normalize")
 
@@ -334,7 +335,7 @@ to lowercase, trim, dedupe, or rename), set rule_type to null.
 _DIRECTIVE_USER_TEMPLATE = """\
 Type: {type_name}
 Attributes: {attributes}
-Relationships: {relationships}
+Relationships: {relationships}{skills}
 
 Instruction: {instruction}
 
@@ -366,6 +367,7 @@ async def _extract_normalize_directive(
         type_name=type_name,
         attributes=", ".join(attr_names) or "(none)",
         relationships=rels_block,
+        skills=schema_skills_suffix(schema),
         instruction=instruction,
     )
     try:

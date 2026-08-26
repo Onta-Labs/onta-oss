@@ -121,6 +121,7 @@ def _build_ctx(
         or os.environ.get("OPENROUTER_API_KEY", ""),
         anthropic_key=settings.anthropic_api_key,
         extras={
+            "tenant": tenant,
             "enrichment_executor": executor,
             "enrichment_job_store": job_store,
             # The subscribe capability persists a ``notify`` Schedule through the
