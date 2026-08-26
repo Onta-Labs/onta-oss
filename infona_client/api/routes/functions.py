@@ -1,7 +1,8 @@
 """Type-attached FUNCTION endpoint-URL registry (canonical HTTP surface).
 
-POST /graphs/{tenant}/functions — attach an endpoint URL to a type
-GET  /graphs/{tenant}/functions — list attachments visible in the tenant graph
+POST   /graphs/{tenant}/functions — attach an endpoint URL to a type
+GET    /graphs/{tenant}/functions — list attachments visible in the tenant graph
+DELETE /graphs/{tenant}/functions/{function_name}?entity_type= — detach a TENANT attachment
 
 **Attachment identity (ONTA-399).** The SPARQL writer
 (``register_function_triple``) mints a layer-qualified type URI via
@@ -20,15 +21,17 @@ attachment identity only — no new runtime.
 Boundary: OSS. Imports only ``infona_client.*`` / stdlib.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from infona_client.api.deps import get_neptune_client
 from infona_client.auth.access import require_tenant_write
 from infona_client.auth.api_keys import TenantContext, get_tenant
 from infona_client.graph.client import NeptuneClient
+from infona_client.graph.iri import IRI_BASE
 from infona_client.graph.layers import Layer, enhanced_graph_uri
 from infona_client.graph.parser import parse_sparql_results
 from infona_client.graph.queries import (
+    delete_subjects_query,
     list_functions_query,
     register_function_triple,
     resolve_function_attachment,
@@ -193,3 +196,96 @@ async def list_functions(
     except Exception:
         pass
     return sorted(by_key.values(), key=lambda r: (r.entity_type.casefold(), r.name.casefold()))
+
+
+_NON_TENANT_DELETE_DETAIL = (
+    "function attachments on the Enhanced or Public layer cannot be "
+    "deleted over this tenant route"
+)
+
+
+def _bare_type(type_uri: str) -> str:
+    return type_uri.rsplit("/", 1)[-1]
+
+
+async def _sparql_has_attachment(
+    client: NeptuneClient, graph_uri: str, entity_type: str, function_name: str
+) -> bool:
+    try:
+        raw = await client.query(list_functions_query(graph_uri, entity_type))
+        _, bindings = parse_sparql_results(raw)
+    except Exception:
+        return False
+    want = function_name.casefold()
+    return any(row.get("name", "").casefold() == want for row in bindings)
+
+
+async def _sparql_delete_attachment(
+    client: NeptuneClient, graph_uri: str, function_name: str
+) -> None:
+    # Residual SPARQL writer (same subject mint as register_function_triple).
+    # Neo4j has no SPARQL update; best-effort like register. Builder lives in
+    # queries.py so this route does not hand-roll a graph DELETE.
+    try:
+        await client.update(
+            delete_subjects_query(
+                graph_uri, [f"{IRI_BASE}/functions/{function_name}"]
+            )
+        )
+    except Exception:
+        pass
+
+
+@router.delete("/graphs/{tenant}/functions/{function_name}")
+async def delete_function(
+    function_name: str,
+    entity_type: str = Query(
+        ...,
+        description=(
+            "Type the function is attached to. Required because attachment "
+            "identity is (tenant_id, entity_type, name)."
+        ),
+    ),
+    tenant: TenantContext = Depends(require_tenant_write),
+    client: NeptuneClient = Depends(get_neptune_client),
+):
+    """Detach a TENANT-layer function attachment.
+
+    Identity is ``(tenant_id, entity_type, name)`` — the same key as upsert —
+    so ``entity_type`` is required. Enhanced and Public attachments are
+    refused (403); a missing tenant attachment is 404.
+
+    Mutating: ``require_tenant_write`` refuses a ``reader`` member with 403.
+    """
+    try:
+        resolved_layer, type_uri = resolve_function_attachment(entity_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if resolved_layer is not Layer.TENANT:
+        raise HTTPException(status_code=403, detail=_NON_TENANT_DELETE_DETAIL)
+
+    bare_type = _bare_type(type_uri)
+    store = make_function_store()
+    rows = await store.list_for_tenant(tenant.tenant_id, entity_type=bare_type)
+    rec = next(
+        (r for r in rows if r.name.casefold() == function_name.casefold()),
+        None,
+    )
+    if rec is not None and (rec.layer or Layer.TENANT.value) != Layer.TENANT.value:
+        raise HTTPException(status_code=403, detail=_NON_TENANT_DELETE_DETAIL)
+
+    deleted = await store.delete(tenant.tenant_id, bare_type, function_name)
+    graph_uri = tenant_graph_uri(tenant.tenant_id)
+    if not deleted and not await _sparql_has_attachment(
+        client, graph_uri, bare_type, function_name
+    ):
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"function {function_name!r} is not attached to type {bare_type!r}"
+            ),
+        )
+
+    await _sparql_delete_attachment(client, graph_uri, function_name)
+    return {"deleted": function_name, "entity_type": bare_type}
