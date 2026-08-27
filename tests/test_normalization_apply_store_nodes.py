@@ -344,19 +344,35 @@ async def test_list_explode_attribute_to_entity_promotes_each_atom(store):
 
 
 def test_extract_atom_bracket_id():
+    from types import SimpleNamespace
+
     from infona_client.normalization.execute_helpers import (
+        _delimiters,
         _extract_atom,
-        _resolve_atom_key,
+        _join_atom_key,
         _split,
     )
 
     assert _extract_atom("Ada Lovelace [1]", "bracket_id") == "1"
     assert _extract_atom("Ada Lovelace", "bracket_id") == "Ada Lovelace"
-    assert _extract_atom("Portland", None) == "Portland"
-    assert _resolve_atom_key("VIP", None, {"VIP": "1"}) == "1"
-    assert _resolve_atom_key("vip", None, {"VIP": "1"}) == "1"
+    key, joined = _join_atom_key("vip", None, {"VIP": "1"})
+    assert (key, joined) == ("1", True)
+    key, joined = _join_atom_key("Unknown", None, {"VIP": "1"})
+    assert (key, joined) == ("Unknown", False)
     assert _split("A; B", ["; ", ";"]) == ["A", "B"]
-    assert _split("A;B", ["; ", ";"]) == ["A", "B"]
+    d = _delimiters(SimpleNamespace(params={"delimiters": ["; ", ";"]}))
+    assert "; " in d and ", " not in d and " | " not in d
+
+
+def test_promote_execute_modules_do_not_hardcode_fixture_tokens():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "infona_client" / "normalization"
+    banned = ("VIP", "Portland", "Ada Lovelace")
+    for name in ("execute_promote.py", "execute_helpers.py", "execute.py"):
+        text = (root / name).read_text(encoding="utf-8")
+        for token in banned:
+            assert token not in text, f"{name} mentions {token!r}"
 
 
 @pytest.mark.asyncio
@@ -463,3 +479,65 @@ async def test_promote_key_map_joins_existing_tag(store):
     assert (contact, "contact_tags", entity_uri("Tag", "A")) not in edges
     assert _values(store, contact, "contact_tags") == []
     assert len([e for e in edges if e[0] == contact]) == 2
+
+
+@pytest.mark.asyncio
+async def test_promote_key_map_mixed_join_and_mint(store):
+    """Case-mismatched known tag joins; unknown token mints a typed node."""
+    from infona_client.graph.ontology_queries import entity_uri
+
+    known = entity_uri("Tag", "1")
+    contact = f"{ENT}Contact/c1"
+    await _seed(
+        store,
+        [
+            (known, RDF_TYPE, f"{TYPES}Tag"),
+            (known, RDFS_LABEL, "VIP"),
+            (contact, RDF_TYPE, f"{TYPES}Contact"),
+            (contact, f"{TYPES}Contact/attrs/contact_tags", "vip; Unknown"),
+        ],
+    )
+    summary = await apply_rule(
+        None,
+        TENANT,
+        _rule(
+            "Contact",
+            "contact_tags",
+            "promote_to_node",
+            target_type="Tag",
+            key_by="value",
+            split=True,
+            delimiters=["; ", ";"],
+            key_map={"VIP": "1"},
+            link_existing=True,
+        ),
+    )
+    unknown = entity_uri("Tag", "Unknown")
+    edges = _edges(store)
+    assert (contact, "contact_tags", known) in edges
+    assert (contact, "contact_tags", entity_uri("Tag", "VIP")) not in edges
+    assert (contact, "contact_tags", unknown) in edges
+    assert unknown in _entity_ids(store)
+    assert store._entities[(TENANT, KG, unknown)].name == "Unknown"
+    assert store._entities[(TENANT, KG, known)].name == "VIP"
+    assert summary["nodes_created"] == 1
+    assert summary["edges_added"] == 2
+
+
+@pytest.mark.asyncio
+async def test_promote_explicit_delimiters_do_not_split_on_comma(store):
+    from infona_client.graph.ontology_queries import entity_uri as eu
+
+    doc = f"{ENT}Doctor/d1"
+    await _seed(
+        store,
+        [
+            (doc, RDF_TYPE, f"{TYPES}Doctor"),
+            (doc, f"{TYPES}Doctor/attrs/specialty", "Foo, Bar; Baz"),
+        ],
+    )
+    await apply_rule(None, TENANT, _promote_rule(split=True, delimiters=["; ", ";"]))
+    edges = _edges(store)
+    assert (doc, "specialty", eu("Specialty", "Foo, Bar")) in edges
+    assert (doc, "specialty", eu("Specialty", "Baz")) in edges
+    assert (doc, "specialty", eu("Specialty", "Foo")) not in edges
