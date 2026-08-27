@@ -343,6 +343,9 @@ class EnrichPlanMixin:
                 if subset_desc
                 else f"the {n_entities} selected {type_name} {noun}"
             )
+        elif matched_exact and matched > 0 and scope is None:
+            noun = "record" if matched == 1 else "records"
+            target_phrase = f"all {matched} {type_name} {noun}"
         else:
             target_phrase = f"matched {type_name} entities (capped at {limit})"
         # When the user supplied page(s), say so in the rationale/preview so they
@@ -433,6 +436,8 @@ class EnrichPlanMixin:
                 "tier": tier.value,
                 "limit": limit,
                 "entity_count": n_entities,
+                "matched": matched,
+                "matched_exact": matched_exact,
                 "confidence_min": confidence_min,
                 "confidence_note": _confidence_note(
                     confidence_min, confidence_lowered
