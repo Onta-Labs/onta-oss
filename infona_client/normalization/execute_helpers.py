@@ -144,23 +144,32 @@ def _summary_mutated(summary: dict) -> bool:
 
 
 def _delimiters(rule) -> list[str]:
+    """Split tokens for this rule.
+
+    If ``params.delimiters`` is non-empty, that set is exclusive — a ``;``/``; ``
+    rule must not also split on ``, `` / `` / `` / `` | ``. Empty params fall
+    back to :data:`_FALLBACK_DELIMITERS` (including slug ``__``).
+    """
     delims = list((rule.params or {}).get("delimiters") or [])
-    # Always include the slug "__" — composite entity names use it even when the
-    # source literal used ", " (the slugifier maps both to "__").
+    if delims:
+        return sorted(set(delims), key=len, reverse=True)
     for d in _FALLBACK_DELIMITERS:
         if d not in delims:
             delims.append(d)
-    # Longest-first so " / " is tried before "/" etc. — avoids splitting inside a
-    # token that legitimately contains the shorter delimiter.
     return sorted(set(delims), key=len, reverse=True)
+
+
+def _norm_join_key(value: str) -> str:
+    """Join key: strip + casefold. Shared by ``key_map`` lookup."""
+    return (value or "").strip().casefold()
 
 
 def _extract_atom(atom: str, extract: str | None) -> str:
     """Optional atom transform before URI minting.
 
-    ``bracket_id`` turns ``Ada Lovelace [1]`` into ``1`` so a join to an
-    already-ingested Staff/Tag row shares ``entity_uri(Type, id)``. Unknown
-    extract kinds are rejected by the caller; empty extract is identity.
+    ``bracket_id`` turns ``Name [id]`` into ``id`` so a join to an
+    already-ingested row shares ``entity_uri(Type, id)``. Unknown extract
+    kinds are rejected by the caller; empty extract is identity.
     """
     raw = (atom or "").strip()
     if not raw:
@@ -174,28 +183,44 @@ def _extract_atom(atom: str, extract: str | None) -> str:
     return raw
 
 
+def _join_atom_key(
+    atom: str,
+    extract: str | None,
+    key_map: dict[str, str] | None,
+) -> tuple[str, bool]:
+    """``(raw_id, joined_existing)`` for URI minting.
+
+    ``joined_existing`` is True when ``key_map`` remapped the atom
+    (strip+casefold) **or** ``extract=bracket_id`` found a ``[id]``. Unmatched
+    atoms keep the extracted text and ``joined_existing=False`` so the caller
+    mints a typed node instead of a dangling URI.
+    """
+    key = _extract_atom(atom, extract)
+    if not key:
+        return "", False
+    if key_map:
+        needle = _norm_join_key(key)
+        for k, v in key_map.items():
+            if _norm_join_key(str(k)) != needle:
+                continue
+            mapped = str(v or "").strip()
+            if mapped:
+                return mapped, True
+        return key, False
+    kind = (extract or "").strip().lower()
+    if kind == "bracket_id" and _BRACKET_ID_RE.search((atom or "").strip()):
+        return key, True
+    return key, False
+
+
 def _resolve_atom_key(
     atom: str,
     extract: str | None,
     key_map: dict[str, str] | None,
 ) -> str:
-    """Extract then remap ``atom`` to the raw_id ``entity_uri`` should mint.
-
-    ``key_map`` joins a display name to an existing row's id (Tag ``VIP`` →
-    ``1``). Exact match first, then case-insensitive. Missing keys keep the
-    extracted atom so a name-keyed table still shares URIs.
-    """
-    key = _extract_atom(atom, extract)
-    if not key:
-        return ""
-    if not key_map:
-        return key
-    if key in key_map:
-        mapped = str(key_map[key] or "").strip()
-        return mapped or key
-    lowered = {str(k).lower(): v for k, v in key_map.items()}
-    mapped = str(lowered.get(key.lower()) or "").strip()
-    return mapped or key
+    """Extract then remap ``atom`` to the raw_id ``entity_uri`` should mint."""
+    key, _joined = _join_atom_key(atom, extract, key_map)
+    return key
 
 
 def _split(value: str, delimiters: list[str]) -> list[str]:
