@@ -8,7 +8,8 @@ underlying engines directly through the capability registry.
 
 Request/response contract:
 
-  POST body {message, context:{kg_name, type_name, selection?}, session_id?,
+  POST body {message, context:{kg_name, type_name, selection?, urls?,
+             ingest_files?, ingest_source?, keep_columns?}, session_id?,
              confirm?:{plan_id}}
     - confirm.plan_id present → execute_plan → {kind:"result", steps:[...]}
       (execute is the only mutating path; long work runs as background jobs)
@@ -24,6 +25,8 @@ from __future__ import annotations
 import os
 
 from fastapi import APIRouter, Depends, HTTPException
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 from infona_client.agent import planner
@@ -49,6 +52,16 @@ router = APIRouter(prefix="/graphs/{tenant}/agent")
 register_default_capabilities()
 
 
+class AgentIngestFile(BaseModel):
+    """One attached CSV. Text or headers+rows — never a filesystem path."""
+
+    name: str = "upload.csv"
+    filename: str | None = None
+    text: str = ""
+    headers: list[str] = []
+    rows: list[dict[str, Any]] = []
+
+
 class AgentRequestContext(BaseModel):
     # ONTA-414: same pattern the /ask body enforces and the same one create
     # enforces (KGCreate.name). This value reaches kg_graph_uri and is
@@ -68,6 +81,16 @@ class AgentRequestContext(BaseModel):
     # canonical route (never a per-interface endpoint or header convention) —
     # capabilities tag per-stage cost/latency telemetry with it.
     medium: str = ""
+    # CSV the user attached for this turn (Explorer paperclip / CLI file ingest).
+    # Threaded into AgentContext.extras["ingest_files"] for the premium ingest
+    # steward. Optional + defaulted so existing clients are unaffected. ``path``
+    # is NOT accepted here — HTTP must not read the server filesystem.
+    ingest_files: list[AgentIngestFile] = []
+    # CRM / source-system name (e.g. "ontraport"). Optional; the steward asks
+    # when id-like columns are present and this is empty.
+    ingest_source: str = ""
+    # Headers the user restored from a proposed drop list. Optional.
+    keep_columns: list[str] = []
 
 
 class Confirm(BaseModel):
@@ -120,16 +143,53 @@ def _build_ctx(
         openrouter_key=settings.openrouter_api_key
         or os.environ.get("OPENROUTER_API_KEY", ""),
         anthropic_key=settings.anthropic_api_key,
-        extras={
-            "tenant": tenant,
-            "enrichment_executor": executor,
-            "enrichment_job_store": job_store,
-            # The subscribe capability persists a ``notify`` Schedule through the
-            # SAME schedule store the canonical /schedules route uses (no bespoke
-            # endpoint / logic — interface convergence). Built lazily on app.state.
-            "schedule_store": schedule_store,
-        },
+        extras=_agent_extras(tenant, executor, job_store, schedule_store, body),
     )
+
+
+def _sanitize_ingest_files(files: list[AgentIngestFile]) -> list[dict[str, Any]]:
+    """HTTP ingest files: name + text/rows only. Never a filesystem path."""
+    out: list[dict[str, Any]] = []
+    for file in files:
+        name = (file.name or file.filename or "upload.csv").strip() or "upload.csv"
+        item: dict[str, Any] = {"name": name}
+        if file.text:
+            item["text"] = file.text
+        if file.headers:
+            item["headers"] = list(file.headers)
+        if file.rows:
+            item["rows"] = [dict(r) for r in file.rows]
+        if "text" in item or "headers" in item or "rows" in item:
+            out.append(item)
+    return out
+
+
+def _agent_extras(
+    tenant: TenantContext,
+    executor: EnrichmentExecutor,
+    job_store,
+    schedule_store,
+    body: AgentRequest,
+) -> dict:
+    extras: dict = {
+        "tenant": tenant,
+        "enrichment_executor": executor,
+        "enrichment_job_store": job_store,
+        # The subscribe capability persists a ``notify`` Schedule through the
+        # SAME schedule store the canonical /schedules route uses (no bespoke
+        # endpoint / logic — interface convergence). Built lazily on app.state.
+        "schedule_store": schedule_store,
+    }
+    ingest_files = _sanitize_ingest_files(body.context.ingest_files)
+    if ingest_files:
+        extras["ingest_files"] = ingest_files
+    source = (body.context.ingest_source or "").strip()
+    if source:
+        extras["ingest_source"] = source.lower()
+    keep = [str(c) for c in body.context.keep_columns if str(c).strip()]
+    if keep:
+        extras["keep_columns"] = keep
+    return extras
 
 
 @router.post("")
