@@ -56,6 +56,11 @@ via ``params.key_by``:
   minting). The human value is also stored under ``attrs/name`` (Explorer Data
   table). ``params.split`` may be set (reuses the ``list_explode`` delimiters) so
   a multi-valued literal ``"A, B"`` becomes MULTIPLE value-keyed nodes/edges.
+  ``params.extract="bracket_id"`` pulls ``1`` out of ``Ada Lovelace [1]``;
+  ``params.key_map`` remaps a display atom to an existing row id (Tag name →
+  Tag CSV id) so ``entity_uri`` matches the already-ingested node;
+  ``params.link_existing=True`` writes only the ``onto/<leaf>`` edge (does not
+  rewrite the target's label).
 * **``"owner"``** (measurements — Rating / Price / Score): the node IRI is
   ``…/entities/<TargetType>/<slug(owner_local_id)>-<leaf>``, one node PER OWNER —
   two shops rated ``4.6`` are NOT the same ``Rating``. The original literal is
@@ -115,10 +120,12 @@ from infona_client.normalization.execute_helpers import (  # noqa: F401
     _atom_uri,
     _decode_local_name,
     _delimiters,
+    _extract_atom,
     _host,
     _list_explode_as_promotion,
     _node_uri_owner,
     _node_uri_value,
+    _resolve_atom_key,
     _sparql_str,
     _split,
     _strip_emoji_value,

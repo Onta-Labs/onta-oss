@@ -341,3 +341,125 @@ async def test_list_explode_attribute_to_entity_promotes_each_atom(store):
     }
     assert _values(store, doc, "specialty") == []
     assert summary["nodes_created"] == 2
+
+
+def test_extract_atom_bracket_id():
+    from infona_client.normalization.execute_helpers import (
+        _extract_atom,
+        _resolve_atom_key,
+        _split,
+    )
+
+    assert _extract_atom("Ada Lovelace [1]", "bracket_id") == "1"
+    assert _extract_atom("Ada Lovelace", "bracket_id") == "Ada Lovelace"
+    assert _extract_atom("Portland", None) == "Portland"
+    assert _resolve_atom_key("VIP", None, {"VIP": "1"}) == "1"
+    assert _resolve_atom_key("vip", None, {"VIP": "1"}) == "1"
+    assert _split("A; B", ["; ", ";"]) == ["A", "B"]
+    assert _split("A;B", ["; ", ";"]) == ["A", "B"]
+
+
+@pytest.mark.asyncio
+async def test_promote_split_semicolon_list(store):
+    doc = f"{ENT}Doctor/d1"
+    await _seed(
+        store,
+        [
+            (doc, RDF_TYPE, f"{TYPES}Doctor"),
+            (doc, f"{TYPES}Doctor/attrs/specialty", "A; B"),
+        ],
+    )
+    summary = await apply_rule(
+        None,
+        TENANT,
+        _promote_rule(split=True, delimiters=["; ", ";"]),
+    )
+    assert (doc, "specialty", f"{ENT}Specialty/A") in _edges(store)
+    assert (doc, "specialty", f"{ENT}Specialty/B") in _edges(store)
+    assert _values(store, doc, "specialty") == []
+    assert summary["nodes_created"] == 2
+    assert summary["edges_added"] == 2
+
+
+@pytest.mark.asyncio
+async def test_promote_link_existing_does_not_clobber_label(store):
+    from infona_client.graph.ontology_queries import entity_uri
+
+    staff = entity_uri("Staff", "1")
+    contact = f"{ENT}Contact/c1"
+    await _seed(
+        store,
+        [
+            (staff, RDF_TYPE, f"{TYPES}Staff"),
+            (staff, RDFS_LABEL, "Ada Lovelace"),
+            (staff, f"{TYPES}Staff/attrs/name", "Ada Lovelace"),
+            (contact, RDF_TYPE, f"{TYPES}Contact"),
+            (contact, f"{TYPES}Contact/attrs/owner", "Ada Lovelace [1]"),
+        ],
+    )
+    summary = await apply_rule(
+        None,
+        TENANT,
+        _rule(
+            "Contact",
+            "owner",
+            "promote_to_node",
+            target_type="Staff",
+            key_by="value",
+            extract="bracket_id",
+            link_existing=True,
+        ),
+    )
+    assert (contact, "owner", staff) in _edges(store)
+    assert _values(store, contact, "owner") == []
+    assert store._entities[(TENANT, KG, staff)].name == "Ada Lovelace"
+    assert summary["nodes_created"] == 0
+    assert summary["edges_added"] == 1
+
+
+@pytest.mark.asyncio
+async def test_promote_key_map_joins_existing_tag(store):
+    from infona_client.graph.ontology_queries import entity_uri
+
+    tag_a = entity_uri("Tag", "1")
+    contact = f"{ENT}Contact/c1"
+    await _seed(
+        store,
+        [
+            (tag_a, RDF_TYPE, f"{TYPES}Tag"),
+            (tag_a, RDFS_LABEL, "A"),
+            (tag_a, f"{TYPES}Tag/attrs/name", "A"),
+            (contact, RDF_TYPE, f"{TYPES}Contact"),
+            (contact, f"{TYPES}Contact/attrs/contact_tags", "A; B"),
+        ],
+    )
+    tag_b = entity_uri("Tag", "2")
+    await _seed(
+        store,
+        [
+            (tag_b, RDF_TYPE, f"{TYPES}Tag"),
+            (tag_b, RDFS_LABEL, "B"),
+            (tag_b, f"{TYPES}Tag/attrs/name", "B"),
+        ],
+    )
+    await apply_rule(
+        None,
+        TENANT,
+        _rule(
+            "Contact",
+            "contact_tags",
+            "promote_to_node",
+            target_type="Tag",
+            key_by="value",
+            split=True,
+            delimiters=["; ", ";"],
+            key_map={"A": "1", "B": "2"},
+            link_existing=True,
+        ),
+    )
+    edges = _edges(store)
+    assert (contact, "contact_tags", tag_a) in edges
+    assert (contact, "contact_tags", tag_b) in edges
+    assert (contact, "contact_tags", entity_uri("Tag", "A")) not in edges
+    assert _values(store, contact, "contact_tags") == []
+    assert len([e for e in edges if e[0] == contact]) == 2
