@@ -205,13 +205,17 @@ _SUBATTR_VAR_PREFIX = "_subattr_"
 def rewrite_parent_attr_to_subclass_predicates(
     sparql: str,
     child_to_parent: Mapping[str, str] | None,
+    *,
+    ontology_summary: str = "",
 ) -> str:
     """Expand parent ``types/<Parent>/attrs/<leaf>`` IRIs to subclass predicates.
 
     When the query is typed as Person (or already closed over Person) and
     Contact/Staff subclass it, ``?x <types/Person/attrs/first_name> ?n``
-    becomes a VALUES bind of Contact|Staff|Person first_name IRIs so names
-    are not empty (INF-599). Leaf-only asks (typed as Contact) are unchanged.
+    becomes a VALUES bind of child first_name IRIs so names are not empty
+    (INF-599). A descendant is included only if it declares the leaf
+    (Staff with ``name`` not ``first_name`` is omitted). Leaf-only asks
+    (typed as Contact) are unchanged.
 
     ``child_to_parent`` is the ontology subclass map (child leaf → parent
     leaf). Empty/None is a no-op. Idempotent: a query already using
@@ -250,7 +254,10 @@ def rewrite_parent_attr_to_subclass_predicates(
     parents_with_kids: list[tuple[str, list[str]]] = []
     for qtype in queried:
         bind0 = bind_subclass_attribute(
-            qtype, leaves[0], child_to_parent=child_to_parent
+            qtype,
+            leaves[0],
+            child_to_parent=child_to_parent,
+            ontology_summary=ontology_summary,
         )
         types = list(bind0["type_names"] or [])
         if len(types) > 1:
@@ -266,7 +273,10 @@ def rewrite_parent_attr_to_subclass_predicates(
         if f"?{_SUBATTR_VAR_PREFIX}{leaf}" in sparql:
             continue
         bind = bind_subclass_attribute(
-            qtype, leaf, child_to_parent=child_to_parent
+            qtype,
+            leaf,
+            child_to_parent=child_to_parent,
+            ontology_summary=ontology_summary,
         )
         predicates = list(bind["predicates"] or [])
         child_preds = [
