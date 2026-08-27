@@ -110,6 +110,8 @@ from infona_client.agent.planner_intent import (  # noqa: F401
     _SUBSCRIBE_CADENCE_RE,
     _WEB_FETCH_RE,
     _WEB_INGEST_HOSTED_ONLY,
+    _INGEST_STEWARD_HOSTED_ONLY,
+    _hosted_only_ingest_steward_answer,
     _hosted_only_web_ingest_answer,
     _is_interrogative,
     _is_refresh_existing_request,
@@ -151,6 +153,9 @@ def register_default_capabilities() -> None:
     # registers it via ``infona.web_sources.plugin``. OSS does not ship the
     # capability module. The intent name stays so a premium register_capability
     # is enough — no OSS import of the class.
+    # CSV ingest steward (`ingest_steward` / "ingest") is the same seam:
+    # premium interview/policy, OSS intent name. Ungated ``infona ingest``
+    # still works without the capability.
     # Subscribe / standing alert (ONTA-235): registered in OSS so the "subscribe"
     # intent routes and the persona can set a recurring, subscribe-able alert ONCE.
     # It persists a `notify` Schedule through the shared schedule store (the same
