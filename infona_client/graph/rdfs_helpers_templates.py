@@ -507,6 +507,76 @@ def type_names_with_subclasses(
     return descendants_of(type_name, mapping)
 
 
+def subclass_attribute_predicates(
+    parent_type: str,
+    attr_leaf: str,
+    *,
+    child_to_parent: Mapping[str, str] | None = None,
+    ontology_summary: str = "",
+) -> list[str]:
+    """Bind ``types/<Child>/attrs/<leaf>`` for a parent and its descendants.
+
+    Instance triples stay on the asserted leaf (ADR 0001): Contact.first_name
+    is ``types/Contact/attrs/first_name``, never rewritten onto Person. A
+    Person ask that only binds ``types/Person/attrs/first_name`` returns
+    empty names. Callers must bind the child predicates too.
+
+    Order matches :func:`type_names_with_subclasses` (parent first, then
+    children alphabetically).
+    """
+    from infona_client.graph.ontology_queries_uris import attr_uri
+
+    if not parent_type or not attr_leaf:
+        return []
+    types = type_names_with_subclasses(
+        parent_type,
+        ontology_summary=ontology_summary,
+        child_to_parent=child_to_parent,
+        include_subclasses=True,
+    )
+    out: list[str] = []
+    for t in types:
+        try:
+            out.append(attr_uri(t, attr_leaf))
+        except ValueError:
+            continue
+    return out
+
+
+def bind_subclass_attribute(
+    parent_type: str,
+    attr_leaf: str,
+    *,
+    child_to_parent: Mapping[str, str] | None = None,
+    ontology_summary: str = "",
+) -> dict[str, object]:
+    """Planner bind for a parent-type attribute ask (count/list/filter).
+
+    ``type_names`` drives subclass-closure membership (how many people?).
+    ``predicates`` is the SPARQL-era attr IRI list the NL layer must use
+    instead of only ``types/<Parent>/attrs/<leaf>``. ``prop_key`` is the
+    Neo4j leaf (property-graph Facts flatten the type segment).
+    """
+    types = type_names_with_subclasses(
+        parent_type,
+        ontology_summary=ontology_summary,
+        child_to_parent=child_to_parent,
+        include_subclasses=True,
+    )
+    predicates = subclass_attribute_predicates(
+        parent_type,
+        attr_leaf,
+        child_to_parent=child_to_parent,
+        ontology_summary=ontology_summary,
+    )
+    return {
+        "type_names": types,
+        "attr_leaf": attr_leaf,
+        "predicates": predicates,
+        "prop_key": attr_leaf,
+    }
+
+
 def semantic_templates() -> dict[str, tuple[str, bool]]:
     """Map template name → (cypher, writing) for registry / tests."""
     return {

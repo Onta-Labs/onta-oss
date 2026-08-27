@@ -3,6 +3,9 @@
 Deterministic regex transforms — no ontology lookup, no store, no LLM.
 """
 
+import re
+from typing import Mapping
+
 from infona_client.graph.iri import ENTITY_URI_PREFIX, TYPE_URI_PREFIX
 
 from infona_client.graph.ontology_queries_uris import INFONA_ONTO, RDF, RDFS
@@ -183,6 +186,123 @@ def _rewrite_indirect_type_constraints(sparql: str) -> str:
         )
 
     return sparql
+
+
+# --- Subclass attribute predicates (INF-599 / ADR 0001) -----------------------
+# Instance triples stay on the asserted leaf (`types/Contact/attrs/first_name`).
+# A Person ask that only binds `types/Person/attrs/first_name` returns empty
+# names. Expand parent attr IRIs to a VALUES of child predicates.
+
+_ATTR_IRI_RE = (
+    rf"<{re.escape(_TYPES_URI)}(\w+)/attrs/(\w+)>"
+)
+_TYPE_IRI_RE = (
+    rf"<{re.escape(_TYPES_URI)}(\w+)>"
+)
+_SUBATTR_VAR_PREFIX = "_subattr_"
+
+
+def rewrite_parent_attr_to_subclass_predicates(
+    sparql: str,
+    child_to_parent: Mapping[str, str] | None,
+) -> str:
+    """Expand parent ``types/<Parent>/attrs/<leaf>`` IRIs to subclass predicates.
+
+    When the query is typed as Person (or already closed over Person) and
+    Contact/Staff subclass it, ``?x <types/Person/attrs/first_name> ?n``
+    becomes a VALUES bind of Contact|Staff|Person first_name IRIs so names
+    are not empty (INF-599). Leaf-only asks (typed as Contact) are unchanged.
+
+    ``child_to_parent`` is the ontology subclass map (child leaf → parent
+    leaf). Empty/None is a no-op. Idempotent: a query already using
+    ``?_subattr_<leaf>`` is left alone for that leaf.
+    """
+    import re
+    from infona_client.graph.rdfs_helpers_templates import bind_subclass_attribute
+
+    if not sparql or not child_to_parent:
+        return sparql
+
+    queried: list[str] = []
+    seen_q: set[str] = set()
+    for m in re.finditer(_TYPE_IRI_RE, sparql):
+        name = m.group(1)
+        # Attr IRIs contain `/attrs/` after the type leaf; the type-only
+        # pattern requires `>` immediately, so they never match here.
+        if name not in seen_q:
+            seen_q.add(name)
+            queried.append(name)
+    if not queried:
+        return sparql
+
+    leaves: list[str] = []
+    seen_l: set[str] = set()
+    for m in re.finditer(_ATTR_IRI_RE, sparql):
+        leaf = m.group(2)
+        if leaf not in seen_l:
+            seen_l.add(leaf)
+            leaves.append(leaf)
+    if not leaves:
+        return sparql
+
+    # Prefer the queried type with the widest subclass closure (Person over
+    # Contact when both appear). Leaf-only types (no descendants) skip.
+    parents_with_kids: list[tuple[str, list[str]]] = []
+    for qtype in queried:
+        bind0 = bind_subclass_attribute(
+            qtype, leaves[0], child_to_parent=child_to_parent
+        )
+        types = list(bind0["type_names"] or [])
+        if len(types) > 1:
+            parents_with_kids.append((qtype, types))
+    if not parents_with_kids:
+        return sparql
+    parents_with_kids.sort(key=lambda pair: len(pair[1]), reverse=True)
+    qtype = parents_with_kids[0][0]
+
+    values_blocks: list[str] = []
+    replacements: dict[str, str] = {}  # full <iri> → ?var
+    for leaf in leaves:
+        if f"?{_SUBATTR_VAR_PREFIX}{leaf}" in sparql:
+            continue
+        bind = bind_subclass_attribute(
+            qtype, leaf, child_to_parent=child_to_parent
+        )
+        predicates = list(bind["predicates"] or [])
+        child_preds = [
+            p for p in predicates if f"/types/{qtype}/attrs/" not in p
+        ]
+        if not child_preds:
+            continue
+        var = f"?{_SUBATTR_VAR_PREFIX}{leaf}"
+        iris = " ".join(f"<{p}>" for p in predicates)
+        values_blocks.append(f"VALUES {var} {{ {iris} }}")
+        for p in predicates:
+            replacements[f"<{p}>"] = var
+        parent_guess = f"<{_TYPES_URI}{qtype}/attrs/{leaf}>"
+        replacements.setdefault(parent_guess, var)
+        for m in re.finditer(_ATTR_IRI_RE, sparql):
+            if m.group(2) == leaf:
+                replacements.setdefault(m.group(0), var)
+
+    if not values_blocks:
+        return sparql
+
+    for iri, var in replacements.items():
+        sparql = sparql.replace(iri, var)
+
+    block = " ".join(values_blocks) + " "
+    injected = re.sub(
+        r"(WHERE\s*\{)",
+        rf"\1 {block}",
+        sparql,
+        count=1,
+        flags=re.IGNORECASE,
+    )
+    if injected == sparql:
+        # No WHERE — prefix so the bind is still visible to tests.
+        return block + sparql
+    return injected
 
 
 # --- Merged-alias (sameAs) query expansion (ONTA-278) -------------------------
