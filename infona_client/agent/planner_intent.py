@@ -16,6 +16,7 @@ _INTENT_TO_CAPABILITY = {
     "clean": "normalize",
     "dedup": "dedup",  # registered (DedupCapability) → plans an ER rebuild
     "ontology": "ontology",  # registered (OntologyCapability) → inspect/declare
+    "ingest": "ingest_steward",  # premium CSV-file interview; OSS does not register it
     "discover": "web_ingest",  # premium capability; OSS does not register it
     "research": "web_research",  # registered (WebResearchCapability) → cited answer/artifact, no KG write
     "subscribe": "subscribe",  # registered (SubscribeCapability) → recurring notify schedule
@@ -30,11 +31,29 @@ _WEB_INGEST_HOSTED_ONLY = (
     "CSV or JSON file, or use hosted Infona."
 )
 
+# Honest OSS answer when the user asks the Cloud ingest-steward interview
+# (source / column-drop / mapping confirm on a CSV they already have). The
+# capability lives in hosted Infona (`infona.ingest_steward`); falling through
+# to /ask would look like a query failure. Ungated `infona ingest` still works.
+_INGEST_STEWARD_HOSTED_ONLY = (
+    "The Cloud ingest steward (interviewed CSV ingest: source, column "
+    "keep/drop, mapping confirm) is not included in this OSS build. Use "
+    "`infona ingest` for mapping review, or hosted Infona."
+)
+
 
 def _hosted_only_web_ingest_answer() -> dict:
     return {
         "kind": "answer",
         "answer": _WEB_INGEST_HOSTED_ONLY,
+        "narrative": "",
+    }
+
+
+def _hosted_only_ingest_steward_answer() -> dict:
+    return {
+        "kind": "answer",
+        "answer": _INGEST_STEWARD_HOSTED_ONLY,
         "narrative": "",
     }
 
@@ -48,11 +67,12 @@ _INTENT_PLAN_ORDER = {
     "enrich": 1,
     "dedup": 2,
     "ontology": 3,
-    "discover": 4,
-    "research": 5,
+    "ingest": 4,  # CSV/file ingest interview (premium steward)
+    "discover": 5,
+    "research": 6,
     # A subscribe/standing-alert is set up LAST — it schedules a recurring watch
     # over whatever the other actions in the same breath just built/cleaned.
-    "subscribe": 6,
+    "subscribe": 7,
 }
 
 # Convergence guard (COG-130): once the agent has asked this many clarifying
@@ -78,6 +98,12 @@ external sources ("enrich", "fill in the X", "look up the Y for Z").
 - "dedup": find and merge duplicate entities ("remove duplicates", "de-dupe", \
 "merge duplicate records").
 - "ontology": change the schema / types / attributes / relationships.
+- "ingest": load a CSV or file the user ALREADY HAS into the graph, reviewing \
+columns and mapping first ("ingest this csv", "load this file", "import the \
+contacts export", "ingest the attached spreadsheet"). This is FILE ingest — \
+distinct from "discover", which finds records FROM THE WEB. Prefer "ingest" \
+when a file/CSV is attached or named; prefer "discover" when the records are \
+not in hand and must be fetched from the web.
 - "discover": find a NEW set of records FROM THE WEB and ingest them as a new \
 dataset ("find a list of X from the web", "pull all Y", "add data about Z from \
 the web", "get me <records> and add them"). ALSO route question-phrased requests \
@@ -85,8 +111,9 @@ to bring in EXTERNAL records here — "can we ingest <X>", "can we get/pull <X>"
 "do you have <X that some site offers>" — when X is a set of real-world things \
 NOT already in this graph (e.g. "open-router's TTS models", "S&P 500 companies"). \
 This CREATES new entities that don't exist in the graph yet — distinct from \
-"question" (read-only about data ALREADY in the graph) and from "enrich" (fills \
-attributes on entities that ALREADY exist).
+"question" (read-only about data ALREADY in the graph), from "enrich" (fills \
+attributes on entities that ALREADY exist), and from "ingest" (a CSV/file the \
+user already has).
 - "research": answer a question using the WEB and return a cited answer plus a \
 downloadable table (CSV/JSON), WITHOUT storing anything in the graph ("research \
 X and give me a CSV", "what's the <value> of every <thing> on <site>", \

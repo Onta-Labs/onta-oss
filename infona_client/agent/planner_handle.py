@@ -33,6 +33,7 @@ from infona_client.agent.planner_history import (
 from infona_client.agent.planner_intent import (
     _DEFAULT_ACTION_OPTIONS,
     _INTENT_TO_CAPABILITY,
+    _hosted_only_ingest_steward_answer,
     _hosted_only_web_ingest_answer,
     _is_interrogative,
     _is_refresh_existing_request,
@@ -273,6 +274,8 @@ async def _respond(
     if not available:
         if actionable[0] == "discover":
             return _hosted_only_web_ingest_answer()
+        if actionable[0] == "ingest":
+            return _hosted_only_ingest_steward_answer()
         return {
             "kind": "clarify",
             "question": (
