@@ -322,6 +322,17 @@ class PipelineAskMixin:
                 if alias_map:
                     cypher_raw = self._rewrite_cypher_alias_leaves(cypher_raw, alias_map)
 
+                # INF-599: live /ask bind. Person-only type_names / c.name IN
+                # ['Person'] must expand to Contact|Staff before confine/execute.
+                # SPARQL rewrite is not this path (product NL is LLM Cypher).
+                from infona_client.nlp.cypher_subclass_bind import (
+                    expand_cypher_subclass_binds,
+                )
+
+                cypher_raw, params = expand_cypher_subclass_binds(
+                    cypher_raw, params, ontology
+                )
+
                 if not (gen.get("stub") or gen.get("fixture")):
                     from infona_client.nlp.cypher_filter_integrity import (
                         rewrite_optional_value_filters,

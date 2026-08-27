@@ -254,7 +254,9 @@ class PipelineSparqlFixMixin:
         from infona_client.graph.rdfs_helpers import extract_subclass_map_from_ontology
 
         sparql = rewrite_parent_attr_to_subclass_predicates(
-            sparql, extract_subclass_map_from_ontology(ontology_summary)
+            sparql,
+            extract_subclass_map_from_ontology(ontology_summary),
+            ontology_summary=ontology_summary,
         )
 
         # Fix 4b: follow sameAs so a query pinning a MERGED-away entity IRI
