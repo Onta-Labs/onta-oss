@@ -110,3 +110,54 @@ async def test_colliding_numeric_ids_emit_distinct_uris_and_edges(monkeypatch, t
         if s == contact_uri and p.endswith("/total")
     ]
     assert leaked == []
+
+
+def test_apply_mapping_stamps_relationship_types_on_shared_numeric_ids():
+    mapping = _purchase_mapping()
+    rows = [{"order_id": "17", "contact_id": "17", "product_id": "17", "total": "40"}]
+    from infona_client.resolver.csv_resolver import CSVResolver
+    entities, rels = CSVResolver.apply_mapping(mapping, rows)
+    by_type: dict[str, list] = {}
+    for e in entities:
+        by_type.setdefault(e.type_name, []).append(e)
+    assert {t: {e.id for e in es} for t, es in by_type.items()} == {
+        "Purchase": {"17"}, "Contact": {"17"}, "Product": {"17"},
+    }
+    bought = next(r for r in rels if r.predicate == "bought_by")
+    assert bought.source_type == "Purchase" and bought.target_type == "Contact"
+
+
+@pytest.mark.asyncio
+async def test_key_join_skip_does_not_drop_other_type_with_same_raw_id(tmp_path):
+    """Contact/17 unmatched must not skip Purchase/17 or put bare '17' in skip."""
+    from infona_client.resolver.entity_map import qualified_id
+    from infona_client.resolver.models import ExtractedAttribute, ExtractedEntity, IngestResult, KeyJoin
+
+    n = MagicMock()
+    n.query = AsyncMock(return_value={"results": {"bindings": []}})
+    resolver = SchemaResolver(n, "fake-key", JsonVerdictCache(tmp_path / "v.json"))
+    resolver._er_enabled = False
+
+    contact = ExtractedEntity(
+        type_name="Contact", id="17",
+        attributes=[ExtractedAttribute(name="contact_id", value="17")],
+    )
+    purchase = ExtractedEntity(
+        type_name="Purchase", id="17",
+        attributes=[ExtractedAttribute(name="total", value="40")],
+    )
+    q_c, q_p = qualified_id("Contact", "17"), qualified_id("Purchase", "17")
+    uri_map = {
+        q_c: entity_uri("Contact", "17"),
+        q_p: entity_uri("Purchase", "17"),
+    }
+    resolved = {q_c: "Contact", q_p: "Purchase"}
+    result = IngestResult()
+    skip = await resolver._resolve_key_join(
+        [contact, purchase], resolved, uri_map, INSTANCE,
+        KeyJoin(key_attribute="contact_id", mint_unmatched=False), result,
+    )
+    assert q_c in skip
+    assert q_p not in skip
+    assert "17" not in skip
+    assert uri_map[q_p] == entity_uri("Purchase", "17")

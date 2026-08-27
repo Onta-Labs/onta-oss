@@ -103,3 +103,35 @@ def lookup_type(
 
 def qualified_count(uri_map: dict[str, str]) -> int:
     return sum(1 for k in uri_map if SEP in k)
+
+
+def entity_is_skipped(entity: ExtractedEntity, skip_ids: set[str]) -> bool:
+    """Skip only the qualified key — never a collided raw id."""
+    return map_key(entity) in skip_ids
+
+
+def rel_is_skipped(rel: ExtractedRelationship, skip_ids: set[str]) -> bool:
+    return rel_source_key(rel) in skip_ids or rel_target_key(rel) in skip_ids
+
+
+def fan_in_natural_uris(
+    uri_map: dict[str, str],
+    type_map: dict[str, str],
+    mint_uri,
+) -> dict[str, str]:
+    """ER/key-join fan-in: natural URI → surviving URI. Qualified keys only."""
+    ids_by_uri: dict[str, list[str]] = {}
+    for eid, uri in uri_map.items():
+        if SEP not in eid:
+            continue
+        ids_by_uri.setdefault(uri, []).append(eid)
+    fan_in: dict[str, str] = {}
+    for uri, eids in ids_by_uri.items():
+        if len(eids) < 2:
+            continue
+        for eid in eids:
+            _decl, raw = eid.split(SEP, 1)
+            natural = mint_uri(type_map.get(eid, ""), raw)
+            if natural != uri:
+                fan_in[natural] = uri
+    return fan_in

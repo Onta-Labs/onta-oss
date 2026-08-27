@@ -299,7 +299,10 @@ class SchemaIngestMappedMixin:
                 continue
             if q in matched_uri:
                 entity_uri_map[q] = matched_uri[q]
-                entity_uri_map[entity.id] = matched_uri[q]
+                # Sync the raw slot only when this id is still unique in-batch
+                # (collided raw ids were popped from the map by register_entity).
+                if entity.id in entity_uri_map:
+                    entity_uri_map[entity.id] = matched_uri[q]
                 result.rows_key_merged += 1
             elif q in no_key:
                 # No key to join on → ordinary mint, unaffected by mint_unmatched.
@@ -311,7 +314,8 @@ class SchemaIngestMappedMixin:
                 else:
                     result.rows_key_unmatched += 1
                     skip.add(q)
-                    skip.add(entity.id)
+                    if entity.id in entity_uri_map:
+                        skip.add(entity.id)
 
         if result.rows_key_unmatched:
             _sr.logger.warning(

@@ -274,6 +274,7 @@ class _ExtensionApplier:
     """
 
     def __init__(self, mapping: CSVSchemaMapping):
+        self._mapping = mapping
         self._promotions, self._type_constants = _build_extension_plans(mapping)
         self._entities: dict[tuple[str, str], ExtractedEntity] = {}
         self._relationships: list[ExtractedRelationship] = []
@@ -308,21 +309,42 @@ class _ExtensionApplier:
             )
             owner_key = owner_keys.get(plan.owner)
             if owner_key:
-                self._edge(pid, plan.identifies_predicate, owner_key)
-            self._constant_edges(pid, plan.constants)
+                self._edge(
+                    pid, plan.identifies_predicate, owner_key,
+                    source_type=plan.type_name,
+                    target_type=self._owner_type(plan.owner),
+                )
+            self._constant_edges(pid, plan.constants, source_type=plan.type_name)
         for type_plan in self._type_constants:
             owner_key = owner_keys.get(type_plan.owner)
             if owner_key:
-                self._constant_edges(owner_key, type_plan.constants)
+                self._constant_edges(
+                    owner_key, type_plan.constants,
+                    source_type=self._owner_type(type_plan.owner),
+                )
 
-    def _constant_edges(self, source_id: str, constants: list[_ConstantEdgePlan]) -> None:
+    def _owner_type(self, owner: str | None) -> str | None:
+        if owner is None:
+            return self._mapping.entity_type or None
+        for spec in self._mapping.entities or []:
+            if spec.name == owner:
+                return spec.type_name
+        return None
+
+    def _constant_edges(
+        self, source_id: str, constants: list[_ConstantEdgePlan],
+        *, source_type: str | None = None,
+    ) -> None:
         for c in constants:
             cid = _safe_id(c.value)
             self._ensure_entity(
                 c.target_type, cid,
                 ExtractedAttribute(name="name", value=c.value, datatype="string"),
             )
-            self._edge(source_id, c.predicate, cid)
+            self._edge(
+                source_id, c.predicate, cid,
+                source_type=source_type, target_type=c.target_type,
+            )
 
     def _ensure_entity(self, type_name: str, key: str, attr: ExtractedAttribute) -> None:
         ent = self._entities.get((type_name, key))
@@ -333,13 +355,17 @@ class _ExtensionApplier:
         elif not any(a.name == attr.name and a.value == attr.value for a in ent.attributes):
             ent.attributes.append(attr)
 
-    def _edge(self, source_id: str, predicate: str, target_id: str) -> None:
+    def _edge(
+        self, source_id: str, predicate: str, target_id: str,
+        *, source_type: str | None = None, target_type: str | None = None,
+    ) -> None:
         edge = (source_id, predicate, target_id)
         if edge in self._seen_edges:
             return
         self._seen_edges.add(edge)
         self._relationships.append(ExtractedRelationship(
             source_id=source_id, predicate=predicate, target_id=target_id,
+            source_type=source_type, target_type=target_type,
         ))
 
 

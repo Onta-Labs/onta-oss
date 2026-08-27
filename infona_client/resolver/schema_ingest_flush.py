@@ -24,14 +24,14 @@ from infona_client.resolver.models import (
     KeyJoin,
 )
 from infona_client.resolver.entity_map import (
-    SEP,
+    entity_is_skipped,
+    fan_in_natural_uris,
     lookup_type,
     lookup_uri,
     map_key,
     qualified_count,
     register_entity,
-    rel_source_key,
-    rel_target_key,
+    rel_is_skipped,
 )
 from infona_client.resolver.predicate_normalizer import normalize_predicate
 # Call-time host lookups so tests that patch schema_resolver.logger /
@@ -175,7 +175,7 @@ class SchemaIngestFlushMixin:
                 q = map_key(e)
                 if q not in resolved_types and e.id not in resolved_types:
                     continue
-                if q in skip_ids or e.id in skip_ids:
+                if entity_is_skipped(e, skip_ids):
                     continue
                 uri = lookup_uri(entity_uri_map, e.id, e.type_name)
                 if uri:
@@ -206,7 +206,7 @@ class SchemaIngestFlushMixin:
                 q = map_key(entity)
                 if q not in resolved_types and entity.id not in resolved_types:
                     continue
-                if q in skip_ids or entity.id in skip_ids:
+                if entity_is_skipped(entity, skip_ids):
                     continue  # key-join unmatched with mint_unmatched=false
                 resolved_type = resolved_types.get(q) or resolved_types[entity.id]
                 entity_uri = lookup_uri(entity_uri_map, entity.id, entity.type_name)
@@ -255,11 +255,7 @@ class SchemaIngestFlushMixin:
             for rel in relationships:
                 # An edge whose source or target was skipped (key-join unmatched
                 # with mint_unmatched=false) has no node to hang off — drop it.
-                src_k = rel_source_key(rel)
-                tgt_k = rel_target_key(rel)
-                if src_k in skip_ids or tgt_k in skip_ids:
-                    continue
-                if rel.source_id in skip_ids or rel.target_id in skip_ids:
+                if rel_is_skipped(rel, skip_ids):
                     continue
                 source_uri = lookup_uri(
                     entity_uri_map, rel.source_id, getattr(rel, "source_type", None),
@@ -336,19 +332,9 @@ class SchemaIngestFlushMixin:
             # merges: >1 source entity id resolving to ONE final URI is a merge, so
             # the non-canonical sources' natural URIs map to the shared node.
             if run_id is not None:
-                ids_by_uri: dict[str, list[str]] = {}
-                for eid, uri in entity_uri_map.items():
-                    if SEP not in eid:
-                        continue
-                    ids_by_uri.setdefault(uri, []).append(eid)
-                fan_in: dict[str, str] = {}
-                for uri, eids in ids_by_uri.items():
-                    if len(eids) > 1:
-                        for eid in eids:
-                            _decl, raw = eid.split(SEP, 1)
-                            natural = _sr._entity_uri(entity_type_map.get(eid, ""), raw)
-                            if natural != uri:
-                                fan_in[natural] = uri
+                fan_in = fan_in_natural_uris(
+                    entity_uri_map, entity_type_map, _sr._entity_uri,
+                )
                 result.graph_delta = build_graph_delta(
                     instance_graph,
                     (collected_entity_triples or []) + rel_triples,
