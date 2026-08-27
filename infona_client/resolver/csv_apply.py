@@ -107,8 +107,8 @@ class CSVApplyMixin:
 
         entities: list[ExtractedEntity] = []
         relationships: list[ExtractedRelationship] = []
-        seen_rel_entities: dict[str, str] = {}  # safe_id → type for relationship targets
-        rel_entity_names: dict[str, str] = {}  # safe_id → original value for name attr
+        seen_rel_entities: dict[tuple[str, str], str] = {}  # (type, safe_id) → type
+        rel_entity_names: dict[tuple[str, str], str] = {}  # (type, safe_id) → original value
         rows_dropped = 0
         drops_by_entity: dict[str, int] = {}
         # ADR 0003 Pass D: promoted-type instances + dataset-constant edges.
@@ -188,10 +188,13 @@ class CSVApplyMixin:
                             source_id=safe_id,
                             predicate=attr_name,
                             target_id=target_id,
+                            source_type=mapping.entity_type or None,
+                            target_type=col.target_type,
                         ))
-                        if target_id not in seen_rel_entities:
-                            seen_rel_entities[target_id] = col.target_type
-                            rel_entity_names[target_id] = value
+                        stub_key = (col.target_type, target_id)
+                        if stub_key not in seen_rel_entities:
+                            seen_rel_entities[stub_key] = col.target_type
+                            rel_entity_names[stub_key] = value
 
                 elif col.role == ColumnRole.ATTRIBUTE:
                     value = str(raw_value) if not isinstance(raw_value, str) else raw_value
@@ -233,8 +236,10 @@ class CSVApplyMixin:
         # at write time from a human cell, not the URI slug. Human-readable
         # relationship cells (Austin, Acme Corp) keep a name attr so NL can
         # filter them before a dim table arrives.
-        for target_id, target_type in seen_rel_entities.items():
-            raw_name = rel_entity_names.get(target_id, target_id.replace("_", " "))
+        for (target_type, target_id), _typ in seen_rel_entities.items():
+            raw_name = rel_entity_names.get(
+                (target_type, target_id), target_id.replace("_", " "),
+            )
             stub_attrs: list[ExtractedAttribute] = []
             if not _is_opaque_identifier(raw_name):
                 stub_attrs.append(
@@ -406,6 +411,8 @@ class CSVApplyMixin:
                             tid = _safe_id(value)
                             relationships.append(ExtractedRelationship(
                                 source_id=key, predicate=attr_name, target_id=tid,
+                                source_type=spec.type_name,
+                                target_type=col.target_type,
                             ))
                             stub_attrs: list[ExtractedAttribute] = []
                             if not _is_opaque_identifier(value):
@@ -437,8 +444,12 @@ class CSVApplyMixin:
                 s = row_ids.get(rel.subject)
                 o = row_ids.get(rel.object)
                 if s and o:
+                    subj_spec = specs.get(rel.subject)
+                    obj_spec = specs.get(rel.object)
                     relationships.append(ExtractedRelationship(
                         source_id=s, predicate=rel.predicate, target_id=o,
+                        source_type=subj_spec.type_name if subj_spec else None,
+                        target_type=obj_spec.type_name if obj_spec else None,
                     ))
 
             if applier.active:
