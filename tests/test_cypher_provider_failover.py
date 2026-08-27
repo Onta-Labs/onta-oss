@@ -329,6 +329,32 @@ async def test_first_provider_raising_still_reaches_a_later_one(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_cerebras_fail_tries_non_reasoning_openrouter_before_gpt_oss(
+    monkeypatch,
+):
+    """After Cerebras JSON/HTTP failure, the next rung is Gemini Flash, not a
+    second gpt-oss think-loop on OpenRouter (~76s in production)."""
+    p = _make_pipeline("cerebras")
+    flags: list[bool] = []
+
+    async def boom(prompt: str, **kw: Any) -> dict:
+        raise RuntimeError("cerebras json fail")
+
+    async def openrouter(prompt: str, *, prefer_non_reasoning: bool = False) -> dict:
+        flags.append(prefer_non_reasoning)
+        if prefer_non_reasoning:
+            return _gen_payload(explanation="from-flash")
+        raise RuntimeError("should not reach gpt-oss openrouter")
+
+    monkeypatch.setattr(p, "_generate_cypher_via_cerebras", boom)
+    monkeypatch.setattr(p, "_generate_cypher_via_openrouter", openrouter)
+
+    out = await _try(p)
+    assert out is not None and out["explanation"] == "from-flash"
+    assert flags == [True]
+
+
+@pytest.mark.asyncio
 async def test_falls_through_two_providers_to_anthropic(monkeypatch):
     """Failover is a LADDER, not a single retry: both LLM-API providers failing
     still lands on the configured Anthropic client."""
@@ -352,7 +378,9 @@ async def test_falls_through_two_providers_to_anthropic(monkeypatch):
 
     out = await _try(p)
     assert out is not None and out["explanation"] == "from-anthropic"
-    assert calls == ["cerebras", "openrouter", "anthropic"]
+    assert calls[0] == "cerebras"
+    assert calls.count("openrouter") >= 1
+    assert calls[-1] == "anthropic"
 
 
 @pytest.mark.asyncio
@@ -377,7 +405,9 @@ async def test_returns_none_only_when_every_provider_failed(monkeypatch):
         monkeypatch.setattr(p, attr, _raiser(name))
 
     assert await _try(p) is None
-    assert calls == ["cerebras", "openrouter", "anthropic"]
+    assert calls[0] == "cerebras"
+    assert calls.count("openrouter") >= 1
+    assert calls[-1] == "anthropic"
 
 
 @pytest.mark.asyncio

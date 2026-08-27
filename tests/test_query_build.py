@@ -38,6 +38,14 @@ def test_cerebras_default_model_is_gpt_oss_120b(monkeypatch):
     assert pipeline_mod._default_query_model("cerebras") == "gpt-oss-120b"
 
 
+def test_citations_are_on_even_if_env_kill_switch_is_set(monkeypatch):
+    monkeypatch.setenv("INFONA_ANSWER_CITATIONS_ENABLED", "0")
+    from infona_client.nlp.pipeline import NLQueryPipeline
+
+    p = NLQueryPipeline(AsyncMock(), "invented-key")
+    assert p._answer_citations_enabled is True
+
+
 def test_is_reasoning_query_model():
     assert pipeline_mod._is_reasoning_query_model("openai/gpt-oss-120b")
     assert pipeline_mod._is_reasoning_query_model("gpt-oss-120b")

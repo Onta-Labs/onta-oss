@@ -20,13 +20,10 @@ touches the planner, and DEGRADES gracefully — a fact with no validity node is
 current; a missing/failed provenance read yields ``confidence=None``; any read
 failure yields no citation for that fact rather than breaking the answer.
 
-**CENTRAL CONSTRAINT (why some rows are not cited).** A generated ``SELECT``
-projects arbitrary variables and often does NOT expose the
-``(subject IRI, predicate URI, object term)`` a fact must be keyed by. A citation
-is attached ONLY for rows that DO expose those — a describe-shape row projecting
-subject + predicate + object, or a row projecting ``?uri``/``?s`` alongside a
-predicate and object. For non-keyable rows the citation list is legitimately
-empty — that is honest, not a bug.
+**CENTRAL CONSTRAINT.** Describe-shape rows (subject + predicate + object) get
+validity/provenance citations. Rows that only expose a user-facing
+``source_url`` still get a citation from that URL (ingest/enrich provenance).
+Entity IRIs under ``graph.infona.ai/entities/`` are not cited as sources.
 
 Boundary: OSS. Imports only stdlib / ``infona_client.*`` — no ``from infona.*``.
 """
@@ -162,6 +159,36 @@ def _match_provenance(
     return best
 
 
+_SOURCE_URL_KEYS = ("source_url", "sourceurl", "url", "source_uri")
+_SOURCE_NAME_KEYS = ("source_name", "source", "source_label")
+
+
+def _citations_from_source_url_columns(bindings: list[dict]) -> list[FactCitation]:
+    """Cite http(s) source_url columns even when the row is not describe-shaped."""
+    out: list[FactCitation] = []
+    seen: set[str] = set()
+    for row in bindings:
+        url = _pick(row, _SOURCE_URL_KEYS)
+        if not url or not _is_iri(url):
+            continue
+        if "graph.infona.ai/entities/" in url:
+            continue
+        if url in seen:
+            continue
+        seen.add(url)
+        name = _pick(row, _SOURCE_NAME_KEYS) or url
+        out.append(
+            FactCitation(
+                source=url,
+                label=str(name),
+                object=url,
+                verdict="current",
+                is_current=True,
+            )
+        )
+    return out
+
+
 async def build_citations(
     neptune,
     instance_graph: str,
@@ -196,7 +223,9 @@ async def build_citations(
         keyed.append((s, p, o, label))
         sp_pairs[(s, p)] = None
     if not keyed:
-        return citations
+        # User-facing source_url on the row (ingest/enrich citations) still
+        # counts when the SELECT was not a describe-shape (s, p, o) projection.
+        return _citations_from_source_url_columns(bindings)
 
     # 2. Batch the validity + provenance + A4 verdict reads per (s, p).
     history_by_sp: dict[tuple[str, str], list[ValidityInterval]] = {}
@@ -244,6 +273,11 @@ async def build_citations(
                 truth_verdict=truth_verdict_by_sp.get((s, p), ""),
             )
         )
+    seen = {c.source for c in citations if c.source}
+    for extra in _citations_from_source_url_columns(bindings):
+        if extra.source and extra.source not in seen:
+            citations.append(extra)
+            seen.add(extra.source)
     return citations
 
 
