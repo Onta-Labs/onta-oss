@@ -404,9 +404,26 @@ def resolve_type_name(
         hit = match_type_name(label, active, ontology_summary=ontology_summary)
         if hit is not None:
             return hit
-        # No active-type match. Avoid binding a known-empty type for fixtures.
+        # No active-type match. Avoid binding a known-empty leftover type
+        # (tenant pollution). Exception (INF-599 / ADR 0001): an empty
+        # *parent* whose subclasses have instances must still bind so
+        # count/list expand via subclass closure ("how many people?" →
+        # Person → Contact|Staff). Binding Person-as-empty otherwise
+        # returns None and the ask never closes over children.
         empty_hit = match_type_name(label, names, ontology_summary=ontology_summary)
         if empty_hit is not None and activity.get(empty_hit) == 0:
+            if hierarchy_overlay:
+                from infona_client.graph.rdfs_helpers import (
+                    type_names_with_subclasses,
+                )
+
+                expanded = type_names_with_subclasses(
+                    empty_hit, child_to_parent=hierarchy_overlay
+                )
+                if any(
+                    activity.get(t, 0) > 0 for t in expanded if t != empty_hit
+                ):
+                    return empty_hit
             return None
         return empty_hit
 
