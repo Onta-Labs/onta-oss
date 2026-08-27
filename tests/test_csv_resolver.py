@@ -172,6 +172,44 @@ class TestMultiEntityMapping:
         entities, _ = CSVResolver.apply_mapping(mapping, [{"address": "1 Main", "price": "500"}])
         assert len(entities) == 1 and entities[0].type_name == "Listing"
 
+    def test_inter_entity_edges_carry_declared_types(self):
+        _, rels = CSVResolver.apply_mapping(_pms_multi_mapping(), _PMS_ROWS)
+        made_by = [r for r in rels if r.predicate == "made_by"]
+        assert made_by
+        assert all(r.source_type == "Reservation" for r in made_by)
+        assert all(r.target_type == "Person" for r in made_by)
+
+    def test_numeric_ids_shared_across_types_stay_distinct(self):
+        """CRM tables number independently: Contact 17 and Purchase 17 are
+        different nodes. apply_mapping must emit both, with typed edges, so
+        the write-path id map cannot collapse them."""
+        mapping = CSVSchemaMapping(
+            entity_type="Purchase",
+            entities=[
+                EntitySpec(name="purchase", type_name="Purchase", id_column="order_id"),
+                EntitySpec(name="contact", type_name="Contact", id_column="contact_id"),
+            ],
+            relationships=[
+                EntityRelationSpec(subject="purchase", predicate="bought_by", object="contact"),
+            ],
+            columns=[
+                ColumnMapping(
+                    column_name="total", role=ColumnRole.ATTRIBUTE,
+                    datatype="float", attribute_name="total", entity="purchase",
+                ),
+            ],
+        )
+        rows = [{"order_id": "17", "contact_id": "17", "total": "40"}]
+        entities, rels = CSVResolver.apply_mapping(mapping, rows)
+        by_type: dict[str, list] = {}
+        for e in entities:
+            by_type.setdefault(e.type_name, []).append(e)
+        assert len(by_type["Purchase"]) == 1 and by_type["Purchase"][0].id == "17"
+        assert len(by_type["Contact"]) == 1 and by_type["Contact"][0].id == "17"
+        edge = next(r for r in rels if r.predicate == "bought_by")
+        assert edge.source_id == "17" and edge.target_id == "17"
+        assert edge.source_type == "Purchase" and edge.target_type == "Contact"
+
 
 class TestSafeId:
     def test_basic(self):

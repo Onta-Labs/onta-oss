@@ -23,6 +23,16 @@ from infona_client.resolver.models import (
     IngestResult,
     KeyJoin,
 )
+from infona_client.resolver.entity_map import (
+    SEP,
+    lookup_type,
+    lookup_uri,
+    map_key,
+    qualified_count,
+    register_entity,
+    rel_source_key,
+    rel_target_key,
+)
 from infona_client.resolver.predicate_normalizer import normalize_predicate
 # Call-time host lookups so tests that patch schema_resolver.logger /
 # insert_facts / _entity_uri / env flags keep working after this extract.
@@ -118,6 +128,8 @@ class SchemaIngestFlushMixin:
             # target the attr URIs actually written (ONTA-177). setdefault: the
             # first resolution wins, matching how attributes are declared.
             resolved_by_decl_type: dict[str, str] = {}
+            unqualified_owner: dict[str, str] = {}
+            collided_ids: set[str] = set()
             for i, entity in enumerate(entities):
                 if i > 0 and i % self.ONTOLOGY_REFRESH_INTERVAL == 0:
                     await self._refresh_ontology(graph_uri, existing_types, existing_attrs)
@@ -127,11 +139,19 @@ class SchemaIngestFlushMixin:
                     parent_of=parent_of,
                 )
                 if resolved_type:
-                    resolved_types[entity.id] = resolved_type
                     resolved_by_decl_type.setdefault(entity.type_name, resolved_type)
                     entity_uri = _sr._entity_uri(resolved_type, entity.id)
-                    entity_uri_map[entity.id] = entity_uri
-                    entity_type_map[entity.id] = resolved_type
+                    register_entity(
+                        declared_type=entity.type_name,
+                        entity_id=entity.id,
+                        resolved_type=resolved_type,
+                        uri=entity_uri,
+                        uri_map=entity_uri_map,
+                        type_map=entity_type_map,
+                        resolved_types=resolved_types,
+                        unqualified_owner=unqualified_owner,
+                        collided=collided_ids,
+                    )
 
             # instance_graph resolved once at method top (ONTA-268 call-local).
 
@@ -150,11 +170,16 @@ class SchemaIngestFlushMixin:
                 )
 
             # Only URIs we will actually write get the existence check.
-            pending_uris = [
-                entity_uri_map[e.id]
-                for e in entities
-                if e.id in resolved_types and e.id not in skip_ids
-            ]
+            pending_uris = []
+            for e in entities:
+                q = map_key(e)
+                if q not in resolved_types and e.id not in resolved_types:
+                    continue
+                if q in skip_ids or e.id in skip_ids:
+                    continue
+                uri = lookup_uri(entity_uri_map, e.id, e.type_name)
+                if uri:
+                    pending_uris.append(uri)
 
             # Batch existence check (SPARQL). Skip when GraphStore is live.
             existing_uris: set[str] = set()
@@ -178,12 +203,15 @@ class SchemaIngestFlushMixin:
 
             # Pass 2: Resolve attributes and insert
             for entity in entities:
-                if entity.id not in resolved_types:
+                q = map_key(entity)
+                if q not in resolved_types and entity.id not in resolved_types:
                     continue
-                if entity.id in skip_ids:
+                if q in skip_ids or entity.id in skip_ids:
                     continue  # key-join unmatched with mint_unmatched=false
-                resolved_type = resolved_types[entity.id]
-                entity_uri = entity_uri_map[entity.id]
+                resolved_type = resolved_types.get(q) or resolved_types[entity.id]
+                entity_uri = lookup_uri(entity_uri_map, entity.id, entity.type_name)
+                if not entity_uri:
+                    continue
                 is_duplicate = entity_uri in existing_uris
                 if is_duplicate:
                     result.entities_deduplicated += 1
@@ -227,13 +255,23 @@ class SchemaIngestFlushMixin:
             for rel in relationships:
                 # An edge whose source or target was skipped (key-join unmatched
                 # with mint_unmatched=false) has no node to hang off — drop it.
+                src_k = rel_source_key(rel)
+                tgt_k = rel_target_key(rel)
+                if src_k in skip_ids or tgt_k in skip_ids:
+                    continue
                 if rel.source_id in skip_ids or rel.target_id in skip_ids:
                     continue
-                source_uri = entity_uri_map.get(rel.source_id)
-                target_uri = entity_uri_map.get(rel.target_id)
+                source_uri = lookup_uri(
+                    entity_uri_map, rel.source_id, getattr(rel, "source_type", None),
+                )
+                target_uri = lookup_uri(
+                    entity_uri_map, rel.target_id, getattr(rel, "target_type", None),
+                )
                 if source_uri and target_uri:
                     # Normalize predicate against existing predicates on this type
-                    source_type = entity_type_map.get(rel.source_id)
+                    source_type = lookup_type(
+                        entity_type_map, rel.source_id, getattr(rel, "source_type", None),
+                    )
                     existing_preds = set()
                     if source_type:
                         for attr_name, schema in existing_attrs.get(source_type, {}).items():
@@ -245,7 +283,9 @@ class SchemaIngestFlushMixin:
                     rel_triples.append((source_uri, predicate, target_uri))
 
                     # Register relationship as object property in ontology
-                    target_type = entity_type_map.get(rel.target_id)
+                    target_type = lookup_type(
+                        entity_type_map, rel.target_id, getattr(rel, "target_type", None),
+                    )
                     if source_type and target_type:
                         type_attrs = existing_attrs.get(source_type, {})
                         existing = type_attrs.get(canonical_pred)
@@ -279,7 +319,7 @@ class SchemaIngestFlushMixin:
                 )
             result.triples_inserted += len(rel_triples)
 
-            result.entities_resolved = len(entity_uri_map)
+            result.entities_resolved = qualified_count(entity_uri_map) or len(entity_uri_map)
             _sr.logger.info(
                 "csv_ingest_complete",
                 rows=len(rows),
@@ -298,12 +338,15 @@ class SchemaIngestFlushMixin:
             if run_id is not None:
                 ids_by_uri: dict[str, list[str]] = {}
                 for eid, uri in entity_uri_map.items():
+                    if SEP not in eid:
+                        continue
                     ids_by_uri.setdefault(uri, []).append(eid)
                 fan_in: dict[str, str] = {}
                 for uri, eids in ids_by_uri.items():
                     if len(eids) > 1:
                         for eid in eids:
-                            natural = _sr._entity_uri(entity_type_map.get(eid, ""), eid)
+                            _decl, raw = eid.split(SEP, 1)
+                            natural = _sr._entity_uri(entity_type_map.get(eid, ""), raw)
                             if natural != uri:
                                 fan_in[natural] = uri
                 result.graph_delta = build_graph_delta(

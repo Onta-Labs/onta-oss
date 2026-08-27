@@ -229,21 +229,24 @@ class SchemaIngestMappedMixin:
         # Group the incoming key value per entity id, bucketed by resolved type
         # (the lookup query is per-type). An entity with no value for the key
         # attribute cannot be joined — it is treated as unmatched.
-        by_type: dict[str, dict[str, str]] = {}  # type -> {entity.id: key_value}
+        from infona_client.resolver.entity_map import map_key
+
+        by_type: dict[str, dict[str, str]] = {}  # type -> {map_key: key_value}
         no_key: set[str] = set()
         for entity in entities:
-            if entity.id not in resolved_types:
+            q = map_key(entity)
+            if q not in resolved_types and entity.id not in resolved_types:
                 continue
-            rtype = resolved_types[entity.id]
+            rtype = resolved_types.get(q) or resolved_types[entity.id]
             val = next(
                 (a.value for a in entity.attributes
                  if _normalize_attr_name(a.name) == key_attr and (a.value or "").strip()),
                 None,
             )
             if val is None:
-                no_key.add(entity.id)
+                no_key.add(q)
                 continue
-            by_type.setdefault(rtype, {})[entity.id] = val.strip()
+            by_type.setdefault(rtype, {})[q] = val.strip()
 
         # value -> existing URI(s), resolved per type via one batched query.
         matched_uri: dict[str, str] = {}   # entity.id -> existing URI
@@ -291,12 +294,14 @@ class SchemaIngestMappedMixin:
         # relationship targets.
         skip: set[str] = set()
         for entity in entities:
-            if entity.id not in resolved_types:
+            q = map_key(entity)
+            if q not in resolved_types and entity.id not in resolved_types:
                 continue
-            if entity.id in matched_uri:
-                entity_uri_map[entity.id] = matched_uri[entity.id]
+            if q in matched_uri:
+                entity_uri_map[q] = matched_uri[q]
+                entity_uri_map[entity.id] = matched_uri[q]
                 result.rows_key_merged += 1
-            elif entity.id in no_key:
+            elif q in no_key:
                 # No key to join on → ordinary mint, unaffected by mint_unmatched.
                 pass
             else:
@@ -305,6 +310,7 @@ class SchemaIngestMappedMixin:
                     result.rows_key_minted += 1
                 else:
                     result.rows_key_unmatched += 1
+                    skip.add(q)
                     skip.add(entity.id)
 
         if result.rows_key_unmatched:

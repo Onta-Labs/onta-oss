@@ -110,6 +110,12 @@ class ExtractedRelationship(BaseModel):
     source_id: str
     predicate: str
     target_id: str
+    # Optional declared types so a batch can contain Contact/17 and Purchase/17
+    # without the write-path id map collapsing them. Default None keeps LLM
+    # extract payloads and older CSV mappings byte-compatible (unqualified
+    # lookup when the raw id is unique in the batch).
+    source_type: str | None = None
+    target_type: str | None = None
 
 
 class ExtractionResult(BaseModel):
