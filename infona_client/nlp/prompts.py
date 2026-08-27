@@ -218,7 +218,7 @@ Provenance (`source_url`, `verified_at`, `confidence`, `run_id`) lives ON the As
 rels (e.g. `HAS_GENRE`) — only valid when kept consistent with Assertions.
 - When the schema lists `source_url` / `source_name`, RETURN those literals \
 so the answer can cite the official source. Never RETURN entity IRIs as the \
-user-facing answer — use `name` / `display_name` / `literal_value`.\
+user-facing answer — use `name` / `display_name` / `literal_value`.
 - Entity denorm cache that is ALWAYS present: `id`, `name`, `primary_type`, \
 `tenant_id`, `kg`. Other keys (`title`, `date_end`, …) are NOT structural — \
 they are empty unless that exact leaf is unmarked as populated in the schema. \

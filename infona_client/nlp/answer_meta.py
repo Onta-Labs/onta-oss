@@ -20,13 +20,10 @@ touches the planner, and DEGRADES gracefully — a fact with no validity node is
 current; a missing/failed provenance read yields ``confidence=None``; any read
 failure yields no citation for that fact rather than breaking the answer.
 
-**CENTRAL CONSTRAINT (why some rows are not cited).** A generated ``SELECT``
-projects arbitrary variables and often does NOT expose the
-``(subject IRI, predicate URI, object term)`` a fact must be keyed by. A citation
-is attached ONLY for rows that DO expose those — a describe-shape row projecting
-subject + predicate + object, or a row projecting ``?uri``/``?s`` alongside a
-predicate and object. For non-keyable rows the citation list is legitimately
-empty — that is honest, not a bug.
+**CENTRAL CONSTRAINT.** Describe-shape rows (subject + predicate + object) get
+validity/provenance citations. Rows that only expose a user-facing
+``source_url`` still get a citation from that URL (ingest/enrich provenance).
+Entity IRIs under ``graph.infona.ai/entities/`` are not cited as sources.
 
 Boundary: OSS. Imports only stdlib / ``infona_client.*`` — no ``from infona.*``.
 """
