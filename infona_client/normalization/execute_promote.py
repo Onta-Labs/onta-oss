@@ -10,10 +10,12 @@ from infona_client.models.ontology import OntologyMutation, OntologyOpKind
 from infona_client.normalization.execute_helpers import (
     RDF_TYPE,
     RDFS_LABEL,
+    _EXTRACT_KINDS,
     _delimiters,
     _host,
     _node_uri_owner,
     _node_uri_value,
+    _resolve_atom_key,
     _split,
     logger,
 )
@@ -56,6 +58,20 @@ async def _promote_to_node(
         raise ValueError(
             f"promote_to_node key_by must be 'value' or 'owner', got {key_by!r}"
         )
+    extract = str(params.get("extract") or "").strip().lower()
+    if extract and extract not in _EXTRACT_KINDS:
+        raise ValueError(
+            f"promote_to_node extract must be one of {sorted(_EXTRACT_KINDS)}, "
+            f"got {extract!r}"
+        )
+    raw_map = params.get("key_map") or {}
+    if raw_map and not isinstance(raw_map, dict):
+        raise ValueError("promote_to_node key_map must be an object of atom→id")
+    key_map = {str(k): str(v) for k, v in dict(raw_map).items() if k and v}
+    # Join to an already-ingested type (Staff, Tag CSV): mint the SAME
+    # entity_uri, write the onto/<leaf> edge, do NOT rewrite the target's
+    # label/name (that would clobber Ada Lovelace with the extracted id).
+    link_existing = bool(params.get("link_existing", False))
     # split only makes sense for value-keyed categoricals; a measurement is one
     # value, so owner-keyed ignores it.
     split = bool(params.get("split", False)) and key_by == "value"
@@ -120,8 +136,11 @@ async def _promote_to_node(
         if not atoms:
             continue
         for atom in atoms:
+            key = _resolve_atom_key(atom, extract, key_map)
+            if not key:
+                continue
             if key_by == "value":
-                node_uri = _node_uri_value(target_type, atom)
+                node_uri = _node_uri_value(target_type, key)
                 new_triples = [
                     (node_uri, RDF_TYPE, t_uri),
                     (node_uri, RDFS_LABEL, atom),
@@ -140,7 +159,8 @@ async def _promote_to_node(
                 ]
             if node_uri not in nodes_seen:
                 nodes_seen.add(node_uri)
-                node_triples.extend(new_triples)
+                if not link_existing:
+                    node_triples.extend(new_triples)
             # Re-point the edge via the onto/<leaf> RELATIONSHIP predicate — the
             # form the NL planner queries for a type-ranged attribute, and the form
             # ingest (schema_resolver) + _explode_relationship use for relationship
@@ -233,7 +253,7 @@ async def _promote_to_node(
         )
 
     summary = {
-        "nodes_created": len(nodes_seen),
+        "nodes_created": 0 if link_existing else len(nodes_seen),
         "edges_added": len(edges_to_add),
         "literals_promoted": literals_promoted,
     }

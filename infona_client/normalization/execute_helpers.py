@@ -27,7 +27,10 @@ NAME_ATTR_SUFFIX = "/attrs/name"
 # Slug-aware delimiters: the slug "__" is the de-slugified form of a source-list
 # separator (", " etc.). We keep it last so we try the longer composite-name
 # split form too. Each is a literal substring to split on.
-_FALLBACK_DELIMITERS = [", ", "; ", " / ", " | ", " - ", "__"]
+_FALLBACK_DELIMITERS = [", ", "; ", ";", " / ", " | ", " - ", "__"]
+# ``Name [id]`` CRM owner cells — extract the bracketed id for URI minting.
+_BRACKET_ID_RE = re.compile(r"\[([^\]]+)\]\s*$")
+_EXTRACT_KINDS = frozenset({"bracket_id"})
 
 # Emoji / pictographic / junk codepoints to strip from text literals
 # (strip_emoji). Scoped to the symbol/pictograph blocks so ordinary letters
@@ -150,6 +153,49 @@ def _delimiters(rule) -> list[str]:
     # Longest-first so " / " is tried before "/" etc. — avoids splitting inside a
     # token that legitimately contains the shorter delimiter.
     return sorted(set(delims), key=len, reverse=True)
+
+
+def _extract_atom(atom: str, extract: str | None) -> str:
+    """Optional atom transform before URI minting.
+
+    ``bracket_id`` turns ``Ada Lovelace [1]`` into ``1`` so a join to an
+    already-ingested Staff/Tag row shares ``entity_uri(Type, id)``. Unknown
+    extract kinds are rejected by the caller; empty extract is identity.
+    """
+    raw = (atom or "").strip()
+    if not raw:
+        return ""
+    kind = (extract or "").strip().lower()
+    if not kind:
+        return raw
+    if kind == "bracket_id":
+        m = _BRACKET_ID_RE.search(raw)
+        return (m.group(1).strip() if m else raw)
+    return raw
+
+
+def _resolve_atom_key(
+    atom: str,
+    extract: str | None,
+    key_map: dict[str, str] | None,
+) -> str:
+    """Extract then remap ``atom`` to the raw_id ``entity_uri`` should mint.
+
+    ``key_map`` joins a display name to an existing row's id (Tag ``VIP`` →
+    ``1``). Exact match first, then case-insensitive. Missing keys keep the
+    extracted atom so a name-keyed table still shares URIs.
+    """
+    key = _extract_atom(atom, extract)
+    if not key:
+        return ""
+    if not key_map:
+        return key
+    if key in key_map:
+        mapped = str(key_map[key] or "").strip()
+        return mapped or key
+    lowered = {str(k).lower(): v for k, v in key_map.items()}
+    mapped = str(lowered.get(key.lower()) or "").strip()
+    return mapped or key
 
 
 def _split(value: str, delimiters: list[str]) -> list[str]:
