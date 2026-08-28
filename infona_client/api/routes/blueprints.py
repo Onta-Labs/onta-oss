@@ -1,9 +1,9 @@
-"""Canonical Blueprint routes — one family, every client (INF-575 / INF-579).
+"""Canonical Blueprint routes — one family, every client (INF-575 / INF-579 / INF-578).
 
 Workspace mutations stay on ``/graphs/{tenant}/…`` so ``get_tenant`` confines
 the install to the path tenant (INF-580). INF-575's ``/v1/blueprints/{id}``
-sketch is the same three operations (inspect / install / fork), not a second
-identity-scoped family.
+sketch is the same operations (inspect / install / fork / extend / update),
+not a second identity-scoped family.
 
   POST   /graphs/{tenant}/blueprints/validate
   POST   /graphs/{tenant}/blueprints/install
@@ -11,6 +11,8 @@ identity-scoped family.
   GET    /graphs/{tenant}/blueprints/{namespace}/{name}
   DELETE /graphs/{tenant}/blueprints/{namespace}/{name}
   POST   /graphs/{tenant}/blueprints/{namespace}/{name}/fork
+  POST   /graphs/{tenant}/blueprints/{namespace}/{name}/extend
+  POST   /graphs/{tenant}/blueprints/{namespace}/{name}/update
 
 Explorer, CLI, and MCP reach these through the shared SDK. No per-interface
 path strings.
@@ -36,6 +38,7 @@ from infona_client.blueprint.install import (
     load_and_validate,
     uninstall_blueprint,
 )
+from infona_client.blueprint.layer import extend_blueprint, update_blueprint
 from infona_client.blueprint.validate import validate_blueprint as validate_document
 
 router = APIRouter(prefix="/graphs/{tenant}/blueprints")
@@ -71,7 +74,22 @@ class ForkRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-def _manifest_from_body(body: ValidateRequest | InstallRequest):
+class ExtendRequest(BaseModel):
+    """Private overlay delta. Same pin. Not a new package identity."""
+
+    overlay: Optional[dict[str, Any]] = None
+    overlay_yaml: Optional[str] = None
+
+
+class UpdateRequest(BaseModel):
+    """New public base of the same id. Overlay is reapplied."""
+
+    include_sample: Optional[bool] = None
+    manifest: Optional[dict[str, Any]] = None
+    manifest_yaml: Optional[str] = None
+
+
+def _manifest_from_body(body: ValidateRequest | InstallRequest | UpdateRequest):
     if body.manifest is not None:
         return body.manifest
     if body.manifest_yaml:
@@ -167,3 +185,53 @@ async def fork_blueprint_route(
         _raise(exc)
         return
     return result.to_dict()
+
+
+def _overlay_from_body(body: ExtendRequest) -> dict[str, Any]:
+    if body.overlay is not None:
+        return body.overlay
+    if body.overlay_yaml:
+        try:
+            import yaml
+        except ImportError as exc:  # pragma: no cover
+            raise HTTPException(status_code=400, detail="YAML overlay needs PyYAML") from exc
+        loaded = yaml.safe_load(body.overlay_yaml)
+        if not isinstance(loaded, dict):
+            raise HTTPException(status_code=400, detail="overlay must be an object")
+        return loaded
+    raise HTTPException(status_code=400, detail="provide overlay or overlay_yaml")
+
+
+@router.post("/{namespace}/{name}/extend")
+async def extend_blueprint_route(
+    namespace: str,
+    name: str,
+    body: ExtendRequest,
+    tenant: TenantContext = Depends(require_tenant_write),
+):
+    try:
+        return await extend_blueprint(
+            tenant.tenant_id, _package_id(namespace, name), _overlay_from_body(body)
+        )
+    except BlueprintError as exc:
+        _raise(exc)
+        return
+
+
+@router.post("/{namespace}/{name}/update")
+async def update_blueprint_route(
+    namespace: str,
+    name: str,
+    body: UpdateRequest,
+    tenant: TenantContext = Depends(require_tenant_write),
+):
+    try:
+        return await update_blueprint(
+            _manifest_from_body(body),
+            tenant_id=tenant.tenant_id,
+            blueprint_id=_package_id(namespace, name),
+            include_sample=body.include_sample,
+        )
+    except BlueprintError as exc:
+        _raise(exc)
+        return

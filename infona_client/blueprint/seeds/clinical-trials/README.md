@@ -90,6 +90,8 @@ wrote, and leaves the rest of the workspace (INF-577).
 
 Export (workspace → directory) is INF-565. Fork copies this package into
 a new identity with `lineage.parent` pointing here (INF-579); it does
-not copy instance data and does not clobber this seed. First-run
+not copy instance data and does not clobber this seed. A workspace may
+keep this pin and add a private overlay; an upstream update of this
+package must not clobber that overlay (INF-578). First-run
 acquisition (`acquire_condition_set`) is not this package — install
 yields an empty graph plus the optional sample.

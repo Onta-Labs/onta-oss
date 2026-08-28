@@ -1,10 +1,10 @@
-"""Blueprint protocol — validator, export, install, fork (INF-563 / 565 / 575 / 579).
+"""Blueprint protocol — validator, export, install, fork, overlay (INF-563 / 565 / 575 / 579 / 578).
 
 A Blueprint is the **means** to acquire and maintain a domain graph. It is
 not the graph. This package is the inspectable schema, the Clinical
 Trials seed, workspace → directory export, install / inspect /
-uninstall, and fork / lineage. Range checks reuse catalog
-helpers — do not add a second ontology reader.
+uninstall, fork / lineage, and private overlay / non-clobber update.
+Range checks reuse catalog helpers — do not add a second ontology reader.
 
 Boundary: OSS protocol. Stdlib + pydantic + PyYAML + ``infona_client.*``
 only — no ``from infona.*``. Not a hosted registry. BYOK only.
@@ -51,6 +51,7 @@ from infona_client.blueprint.install import (
     uninstall_blueprint,
 )
 from infona_client.blueprint.fork import fork_blueprint
+from infona_client.blueprint.layer import extend_blueprint, update_blueprint
 
 __all__ = [
     "ALLOWED_TOP_LEVEL_KEYS",
@@ -66,6 +67,7 @@ __all__ = [
     "BlueprintManifest",
     "classify_manifest_change",
     "dumps_blueprint",
+    "extend_blueprint",
     "find_manifest",
     "fork_blueprint",
     "inspect_blueprint",
@@ -74,6 +76,7 @@ __all__ = [
     "load_blueprint_package",
     "parse_blueprint",
     "uninstall_blueprint",
+    "update_blueprint",
     "validate_blueprint",
     "validate_blueprint_package",
     "BlueprintExport",

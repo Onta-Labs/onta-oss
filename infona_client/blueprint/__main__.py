@@ -5,6 +5,8 @@
     python -m infona_client.blueprint inspect namespace/name --tenant T
     python -m infona_client.blueprint uninstall namespace/name --tenant T
     python -m infona_client.blueprint fork namespace/name --tenant T [--as ns/name]
+    python -m infona_client.blueprint extend namespace/name --tenant T --overlay file
+    python -m infona_client.blueprint update path/to/new --tenant T --id ns/name
 
 The HTTP / npm / MCP surfaces call the same engine. Export is
 ``infona_client.blueprint.export`` (INF-565).
@@ -16,6 +18,7 @@ import argparse
 import asyncio
 import json
 import sys
+from pathlib import Path
 
 from infona_client.blueprint.install import (
     BlueprintError,
@@ -24,6 +27,7 @@ from infona_client.blueprint.install import (
     uninstall_blueprint,
 )
 from infona_client.blueprint.fork import fork_blueprint
+from infona_client.blueprint.layer import extend_blueprint, update_blueprint
 from infona_client.blueprint.load import validate_blueprint_package
 
 
@@ -34,7 +38,7 @@ def _run(coro):
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m infona_client.blueprint",
-        description="Validate, install, inspect, uninstall, or fork a Blueprint package.",
+        description="Validate, install, inspect, uninstall, fork, extend, or update a Blueprint.",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
@@ -68,6 +72,16 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="new package id (default: {tenant}/{parent-name})",
     )
+
+    extend = sub.add_parser("extend", help="add a private overlay on the installed pin")
+    extend.add_argument("id", help="installed blueprint id (namespace/name)")
+    extend.add_argument("--tenant", required=True)
+    extend.add_argument("--overlay", required=True, help="overlay YAML or JSON file")
+
+    update = sub.add_parser("update", help="apply a new public base without clobbering overlay")
+    update.add_argument("path", help="new package directory or blueprint.yaml")
+    update.add_argument("--tenant", required=True)
+    update.add_argument("--id", dest="blueprint_id", required=True, help="installed pin")
 
     args = parser.parse_args(argv)
 
@@ -105,6 +119,31 @@ def main(argv: list[str] | None = None) -> int:
                 fork_blueprint(args.tenant, args.id, as_id=args.as_id)
             )
             print(json.dumps(result.to_dict(), indent=2))
+            return 0
+        if args.cmd == "extend":
+            raw = Path(args.overlay).read_text(encoding="utf-8")
+            stripped = raw.lstrip()
+            if stripped.startswith("{") or stripped.startswith("["):
+                overlay = json.loads(raw)
+            else:
+                import yaml
+
+                overlay = yaml.safe_load(raw)
+            if not isinstance(overlay, dict):
+                print("overlay must be a YAML/JSON object", file=sys.stderr)
+                return 2
+            body = _run(extend_blueprint(args.tenant, args.id, overlay))
+            print(json.dumps(body, indent=2))
+            return 0
+        if args.cmd == "update":
+            body = _run(
+                update_blueprint(
+                    args.path,
+                    tenant_id=args.tenant,
+                    blueprint_id=args.blueprint_id,
+                )
+            )
+            print(json.dumps(body, indent=2))
             return 0
     except BlueprintError as exc:
         print(str(exc), file=sys.stderr)

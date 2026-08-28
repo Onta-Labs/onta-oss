@@ -16,6 +16,7 @@ from infona_client.blueprint.install import (
 )
 from infona_client.blueprint.catalog import reset_blueprint_package_store
 from infona_client.blueprint.lock import reset_blueprint_lock_store
+from infona_client.blueprint.overlay import reset_blueprint_overlay_store
 from infona_client.blueprint.seeds import CLINICAL_TRIALS
 from infona_client.graph.facts import Fact
 from infona_client.graph.kg_writer import insert_facts, refresh_after_write
@@ -41,10 +42,12 @@ SEED_TYPES = {
 def _reset_blueprint_state():
     reset_blueprint_lock_store()
     reset_blueprint_package_store()
+    reset_blueprint_overlay_store()
     reset_type_skill_store()
     yield
     reset_blueprint_lock_store()
     reset_blueprint_package_store()
+    reset_blueprint_overlay_store()
     reset_type_skill_store()
 
 

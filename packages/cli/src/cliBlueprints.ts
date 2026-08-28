@@ -1,7 +1,7 @@
-/** ``infona blueprint`` install / inspect / uninstall / fork (INF-575 / INF-579).
+/** ``infona blueprint`` install / inspect / uninstall / fork / extend / update.
 
-Shares the ``blueprint`` command group with ``cliBlueprint.ts`` (export /
-validate, INF-565). Install and fork POST to
+INF-575 / INF-579 / INF-578. Shares the ``blueprint`` command group with
+``cliBlueprint.ts`` (export / validate, INF-565). All verbs POST to
 ``/graphs/{tenant}/blueprints``.
 */
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -83,5 +83,38 @@ bp.command("fork")
   .action(async (id: string, opts: { as?: string }) => {
     await withErrors(async () => {
       printJson(await client().forkBlueprint(id, { as: opts.as }));
+    });
+  });
+
+bp.command("extend")
+  .description("Add a private overlay on the installed pin (same identity)")
+  .argument("<id>", "installed blueprint id (namespace/name)")
+  .option("--overlay <path>", "overlay YAML or JSON file")
+  .action(async (id: string, opts: { overlay?: string }) => {
+    await withErrors(async () => {
+      if (!opts.overlay) fail("pass --overlay");
+      const doc = readPackageDocument(opts.overlay);
+      printJson(
+        await client().extendBlueprint(id, {
+          ...(doc.manifest ? { overlay: doc.manifest } : {}),
+          ...(doc.manifest_yaml ? { overlay_yaml: doc.manifest_yaml } : {}),
+        }),
+      );
+    });
+  });
+
+bp.command("update")
+  .description("Apply a new public base without clobbering the private overlay")
+  .argument("<id>", "installed blueprint id (namespace/name)")
+  .argument("<path>", "new package directory or blueprint.yaml")
+  .option("--no-sample", "skip the bounded sample")
+  .action(async (id: string, path: string, opts: { sample?: boolean }) => {
+    await withErrors(async () => {
+      printJson(
+        await client().updateBlueprint(id, {
+          include_sample: opts.sample !== false,
+          ...readPackageDocument(path),
+        }),
+      );
     });
   });

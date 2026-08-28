@@ -62,6 +62,8 @@ describe("blueprints — one path family", () => {
     await c.inspectBlueprint("infona/clinical-trials");
     await c.uninstallBlueprint("infona/clinical-trials");
     await c.forkBlueprint("infona/clinical-trials", { as: "acme/clinical-trials" });
+    await c.extendBlueprint("infona/clinical-trials", { overlay: { concepts: [] } });
+    await c.updateBlueprint("infona/clinical-trials", { manifest: { id: "infona/clinical-trials" } });
     expect(calls[0]!.init.method).toBe("POST");
     expect(calls[0]!.url).toBe(`${PREFIX}/blueprints/install`);
     expect(calls[1]!.init.method).toBe("GET");
@@ -73,6 +75,8 @@ describe("blueprints — one path family", () => {
     expect(JSON.parse(String(calls[3]!.init.body))).toEqual({
       as: "acme/clinical-trials",
     });
+    expect(calls[4]!.url).toBe(`${PREFIX}/blueprints/infona/clinical-trials/extend`);
+    expect(calls[5]!.url).toBe(`${PREFIX}/blueprints/infona/clinical-trials/update`);
   });
 
   it("raw passthrough uses the same builders", async () => {
@@ -82,11 +86,15 @@ describe("blueprints — one path family", () => {
     await c.raw.blueprint("infona", "clinical-trials");
     await c.raw.uninstallBlueprint("infona", "clinical-trials");
     await c.raw.forkBlueprint("infona", "clinical-trials");
+    await c.raw.extendBlueprint("infona", "clinical-trials", { overlay: {} });
+    await c.raw.updateBlueprint("infona", "clinical-trials", { manifest: {} });
     expect(calls.map((x) => [x.init.method, x.url])).toEqual([
       ["POST", `${PREFIX}/blueprints/install`],
       ["GET", `${PREFIX}/blueprints/infona/clinical-trials`],
       ["DELETE", `${PREFIX}/blueprints/infona/clinical-trials`],
       ["POST", `${PREFIX}/blueprints/infona/clinical-trials/fork`],
+      ["POST", `${PREFIX}/blueprints/infona/clinical-trials/extend`],
+      ["POST", `${PREFIX}/blueprints/infona/clinical-trials/update`],
     ]);
   });
 });
