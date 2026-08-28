@@ -87,6 +87,11 @@ from infona_client.graph.rdfs_helpers_templates import (  # noqa: F401 — publi
     semantic_templates,
     type_names_with_subclasses,
 )
+from infona_client.graph.rdfs_helpers_subclass_attrs import (  # noqa: F401
+    bind_subclass_attribute,
+    declared_attr_leaves_by_type,
+    subclass_attribute_predicates,
+)
 
 __all__ = [
     "ASSERTIONS_FOR_SUBJECT_CYPHER",
@@ -122,7 +127,9 @@ __all__ = [
     "assertion_to_history_row",
     "assertions_for_subject",
     "asserted_types",
+    "bind_subclass_attribute",
     "count_entities_of_type",
+    "declared_attr_leaves_by_type",
     "descendants_of",
     "entities_of_type",
     "entities_with_literal_filter",
@@ -142,6 +149,7 @@ __all__ = [
     "subclass_closure",
     "subclass_of",
     "subclass_of_closure",
+    "subclass_attribute_predicates",
     "subproperty_closure",
     "type_names_with_subclasses",
 ]

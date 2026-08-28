@@ -144,7 +144,28 @@ def honest_empty_targets(
     from infona_client.nlp.ontology_embeddings import _types_named_in_question
 
     named = _types_named_in_question(question, declared_types(full_ontology))
-    return named & referenced & empty
+    hits = named & referenced & empty
+    if not hits:
+        return set()
+    # INF-599 / ADR 0001: an empty *parent* whose subclasses have instances
+    # (Person [no instances] with Contact/Staff rows) is NOT an honest zero —
+    # subclass closure must count the children. Freezing "0 people" here is
+    # the empty_type_guard failure mode.
+    from infona_client.graph.rdfs_helpers import (
+        extract_subclass_map_from_ontology,
+        type_names_with_subclasses,
+    )
+
+    smap = extract_subclass_map_from_ontology(full_ontology)
+    if not smap:
+        return hits
+    honest: set[str] = set()
+    for t in hits:
+        expanded = type_names_with_subclasses(t, child_to_parent=smap)
+        if any(c != t and c not in empty for c in expanded):
+            continue
+        honest.add(t)
+    return honest
 
 
 def zero_row_escalation_feedback(full_ontology_has_marks: bool) -> str:
