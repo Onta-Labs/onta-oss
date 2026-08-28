@@ -109,6 +109,38 @@ _RELATED_1HOP_COUNT_TARGETS = _as_count_targets(RELATED_ENTITIES_CYPHER, "to_e")
 _RELATED_NAME_AGG = _RELATED_NAME_FILTERED_AGG
 _ARGMAX_BY_DIM = _one_line(LITERAL_ARGMAX_BY_DIM_CYPHER)
 
+# Hop + literal on the RELATED type: count from_type whose related to_type
+# has a datatype attr containing $prop_value. Composes RELATED_ENTITIES_CYPHER's
+# Assertion hop with LITERAL_VALUES on to_e — not a typed-rel shortcut and
+# not a literal on from_e. Synthetic teaching only (no eval-set strings).
+_RELATED_HOP_LITERAL_COUNT = _one_line(
+    """
+MATCH (from_e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(fc:Class {
+  tenant_id: $tenant_id, kg: $kg
+})
+WHERE fc.name IN $from_types OR fc.id IN $from_types
+MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg})-[:SUBJECT]->(from_e)
+MATCH (a)-[:OBJECT]->(to_e:Entity {tenant_id: $tenant_id, kg: $kg})
+MATCH (a)-[:PREDICATE]->(p:Property {tenant_id: $tenant_id, kg: $kg})
+WHERE ($rel_attr IS NULL OR p.name = $rel_attr)
+OPTIONAL MATCH (to_e)-[:INSTANCE_OF]->(tc:Class {tenant_id: $tenant_id, kg: $kg})
+WITH DISTINCT from_e, to_e, p,
+     collect(DISTINCT tc.name) AS tc_names,
+     collect(DISTINCT tc.id) AS tc_ids
+WHERE $to_types IS NULL
+   OR any(n IN tc_names WHERE n IN $to_types)
+   OR any(i IN tc_ids WHERE i IN $to_types)
+   OR to_e.primary_type IN $to_types
+OPTIONAL MATCH (la:Assertion {tenant_id: $tenant_id, kg: $kg, subject_id: to_e.id})
+  -[:PREDICATE]->(lp:Property {tenant_id: $tenant_id, kg: $kg})
+WHERE lp.name = $prop_key
+WITH from_e, to_e, coalesce(la.literal_value, to_e[$prop_key]) AS raw
+WHERE raw IS NOT NULL
+  AND toLower(toString(raw)) CONTAINS toLower($prop_value)
+RETURN count(DISTINCT from_e) AS n
+"""
+)
+
 # Shape labels used by coverage tests (stable API).
 SHAPE_COUNT_BY_TYPE = "count_by_type"
 SHAPE_LITERAL_FILTER = "literal_filter"
@@ -117,6 +149,7 @@ SHAPE_RELATED_NAME_FILTER = "related_entity_name_filter"
 SHAPE_SUM = "sum"
 SHAPE_AVG = "avg"
 SHAPE_RELATED_1HOP = "related_entities_1hop"
+SHAPE_RELATED_HOP_LITERAL = "related_hop_literal_filter"
 SHAPE_ARGMAX = "argmax_by_dim"
 SHAPE_GRAPH_EXISTS = "graph_exists"
 SHAPE_GRAPH_DEGREE = "graph_degree"
@@ -149,6 +182,7 @@ REQUIRED_CYPHER_SHAPES: frozenset[str] = frozenset(
         SHAPE_SUM,
         SHAPE_AVG,
         SHAPE_RELATED_1HOP,
+        SHAPE_RELATED_HOP_LITERAL,
         SHAPE_ARGMAX,
     }
 )
@@ -336,6 +370,30 @@ CYPHER_SEEDS: list[dict[str, Any]] = [
         kg_name="synthetic-cypher-shapes",
         cypher=_RELATED_1HOP_LIST,
         ontology_context="Type: Book\n  - author → Person\nType: Person\n  - name (string)",
+    ),
+    _seed(
+        shape=SHAPE_RELATED_HOP_LITERAL,
+        question=(
+            "How many Book entities are related to a Person whose status "
+            "attribute contains a given value?"
+        ),
+        kg_name="synthetic-cypher-shapes",
+        cypher=_RELATED_HOP_LITERAL_COUNT,
+        ontology_context=(
+            "Type: Book\n  - author → Person\nType: Person\n  - status (string)"
+        ),
+    ),
+    _seed(
+        shape=SHAPE_RELATED_HOP_LITERAL,
+        question=(
+            "Count Widget entities related to a Bin whose region attribute "
+            "contains a given value"
+        ),
+        kg_name="synthetic-cypher-shapes",
+        cypher=_RELATED_HOP_LITERAL_COUNT,
+        ontology_context=(
+            "Type: Widget\n  - stored_in → Bin\nType: Bin\n  - region (string)"
+        ),
     ),
     _seed(
         shape=SHAPE_SUM,

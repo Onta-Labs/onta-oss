@@ -28,12 +28,20 @@ want the tag series to catch up.
 
 ### Fixed
 
+- `/ask` rewrites lowercase/mixed-case Cypher relationship types to the
+  dual-write `sanitize_rel_type` UPPER_SNAKE token (`[:in_trial]` →
+  `[:IN_TRIAL]`) before execute, so a dialect miss no longer silent-zeros.
+- Cypher few-shot bank covers hop + literal-on-related-type (count from_type
+  related to to_type whose datatype attr CONTAINS a value) as an Assertion
+  join, not a typed-rel shortcut.
+- Graph-op compiler (`exists` / path / degree / rel-count / neighbor) runs
+  after always-LLM generation and replaces leftover LLM params so a compiled
+  body is not fail-closed as schema-invalid. EXISTS subject parsing skips
+  `(Yes/No)` instruction parens.
 - CSV mapped ingest no longer collapses two types that share a raw id in
   one batch (Contact 17 vs Purchase 17). The write-path id map is keyed by
   `(declared type, id)`; relationship payloads carry optional source/target
   types. URI minting is unchanged (`entity_uri(type, id)`).
-
-
 - NL average/avg/mean + a numeric noun resolves the noun leaf (not a minted
   `average_<noun>` column) and grounds aggregate AVG. Post-plan repair also
   unwraps invented `average_*`/`avg_*`/`mean_*`/`total_*` keys onto a

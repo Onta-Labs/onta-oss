@@ -31,6 +31,11 @@ from infona_client.nlp.cypher_scope import (
     confine_generated_cypher,
     scrub_cypher_error,
 )
+from infona_client.nlp.cypher_rel_types import (
+    _cypher_invented_rel_types,
+    invented_rel_error_detail,
+    rewrite_lowercase_rel_types,
+)
 from infona_client.nlp.pipeline_helpers import (
     ACTIVE_TYPE_PROBE_CHUNK,
     ANSWER_ROW_CAP,
@@ -39,15 +44,12 @@ from infona_client.nlp.pipeline_helpers import (
     MAX_ENUM_DISCOVERY_CONCURRENCY,
     ONTOLOGY_CACHE_TTL,
     ONTOLOGY_EMPTY,
-    MAX_REPORTED_REL_TYPES,
     ONTOLOGY_FETCH_ERROR,
     RDF_TYPE_URI,
-    REL_TRAVERSAL_FEEDBACK,
     _GEO_WKT_URI,
     _active_types_cache,
     _active_types_cache_key,
     _alias_cache,
-    _cypher_invented_rel_types,
     _cypher_uses_forbidden_shapes,
     _drop_internal_predicate_rows,
     _is_interpolatable_iri,
@@ -204,6 +206,10 @@ class PipelineCypherExecMixin:
 
         template = gen.get("template")
         is_fixture = bool(gen.get("stub") or gen.get("fixture"))
+        if not is_fixture:
+            # Dual-write shortcuts are UPPER_SNAKE; rewrite before the
+            # invented-rel gate so `[:in_trial]` hits `[:IN_TRIAL]`.
+            cypher, _ = rewrite_lowercase_rel_types(cypher)
         invented = _cypher_invented_rel_types(cypher)
         # Unconstrained related_entities drops generated RETURN aliases;
         # constrained helpers (name filter, literal eq/compare, …) must run.
@@ -257,13 +263,7 @@ class PipelineCypherExecMixin:
         # allowlisted template above still rescues invented typed edges. The
         # invented check is skipped when that template already ran.
         if invented and not is_fixture:
-            shown = invented[:MAX_REPORTED_REL_TYPES]
-            more = "" if len(invented) == len(shown) else ", …"
-            raise GraphQueryError(
-                "generated Cypher traverses relationship type(s) "
-                f"{', '.join(shown)}{more} that cannot exist. "
-                + REL_TRAVERSAL_FEEDBACK
-            )
+            raise GraphQueryError(invented_rel_error_detail(invented))
 
         records = await session.execute_read(cypher, forced_params)
         return records, "execute_read"

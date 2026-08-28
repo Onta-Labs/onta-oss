@@ -23,12 +23,19 @@ class PipelineAskValidateMixin:
             repair_graph_structure_cypher,
         )
 
-        cypher_raw, gs_rewritten = repair_graph_structure_cypher(
+        cypher_raw, gs_rewritten, gs_params = repair_graph_structure_cypher(
             cypher_raw, question
         )
         if gs_rewritten:
             st.cypher_raw = cypher_raw
             st.timing["cypher_graph_structure_rewritten"] = 1.0
+        if gs_params is not None:
+            from infona_client.nlp.graph_structure_cypher import (
+                compiled_graph_op_params,
+            )
+
+            st.params = compiled_graph_op_params(st.params, gs_params)
+            st.timing["cypher_graph_op_compiled"] = 1.0
         params = st.params
         dim_binds = st.dim_binds
         populated_types_for_coverage = st.populated_types_for_coverage

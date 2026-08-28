@@ -13,6 +13,7 @@ import json
 from infona_client.nlp.cypher_example_seeds import (
     CYPHER_SEEDS,
     REQUIRED_CYPHER_SHAPES,
+    SHAPE_RELATED_HOP_LITERAL,
     bank_cypher_shape_coverage,
     seed_shapes_present,
 )
@@ -71,6 +72,25 @@ def test_shipped_bank_cypher_rows_nonempty_and_clean():
         # Not a SPARQL body.
         assert "FROM <" not in cy
         assert "PREFIX " not in cy.upper()
+
+
+def test_hop_literal_seeds_filter_literal_on_related_type():
+    """T3 teaching body: Assertion hop, then literal on to_e — not from_e."""
+    rows = [s for s in CYPHER_SEEDS if s["shape"] == SHAPE_RELATED_HOP_LITERAL]
+    assert rows, "expected related_hop_literal_filter seeds"
+    for seed in rows:
+        cy = seed["cypher"]
+        assert "[:SUBJECT]" in cy
+        assert "[:OBJECT]" in cy
+        assert "[:PREDICATE]" in cy
+        assert "to_e[$prop_key]" in cy
+        assert "subject_id: to_e.id" in cy
+        assert "$from_types" in cy and "$to_types" in cy
+        assert "$prop_value" in cy
+        assert "from_e[$prop_key]" not in cy
+        from infona_client.nlp.pipeline_helpers import _cypher_invented_rel_types
+
+        assert _cypher_invented_rel_types(cy) == []
 
 
 def test_shipped_bank_has_no_benchmark_rows():

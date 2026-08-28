@@ -266,11 +266,12 @@ def test_repair_shortest_path_filters_entity_nodes():
         "RETURN 'SHORTEST PATH: [' + reduce(acc = '', x IN path_nodes | "
         "acc + coalesce(x.display_name, x.name)) + ']' AS answer"
     )
-    out, changed = repair_graph_structure_cypher(raw, "shortest path between A and B")
+    out, changed, extra = repair_graph_structure_cypher(raw, "")
     assert changed
     assert "[n IN nodes(p) WHERE n:Entity]" in out
     assert "WITH nodes(p) AS" not in out
     assert "coalesce(x.display_name, x.name, '')" in out
+    assert extra is None
 
 
 def test_repair_neighbor_first_hop_is_undirected():
@@ -284,7 +285,9 @@ MATCH (a)-[:OBJECT]->(neighbor:Entity)
 MATCH (out:Assertion)-[:SUBJECT]->(neighbor)
 RETURN count(DISTINCT neighbor) AS n
 """.strip()
-    out, changed = repair_graph_structure_cypher(raw, q)
+    out, changed, extra = repair_graph_structure_cypher(
+        raw, "which widgets are directly connected?"
+    )
     assert changed
     assert out.count("[:SUBJECT|OBJECT]") >= 2
     assert "-[:SUBJECT]->(neighbor)" in out or "-[:SUBJECT]->(neighbor" in out
@@ -349,3 +352,149 @@ def test_path_seed_returns_answer_string_not_path_alias():
     assert "AS answer" in body
     assert "AS path" not in body
     assert "reduce(" in body
+
+
+def test_compile_exists_widget_slots():
+    from infona_client.nlp.graph_structure_cypher import compile_graph_op_cypher
+
+    planned = compile_graph_op_cypher(_EXISTS_Q)
+    assert planned is not None
+    body, extra = planned
+    assert extra == {"from_name": "Widget A", "to_name": "Acme", "rel_attr": "made_by"}
+    assert ":KgNode" not in body
+    assert "[:SUBJECT]->(from_e)" in body
+    r = check_constraint_coverage(_EXISTS_Q, body, params=extra)
+    assert r.ok
+
+
+def test_compile_exists_skips_yes_no_parens():
+    from infona_client.nlp.graph_structure_cypher import compile_graph_op_cypher
+
+    q = (
+        'Your answer must consist of either "Yes" or "No", nothing else. '
+        "Is the following triplet fact present in the knowledge graph (Yes/No)? "
+        "(Kakwa, member of, International Centre for Settlement of Investment Disputes)"
+    )
+    planned = compile_graph_op_cypher(q)
+    assert planned is not None
+    _, extra = planned
+    assert extra["from_name"] == "Kakwa"
+    assert extra["rel_attr"] == "member of"
+    assert extra["to_name"].startswith("International Centre")
+
+
+def test_compile_path_ignores_argentina_mexico_example():
+    from infona_client.nlp.graph_structure_cypher import compile_graph_op_cypher
+
+    q = (
+        "Your task is to find the shortest path from Faithful Empire to "
+        "Imperial State of Neo-Japan. For example, if the shortest path in "
+        "the knowledge graph between Argentina and Mexico is through Bolivia "
+        "and Colombia, then your response should be \"SHORTEST PATH: "
+        "['Argentina', 'Bolivia', 'Colombia', 'Mexico']\". Your response must "
+        "begin with 'SHORTEST_PATH:' followed by the list of entities in the "
+        "path following the format shown before. Note that you can use both "
+        "incoming and outgoing edges to form a path. \n\n What is the shortest "
+        "path from Faithful Empire to Imperial State of Neo-Japan? \n "
+        "Answer: SHORTEST PATH:"
+    )
+    planned = compile_graph_op_cypher(q)
+    assert planned is not None
+    body, extra = planned
+    assert extra["start_name"] == "Faithful Empire"
+    assert extra["end_name"] == "Imperial State of Neo-Japan"
+    assert "Argentina" not in extra.values()
+    assert "shortestPath" in body
+    assert "AS answer" in body
+
+
+def test_compile_path_between_widgets():
+    from infona_client.nlp.graph_structure_cypher import compile_graph_op_cypher
+
+    planned = compile_graph_op_cypher(_PATH_Q)
+    assert planned is not None
+    _, extra = planned
+    assert extra == {"start_name": "Widget A", "end_name": "Widget B"}
+
+
+def test_compile_degree_directions():
+    from infona_client.nlp.graph_structure_cypher import compile_graph_op_cypher
+
+    for direction, needle in (
+        ("outgoing", "[:SUBJECT]->(e)"),
+        ("incoming", "[:OBJECT]->(e)"),
+        ("total", "[:SUBJECT|OBJECT]->(e)"),
+    ):
+        q = (
+            f"Which entity has the highest number of {direction} edges in the "
+            "provided knowledge graph?"
+        )
+        planned = compile_graph_op_cypher(q)
+        assert planned is not None, direction
+        body, extra = planned
+        assert extra == {}
+        assert needle in body
+        assert "Answer:" in body
+
+
+def test_compile_rel_count_and_neighbor_pass_coverage():
+    from infona_client.nlp.graph_structure_cypher import compile_graph_op_cypher
+
+    planned = compile_graph_op_cypher(_REL_COUNT_Q)
+    assert planned is not None
+    body, extra = planned
+    assert extra == {"entity_name": "Acme", "rel_attr": "made_by"}
+    r = check_constraint_coverage(_REL_COUNT_Q, body, params=extra)
+    assert r.ok
+    assert not r.fail_closed
+
+    planned_n = compile_graph_op_cypher(_NEIGHBOR_Q)
+    assert planned_n is not None
+    body_n, extra_n = planned_n
+    assert extra_n == {"entity_name": "Widget A", "rel_attr": "made_by"}
+    assert "[:SUBJECT|OBJECT]" in body_n
+    r_n = check_constraint_coverage(_NEIGHBOR_Q, body_n, params=extra_n)
+    assert r_n.ok
+
+
+def test_compile_does_not_swallow_analytic_count():
+    from infona_client.nlp.graph_structure_cypher import compile_graph_op_cypher
+
+    assert compile_graph_op_cypher(_FILTERED_COUNT_Q) is None
+    assert compile_graph_op_cypher("which widgets are directly connected?") is None
+
+
+def test_repair_replaces_kgnode_body_when_question_compiles():
+    from infona_client.nlp.graph_structure_cypher import repair_graph_structure_cypher
+
+    garbage = "MATCH (e:KgNode)-[:member_of]->(x) RETURN count(*)"
+    out, changed, extra = repair_graph_structure_cypher(garbage, _EXISTS_Q)
+    assert changed
+    assert ":KgNode" not in out
+    assert extra is not None
+    assert extra["from_name"] == "Widget A"
+    assert "[:SUBJECT]->(from_e)" in out
+
+
+def test_compiled_params_drop_llm_invented_keys():
+    from infona_client.nlp.graph_structure_cypher import compiled_graph_op_params
+
+    out = compiled_graph_op_params(
+        {
+            "tenant_id": "t",
+            "kg": "k",
+            "rel_attr": "invented_leaf",
+            "member_of": "nope",
+        },
+        {},
+    )
+    assert out == {"tenant_id": "t", "kg": "k"}
+    out2 = compiled_graph_op_params(
+        {"tenant_id": "t", "rel_attr": "wrong"},
+        {"entity_name": "Acme", "rel_attr": "made_by"},
+    )
+    assert out2 == {
+        "tenant_id": "t",
+        "entity_name": "Acme",
+        "rel_attr": "made_by",
+    }
