@@ -75,15 +75,20 @@ assert validate_blueprint_package(CLINICAL_TRIALS) == []
 
 Empty list means valid against the INF-563 v1 schema.
 
-## Install — not in this package
+## Install
 
-Export and install are INF-565.
-They are not implemented here. There is no `install_blueprint`, no
-premium registry, and no path that writes this ontology into a workspace
-yet.
+```bash
+python -m infona_client.blueprint install \
+  infona_client/blueprint/seeds/clinical-trials \
+  --tenant YOUR_TENANT --kg clinical-trials
+```
 
-When INF-565 lands, install must apply the ontology slice through the
-existing schema path and any kept sample through `insert_facts` +
-`refresh_after_write`. It must not `eval` author-supplied code. Until
-then, this directory is the inspectable artifact: validate it, read it,
-do not pretend it activated a graph.
+Same engine as `POST /graphs/{tenant}/blueprints/install` (INF-575).
+Re-install of this pin is a no-op. `inspect` shows the lock.
+`uninstall` removes the ontology slice, skills, and sample this package
+wrote, and leaves the rest of the workspace (INF-577).
+
+Export (workspace → directory) is still INF-565 and is not implemented.
+Fork/lineage is a 501 on `POST .../blueprints/{namespace}/{name}/fork`
+until INF-579. First-run acquisition (`acquire_condition_set`) is not
+this package — install yields an empty graph plus the optional sample.

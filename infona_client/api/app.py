@@ -9,7 +9,7 @@ from slowapi.errors import RateLimitExceeded
 
 from infona_client.api.middleware import RequestLoggingMiddleware
 from infona_client.api.rate_limit import limiter
-from infona_client.api.routes import actions, agent, api_sources, ask, blueprint, conversations, corrections, enrich, explore, export, extract_sources, functions, grep, health, history, ingest, ingest_dlt, jobs, knowledge_graphs, lambda_functions, normalize, ontology, operator, query, schedules, search, skills, tenants, triples, usage, user_api_sources, workspace_invites
+from infona_client.api.routes import actions, agent, api_sources, ask, blueprint, blueprints, conversations, corrections, enrich, explore, export, extract_sources, functions, grep, health, history, ingest, ingest_dlt, jobs, knowledge_graphs, lambda_functions, normalize, ontology, operator, query, schedules, search, skills, tenants, triples, usage, user_api_sources, workspace_invites
 from infona_client.config import settings
 from infona_client.graph.client import NeptuneClient
 from infona_client.graph.queries import InvalidGraphIdentifier
@@ -493,6 +493,9 @@ def create_app() -> FastAPI:
     # consumed by LM agents (distinct from FUNCTIONS, which are type-attached
     # compute). One canonical route set for webapp/CLI/MCP.
     app.include_router(skills.router, tags=["skills"])
+    # Blueprint install / inspect / uninstall / fork (INF-575 / INF-577).
+    # One /graphs/{tenant}/blueprints family; CLI/MCP/Explorer ride these.
+    app.include_router(blueprints.router, tags=["blueprints"])
     _register_agent_capabilities()
     _load_router_plugins(app)
     # ONTA-227: make the workspace-registry operating mode visible at startup —

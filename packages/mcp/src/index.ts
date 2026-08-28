@@ -16,6 +16,7 @@ import { registerIngestTools } from "./mcpIngest.js";
 import { registerQueryTools } from "./mcpQuery.js";
 import { registerSchemaTools } from "./mcpSchema.js";
 import { registerSkillsTools } from "./mcpSkills.js";
+import { registerBlueprintTools } from "./mcpBlueprints.js";
 import { client, VERSION } from "./mcpShared.js";
 
 export { searchHandler, grepHandler } from "./mcpQuery.js";
@@ -50,6 +51,13 @@ export {
   invokeFunctionHandler,
   deleteFunctionHandler,
 } from "./mcpFunctions.js";
+export {
+  validateBlueprintHandler,
+  installBlueprintHandler,
+  inspectBlueprintHandler,
+  uninstallBlueprintHandler,
+  forkBlueprintHandler,
+} from "./mcpBlueprints.js";
 
 const server = new McpServer(
   {
@@ -71,6 +79,7 @@ registerAgentTools(server);
 registerExploreTools(server);
 registerSkillsTools(server);
 registerFunctionsTools(server);
+registerBlueprintTools(server);
 // Exported so a caller can start the SAME server without re-implementing it
 // (e.g. a test that imports this package as a library): the `isEntrypoint` guard
 // below is (correctly) false there, so it calls main() explicitly. Direct

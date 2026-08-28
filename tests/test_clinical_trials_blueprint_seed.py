@@ -1,8 +1,8 @@
 """INF-566 — Clinical Trials Blueprint v0 seed package.
 
-Gate B bar: the package validates against the INF-563 v1 schema. Install
-is INF-565 and is not implemented here — this file documents that gap
-and refuses to invent a registry or an install path.
+Gate B bar: the package validates against the INF-563 v1 schema.
+Install / inspect / uninstall live in ``infona_client.blueprint``
+(INF-575 / INF-577). Export (INF-565 reverse) is still open.
 """
 
 from __future__ import annotations
@@ -209,16 +209,16 @@ def test_sample_is_independently_droppable():
     assert validate_blueprint(doc) == []
 
 
-def test_install_is_not_implemented():
-    """INF-565 owns export/install. This ticket ships validate + the package."""
+def test_install_and_export_are_both_on_the_package():
+    """Install (INF-575) and export (INF-565) share the protocol package."""
     import infona_client.blueprint as pkg
 
-    assert "install_blueprint" not in pkg.__all__
-    assert not hasattr(pkg, "install_blueprint")
-    assert not hasattr(pkg, "export_blueprint")
+    assert "install_blueprint" in pkg.__all__
+    assert "export_blueprint" in pkg.__all__
+    assert hasattr(pkg, "install_blueprint")
+    assert hasattr(pkg, "export_blueprint")
     readme = (SEED / "README.md").read_text(encoding="utf-8")
     assert "INF-565" in readme
-    assert "not implemented" in readme.lower()
 
 
 def test_package_must_not_ship_yaml_and_json(tmp_path: Path):

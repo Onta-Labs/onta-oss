@@ -1,18 +1,13 @@
-"""Blueprint manifest protocol — frozen v1 (INF-563) + seed (INF-566) + export (INF-565).
+"""Blueprint protocol — validator (INF-563), export (INF-565), install (INF-575 / INF-577).
 
 A Blueprint is the **means** to acquire and maintain a domain graph. It is
-not the graph. This package is the inspectable schema, validator, the
-Clinical Trials seed under ``seeds/clinical-trials/``, and the workspace →
-directory export path.
-
-Range classification reuses ``classify_attr_range``. Export reads the
-ontology slice through ``graph/ontology_queries.schema_types_for_kg``.
-The public loader (``load_blueprint_package``) is the PyYAML path so
-human-authored seed YAML and export-written YAML both parse. Install is
-a later ticket.
+not the graph. This package is the inspectable schema, the Clinical
+Trials seed, workspace → directory export, and install / inspect /
+uninstall. Fork is a 501 stub (INF-579). Range checks reuse catalog
+helpers — do not add a second ontology reader.
 
 Boundary: OSS protocol. Stdlib + pydantic + PyYAML + ``infona_client.*``
-only — no ``from infona.*``. Not a hosted registry.
+only — no ``from infona.*``. Not a hosted registry. BYOK only.
 """
 
 from infona_client.blueprint.models import (
@@ -49,6 +44,12 @@ from infona_client.blueprint.package import (
     write_blueprint_package,
 )
 from infona_client.blueprint.redact import ExportRedactionError
+from infona_client.blueprint.install import (
+    inspect_blueprint,
+    install_blueprint,
+    list_installed_blueprints,
+    uninstall_blueprint,
+)
 
 __all__ = [
     "ALLOWED_TOP_LEVEL_KEYS",
@@ -65,8 +66,12 @@ __all__ = [
     "classify_manifest_change",
     "dumps_blueprint",
     "find_manifest",
+    "inspect_blueprint",
+    "install_blueprint",
+    "list_installed_blueprints",
     "load_blueprint_package",
     "parse_blueprint",
+    "uninstall_blueprint",
     "validate_blueprint",
     "validate_blueprint_package",
     "BlueprintExport",

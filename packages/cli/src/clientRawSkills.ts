@@ -128,4 +128,54 @@ export class RawSkillsApi extends RawExtractApi {
       ...init,
     });
   }
+
+  // -- blueprints (INF-575) ------------------------------------------------ #
+
+  /** `POST /graphs/{tenant}/blueprints/validate`. */
+  validateBlueprint(body: unknown, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("POST", this.client.pBlueprintsValidate(), {
+      body,
+      ...init,
+    });
+  }
+
+  /** `POST /graphs/{tenant}/blueprints/install`. */
+  installBlueprint(body: unknown, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("POST", this.client.pBlueprintsInstall(), {
+      body,
+      ...init,
+    });
+  }
+
+  /** `GET /graphs/{tenant}/blueprints`. */
+  blueprints(init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("GET", this.client.pBlueprints(), init);
+  }
+
+  /** `GET /graphs/{tenant}/blueprints/{namespace}/{name}`. */
+  blueprint(namespace: string, name: string, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("GET", this.client.pBlueprint(namespace, name), init);
+  }
+
+  /** `DELETE /graphs/{tenant}/blueprints/{namespace}/{name}`. */
+  uninstallBlueprint(
+    namespace: string,
+    name: string,
+    init?: RawInit,
+  ): Promise<Response> {
+    return this.client.requestRaw(
+      "DELETE",
+      this.client.pBlueprint(namespace, name),
+      init,
+    );
+  }
+
+  /** `POST /graphs/{tenant}/blueprints/{namespace}/{name}/fork` (501 until INF-579). */
+  forkBlueprint(namespace: string, name: string, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw(
+      "POST",
+      this.client.pBlueprintFork(namespace, name),
+      { body: {}, ...init },
+    );
+  }
 }

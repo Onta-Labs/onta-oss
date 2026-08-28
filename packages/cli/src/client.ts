@@ -105,11 +105,20 @@ export type {
 export { TERMINAL_JOB_STATUSES, isTerminalJobStatus } from "./clientTypes.js";
 export { USER_SCHEDULABLE_ACTIONS } from "./clientTypesExtra.js";
 
-import { ClientSkills } from "./clientSkills.js";
+import { ClientBlueprints } from "./clientBlueprints.js";
 import { RawApi } from "./clientRaw.js";
 import type { ClientOptions } from "./clientTypes.js";
 
-export class Client extends ClientSkills {
+export type {
+  BlueprintCard,
+  BlueprintInstallBody,
+  BlueprintInstallResult,
+  BlueprintInstallStatus,
+  BlueprintUninstallResult,
+} from "./clientBlueprints.js";
+export { splitBlueprintId } from "./clientBlueprints.js";
+
+export class Client extends ClientBlueprints {
   /**
    * Raw / passthrough API — one method per canonical backend operation, with
    * the path encoded inside the SDK. Each method returns the backend

@@ -106,6 +106,11 @@ INTERNAL_ONTO_MARKERS: frozenset[str] = frozenset({
     ONTO_PRED_PREFIX + "coreSlot",
     ONTO_PRED_PREFIX + "aliasOf",
     ONTO_PRED_PREFIX + "lambda_refreshed_at",
+    # Blueprint sample housekeeping (INF-564 / INF-587) — never a domain attr.
+    ONTO_PRED_PREFIX + "sample",
+    ONTO_PRED_PREFIX + "sample_captured_at",
+    ONTO_PRED_PREFIX + "blueprint_id",
+    ONTO_PRED_PREFIX + "blueprint_version",
 })
 
 
