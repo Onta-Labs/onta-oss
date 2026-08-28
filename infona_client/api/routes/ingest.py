@@ -547,8 +547,9 @@ async def ingest_csv_rows(
         result = await resolver._resolve_and_insert(
             extraction, graph_uri, existing_types, existing_attrs,
             body.source, result, entity_uri_map, entity_type_map, batch_id,
-            # ONTA-250: join-by-exact-key mode. None = ordinary mint-by-URI ingest.
             key_join=body.key_join,
+            allow_prefix_promotion=False,
+            allow_subtype_link=False,
         )
 
         # Shared post-write housekeeping (graph/kg_writer.py) — same path as /ingest

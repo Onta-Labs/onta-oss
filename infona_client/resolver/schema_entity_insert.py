@@ -73,6 +73,7 @@ class SchemaEntityInsertMixin:
         *,
         instance_graph: str | None = None,
         observed_at: datetime | None = None,
+        allow_prefix_promotion: bool = True,
     ) -> None:
         """Pass 2: Resolve attributes, validate, and collect triples for one entity.
 
@@ -134,10 +135,11 @@ class SchemaEntityInsertMixin:
 
         type_attrs = existing_attrs.get(resolved_type, {})
 
-        # Option D promotions (ONTA-383: evidence-gated; junk types rejected;
-        # weak clusters staged as flat attrs — see check_promotion).
-        promotions = check_promotion(
-            entity, type_attrs, existing_types=existing_types,
+        # Option D promotions. CSV mapped ingest passes False — skip entirely
+        # (auto_promote_new=False still leaks into existing types).
+        promotions = (
+            check_promotion(entity, type_attrs, existing_types=existing_types)
+            if allow_prefix_promotion else []
         )
         promoted_type_names: set[str] = set()
         for promo in promotions:

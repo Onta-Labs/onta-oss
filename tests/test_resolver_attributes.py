@@ -200,3 +200,43 @@ class TestCheckPromotion:
         )
         promotions = check_promotion(entity, {}, auto_promote_new=False)
         assert promotions == []
+
+    def test_ordinal_prefix_does_not_promote(self):
+        """last/first/… prefixes never mint a type, even with an identity leaf."""
+        entity = ExtractedEntity(
+            type_name="Contact",
+            id="c1",
+            attributes=[
+                ExtractedAttribute(name="last_name", value="Lee", datatype="string"),
+                ExtractedAttribute(name="last_activity", value="2026-01-01", datatype="string"),
+                ExtractedAttribute(name="last_login", value="2026-01-02", datatype="string"),
+            ],
+        )
+        assert check_promotion(entity, {}) == []
+
+    def test_identifier_only_cluster_does_not_promote(self):
+        """id / key / *_id leftover leaves are not a type (no vendor names)."""
+        entity = ExtractedEntity(
+            type_name="Order",
+            id="o1",
+            attributes=[
+                ExtractedAttribute(name="crm_id", value="9", datatype="string"),
+                ExtractedAttribute(name="crm_order_id", value="9", datatype="string"),
+                ExtractedAttribute(name="crm_object_type_id", value="3", datatype="string"),
+            ],
+        )
+        assert check_promotion(entity, {}) == []
+
+    def test_address_cluster_still_promotes_when_enabled(self):
+        entity = ExtractedEntity(
+            type_name="Property",
+            id="p1",
+            attributes=[
+                ExtractedAttribute(name="address_street", value="1 Main", datatype="string"),
+                ExtractedAttribute(name="address_city", value="Austin", datatype="string"),
+                ExtractedAttribute(name="address_state", value="TX", datatype="string"),
+            ],
+        )
+        promotions = check_promotion(entity, {})
+        assert len(promotions) == 3
+        assert {p.promoted_type for p in promotions} == {"Address"}

@@ -482,4 +482,6 @@ class SchemaIngestMixin:
         return await self._ingest_mapped(
             mapping, rows, graph_uri, existing_types, existing_attrs, source,
             instance_graph=instance_graph, parent_of=parent_of,
+            allow_prefix_promotion=False,
+            allow_subtype_link=False,
         )

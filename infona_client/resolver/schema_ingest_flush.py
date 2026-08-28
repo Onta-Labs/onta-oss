@@ -55,6 +55,8 @@ class SchemaIngestFlushMixin:
         instance_graph: str | None = None,
         parent_of: dict[str, str] | None = None,
         run_id: str | None = None,
+        allow_prefix_promotion: bool = True,
+        allow_subtype_link: bool = True,
     ) -> IngestResult:
         """Apply a pre-inferred mapping to rows and run the resolve→insert tail.
 
@@ -137,6 +139,7 @@ class SchemaIngestFlushMixin:
                 resolved_type = await self._resolve_type(
                     entity, graph_uri, existing_types, existing_attrs, result,
                     parent_of=parent_of,
+                    allow_subtype_link=allow_subtype_link,
                 )
                 if resolved_type:
                     resolved_by_decl_type.setdefault(entity.type_name, resolved_type)
@@ -223,6 +226,7 @@ class SchemaIngestFlushMixin:
                     _collect_triples=collected_entity_triples,
                     _collect_provenance=collected_provenance_triples,
                     instance_graph=instance_graph,  # ONTA-268: call-local target
+                    allow_prefix_promotion=allow_prefix_promotion,
                 )
 
             # Flush collected instance (+ companion provenance) triples through

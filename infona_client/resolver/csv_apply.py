@@ -71,9 +71,10 @@ class CSVApplyMixin:
         Returns an :class:`AppliedMapping`, which unpacks as the legacy
         ``(entities, relationships)`` tuple and additionally carries
         row-conservation accounting (ADR 0003 §2): input rows are never
-        silently dropped — an empty natural key falls back to a deterministic
-        content-hash synthetic key, and a row is skipped (and counted) only
-        when every owned value is empty.
+        silently dropped — an empty natural key **or a mapping with no
+        TYPE_ID column** falls back to a deterministic content-hash
+        synthetic key, and a row is skipped (and counted) only when every
+        owned value is empty. Does not invent a fake TYPE_ID column.
 
         ``mapping.ontology_extensions`` (ADR 0003 Pass D, COG-52) is consumed
         here too: a promoted attribute's values become instances of the
@@ -89,21 +90,6 @@ class CSVApplyMixin:
             return CSVApplyMixin._apply_multi_entity(mapping, rows)
 
         id_col = next((c for c in mapping.columns if c.role == ColumnRole.TYPE_ID), None)
-        if not id_col:
-            # Degenerate mapping (no key column at all): nothing can be minted.
-            # Account for every row so the mismatch is loud, not silent.
-            drops = {mapping.entity_type: len(rows)} if rows else {}
-            if rows:
-                logger.warning(
-                    "csv_rows_dropped",
-                    rows_in=len(rows),
-                    rows_dropped=len(rows),
-                    drops_by_entity=drops,
-                    reason="mapping has no type_id column",
-                )
-            return AppliedMapping(
-                [], [], rows_in=len(rows), rows_dropped=len(rows), drops_by_entity=drops,
-            )
 
         entities: list[ExtractedEntity] = []
         relationships: list[ExtractedRelationship] = []
@@ -126,7 +112,7 @@ class CSVApplyMixin:
                 if raw:
                     owned_values[col.column_name] = raw if isinstance(raw, str) else str(raw)
 
-            entity_id = _cell(row, id_col.column_name)
+            entity_id = _cell(row, id_col.column_name) if id_col else ""
             if entity_id:
                 safe_id = _safe_id(entity_id)
             elif owned_values:

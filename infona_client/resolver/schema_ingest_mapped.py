@@ -45,6 +45,8 @@ class SchemaIngestMappedMixin:
         instance_graph: str | None = None,
         key_join: KeyJoin | None = None,
         run_id: str | None = None,
+        allow_prefix_promotion: bool = True,
+        allow_subtype_link: bool = True,
     ) -> IngestResult:
         """Ingest pre-mapped records (no schema inference) — the fixed-mapping seam.
 
@@ -56,7 +58,10 @@ class SchemaIngestMappedMixin:
         path instead routes through :meth:`ingest` (the non-deterministic
         ``_extract``), where the previewed shape is only a sample-based estimate,
         not an exact match. Records flow through the identical type-resolution,
-        batch existence-dedup, ER and batch-insert path CSV ingest uses.
+        batch existence-dedup, ER and batch-insert path CSV ingest uses, except
+        CSV file ingest passes ``allow_prefix_promotion=False`` (no prefix-cluster
+        type mint) and ``allow_subtype_link=False`` (TypeMatcher SUBTYPE is a
+        peer type, no ``rdfs:subClassOf``). Defaults keep discovery extract on.
 
         Mirrors :meth:`ingest`'s per-call setup (instance graph, type-matcher
         graph URI, ontology + parent-map fetch) so it can be called standalone,
@@ -86,6 +91,8 @@ class SchemaIngestMappedMixin:
             key_join=key_join,
             instance_graph=target_instance_graph, parent_of=parent_of,
             run_id=run_id,
+            allow_prefix_promotion=allow_prefix_promotion,
+            allow_subtype_link=allow_subtype_link,
         )
 
     async def ingest_structured_rows(
@@ -191,6 +198,7 @@ class SchemaIngestMappedMixin:
             rows, mapping, tenant_id, source=source,
             instance_graph=instance_graph, key_join=key_join,
             run_id=run_id,
+            allow_prefix_promotion=False,
         )
 
     async def _resolve_key_join(
