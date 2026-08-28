@@ -8899,6 +8899,51 @@
         ],
         "title": "AcceptOut"
       },
+      "AgentIngestFile": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": "upload.csv"
+          },
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "default": ""
+          },
+          "headers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Headers",
+            "default": []
+          },
+          "rows": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Rows",
+            "default": []
+          }
+        },
+        "type": "object",
+        "title": "AgentIngestFile",
+        "description": "One attached CSV. Text or headers+rows \u2014 never a filesystem path."
+      },
       "AgentRequest": {
         "properties": {
           "message": {
@@ -8989,6 +9034,27 @@
             "type": "string",
             "title": "Medium",
             "default": ""
+          },
+          "ingest_files": {
+            "items": {
+              "$ref": "#/components/schemas/AgentIngestFile"
+            },
+            "type": "array",
+            "title": "Ingest Files",
+            "default": []
+          },
+          "ingest_source": {
+            "type": "string",
+            "title": "Ingest Source",
+            "default": ""
+          },
+          "keep_columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Keep Columns",
+            "default": []
           }
         },
         "type": "object",

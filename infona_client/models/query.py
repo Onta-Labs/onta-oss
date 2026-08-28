@@ -86,8 +86,8 @@ class NLResult(BaseModel):
     timing: dict[str, float | str] = Field(default_factory=dict, description="Stage latencies in ms and metadata")
     # ONTA-280 (P7 answer layer): per-cited-fact verdict/confidence/recency, and a
     # coverage caveat ("answered from N of M sources; K facts stale"). Both default
-    # empty so every existing caller / test is back-compatible; populated only when
-    # INFONA_ANSWER_CITATIONS_ENABLED is set (see nlp/pipeline.py).
+    # empty so callers that ignore them stay back-compatible; always populated
+    # on the live ask path (see nlp/pipeline.py).
     citations: list[FactCitation] = Field(default_factory=list, description="Per-fact verdict/confidence/recency for the facts the answer relies on")
     coverage_caveat: str = Field(default="", description="Honest coverage caveat: 'answered from N of M sources; K facts stale'")
     # ONTA-389: trackable answer run id (= EnrichJob id, category=answer). Empty

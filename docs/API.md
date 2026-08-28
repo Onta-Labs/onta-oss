@@ -2206,6 +2206,16 @@ Accept Invite By Token
 | `capability` | string | No |  |
 | `status` | string | Yes |  |
 
+### AgentIngestFile
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | No |  |
+| `filename` | object | No |  |
+| `text` | string | No |  |
+| `headers` | array | No |  |
+| `rows` | array | No |  |
+
 ### AgentRequest
 
 | Field | Type | Required | Description |
@@ -2225,6 +2235,9 @@ Accept Invite By Token
 | `selection` | object | No |  |
 | `urls` | array | No |  |
 | `medium` | string | No |  |
+| `ingest_files` | array | No |  |
+| `ingest_source` | string | No |  |
+| `keep_columns` | array | No |  |
 
 ### AliasBackfill
 

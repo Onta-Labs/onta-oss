@@ -52,6 +52,38 @@ from infona_client.enrichment.tier_router import (
 from infona_client.web_sources.url_extract import extract_urls
 
 
+def unscoped_target_phrase(
+    type_name: str,
+    *,
+    matched: int,
+    matched_exact: bool,
+    scope: dict | None,
+    entity_uris: list[str] | None,
+    limit: int | None,
+    subset_desc: str | None,
+) -> str:
+    """Human scope line for the enrich confirm card.
+
+    Subset IRIs win. Type-wide exact counts under the job cap say \"all N\".
+    Over-cap stays \"capped at {limit}\" so we never promise a fill we will not run.
+    """
+    n_entities = len(entity_uris) if entity_uris is not None else None
+    if n_entities is not None:
+        noun = "entity" if n_entities == 1 else "entities"
+        if subset_desc:
+            return f"the {n_entities} {type_name} {noun} matching “{subset_desc}”"
+        return f"the {n_entities} selected {type_name} {noun}"
+    if (
+        matched_exact
+        and matched > 0
+        and scope is None
+        and (limit is None or matched <= limit)
+    ):
+        noun = "record" if matched == 1 else "records"
+        return f"all {matched} {type_name} {noun}"
+    return f"matched {type_name} entities (capped at {limit})"
+
+
 class EnrichPlanMixin:
     """``plan`` — parse NL into [normalize_step?, enrich_step]."""
 
@@ -334,17 +366,15 @@ class EnrichPlanMixin:
 
         subset_desc = subset.get("description") if subset else None
         n_entities = len(entity_uris) if entity_uris is not None else None
-        if n_entities is not None:
-            noun = "entity" if n_entities == 1 else "entities"
-            # Echo the INTERPRETED subset back so the user can verify we understood
-            # their scope before confirming a paid run (COG: confirm-the-scope).
-            target_phrase = (
-                f"the {n_entities} {type_name} {noun} matching “{subset_desc}”"
-                if subset_desc
-                else f"the {n_entities} selected {type_name} {noun}"
-            )
-        else:
-            target_phrase = f"matched {type_name} entities (capped at {limit})"
+        target_phrase = unscoped_target_phrase(
+            type_name,
+            matched=matched,
+            matched_exact=matched_exact,
+            scope=scope,
+            entity_uris=entity_uris,
+            limit=limit,
+            subset_desc=subset_desc,
+        )
         # When the user supplied page(s), say so in the rationale/preview so they
         # can confirm we'll read the values from THOSE pages (Rail B URL mode).
         n_urls = len(urls)
@@ -433,6 +463,8 @@ class EnrichPlanMixin:
                 "tier": tier.value,
                 "limit": limit,
                 "entity_count": n_entities,
+                "matched": matched,
+                "matched_exact": matched_exact,
                 "confidence_min": confidence_min,
                 "confidence_note": _confidence_note(
                     confidence_min, confidence_lowered

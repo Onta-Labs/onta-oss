@@ -138,7 +138,9 @@ async def test_resolve_key_join_skips_unmatched_when_mint_disabled():
 
     assert result.rows_key_merged == 1
     assert result.rows_key_unmatched == 1
-    assert skip == {"W-9"}  # the unmatched-with-a-key row is skipped
+    assert "W-9" in skip
+    from infona_client.resolver.entity_map import qualified_id
+    assert qualified_id("Widget", "W-9") in skip
 
 
 @pytest.mark.asyncio

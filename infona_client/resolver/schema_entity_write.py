@@ -15,6 +15,16 @@ from infona_client.graph.ontology_queries import PRIMITIVE_TYPES, batch_entity_e
 from infona_client.graph.store import resolve_optional_graph_store
 from infona_client.resolver.attribute_resolver import AttributeSchema
 from infona_client.resolver.models import ExtractionResult, IngestResult, KeyJoin
+from infona_client.resolver.entity_map import (
+    entity_is_skipped,
+    fan_in_natural_uris,
+    lookup_type,
+    lookup_uri,
+    map_key,
+    qualified_count,
+    register_entity,
+    rel_is_skipped,
+)
 from infona_client.resolver.predicate_normalizer import normalize_predicate
 from infona_client.resolver.schema_focus import _primary_entity_ids
 # Call-time host lookups so tests that patch schema_resolver.logger /
@@ -136,6 +146,8 @@ class SchemaEntityWriteMixin:
         entity_also_types: dict[str, list[str]] = {}
         # Track which entity IDs were merged into existing URIs (for telemetry)
         er_merged_count = 0
+        unqualified_owner: dict[str, str] = {}
+        collided_ids: set[str] = set()
         for i, entity in enumerate(extraction.entities):
             if i > 0 and i % self.ONTOLOGY_REFRESH_INTERVAL == 0:
                 await self._refresh_ontology(graph_uri, existing_types, existing_attrs)
@@ -147,7 +159,6 @@ class SchemaEntityWriteMixin:
                 is_primary=None if primary_ids is None else entity.id in primary_ids,
             )
             if resolved_type:
-                resolved_types[entity.id] = resolved_type
                 # Resolve genuine co-types so they exist in the ontology; record
                 # them for the multi-type write in pass 2. The declared primary
                 # type (resolved_type) still owns URI minting + ER.
@@ -156,7 +167,7 @@ class SchemaEntityWriteMixin:
                     parent_of=parent_of,
                 )
                 if also:
-                    entity_also_types[entity.id] = also
+                    entity_also_types[map_key(entity)] = also
                 entity_uri = _sr._entity_uri(resolved_type, entity.id)
 
                 # Cross-file ER: see if this entity matches an existing one.
@@ -233,8 +244,17 @@ class SchemaEntityWriteMixin:
                     except Exception as e:
                         _sr.logger.warning("er_pipeline_failed", error=str(e), entity_id=entity.id)
 
-                entity_uri_map[entity.id] = entity_uri
-                entity_type_map[entity.id] = resolved_type
+                register_entity(
+                    declared_type=entity.type_name,
+                    entity_id=entity.id,
+                    resolved_type=resolved_type,
+                    uri=entity_uri,
+                    uri_map=entity_uri_map,
+                    type_map=entity_type_map,
+                    resolved_types=resolved_types,
+                    unqualified_owner=unqualified_owner,
+                    collided=collided_ids,
+                )
                 pending_uris.append(entity_uri)
         if er_merged_count:
             _sr.logger.info("er_merged_entities", count=er_merged_count, total=len(extraction.entities))
@@ -252,11 +272,16 @@ class SchemaEntityWriteMixin:
                 instance_graph, key_join, result,
             )
             # Only URIs we will actually write get the existence check.
-            pending_uris = [
-                entity_uri_map[e.id]
-                for e in extraction.entities
-                if e.id in resolved_types and e.id not in skip_ids
-            ]
+            pending_uris = []
+            for e in extraction.entities:
+                q = map_key(e)
+                if q not in resolved_types and e.id not in resolved_types:
+                    continue
+                if entity_is_skipped(e, skip_ids):
+                    continue
+                uri = lookup_uri(entity_uri_map, e.id, e.type_name)
+                if uri:
+                    pending_uris.append(uri)
 
         # Batch existence check: one SPARQL query per 500 URIs instead of N individual ASKs.
         # On Neo4j/GraphStore, SPARQL is unavailable — skip (insert_facts is idempotent
@@ -290,12 +315,15 @@ class SchemaEntityWriteMixin:
         # Neptune update per entity. Stays empty unless the flag is on.
         all_provenance_triples: list[tuple[str, str, str]] = []
         for entity in extraction.entities:
-            if entity.id not in resolved_types:
+            q = map_key(entity)
+            if q not in resolved_types and entity.id not in resolved_types:
                 continue
-            if entity.id in skip_ids:
+            if entity_is_skipped(entity, skip_ids):
                 continue  # key-join unmatched with mint_unmatched=false
-            resolved_type = resolved_types[entity.id]
-            entity_uri = entity_uri_map[entity.id]
+            resolved_type = resolved_types.get(q) or resolved_types[entity.id]
+            entity_uri = lookup_uri(entity_uri_map, entity.id, entity.type_name)
+            if not entity_uri:
+                continue
             is_duplicate = entity_uri in existing_uris
 
             if is_duplicate:
@@ -306,7 +334,7 @@ class SchemaEntityWriteMixin:
                 graph_uri, existing_types, existing_attrs, source, result, batch_id,
                 _collect_triples=all_entity_triples,
                 _collect_provenance=all_provenance_triples,
-                also_types=entity_also_types.get(entity.id),
+                also_types=entity_also_types.get(map_key(entity)) or entity_also_types.get(entity.id),
                 _collect_text_values=text_values,
                 # ONTA-259: this is the model-proposed extraction path (text /
                 # JSON / web-discovery), the only rail where an LLM can invent an
@@ -420,13 +448,19 @@ class SchemaEntityWriteMixin:
         for rel in extraction.relationships:
             # An edge whose source or target was skipped (key-join unmatched with
             # mint_unmatched=false) has no node to hang off — drop it.
-            if rel.source_id in skip_ids or rel.target_id in skip_ids:
+            if rel_is_skipped(rel, skip_ids):
                 continue
-            source_uri = entity_uri_map.get(rel.source_id)
-            target_uri = entity_uri_map.get(rel.target_id)
+            source_uri = lookup_uri(
+                entity_uri_map, rel.source_id, getattr(rel, "source_type", None),
+            )
+            target_uri = lookup_uri(
+                entity_uri_map, rel.target_id, getattr(rel, "target_type", None),
+            )
             if source_uri and target_uri:
                 # Normalize predicate against existing predicates on this type
-                source_type = entity_type_map.get(rel.source_id)
+                source_type = lookup_type(
+                    entity_type_map, rel.source_id, getattr(rel, "source_type", None),
+                )
                 existing_preds = set()
                 if source_type:
                     for attr_name, schema in existing_attrs.get(source_type, {}).items():
@@ -438,7 +472,9 @@ class SchemaEntityWriteMixin:
                 rel_triples.append((source_uri, predicate, target_uri))
 
                 # Register relationship as object property in ontology
-                target_type = entity_type_map.get(rel.target_id)
+                target_type = lookup_type(
+                    entity_type_map, rel.target_id, getattr(rel, "target_type", None),
+                )
                 if source_type and target_type:
                     type_attrs = existing_attrs.get(source_type, {})
                     existing = type_attrs.get(canonical_pred)
@@ -475,7 +511,7 @@ class SchemaEntityWriteMixin:
             )
             result.triples_inserted += len(rel_triples)
 
-        result.entities_resolved = len(entity_uri_map)
+        result.entities_resolved = qualified_count(entity_uri_map) or len(entity_uri_map)
 
         # ONTA-271: emit the run's deterministic A6 Graph Delta receipt. Built
         # over the COMPLETE set of instance facts this run wrote (entity triples
@@ -491,16 +527,9 @@ class SchemaEntityWriteMixin:
         # >1 source entity id resolving to the SAME final URI is a merge, so the
         # non-canonical sources' natural URIs map to the shared node.
         if run_id is not None:
-            ids_by_uri: dict[str, list[str]] = {}
-            for eid, uri in entity_uri_map.items():
-                ids_by_uri.setdefault(uri, []).append(eid)
-            fan_in: dict[str, str] = {}
-            for uri, eids in ids_by_uri.items():
-                if len(eids) > 1:
-                    for eid in eids:
-                        natural = _sr._entity_uri(entity_type_map.get(eid, ""), eid)
-                        if natural != uri:
-                            fan_in[natural] = uri
+            fan_in = fan_in_natural_uris(
+                entity_uri_map, entity_type_map, _sr._entity_uri,
+            )
             result.graph_delta = build_graph_delta(
                 instance_graph,
                 all_entity_triples + rel_triples,

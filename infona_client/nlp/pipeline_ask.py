@@ -22,6 +22,7 @@ from infona_client.nlp.cypher_scope import (
 )
 from infona_client.nlp.ask_plan_repair import apply_ask_plan_repair
 from infona_client.nlp.cypher_rel_types import apply_cypher_dialect_rewrites
+from infona_client.nlp.cypher_subclass_bind import expand_cypher_subclass_binds
 from infona_client.nlp.graph_structure_cypher import apply_compiled_graph_op
 from infona_client.nlp.pipeline_ask_state import AskCypherState
 from infona_client.nlp.pipeline_helpers import _cypher_uses_forbidden_shapes
@@ -300,9 +301,7 @@ class PipelineAskMixin:
                         params=params,
                         cypher=cypher_raw,
                         inventory=getattr(st, "schema_inventory", None),
-                        extra_leaves=(
-                            (money_leaf_bound,) if money_leaf_bound else ()
-                        ),
+                        extra_leaves=((money_leaf_bound,) if money_leaf_bound else ()),
                     )
                     if plan_repaired:
                         timing["ask_plan_repaired"] = 1.0
@@ -328,11 +327,10 @@ class PipelineAskMixin:
 
                 if alias_map:
                     cypher_raw = self._rewrite_cypher_alias_leaves(cypher_raw, alias_map)
+                cypher_raw, params = expand_cypher_subclass_binds(cypher_raw, params, ontology)
 
                 if not (gen.get("stub") or gen.get("fixture")):
-                    cypher_raw, dialect_flags = apply_cypher_dialect_rewrites(
-                        cypher_raw
-                    )
+                    cypher_raw, dialect_flags = apply_cypher_dialect_rewrites(cypher_raw)
                     timing.update(dialect_flags)
 
                 if store is None:

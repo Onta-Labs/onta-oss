@@ -272,7 +272,7 @@ async def list_type_schema(
 
 
 _SUPPORTED_RULE_TYPES = {"list_explode", "strip_emoji"}
-_DEFAULT_DELIMITERS = [", ", "; ", " / ", " | ", "__"]
+_DEFAULT_DELIMITERS = [", ", "; ", ";", " / ", " | ", "__"]
 
 
 def _rule_from_recommendation(

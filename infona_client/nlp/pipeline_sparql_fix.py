@@ -244,6 +244,21 @@ class PipelineSparqlFixMixin:
         from infona_client.graph.ontology_queries import rewrite_type_predicate_to_closure
         sparql = rewrite_type_predicate_to_closure(sparql)
 
+        # Fix 4a: Person asks must bind Contact|Staff attribute predicates
+        # (INF-599). Instance triples stay on the asserted leaf
+        # (`types/Contact/attrs/first_name`); `types/Person/attrs/first_name`
+        # alone is empty. Ontology summary supplies the subclass map.
+        from infona_client.graph.ontology_queries import (
+            rewrite_parent_attr_to_subclass_predicates,
+        )
+        from infona_client.graph.rdfs_helpers import extract_subclass_map_from_ontology
+
+        sparql = rewrite_parent_attr_to_subclass_predicates(
+            sparql,
+            extract_subclass_map_from_ontology(ontology_summary),
+            ontology_summary=ontology_summary,
+        )
+
         # Fix 4b: follow sameAs so a query pinning a MERGED-away entity IRI
         # (ONTA-274 / -278) resolves the canonical's facts under either alias.
         # Same deterministic-property-path shape as the closure rewrite above.

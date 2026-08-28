@@ -78,6 +78,7 @@ from infona_client.graph.ontology_queries_rewrite import (  # noqa: F401
     _rewrite_indirect_type_constraints,
     add_layer_from_clauses,
     rewrite_entity_ref_to_sameas_closure,
+    rewrite_parent_attr_to_subclass_predicates,
     rewrite_type_predicate_to_closure,
 )
 

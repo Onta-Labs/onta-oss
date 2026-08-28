@@ -33,6 +33,7 @@ from infona_client.agent.planner_history import (
 from infona_client.agent.planner_intent import (
     _DEFAULT_ACTION_OPTIONS,
     _INTENT_TO_CAPABILITY,
+    _hosted_only_ingest_steward_answer,
     _hosted_only_web_ingest_answer,
     _is_interrogative,
     _is_refresh_existing_request,
@@ -238,6 +239,27 @@ async def _respond(
                     ],
                 ]
 
+    # Attached CSV/file ingest (INF-603): structured extras.ingest_files is an
+    # unambiguous file-ingest turn. Force the ingest intent so a classifier that
+    # reads the CSV as a "question about these contacts" cannot hijack it, and
+    # so a missing steward capability degrades to the hosted-only answer
+    # (Explorer falls back to mapping review) instead of /ask.
+    _ingest_files = (getattr(ctx, "extras", None) or {}).get("ingest_files") or (
+        getattr(ctx, "extras", None) or {}
+    ).get("csv_files")
+    if _ingest_files and not _subscribe_forced:
+        ingest_cap = _host().get_capability(_INTENT_TO_CAPABILITY["ingest"])
+        if ingest_cap is None:
+            return _hosted_only_ingest_steward_answer()
+        intents = [
+            "ingest",
+            *[
+                i
+                for i in intents
+                if i not in ("ingest", "question", "ambiguous", "discover")
+            ],
+        ]
+
     # A read-only question is terminal and does not compose with actions.
     if "question" in intents:
         cap = _host().get_capability("query") or QueryCapability()
@@ -273,6 +295,8 @@ async def _respond(
     if not available:
         if actionable[0] == "discover":
             return _hosted_only_web_ingest_answer()
+        if actionable[0] == "ingest":
+            return _hosted_only_ingest_steward_answer()
         return {
             "kind": "clarify",
             "question": (
@@ -342,6 +366,11 @@ async def _respond(
         # singular question/options above keep older clients working.
         if p.get("questions"):
             out["questions"] = p["questions"]
+        # Steward (and others) stamp a machine topic ("source" / "taxonomy" /
+        # "promote") so the Explorer can render the matching card without
+        # sniffing question copy.
+        if p.get("topic"):
+            out["topic"] = p["topic"]
         return out
 
     _assert_may_commit(ctx, steps)

@@ -95,6 +95,27 @@ _PROVENANCE_JSON = {
 
 
 @pytest.mark.asyncio
+async def test_build_citations_from_source_url_column_without_describe_shape():
+    """Oliver-style SELECT of indication_summary + source_url must still cite."""
+    citations = await build_citations(
+        _CannedNeptune({"head": {"vars": []}, "results": {"bindings": []}},
+                       {"head": {"vars": []}, "results": {"bindings": []}}),
+        "https://graph.infona.ai/graphs/t/kg/labels",
+        ["indication_summary", "source_url"],
+        [
+            {
+                "indication_summary": "Adjuvant MIBC after cystectomy",
+                "source_url": "https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=abc",
+                "source_name": "DailyMed / FDA label",
+            }
+        ],
+    )
+    assert len(citations) == 1
+    assert citations[0].source.startswith("https://dailymed.nlm.nih.gov/")
+    assert "DailyMed" in citations[0].label
+
+
+@pytest.mark.asyncio
 async def test_build_citations_unit_carries_verdict_confidence_recency():
     """Each cited fact carries valid_from + is_current + confidence + verdict; the
     superseded fact reads not-current, the open fact reads current."""

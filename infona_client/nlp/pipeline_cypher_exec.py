@@ -420,6 +420,19 @@ class PipelineCypherExecMixin:
                 chain.append(anthropic())
         if self._query_provider == "cerebras" and self._cerebras_key:
             chain.append(cerebras())
+            # Cerebras gpt-oss JSON-parse failures used to fail over to the
+            # SAME reasoning model on OpenRouter (~76s think). Jump to Flash.
+            if self._openrouter_key:
+                chain.append(
+                    (
+                        "openrouter(non-reasoning)",
+                        partial(
+                            self._generate_cypher_via_openrouter,
+                            prompt,
+                            prefer_non_reasoning=True,
+                        ),
+                    )
+                )
         if self._openrouter_key:
             chain.append(openrouter())
         if self._cerebras_key:

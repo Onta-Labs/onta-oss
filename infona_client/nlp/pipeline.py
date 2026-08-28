@@ -215,10 +215,10 @@ class NLQueryPipeline(
         self._spatial_routing_enabled = (
             os.environ.get("INFONA_SPATIAL_ROUTING_ENABLED", "1") != "0"
         )
-        # Honest-answer per-fact metadata (ONTA-280, P7). Default OFF.
-        self._answer_citations_enabled = (
-            os.environ.get("INFONA_ANSWER_CITATIONS_ENABLED", "0") == "1"
-        )
+        # Honest-answer per-fact metadata (ONTA-280, P7). Always on — answers
+        # without a source are not product-complete. Tests may still flip this
+        # instance flag off; there is no env kill-switch.
+        self._answer_citations_enabled = True
 
     async def ask(
         self,

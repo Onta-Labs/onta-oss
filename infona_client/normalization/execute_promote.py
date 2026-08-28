@@ -10,8 +10,10 @@ from infona_client.models.ontology import OntologyMutation, OntologyOpKind
 from infona_client.normalization.execute_helpers import (
     RDF_TYPE,
     RDFS_LABEL,
+    _EXTRACT_KINDS,
     _delimiters,
     _host,
+    _join_atom_key,
     _node_uri_owner,
     _node_uri_value,
     _split,
@@ -56,6 +58,22 @@ async def _promote_to_node(
         raise ValueError(
             f"promote_to_node key_by must be 'value' or 'owner', got {key_by!r}"
         )
+    extract = str(params.get("extract") or "").strip().lower()
+    if extract and extract not in _EXTRACT_KINDS:
+        raise ValueError(
+            f"promote_to_node extract must be one of {sorted(_EXTRACT_KINDS)}, "
+            f"got {extract!r}"
+        )
+    raw_map = params.get("key_map") or {}
+    if raw_map and not isinstance(raw_map, dict):
+        raise ValueError("promote_to_node key_map must be an object of atom→id")
+    key_map = {str(k): str(v) for k, v in dict(raw_map).items() if k and v}
+    # Per-atom join: a key_map / bracket_id HIT writes the onto/<leaf> edge
+    # onto the existing URI and does not rewrite that node's label. A MISS
+    # mints a typed node (rdf:type + rdfs:label) so there is never a dangling
+    # untyped URI. ``link_existing`` enables that per-atom split; it is not a
+    # global "skip every mint" flag.
+    link_existing = bool(params.get("link_existing", False))
     # split only makes sense for value-keyed categoricals; a measurement is one
     # value, so owner-keyed ignores it.
     split = bool(params.get("split", False)) and key_by == "value"
@@ -97,6 +115,7 @@ async def _promote_to_node(
     edges_to_add: list[tuple[str, str, str]] = []
     subjects_to_clear: set[str] = set()
     nodes_seen: set[str] = set()
+    minted: set[str] = set()
     edges_seen: set[tuple[str, str, str]] = set()
     literals_promoted = 0
 
@@ -120,8 +139,11 @@ async def _promote_to_node(
         if not atoms:
             continue
         for atom in atoms:
+            key, joined = _join_atom_key(atom, extract, key_map)
+            if not key:
+                continue
             if key_by == "value":
-                node_uri = _node_uri_value(target_type, atom)
+                node_uri = _node_uri_value(target_type, key)
                 new_triples = [
                     (node_uri, RDF_TYPE, t_uri),
                     (node_uri, RDFS_LABEL, atom),
@@ -140,7 +162,10 @@ async def _promote_to_node(
                 ]
             if node_uri not in nodes_seen:
                 nodes_seen.add(node_uri)
-                node_triples.extend(new_triples)
+                # Joined existing row → edge only. Unmatched → mint typed node.
+                if not (link_existing and joined):
+                    node_triples.extend(new_triples)
+                    minted.add(node_uri)
             # Re-point the edge via the onto/<leaf> RELATIONSHIP predicate — the
             # form the NL planner queries for a type-ranged attribute, and the form
             # ingest (schema_resolver) + _explode_relationship use for relationship
@@ -233,7 +258,7 @@ async def _promote_to_node(
         )
 
     summary = {
-        "nodes_created": len(nodes_seen),
+        "nodes_created": len(minted),
         "edges_added": len(edges_to_add),
         "literals_promoted": literals_promoted,
     }
