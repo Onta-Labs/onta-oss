@@ -118,7 +118,11 @@ class SchemaIngestMappedMixin:
         is a nonsensical, non-deterministic detour. This commits them through the
         SAME deterministic mapping seam CSV ingest uses (:meth:`ingest_mapped_records`
         → ``apply_mapping``, NO LLM): a fixed :class:`CSVSchemaMapping` with one
-        column per field and the key attribute as the type-id.
+        column per field and the key attribute as the type-id. Confirmed schemas
+        never prefix-promote (``allow_prefix_promotion=False``) — Address-style
+        clusters stay literals unless the user later confirms ``promote_to_node``.
+        TypeMatcher subtype linking stays on: discovery already confirmed a focus
+        type.
 
         Before committing it materializes the SOFT-TYPED A2 witness for the rows
         (:func:`soft_a2_from_structured_rows`) and ASSERTS the zero-ontology-

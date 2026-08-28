@@ -6,8 +6,15 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+import inspect
+
+from infona_client.api.routes.ingest import ingest_csv_rows
 from infona_client.models.ontology import OntologyOpKind
+from infona_client.resolver.csv_resolver import CSVResolver
 from infona_client.resolver.models import (
+    CSVSchemaMapping,
+    ColumnMapping,
+    ColumnRole,
     ExtractedAttribute,
     ExtractedEntity,
     IngestResult,
@@ -138,3 +145,41 @@ async def test_subtype_match_still_links_when_flag_on(tmp_path):
     )
     assert resolved == "Staff"
     assert any(m.op == OntologyOpKind.SET_SUBCLASS for m in mutations)
+
+
+@pytest.mark.asyncio
+async def test_ingest_csv_passes_fidelity_flags_into_ingest_mapped(tmp_path, monkeypatch):
+    resolver = _resolver(tmp_path)
+    captured: dict = {}
+
+    async def fake_infer(self, *args, **kwargs):
+        return CSVSchemaMapping(
+            entity_type="Note",
+            columns=[
+                ColumnMapping(
+                    column_name="Body",
+                    role=ColumnRole.ATTRIBUTE,
+                    attribute_name="body",
+                    datatype="string",
+                )
+            ],
+        )
+
+    async def fake_mapped(self, *args, **kwargs):
+        captured.update(kwargs)
+        return IngestResult(rows_in=1)
+
+    monkeypatch.setattr(CSVResolver, "infer_schema", fake_infer)
+    monkeypatch.setattr(type(resolver), "_ingest_mapped", fake_mapped)
+    result = await resolver._ingest_csv(
+        "Body\nhello\n", GRAPH, {}, {}, "csv",
+    )
+    assert result.rows_in == 1
+    assert captured.get("allow_prefix_promotion") is False
+    assert captured.get("allow_subtype_link") is False
+
+
+def test_csv_rows_route_passes_fidelity_flags():
+    src = inspect.getsource(ingest_csv_rows)
+    assert "allow_prefix_promotion=False" in src
+    assert "allow_subtype_link=False" in src
