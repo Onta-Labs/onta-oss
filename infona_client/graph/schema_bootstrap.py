@@ -153,6 +153,14 @@ SCHEMA_STATEMENTS: tuple[tuple[str, str], ...] = (
         "CREATE INDEX onto_type_layer_name IF NOT EXISTS "
         "FOR (t:OntoType) ON (t.layer, t.name)",
     ),
+    # Tenant-scoped Blueprint install pin (INF-575 leftover). Same isolation
+    # shape as :KnowledgeGraph — (tenant_id, id), no kg. MERGE is the write.
+    (
+        "blueprint_lock_tenant_id_unique",
+        "CREATE CONSTRAINT blueprint_lock_tenant_id_unique IF NOT EXISTS "
+        "FOR (l:BlueprintInstallLock) REQUIRE "
+        "(l.tenant_id, l.blueprint_id) IS UNIQUE",
+    ),
 )
 
 

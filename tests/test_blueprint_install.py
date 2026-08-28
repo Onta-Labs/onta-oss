@@ -15,13 +15,18 @@ from infona_client.blueprint.install import (
     manifest_content_hash,
 )
 from infona_client.blueprint.catalog import reset_blueprint_package_store
-from infona_client.blueprint.lock import reset_blueprint_lock_store
+from infona_client.blueprint.lock import (
+    GraphStoreBlueprintLockStore,
+    make_blueprint_lock_store,
+    reset_blueprint_lock_store,
+)
 from infona_client.blueprint.seeds import CLINICAL_TRIALS
 from infona_client.graph.facts import Fact
 from infona_client.graph.kg_writer import insert_facts, refresh_after_write
 from infona_client.graph.ontology_catalog import list_types
 from infona_client.graph.ontology_queries import entity_uri
 from infona_client.graph.queries import kg_graph_uri
+from infona_client.graph.store import get_graph_store
 from infona_client.skills.store import make_type_skill_store, reset_type_skill_store
 
 TENANT = "bp-install-tenant"
@@ -79,6 +84,12 @@ async def test_clinical_trials_install_is_idempotent_and_reversible():
     assert card["sample_is_current"] is False
     assert card["sample_subject_count"] == 25
     assert card["content_hash"] == first.content_hash
+
+    graph = get_graph_store()
+    raw = await graph.blueprint_lock_get(TENANT, "infona/clinical-trials")
+    assert raw is not None
+    assert raw["content_hash"] == first.content_hash
+    assert raw["version"] == first.version
 
     removed = await uninstall_blueprint(TENANT, "infona/clinical-trials")
     assert removed["status"] == "uninstalled"
@@ -212,6 +223,49 @@ def test_load_and_validate_parses_yaml_document_not_as_a_path():
     manifest = load_and_validate(yaml_text)
     assert manifest.id == "infona/clinical-trials"
     assert load_and_validate(CLINICAL_TRIALS).id == manifest.id
+
+
+@pytest.mark.asyncio
+async def test_install_pin_survives_lock_store_reload():
+    """Process bounce / other ECS task: new lock wrapper, same GraphStore."""
+    first = await install_blueprint(CLINICAL_TRIALS, tenant_id=TENANT, kg=KG)
+    assert first.status == "installed"
+    assert isinstance(make_blueprint_lock_store(), GraphStoreBlueprintLockStore)
+
+    reset_blueprint_lock_store()
+    wrapper = GraphStoreBlueprintLockStore()
+    pin = await wrapper.get(TENANT, "infona/clinical-trials")
+    assert pin is not None
+    assert pin.content_hash == first.content_hash
+    assert pin.sample_subjects == first.sample_subjects
+
+    card = await inspect_blueprint(TENANT, "infona/clinical-trials")
+    assert card["blueprint_id"] == "infona/clinical-trials"
+    assert card["version"] == first.version
+    assert card["content_hash"] == first.content_hash
+    assert card["sample_subject_count"] == 25
+    assert card["installed"] is True
+
+    again = await install_blueprint(CLINICAL_TRIALS, tenant_id=TENANT, kg=KG)
+    assert again.status == "already_installed"
+
+    reset_blueprint_lock_store()
+    with pytest.raises(BlueprintNotInstalled):
+        await inspect_blueprint(PEER, "infona/clinical-trials")
+
+    reset_blueprint_lock_store()
+    removed = await uninstall_blueprint(TENANT, "infona/clinical-trials")
+    assert removed["status"] == "uninstalled"
+    assert set(removed["removed_types"]) == SEED_TYPES
+    assert len(removed["removed_sample"]) == 25
+    assert not (SEED_TYPES & await _type_names())
+
+    reset_blueprint_lock_store()
+    with pytest.raises(BlueprintNotInstalled):
+        await inspect_blueprint(TENANT, "infona/clinical-trials")
+    assert await get_graph_store().blueprint_lock_get(
+        TENANT, "infona/clinical-trials"
+    ) is None
 
 
 def test_sample_relationship_facts_use_rel_kind():

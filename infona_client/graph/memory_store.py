@@ -139,6 +139,8 @@ class MemoryGraphStore(
         self._onto_attrs: dict[tuple[str, str, str, str, str], _OntoAttrRow] = {}
         # KG registry: (tenant_id, name) → {name, description, triple_count}
         self._kg_registry: dict[tuple[str, str], dict[str, Any]] = {}
+        # Blueprint install lock: (tenant_id, blueprint_id) → payload dict
+        self._blueprint_locks: dict[tuple[str, str], dict[str, Any]] = {}
         self._bootstrapped: list[str] = []
 
     def session(self, scope: GraphScope) -> GraphSession:
@@ -171,6 +173,7 @@ class MemoryGraphStore(
         self._onto_types.clear()
         self._onto_attrs.clear()
         self._kg_registry.clear()
+        self._blueprint_locks.clear()
         self._bootstrapped.clear()
         bag = getattr(self, "_ontology_companion", None)
         if bag is not None and hasattr(bag, "clear"):
@@ -216,6 +219,31 @@ class MemoryGraphStore(
 
     async def kg_registry_delete(self, tenant_id: str, name: str) -> None:
         self._kg_registry.pop((tenant_id, name), None)
+
+    async def blueprint_lock_get(
+        self, tenant_id: str, blueprint_id: str
+    ) -> dict[str, Any] | None:
+        row = self._blueprint_locks.get((tenant_id, blueprint_id))
+        return dict(row) if row is not None else None
+
+    async def blueprint_lock_list(self, tenant_id: str) -> list[dict[str, Any]]:
+        return [
+            dict(row)
+            for (tid, _), row in self._blueprint_locks.items()
+            if tid == tenant_id
+        ]
+
+    async def blueprint_lock_put(
+        self, tenant_id: str, blueprint_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        stored = dict(payload)
+        stored["tenant_id"] = tenant_id
+        stored["blueprint_id"] = blueprint_id
+        self._blueprint_locks[(tenant_id, blueprint_id)] = stored
+        return dict(stored)
+
+    async def blueprint_lock_delete(self, tenant_id: str, blueprint_id: str) -> bool:
+        return self._blueprint_locks.pop((tenant_id, blueprint_id), None) is not None
 
     def assertion_count(
         self, *, tenant_id: str | None = None, kg: str | None = None
