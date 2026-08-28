@@ -126,6 +126,7 @@ def test_request_context_carries_ingest_files_into_extras():
             ],
             ingest_source="Ontraport",
             keep_columns=["Referral Code"],
+            drop_columns=["Card last 4"],
         ),
     )
     ctx = _build_ctx(
@@ -142,6 +143,7 @@ def test_request_context_carries_ingest_files_into_extras():
     assert "path" not in files[0]
     assert ctx.extras.get("ingest_source") == "ontraport"
     assert ctx.extras.get("keep_columns") == ["Referral Code"]
+    assert ctx.extras.get("drop_columns") == ["Card last 4"]
 
 
 def test_http_ingest_file_drops_path_even_if_client_sends_one():
@@ -167,6 +169,7 @@ def test_agent_request_context_ingest_files_default_empty():
     assert ctx.ingest_files == []
     assert ctx.ingest_source == ""
     assert ctx.keep_columns == []
+    assert ctx.drop_columns == []
 
 
 @pytest.mark.asyncio

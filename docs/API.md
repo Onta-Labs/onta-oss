@@ -2238,6 +2238,7 @@ Accept Invite By Token
 | `ingest_files` | array | No |  |
 | `ingest_source` | string | No |  |
 | `keep_columns` | array | No |  |
+| `drop_columns` | array | No |  |
 
 ### AliasBackfill
 

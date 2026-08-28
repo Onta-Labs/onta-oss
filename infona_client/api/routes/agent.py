@@ -91,6 +91,8 @@ class AgentRequestContext(BaseModel):
     ingest_source: str = ""
     # Headers the user restored from a proposed drop list. Optional.
     keep_columns: list[str] = []
+    # Headers the user explicitly greenlit for drop. Empty → keep every column.
+    drop_columns: list[str] = []
 
 
 class Confirm(BaseModel):
@@ -189,6 +191,9 @@ def _agent_extras(
     keep = [str(c) for c in body.context.keep_columns if str(c).strip()]
     if keep:
         extras["keep_columns"] = keep
+    drop = [str(c) for c in body.context.drop_columns if str(c).strip()]
+    if drop:
+        extras["drop_columns"] = drop
     return extras
 
 
