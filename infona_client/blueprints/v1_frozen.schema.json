@@ -1,0 +1,1222 @@
+{
+  "$defs": {
+    "Acquisition": {
+      "additionalProperties": false,
+      "properties": {
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/AcquisitionStep"
+          },
+          "minItems": 1,
+          "title": "Steps",
+          "type": "array"
+        },
+        "enrichment": {
+          "items": {
+            "$ref": "#/$defs/EnrichmentInstruction"
+          },
+          "title": "Enrichment",
+          "type": "array"
+        }
+      },
+      "required": [
+        "steps"
+      ],
+      "title": "Acquisition",
+      "type": "object"
+    },
+    "AcquisitionStep": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "instruction": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Instruction",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "instruction"
+      ],
+      "title": "AcquisitionStep",
+      "type": "object"
+    },
+    "Attribute": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "pattern": "^[a-z][a-z0-9_]{0,127}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/AttributeKind"
+        },
+        "range": {
+          "description": "Literal: an XSD-ish datatype name (string, integer, date, \u2026). Type-ranged: a concept name in this manifest.",
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Range",
+          "type": "string"
+        },
+        "required": {
+          "default": false,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "identity": {
+          "default": false,
+          "title": "Identity",
+          "type": "boolean"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "allowed_values": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Allowed Values"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "range"
+      ],
+      "title": "Attribute",
+      "type": "object"
+    },
+    "AttributeKind": {
+      "description": "Decides the instance-edge predicate namespace at install (INF-576).\n\n* ``literal`` \u2192 ``https://graph.infona.ai/types/<Type>/attrs/<leaf>``\n* ``type_ranged`` \u2192 ``https://graph.infona.ai/onto/<leaf>``\n\nThese are not interchangeable. A type-ranged attribute written as a\nliteral is invisible to the NL planner.",
+      "enum": [
+        "literal",
+        "type_ranged"
+      ],
+      "title": "AttributeKind",
+      "type": "string"
+    },
+    "Cardinality": {
+      "enum": [
+        "1",
+        "N"
+      ],
+      "title": "Cardinality",
+      "type": "string"
+    },
+    "Concept": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_]{0,127}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "attributes": {
+          "items": {
+            "$ref": "#/$defs/Attribute"
+          },
+          "minItems": 1,
+          "title": "Attributes",
+          "type": "array"
+        },
+        "identity_keys": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Identity Keys",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "label",
+        "description",
+        "attributes",
+        "identity_keys"
+      ],
+      "title": "Concept",
+      "type": "object"
+    },
+    "ConflictRule": {
+      "additionalProperties": false,
+      "properties": {
+        "attribute": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Attribute",
+          "type": "string"
+        },
+        "winner": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Winner",
+          "type": "string"
+        },
+        "notes": {
+          "default": "",
+          "title": "Notes",
+          "type": "string"
+        }
+      },
+      "required": [
+        "attribute",
+        "winner"
+      ],
+      "title": "ConflictRule",
+      "type": "object"
+    },
+    "EnrichmentInstruction": {
+      "additionalProperties": false,
+      "description": "Fills an existing node. Does not mint a second one.",
+      "properties": {
+        "name": {
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "instruction": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Instruction",
+          "type": "string"
+        },
+        "fills": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Fills",
+          "type": "string"
+        },
+        "source": {
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "instruction",
+        "fills",
+        "source"
+      ],
+      "title": "EnrichmentInstruction",
+      "type": "object"
+    },
+    "EntityResolution": {
+      "additionalProperties": false,
+      "description": "Identity rule for one concept. Tenant isolation is not configurable.",
+      "properties": {
+        "type": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_]{0,127}$",
+          "title": "Type",
+          "type": "string"
+        },
+        "identity": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Identity",
+          "type": "string"
+        },
+        "blocking": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Blocking",
+          "type": "array"
+        },
+        "auto_merge": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Auto Merge",
+          "type": "string"
+        },
+        "review": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Review",
+          "type": "string"
+        },
+        "reversible": {
+          "const": true,
+          "default": true,
+          "title": "Reversible",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "type",
+        "identity",
+        "blocking",
+        "auto_merge",
+        "review"
+      ],
+      "title": "EntityResolution",
+      "type": "object"
+    },
+    "EvalItem": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "structural",
+            "question"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "still_works_when": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Still Works When",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "still_works_when"
+      ],
+      "title": "EvalItem",
+      "type": "object"
+    },
+    "Evals": {
+      "additionalProperties": false,
+      "properties": {
+        "leak_policy": {
+          "const": "workspace_only",
+          "title": "Leak Policy",
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/EvalItem"
+          },
+          "minItems": 3,
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "leak_policy",
+        "items"
+      ],
+      "title": "Evals",
+      "type": "object"
+    },
+    "ExampleQuestion": {
+      "additionalProperties": false,
+      "properties": {
+        "question": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        }
+      },
+      "required": [
+        "question"
+      ],
+      "title": "ExampleQuestion",
+      "type": "object"
+    },
+    "Examples": {
+      "additionalProperties": false,
+      "description": "Supported questions. ``leak_policy`` is required so an author cannot\nomit the INF-567 constraint. Enforcement that these stay out of other\ntenants' example banks is a later platform guard; the schema only\nrecords the commitment.",
+      "properties": {
+        "leak_policy": {
+          "const": "workspace_only",
+          "title": "Leak Policy",
+          "type": "string"
+        },
+        "questions": {
+          "items": {
+            "$ref": "#/$defs/ExampleQuestion"
+          },
+          "minItems": 3,
+          "title": "Questions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "leak_policy",
+        "questions"
+      ],
+      "title": "Examples",
+      "type": "object"
+    },
+    "FieldMapping": {
+      "additionalProperties": false,
+      "properties": {
+        "source_field": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Source Field",
+          "type": "string"
+        },
+        "lands_on": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Lands On",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/AttributeKind"
+        }
+      },
+      "required": [
+        "source_field",
+        "lands_on",
+        "kind"
+      ],
+      "title": "FieldMapping",
+      "type": "object"
+    },
+    "Freshness": {
+      "additionalProperties": false,
+      "properties": {
+        "stale_after": {
+          "items": {
+            "$ref": "#/$defs/StaleAfter"
+          },
+          "minItems": 1,
+          "title": "Stale After",
+          "type": "array"
+        }
+      },
+      "required": [
+        "stale_after"
+      ],
+      "title": "Freshness",
+      "type": "object"
+    },
+    "FunctionName": {
+      "additionalProperties": false,
+      "description": "A computed function the agent may invoke. Name and contract only \u2014\nno SPARQL, no endpoint, no lambda body (INF-560 C1).",
+      "properties": {
+        "name": {
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "entity_type": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_]{0,127}$",
+          "title": "Entity Type",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "entity_type"
+      ],
+      "title": "FunctionName",
+      "type": "object"
+    },
+    "Lineage": {
+      "additionalProperties": false,
+      "description": "A chain, not a parent pointer. A fork of a fork keeps the whole chain\n(INF-579). Seeds omit ``parent`` and leave ``chain`` empty.",
+      "properties": {
+        "parent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LineageParent"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "chain": {
+          "items": {
+            "$ref": "#/$defs/LineageEntry"
+          },
+          "title": "Chain",
+          "type": "array"
+        }
+      },
+      "title": "Lineage",
+      "type": "object"
+    },
+    "LineageEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "version": {
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$",
+          "title": "Version",
+          "type": "string"
+        },
+        "forked_at": {
+          "format": "date",
+          "title": "Forked At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "forked_at"
+      ],
+      "title": "LineageEntry",
+      "type": "object"
+    },
+    "LineageParent": {
+      "additionalProperties": false,
+      "description": "Exact parent pin. Required on a fork; absent on a seed (INF-560 C2).",
+      "properties": {
+        "id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "version": {
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version"
+      ],
+      "title": "LineageParent",
+      "type": "object"
+    },
+    "Relationship": {
+      "additionalProperties": false,
+      "description": "A type-ranged instance edge. ``kind`` is fixed: a relationship cannot\nbe a literal. Cardinality tells acquisition whether the slot is one or\nmany (INF-559).",
+      "properties": {
+        "name": {
+          "pattern": "^[a-z][a-z0-9_]{0,127}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "source": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_]{0,127}$",
+          "title": "Source",
+          "type": "string"
+        },
+        "target": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_]{0,127}$",
+          "title": "Target",
+          "type": "string"
+        },
+        "cardinality": {
+          "$ref": "#/$defs/Cardinality"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "kind": {
+          "const": "type_ranged",
+          "default": "type_ranged",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "source",
+        "target",
+        "cardinality"
+      ],
+      "title": "Relationship",
+      "type": "object"
+    },
+    "Rules": {
+      "additionalProperties": false,
+      "properties": {
+        "conflict": {
+          "items": {
+            "$ref": "#/$defs/ConflictRule"
+          },
+          "title": "Conflict",
+          "type": "array"
+        },
+        "tombstones": {
+          "items": {
+            "$ref": "#/$defs/TombstoneRule"
+          },
+          "title": "Tombstones",
+          "type": "array"
+        }
+      },
+      "title": "Rules",
+      "type": "object"
+    },
+    "Sample": {
+      "additionalProperties": false,
+      "description": "Own top-level section. Installable, inspectable, and droppable\nindependently of the ontology and sources. Never current.",
+      "properties": {
+        "kind": {
+          "const": "sample",
+          "title": "Kind",
+          "type": "string"
+        },
+        "origin": {
+          "enum": [
+            "synthetic",
+            "open"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "license": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "License",
+          "type": "string"
+        },
+        "captured_at": {
+          "format": "date",
+          "title": "Captured At",
+          "type": "string"
+        },
+        "entities": {
+          "items": {
+            "$ref": "#/$defs/SampleEntity"
+          },
+          "maxItems": 25,
+          "minItems": 1,
+          "title": "Entities",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "origin",
+        "license",
+        "captured_at",
+        "entities"
+      ],
+      "title": "Sample",
+      "type": "object"
+    },
+    "SampleEntity": {
+      "additionalProperties": false,
+      "description": "One preview row. ``is_sample`` is required and must be true \u2014 a row\nthat is not marked as sample fails validation (INF-587).",
+      "properties": {
+        "type": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_]{0,127}$",
+          "title": "Type",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "is_sample": {
+          "const": true,
+          "title": "Is Sample",
+          "type": "boolean"
+        },
+        "attributes": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Attributes",
+          "type": "object"
+        },
+        "relationships": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "title": "Relationships",
+          "type": "object"
+        }
+      },
+      "required": [
+        "type",
+        "id",
+        "is_sample"
+      ],
+      "title": "SampleEntity",
+      "type": "object"
+    },
+    "SkillProse": {
+      "additionalProperties": false,
+      "description": "Type-attached markdown. The skill IS the body. Not executable code.",
+      "properties": {
+        "slug": {
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+          "title": "Slug",
+          "type": "string"
+        },
+        "type_name": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_]{0,127}$",
+          "title": "Type Name",
+          "type": "string"
+        },
+        "title": {
+          "default": "",
+          "title": "Title",
+          "type": "string"
+        },
+        "body": {
+          "maxLength": 20000,
+          "minLength": 1,
+          "title": "Body",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slug",
+        "type_name",
+        "body"
+      ],
+      "title": "SkillProse",
+      "type": "object"
+    },
+    "Skills": {
+      "additionalProperties": false,
+      "properties": {
+        "prose": {
+          "items": {
+            "$ref": "#/$defs/SkillProse"
+          },
+          "title": "Prose",
+          "type": "array"
+        },
+        "functions": {
+          "items": {
+            "$ref": "#/$defs/FunctionName"
+          },
+          "title": "Functions",
+          "type": "array"
+        },
+        "mcp_tools": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Mcp Tools",
+          "type": "array"
+        }
+      },
+      "title": "Skills",
+      "type": "object"
+    },
+    "Source": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "definition": {
+          "$ref": "#/$defs/SourceDefinition"
+        },
+        "mapping": {
+          "items": {
+            "$ref": "#/$defs/FieldMapping"
+          },
+          "minItems": 1,
+          "title": "Mapping",
+          "type": "array"
+        },
+        "cadence": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Declared refresh cadence *policy*. Not last-run status.",
+          "title": "Cadence"
+        }
+      },
+      "required": [
+        "id",
+        "definition",
+        "mapping"
+      ],
+      "title": "Source",
+      "type": "object"
+    },
+    "SourceCredential": {
+      "description": "How a source authenticates. Never a secret value.\n\n* ``none`` \u2014 public, no key.\n* ``byok`` \u2014 the installing workspace supplies its own env var (named\n  in ``key_env``). Dormant until that var is present. Never a platform\n  key (ADR 0011).",
+      "enum": [
+        "none",
+        "byok"
+      ],
+      "title": "SourceCredential",
+      "type": "string"
+    },
+    "SourceDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "kind": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Kind",
+          "type": "string"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        },
+        "docs_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Docs Url"
+        },
+        "license": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "License"
+        },
+        "publisher": {
+          "default": "",
+          "title": "Publisher",
+          "type": "string"
+        },
+        "credential": {
+          "$ref": "#/$defs/SourceCredential",
+          "default": "none"
+        },
+        "key_env": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Env-var NAME only. Required when credential=byok. Never a value.",
+          "title": "Key Env"
+        }
+      },
+      "required": [
+        "name",
+        "kind"
+      ],
+      "title": "SourceDefinition",
+      "type": "object"
+    },
+    "StaleAfter": {
+      "additionalProperties": false,
+      "description": "Per-attribute stale-after *policy*. ``never=true`` means the value\ndoes not go stale (identity keys, official titles). There is no field\nfor the live staleness of a cell.",
+      "properties": {
+        "attribute": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Attribute",
+          "type": "string"
+        },
+        "days": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Days"
+        },
+        "never": {
+          "default": false,
+          "title": "Never",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "attribute"
+      ],
+      "title": "StaleAfter",
+      "type": "object"
+    },
+    "Task": {
+      "additionalProperties": false,
+      "description": "A named job in this domain. Not a skill, not a function, not a\nscheduled job instance. Credentials and the cron row stay workspace-side.",
+      "properties": {
+        "name": {
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "writes": {
+          "title": "Writes",
+          "type": "boolean"
+        },
+        "attaches_to": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z][A-Za-z0-9_]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Attaches To"
+        },
+        "inputs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Inputs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "writes"
+      ],
+      "title": "Task",
+      "type": "object"
+    },
+    "TombstoneRule": {
+      "additionalProperties": false,
+      "properties": {
+        "when": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "When",
+          "type": "string"
+        },
+        "action": {
+          "enum": [
+            "mark_withdrawn",
+            "stop_refresh"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "notes": {
+          "default": "",
+          "title": "Notes",
+          "type": "string"
+        }
+      },
+      "required": [
+        "when",
+        "action"
+      ],
+      "title": "TombstoneRule",
+      "type": "object"
+    },
+    "Validation": {
+      "additionalProperties": false,
+      "properties": {
+        "checks": {
+          "items": {
+            "$ref": "#/$defs/ValidationCheck"
+          },
+          "minItems": 1,
+          "title": "Checks",
+          "type": "array"
+        },
+        "entity_resolution": {
+          "items": {
+            "$ref": "#/$defs/EntityResolution"
+          },
+          "minItems": 1,
+          "title": "Entity Resolution",
+          "type": "array"
+        }
+      },
+      "required": [
+        "checks",
+        "entity_resolution"
+      ],
+      "title": "Validation",
+      "type": "object"
+    },
+    "ValidationCheck": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "rule": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Rule",
+          "type": "string"
+        },
+        "on": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "On",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "rule",
+        "on"
+      ],
+      "title": "ValidationCheck",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "v1-frozen Blueprint package. Unknown top-level keys are rejected.",
+  "properties": {
+    "schema_version": {
+      "const": "v1-frozen",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "id": {
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "namespace": {
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+      "title": "Namespace",
+      "type": "string"
+    },
+    "name": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "version": {
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$",
+      "title": "Version",
+      "type": "string"
+    },
+    "acquisition_revision": {
+      "description": "Independent of ``version``. Bump when an acquisition or freshness *instruction* changes (INF-560 C4). Not a silent MINOR.",
+      "minimum": 1,
+      "title": "Acquisition Revision",
+      "type": "integer"
+    },
+    "license": {
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "License",
+      "type": "string"
+    },
+    "attribution": {
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Attribution",
+      "type": "string"
+    },
+    "published_at": {
+      "format": "date",
+      "title": "Published At",
+      "type": "string"
+    },
+    "last_reviewed_at": {
+      "format": "date",
+      "title": "Last Reviewed At",
+      "type": "string"
+    },
+    "lineage": {
+      "$ref": "#/$defs/Lineage"
+    },
+    "concepts": {
+      "items": {
+        "$ref": "#/$defs/Concept"
+      },
+      "minItems": 1,
+      "title": "Concepts",
+      "type": "array"
+    },
+    "relationships": {
+      "items": {
+        "$ref": "#/$defs/Relationship"
+      },
+      "title": "Relationships",
+      "type": "array"
+    },
+    "tasks": {
+      "items": {
+        "$ref": "#/$defs/Task"
+      },
+      "minItems": 1,
+      "title": "Tasks",
+      "type": "array"
+    },
+    "rules": {
+      "$ref": "#/$defs/Rules"
+    },
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/Source"
+      },
+      "minItems": 1,
+      "title": "Sources",
+      "type": "array"
+    },
+    "acquisition": {
+      "$ref": "#/$defs/Acquisition"
+    },
+    "validation": {
+      "$ref": "#/$defs/Validation"
+    },
+    "freshness": {
+      "$ref": "#/$defs/Freshness"
+    },
+    "skills": {
+      "$ref": "#/$defs/Skills"
+    },
+    "examples": {
+      "$ref": "#/$defs/Examples"
+    },
+    "evals": {
+      "$ref": "#/$defs/Evals"
+    },
+    "sample": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Sample"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "namespace",
+    "name",
+    "version",
+    "acquisition_revision",
+    "license",
+    "attribution",
+    "published_at",
+    "last_reviewed_at",
+    "concepts",
+    "tasks",
+    "sources",
+    "acquisition",
+    "validation",
+    "freshness",
+    "examples",
+    "evals"
+  ],
+  "title": "BlueprintManifest",
+  "type": "object"
+}

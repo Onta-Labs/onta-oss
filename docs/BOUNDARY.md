@@ -17,6 +17,7 @@ Short answer for OSS users. The long engineering map lives in the monorepo
 | **Plugin seams** | Auth, enrichment adapters, fetchers — you wire them |
 | **Free / no-key data sources** | NPPES, ClinicalTrials.gov, Open Food Facts, … |
 | **Bring-your-own-key** registry entries | Dormant until *your* key is in the env (e.g. FRED, GeoNames free username) |
+| **Blueprint manifest protocol** | v1-frozen schema + validator (`infona_client/blueprints/`). Means to acquire, not records. |
 
 ## Bring your own retrieval (important)
 
