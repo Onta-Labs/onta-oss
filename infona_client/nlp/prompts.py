@@ -285,6 +285,25 @@ graph is UPPER_SNAKE_CASE and Neo4j rel types are case-sensitive: the derived \
 dual-written shortcut for leaf `lead_sponsor` is `LEAD_SPONSOR`. Prefer the \
 Assertion pattern (source of truth) or the `related_entities` / \
 `related_entity_name_filter` template; the shortcut rel is a derived cache.
+- LITERAL vs RELATIONSHIP (do not mix): if the ontology lists `attr` as a \
+datatype (string/float/date) on the subject type, the NL value is a **literal \
+filter** — `p.name = $prop_key` and \
+`toLower(coalesce(a.literal_value, e[p.name], ''))` equals or CONTAINS \
+`toLower($prop_value)`. Place / status / phase / condition / country / \
+severity / type-tag words are almost always literals. Never hop \
+`(e)-[:funded_by]->(x)` (or any lowercase typed rel) to bind a place-name \
+or status as if it were an entity. Hop SUBJECT/OBJECT only when the schema \
+says `attr → OtherType`. Then `p.name = $rel_attr` on that Assertion.
+- AND-filters: two constraints in the question ⇒ two PREDICATE matches \
+(or one hop plus one literal), **both** applied before COUNT/AVG/SUM. \
+Counting after only the first filter is a silent wrong total. Substring \
+fields (state, location) use CONTAINS, not an entity-name equality hop. \
+When the literal lives on the RELATED type (count A related to B whose \
+attr contains X): hop Assertion SUBJECT/OBJECT, then filter the literal \
+on `to_e` (`subject_id: to_e.id` / `to_e[$prop_key]`), not on `from_e`.
+- AVG/SUM of a numeric leaf: `toFloat(coalesce(a.literal_value, e[$prop_key]))` \
+after type + filters. RETURN that number (`AS n` / `AS value`), not a \
+dump of unrelated node properties.
 
 GRAPH-STRUCTURE questions (exists / highest-degree / shortest-path / typed-rel \
 count / neighbor-outgoing count) — always read-only Assertion Cypher. Never \

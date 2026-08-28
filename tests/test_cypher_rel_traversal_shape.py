@@ -44,8 +44,12 @@ from infona_client.graph.store import GraphQueryError
 from infona_client.nlp.example_bank_models import DEFAULT_BANK_PATH
 from infona_client.nlp.pipeline_cypher_exec import PipelineCypherExecMixin
 from infona_client.nlp.pipeline_helpers import (
+    MAX_REPORTED_REL_TYPES,
+    REL_TRAVERSAL_FEEDBACK,
     _cypher_invented_rel_types,
     _cypher_rel_types,
+    invented_rel_error_detail,
+    rewrite_lowercase_rel_types,
 )
 
 # The exact Cypher production returned for "Which companies sponsor the most
@@ -189,8 +193,60 @@ def test_invented_rel_types_flagged(cypher: str, flagged: list[str]) -> None:
     assert _cypher_invented_rel_types(cypher) == flagged
 
 
+@pytest.mark.parametrize(
+    ("cypher", "want", "changed"),
+    [
+        ("MATCH (a)-[:lead_sponsor]->(b)", "MATCH (a)-[:LEAD_SPONSOR]->(b)", True),
+        ("MATCH (a)-[:in_trial]->(b)", "MATCH (a)-[:IN_TRIAL]->(b)", True),
+        ("MATCH (a)-[:IN_TRIAL]->(b)", "MATCH (a)-[:IN_TRIAL]->(b)", False),
+        (
+            "MATCH (a)-[:in_trial|:funded_by]->(b)",
+            "MATCH (a)-[:IN_TRIAL|:FUNDED_BY]->(b)",
+            True,
+        ),
+        (
+            "MATCH (a)-[:`in_trial`]->(b)",
+            "MATCH (a)-[:`IN_TRIAL`]->(b)",
+            True,
+        ),
+        (
+            "MATCH (e)-[:INSTANCE_OF]->(c) MATCH (a)-[:in_trial]->(t)",
+            "MATCH (e)-[:INSTANCE_OF]->(c) MATCH (a)-[:IN_TRIAL]->(t)",
+            True,
+        ),
+        (
+            "MATCH (a)-[:SUBJECT]->(e)",
+            "MATCH (a)-[:SUBJECT]->(e)",
+            False,
+        ),
+    ],
+)
+def test_rewrite_lowercase_rel_types(cypher: str, want: str, changed: bool) -> None:
+    out, did = rewrite_lowercase_rel_types(cypher)
+    assert out == want
+    assert did is changed
+    assert _cypher_invented_rel_types(out) == []
+
+
+def test_rewrite_is_idempotent() -> None:
+    once, _ = rewrite_lowercase_rel_types(REGRESSION_CYPHER)
+    twice, changed = rewrite_lowercase_rel_types(once)
+    assert twice == once
+    assert changed is False
+    assert "LEAD_SPONSOR" in once
+    assert "lead_sponsor" not in once
+
+
+def test_rewrite_does_not_touch_inline_where_predicate() -> None:
+    """Extractor cannot split Neo4j 5 inline WHERE — leave the body alone."""
+    raw = "MATCH (a)-[r:HAS_X WHERE r.k = 1]->(b)"
+    out, changed = rewrite_lowercase_rel_types(raw)
+    assert out == raw
+    assert changed is False
+
+
 # ---------------------------------------------------------------------------
-# Wiring: the guard must fire where the raw Cypher would actually execute
+# Wiring: dialect repair, then remaining invented types fail closed
 # ---------------------------------------------------------------------------
 
 
@@ -215,26 +271,27 @@ class _Pipeline(PipelineCypherExecMixin):
 
 
 @pytest.mark.asyncio
-async def test_free_form_invented_edge_never_reaches_the_store() -> None:
-    """No `template` to rescue it → raise, do NOT execute and answer zero rows.
+async def test_free_form_lowercase_rel_is_rewritten_then_executed() -> None:
+    """No template → rewrite `[:lead_sponsor]` to dual-write `[:LEAD_SPONSOR]`.
 
-    This is the regression itself: before the guard this call ran the query,
-    got 0 records, and /ask rendered "No results found."
+    Before dialect repair this call raised (or ran the lowercase type and
+    answered a silent zero). Dual-write shortcuts are UPPER_SNAKE, so the
+    rewritten body is a real edge, not an invented one.
     """
     session = _RecordingSession()
     gen = {"cypher": REGRESSION_CYPHER, "explanation": "..."}
 
-    with pytest.raises(GraphQueryError) as excinfo:
-        await _Pipeline()._execute_confined_cypher(
-            session, gen, REGRESSION_CYPHER, {"tenant_id": "t", "kg": "k"}
-        )
+    records, path = await _Pipeline()._execute_confined_cypher(
+        session, gen, REGRESSION_CYPHER, {"tenant_id": "t", "kg": "k"}
+    )
 
-    assert session.reads == [], "invented-edge Cypher must not be executed"
-    detail = str(excinfo.value)
-    assert "lead_sponsor" in detail
-    # The message is the retry feedback, so it must name the shape to use.
-    assert ":Assertion" in detail
-    assert "related_entities" in detail
+    assert path == "execute_read"
+    assert len(session.reads) == 1
+    executed, params = session.reads[0]
+    assert "LEAD_SPONSOR" in executed
+    assert "lead_sponsor" not in executed
+    assert params == {"tenant_id": "t", "kg": "k"}
+    assert records == []
 
 
 @pytest.mark.asyncio
@@ -327,28 +384,22 @@ async def test_assertion_shaped_cypher_executes_despite_related_entities_templat
     assert records[0].get("date") == "2024-06-01"
 
 
-@pytest.mark.asyncio
-async def test_feedback_survives_the_store_error_truncation_cap() -> None:
+def test_feedback_survives_the_store_error_truncation_cap() -> None:
     """`scrub_store_detail` hard-truncates at 600 chars — the fix must survive.
 
     Without the token cap a many-token query pushed the message past the cap and
-    the truncated tail was the actionable half.
+    the truncated tail was the actionable half. Dialect repair now rewrites
+    lowercase tokens before execute, so this pins the remaining-invented
+    error builder (still used if a token cannot be sanitized).
     """
-    # 20 realistic-length leaves: without the cap this renders 1010 chars and
-    # `scrub_store_detail` cuts the tail — which is where the fix instruction was.
-    cypher = " ".join(
-        f"MATCH (a)-[:sponsoring_organization_{i}]->(b{i})" for i in range(20)
-    )
-    with pytest.raises(GraphQueryError) as excinfo:
-        await _Pipeline()._execute_confined_cypher(
-            _RecordingSession(), {"cypher": cypher}, cypher, {}
-        )
-
-    detail = excinfo.value.detail
+    invented = [f"sponsoring_organization_{i}" for i in range(20)]
+    raw = invented_rel_error_detail(invented)
+    detail = GraphQueryError(raw).detail
     assert "truncated" not in detail
-    # The instruction the model has to act on is present and intact.
     assert ":Assertion" in detail
     assert "related_entity_name_filter" in detail
+    assert len(invented[:MAX_REPORTED_REL_TYPES]) == MAX_REPORTED_REL_TYPES
+    assert REL_TRAVERSAL_FEEDBACK in detail
 
 
 # ---------------------------------------------------------------------------
@@ -485,4 +536,8 @@ def test_bank_relationship_examples_use_the_assertion_shape() -> None:
     for row in traversals:
         cypher = row["cypher"]
         assert "-[:SUBJECT]->" in cypher, row["question"]
-        assert "-[:PREDICATE]->" in cypher, row["question"]
+        # Untyped outgoing-edge counts (highest degree) walk every object
+        # Assertion and have no leaf to bind. PREDICATE is required when a
+        # relationship leaf is named.
+        if "$rel_attr" in cypher or "p.name" in cypher:
+            assert "-[:PREDICATE]->" in cypher, row["question"]

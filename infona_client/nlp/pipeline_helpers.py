@@ -11,6 +11,16 @@ import time
 from typing import Any
 
 from infona_client.graph.iri import ENTITY_URI_PREFIX, IRI_BASE
+from infona_client.nlp.cypher_rel_types import (  # noqa: F401
+    MAX_REPORTED_REL_TYPES,
+    REL_TRAVERSAL_FEEDBACK,
+    _CYPHER_REL_PATTERN_RE,
+    _REL_TOKEN_RE,
+    _cypher_invented_rel_types,
+    _cypher_rel_types,
+    invented_rel_error_detail,
+    rewrite_lowercase_rel_types,
+)
 from infona_client.nlp.pipeline_llm import ANSWER_ROW_CAP  # noqa: F401 — mixin re-export
 
 _TEMPLATE_PARAM_RE = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*)")
@@ -203,94 +213,6 @@ def _cypher_uses_forbidden_shapes(cypher: str) -> str | None:
     if re.search(r"(?i)Assertion\.prop_key", c):
         return "uses forbidden Assertion.prop_key"
     return None
-
-
-# A Cypher relationship pattern: `-[`, an optional variable, `:`, then the type
-# expression. Stops at `]`, a var-length `*`, or a property map `{` so
-# `-[:SUBCLASS_OF*1..3]->` and `-[r:HAS_X {k: 1}]->` yield just the type part.
-# Alternation (`-[:A|B]->`, `-[:A|:B]->`) is split by the caller.
-_CYPHER_REL_PATTERN_RE = re.compile(
-    r"-\[\s*(?:[A-Za-z_][A-Za-z0-9_]*)?\s*:([^\]{*]+)"
-)
-
-# A well-formed Neo4j relationship type token. `sanitize_rel_type` can only ever
-# emit this shape, so anything else is a parse artefact rather than a rel type.
-_REL_TOKEN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-
-
-def _cypher_rel_types(cypher: str) -> list[str]:
-    """Return every relationship TYPE token a Cypher string traverses."""
-    out: list[str] = []
-    for raw in _CYPHER_REL_PATTERN_RE.findall(cypher or ""):
-        for part in raw.split("|"):
-            token = part.strip().strip("`").lstrip(":").strip()
-            if token:
-                out.append(token)
-    return out
-
-
-def _cypher_invented_rel_types(cypher: str) -> list[str]:
-    """Return traversed relationship types that CANNOT exist in this graph.
-
-    Every relationship type in the property graph is minted by
-    :func:`infona_client.graph.facts.sanitize_rel_type`, which upper-cases the
-    ontology leaf (``lead_sponsor`` → ``LEAD_SPONSOR``); the structural rels
-    (``INSTANCE_OF`` / ``SUBJECT`` / ``PREDICATE`` / ``OBJECT`` / ``SUBCLASS_OF``
-    / …) are upper-case literals in ``graph/*.py``. Neo4j relationship types are
-    CASE-SENSITIVE, so a type token carrying a lower-case letter matches nothing
-    and its MATCH can only ever return **zero rows**.
-
-    That is the silent-wrong-answer trap this guards: the ontology summary
-    renders a relationship as its lower-case leaf (``lead_sponsor``), which is a
-    ``:Property`` NAME, not a relationship type. An LLM that reads it as an edge
-    emits ``(ct)-[:lead_sponsor]->(comp)``, the query returns no rows, and /ask
-    reports "No results found." on data that plainly has the relationship.
-    Detect before execute so the retry loop can correct it (and fail closed if
-    it cannot) instead of answering "no data" with high confidence.
-
-    Flagged inside ``OPTIONAL MATCH`` too, deliberately. There the query does
-    still return rows — every one of them carrying a NULL where the related
-    entity belongs, i.e. "this trial has no sponsor" about data that has one.
-    That is the same silent-wrong trap the system prompt already fails closed
-    on, so a dead traversal is worth a retry wherever it appears.
-
-    Returns the offending tokens, de-duplicated in first-seen order.
-    """
-    seen: dict[str, None] = {}
-    for token in _cypher_rel_types(cypher):
-        # Only judge tokens that are actually shaped like a rel type. A capture
-        # carrying spaces or punctuation is something the extractor could not
-        # parse cleanly — a Neo4j 5 inline predicate (`-[r:HAS_X WHERE r.k=1]->`,
-        # valid Cypher), or a pattern-looking substring inside a string literal.
-        # Claiming those "cannot exist" would reject a correct query, so stay
-        # quiet unless the token is unambiguous.
-        if not _REL_TOKEN_RE.match(token):
-            continue
-        # Upper-case-only tokens are a valid rel type by construction, whether
-        # structural or a dual-written `sanitize_rel_type` shortcut.
-        if any(ch.islower() for ch in token):
-            seen.setdefault(token, None)
-    return list(seen)
-
-
-# Corrective feedback for the retry loop. Names the Assertion source-of-truth
-# shape AND the helper templates, because either one answers the question.
-#
-# Kept short on purpose: `GraphQueryError` runs it through `scrub_store_detail`,
-# which hard-truncates at 600 chars. The fix instruction leads and the rationale
-# trails, so if a many-token message ever does get cut, the actionable half is
-# the half that survives.
-REL_TRAVERSAL_FEEDBACK = (
-    "Rewrite as (a:Assertion {tenant_id: $tenant_id, kg: $kg})-[:SUBJECT]->(from), "
-    "(a)-[:OBJECT]->(to), (a)-[:PREDICATE]->(p:Property) WHERE p.name = '<leaf>' "
-    "— or set the JSON `template` field to related_entities / "
-    "related_entity_name_filter with matching params. "
-    "Relationships are stored as :Assertion nodes, never as a typed edge named "
-    "after the ontology leaf; every rel type is UPPER_SNAKE_CASE."
-)
-
-# Cap the token list so the feedback cannot crowd out its own fix instruction.
-MAX_REPORTED_REL_TYPES = 3
 
 
 def _sanitize_sparql_literal(text: str) -> str:

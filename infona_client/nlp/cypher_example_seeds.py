@@ -11,6 +11,8 @@ Coverage (open-data / synthetic only — never spider-bench / eval-mh):
   * related-entity name filter (+ filtered count / filtered agg)
   * simple sum / avg
   * 1-hop related_entities (+ count-distinct targets)
+  * hop + literal on the related type (count from_type related to to_type
+    whose datatype attr CONTAINS $prop_value)
 
 **Q ↔ Cypher fidelity:** open-data seeds that match an existing SPARQL bank
 row MUST return the same coarse answer shape (COUNT→count(, SUM→sum(,
@@ -70,6 +72,7 @@ from infona_client.nlp.cypher_example_seeds_data import (  # noqa: F401
     SHAPE_LITERAL_FILTER,
     SHAPE_NUMERIC_COMPARE,
     SHAPE_RELATED_1HOP,
+    SHAPE_RELATED_HOP_LITERAL,
     SHAPE_RELATED_NAME_FILTER,
     SHAPE_SUM,
     SHAPE_GRAPH_DEGREE,
@@ -398,6 +401,14 @@ def bank_cypher_shape_coverage(
             or ("$from_types" in cy and "to_e" in cl)
         ):
             found.add(SHAPE_RELATED_1HOP)
+        if (
+            "$from_types" in cy
+            and "$to_types" in cy
+            and "$prop_key" in cy
+            and "$prop_value" in cy
+            and "to_e" in cl
+        ):
+            found.add(SHAPE_RELATED_HOP_LITERAL)
         if "$group_key" in cy and re.search(r"\bsum\s*\(", cy, re.I) and "limit 1" in cl:
             found.add(SHAPE_ARGMAX)
     return found

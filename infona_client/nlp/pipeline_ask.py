@@ -20,6 +20,9 @@ from infona_client.nlp.cypher_scope import (
     confine_generated_cypher,
     scrub_cypher_error,
 )
+from infona_client.nlp.ask_plan_repair import apply_ask_plan_repair
+from infona_client.nlp.cypher_rel_types import apply_cypher_dialect_rewrites
+from infona_client.nlp.graph_structure_cypher import apply_compiled_graph_op
 from infona_client.nlp.pipeline_ask_state import AskCypherState
 from infona_client.nlp.pipeline_helpers import _cypher_uses_forbidden_shapes
 from infona_client.nlp.pipeline_llm import CEREBRAS_LENGTH_RECOVERY_TOKENS, EmptyLLMResponse
@@ -291,8 +294,6 @@ class PipelineAskMixin:
                     except Exception:
                         pass
                 if not (gen.get("stub") or gen.get("fixture")):
-                    from infona_client.nlp.ask_plan_repair import apply_ask_plan_repair
-
                     params, cypher_raw, plan_repaired = apply_ask_plan_repair(
                         gen,
                         question=question,
@@ -305,6 +306,12 @@ class PipelineAskMixin:
                     )
                     if plan_repaired:
                         timing["ask_plan_repaired"] = 1.0
+                    # Before empty / forbidden gates: always-LLM then overwrite.
+                    cypher_raw, params, compiled = apply_compiled_graph_op(
+                        question, cypher_raw, params
+                    )
+                    if compiled:
+                        timing["cypher_graph_op_compiled"] = 1.0
                 last_params = params
                 explanation = gen.get("explanation") or explanation
                 functions_needed = gen.get("functions_needed") or functions_needed
@@ -323,15 +330,10 @@ class PipelineAskMixin:
                     cypher_raw = self._rewrite_cypher_alias_leaves(cypher_raw, alias_map)
 
                 if not (gen.get("stub") or gen.get("fixture")):
-                    from infona_client.nlp.cypher_filter_integrity import (
-                        rewrite_optional_value_filters,
-                    )
-
-                    cypher_raw, opt_rewritten = rewrite_optional_value_filters(
+                    cypher_raw, dialect_flags = apply_cypher_dialect_rewrites(
                         cypher_raw
                     )
-                    if opt_rewritten:
-                        timing["cypher_optional_match_rewritten"] = 1.0
+                    timing.update(dialect_flags)
 
                 if store is None:
                     return NLResult(

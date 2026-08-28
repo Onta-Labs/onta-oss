@@ -54,6 +54,17 @@ def test_cypher_system_mentions_golden_answers_not_string_match():
     assert "sparql look-alike" in s or "not sparql" in s
 
 
+def test_cypher_system_teaches_literal_vs_relationship_and_and_filters():
+    s = CYPHER_GENERATION_SYSTEM
+    low = s.lower()
+    assert "literal vs relationship" in low
+    assert "contains" in low
+    assert "and-filters" in low or "two constraints" in low
+    assert "[:funded_by]" in s or "lowercase typed rel" in low
+    assert "to_e[$prop_key]" in s
+    assert "tofloat(coalesce" in low.replace(" ", "")
+
+
 def test_cypher_system_teaches_graph_structure_ops():
     s = CYPHER_GENERATION_SYSTEM
     low = s.lower()
