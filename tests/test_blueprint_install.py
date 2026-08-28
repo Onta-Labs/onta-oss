@@ -12,6 +12,7 @@ from infona_client.blueprint import (
 from infona_client.blueprint.install import (
     BlueprintNotInstalled,
     BlueprintUninstallRefused,
+    instance_edge_predicate,
     manifest_content_hash,
 )
 from infona_client.blueprint.catalog import reset_blueprint_package_store
@@ -275,7 +276,8 @@ def test_sample_relationship_facts_use_rel_kind():
     """INF-576 — a type-ranged sample slot is a rel Fact, not a literal."""
     from infona_client.blueprint import load_blueprint_package
     from infona_client.blueprint.plan import facts_for_sample
-    from infona_client.graph.ontology_queries import entity_uri
+    from infona_client.graph.iri import ONTO_PRED_PREFIX
+    from infona_client.graph.ontology_queries import attr_uri, entity_uri
 
     manifest = load_blueprint_package(CLINICAL_TRIALS)
     assert manifest.sample is not None
@@ -287,3 +289,106 @@ def test_sample_relationship_facts_use_rel_kind():
     assert rels[0].key == "lead_sponsor"
     assert rels[0].value == entity_uri("Organization", "Example Pharma A")
     assert not any(f.kind == "literal" and f.key == "lead_sponsor" for f in facts)
+    pred = instance_edge_predicate("lead_sponsor")
+    assert pred == f"{ONTO_PRED_PREFIX}lead_sponsor"
+    assert pred != attr_uri("ClinicalTrial", "lead_sponsor")
+    assert "/attrs/" not in pred
+
+
+@pytest.mark.asyncio
+async def test_clinical_trials_install_writes_through_shared_path(monkeypatch):
+    """INF-576 — sample insert + refresh go through kg_writer, not a bespoke write."""
+    insert_calls: list[tuple] = []
+    refresh_calls: list[tuple] = []
+    real_insert = insert_facts
+    real_refresh = refresh_after_write
+
+    async def spy_insert(*args, **kwargs):
+        insert_calls.append((args, kwargs))
+        return await real_insert(*args, **kwargs)
+
+    async def spy_refresh(*args, **kwargs):
+        refresh_calls.append((args, kwargs))
+        return await real_refresh(*args, **kwargs)
+
+    monkeypatch.setattr("infona_client.blueprint.install.insert_facts", spy_insert)
+    monkeypatch.setattr(
+        "infona_client.blueprint.install.refresh_after_write", spy_refresh
+    )
+
+    await install_blueprint(CLINICAL_TRIALS, tenant_id=TENANT, kg=KG)
+    assert len(insert_calls) == 1
+    facts = insert_calls[0][1]["facts"]
+    assert facts
+    assert all(isinstance(f, Fact) for f in facts)
+    assert {f.kind for f in facts} <= {"type", "literal", "rel"}
+    assert any(f.kind == "type" for f in facts)
+    assert any(f.kind == "literal" for f in facts)
+    for fact in facts:
+        if fact.kind == "rel":
+            pred = instance_edge_predicate(fact.key)
+            assert pred.endswith(f"/onto/{fact.key}")
+            assert "/attrs/" not in pred
+    assert len(refresh_calls) == 1
+    assert refresh_calls[0][1]["tenant_id"] == TENANT
+    assert refresh_calls[0][1]["kg_name"] == KG
+    assert "ClinicalTrial" in refresh_calls[0][1]["affected_types"]
+    await uninstall_blueprint(TENANT, "infona/clinical-trials")
+
+
+@pytest.mark.asyncio
+async def test_install_relationship_lands_on_onto_not_attrs():
+    """INF-576 — a sample rel is an object Assertion, not an attrs/ literal."""
+    from infona_client.blueprint import load_blueprint_package
+    from infona_client.graph.assertion_model import property_uri
+    from infona_client.graph.iri import ONTO_PRED_PREFIX
+    from infona_client.graph.ontology_queries import attr_uri
+    from infona_client.graph.rdfs_helpers import (
+        session_literal_values,
+        session_object_values,
+    )
+    from infona_client.graph.scope import GraphScope
+    from infona_client.graph.store import get_graph_store
+
+    manifest = load_blueprint_package(CLINICAL_TRIALS)
+    assert manifest.sample is not None
+    trial = next(
+        e
+        for e in manifest.sample.entities
+        if e.type == "ClinicalTrial" and e.attributes.get("nct_id") == "SAMPLE-001"
+    )
+    trial.attributes["lead_sponsor"] = "Example Pharma A"
+    await install_blueprint(manifest, tenant_id=TENANT, kg=KG)
+
+    trial_uri = entity_uri("ClinicalTrial", "SAMPLE-001")
+    org_uri = entity_uri("Organization", "Example Pharma A")
+    pred = instance_edge_predicate("lead_sponsor")
+    assert pred == f"{ONTO_PRED_PREFIX}lead_sponsor"
+    assert pred != attr_uri("ClinicalTrial", "lead_sponsor")
+    assert "/attrs/lead_sponsor" in attr_uri("ClinicalTrial", "lead_sponsor")
+
+    session = get_graph_store().session(GraphScope.for_instance(TENANT, KG))
+    objs = await session_object_values(
+        session, trial_uri, property_uri("lead_sponsor")
+    )
+    assert objs == [org_uri]
+    lits = await session_literal_values(
+        session, trial_uri, property_uri("lead_sponsor")
+    )
+    assert lits == []
+    await uninstall_blueprint(TENANT, "infona/clinical-trials")
+
+
+def test_blueprint_install_module_uses_shared_write_primitives():
+    """INF-576 structural: install.py must not grow a bespoke instance write."""
+    import inspect
+    import re
+
+    import infona_client.blueprint.install as mod
+
+    src = inspect.getsource(mod)
+    assert re.search(r"(?<![\w.])insert_facts\(", src)
+    assert re.search(r"(?<![\w.])delete_facts\(", src)
+    assert re.search(r"(?<![\w.])refresh_after_write\(", src)
+    assert re.search(r"(?<![\w.])insert_triples\(", src) is None
+    assert re.search(r"DELETE\s*\{|DELETE\s+WHERE|DELETE\s+DATA", src) is None

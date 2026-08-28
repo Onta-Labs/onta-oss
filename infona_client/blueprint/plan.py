@@ -20,10 +20,23 @@ from infona_client.blueprint.models import (
 )
 from infona_client.blueprint.validate import validate_blueprint
 from infona_client.graph.facts import Fact
+from infona_client.graph.iri import ONTO_PRED_PREFIX
 from infona_client.graph.ontology_queries import entity_uri
 from infona_client.models.ontology import OntologyMutation, OntologyOpKind
 
 SAMPLE_SOURCE_MARK = "blueprint-sample"
+
+
+def instance_edge_predicate(leaf: str) -> str:
+    """Relationship INSTANCE edge — ``onto/<leaf>``, never ``attrs/<leaf>``.
+
+    ADR 0009 / INF-576. ``insert_facts`` with ``Fact.kind="rel"`` is what
+    lands the edge on this predicate. A ``kind="literal"`` write of the
+    same leaf is a string on the attribute namespace — invisible to NL.
+    """
+    if not isinstance(leaf, str) or not leaf.strip():
+        raise BlueprintValidationError("relationship leaf must be a non-empty string")
+    return f"{ONTO_PRED_PREFIX}{leaf.strip()}"
 
 
 class BlueprintError(Exception):
@@ -195,8 +208,10 @@ def facts_for_sample(manifest: BlueprintManifest) -> tuple[list[Fact], list[str]
         for key, value in entity.attributes.items():
             spec = attrs.get(key)
             if spec is not None and spec.kind == "relationship":
-                # INF-576: type-ranged edges go through kind=rel so
-                # insert_facts writes onto/<leaf>, never attrs/<leaf>.
+                # INF-576: kind=rel → insert_facts lands
+                # instance_edge_predicate(key) == onto/<leaf>.
+                # kind=literal of the same slot is attrs/<leaf> and
+                # invisible to the NL planner (ADR 0009).
                 target_type = spec.range_type or ""
                 raw = str(value)
                 target = (

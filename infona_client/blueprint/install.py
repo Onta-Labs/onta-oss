@@ -2,8 +2,10 @@
 
 One engine. HTTP routes, ``python -m infona_client.blueprint``, the npm
 CLI, and MCP all call these functions. Writes go through the shared
-paths: ``commit_ontology`` for schema, ``insert_facts`` /
+paths (INF-576): ``commit_ontology`` for schema, ``insert_facts`` /
 ``delete_facts`` / ``refresh_after_write`` for the optional sample.
+Relationship sample slots are ``Fact.kind="rel"`` so instance edges
+land on ``onto/<leaf>``, never ``attrs/<leaf>`` (ADR 0009).
 
 Install yields an empty graph plus an optional bounded sample (INF-564).
 The sample is marked as sample and is never current. Re-install of the
@@ -38,6 +40,7 @@ from infona_client.blueprint.plan import (
     BlueprintUninstallRefused,
     BlueprintValidationError,
     facts_for_sample,
+    instance_edge_predicate,
     load_and_validate,
     manifest_content_hash,
     mutations_from_manifest,
@@ -538,6 +541,7 @@ __all__ = [
     "inspect_blueprint",
     "install_blueprint",
     "list_installed_blueprints",
+    "instance_edge_predicate",
     "load_and_validate",
     "manifest_content_hash",
     "mutations_from_manifest",
