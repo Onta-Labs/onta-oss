@@ -157,11 +157,31 @@ def test_excluded_category_is_unrepresentable(min_doc, key, category):
         parse_blueprint(min_doc)
 
 
+def test_invalid_type_name_is_returned_not_raised(min_doc):
+    min_doc["concepts"][0]["name"] = "Clinical Trial"
+    errors = validate_blueprint(min_doc)
+    assert errors
+    assert all(isinstance(err, str) for err in errors)
+
+
 def test_source_cannot_carry_a_credential_value(min_doc):
     min_doc["sources"][0]["token"] = "sk-live-not-a-real-key"
     errors = validate_blueprint(min_doc)
     assert errors
     assert any("token" in err for err in errors)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://user:s3cret@clinicaltrials.gov/api/v2/studies",
+        "https://clinicaltrials.gov/api/v2/studies?api_key=sk-live-not-real",
+    ],
+)
+def test_source_url_cannot_embed_credentials(min_doc, url):
+    min_doc["sources"][0]["url"] = url
+    errors = validate_blueprint(min_doc)
+    assert any("url" in err and "credential" in err for err in errors)
 
 
 def test_source_byok_is_env_name_only(min_doc):
@@ -195,6 +215,22 @@ def test_sample_cannot_carry_provenance_companions(sample_doc, leaf):
     assert any(leaf in err for err in errors)
 
 
+@pytest.mark.parametrize("leaf", ["credentials", "cron", "last_run", "staleness"])
+def test_sample_cannot_carry_workspace_only_leaves(sample_doc, leaf):
+    sample_doc["concepts"][0]["attributes"].append(
+        {
+            "name": leaf,
+            "kind": "literal",
+            "datatype": "string",
+            "optional": True,
+            "cardinality": "1:1",
+        }
+    )
+    sample_doc["sample"]["entities"][0]["attributes"][leaf] = "workspace-only"
+    errors = validate_blueprint(sample_doc)
+    assert any(leaf in err for err in errors)
+
+
 # ---------------------------------------------------------------------------
 # Ontology classifier reuse — not a second reader
 # ---------------------------------------------------------------------------
@@ -212,6 +248,18 @@ def test_relationship_must_match_type_ranged_attribute(min_doc):
     min_doc["relationships"][0]["target"] = "ClinicalTrial"
     errors = validate_blueprint(min_doc)
     assert any("range_type" in err or "target" in err for err in errors)
+
+
+def test_range_type_must_be_a_declared_concept(min_doc):
+    min_doc["concepts"][0]["attributes"][-1]["range_type"] = "Person"
+    errors = validate_blueprint(min_doc)
+    assert any("unknown concept" in err for err in errors)
+
+
+def test_identity_must_be_literal(min_doc):
+    min_doc["concepts"][0]["identity"] = ["lead_sponsor"]
+    errors = validate_blueprint(min_doc)
+    assert any("identity" in err and "literal" in err for err in errors)
 
 
 def test_reserved_attribute_leaf_rejected_by_catalog_helper(min_doc):
@@ -275,6 +323,14 @@ def test_sample_rejects_real_nct_on_synthetic(sample_doc):
 def test_sample_entity_cap():
     assert SAMPLE_MAX_ENTITIES == 25
     assert SAMPLE_MAX_BYTES == 64 * 1024
+
+
+def test_sample_over_byte_cap_rejected(sample_doc):
+    sample_doc["sample"]["entities"][0]["attributes"]["official_title"] = "x" * (
+        SAMPLE_MAX_BYTES + 1
+    )
+    errors = validate_blueprint(sample_doc)
+    assert any("serialized size" in err for err in errors)
 
 
 def test_sample_over_entity_cap_rejected(sample_doc):

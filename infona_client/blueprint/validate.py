@@ -8,11 +8,14 @@ classifiers — it does not read a graph.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Mapping
+from urllib.parse import urlparse
 
 from pydantic import ValidationError
 
 from infona_client.blueprint.models import (
+    FORBIDDEN_TOP_LEVEL_KEYS,
     MAX_SKILL_BODY_CHARS,
     MAX_SKILL_SUMMARY_CHARS,
     MAX_SKILL_TITLE_CHARS,
@@ -32,20 +35,33 @@ from infona_client.graph.ontology_catalog_models import (
     _validate_type_leaf,
 )
 from infona_client.graph.predicates import ATTR_META_SUFFIXES
-from infona_client.graph.scope import GraphScopeError
 
-_FORBIDDEN_SAMPLE_LEAVES: frozenset[str] = frozenset(ATTR_META_SUFFIXES) | frozenset(
-    {
-        "citation",
-        "citations",
-        "password",
-        "token",
-        "api_key",
-        "secret",
-        "last_refresh",
-        "freshness_status",
-        "source_health",
-    }
+#: Same shapes as ``tests/test_api_registry_byok_guard.py`` — a source
+#: *definition* URL must not smuggle a credential (INF-564 / ADR 0014 §2.4).
+_URL_USERINFO = re.compile(r"://[^/\s@]+:[^/\s@]+@")
+_URL_CRED_PARAM = re.compile(
+    r"[?&](?:api[_-]?key|apikey|token|access[_-]?token|secret|password|passwd|key)="
+    r"[^&\s]+",
+    re.IGNORECASE,
+)
+
+_FORBIDDEN_SAMPLE_LEAVES: frozenset[str] = (
+    frozenset(ATTR_META_SUFFIXES)
+    | FORBIDDEN_TOP_LEVEL_KEYS
+    | frozenset(
+        {
+            "citation",
+            "citations",
+            "password",
+            "token",
+            "api_key",
+            "access_token",
+            "secret",
+            "last_refresh",
+            "freshness_status",
+            "source_health",
+        }
+    )
 )
 
 
@@ -132,7 +148,7 @@ def _semantic_errors(manifest: BlueprintManifest) -> list[str]:
             errors.append(f"functions.{fn.name}: unknown type {fn.type_name!r}")
         try:
             _validate_type_leaf(fn.type_name)
-        except GraphScopeError as exc:
+        except ValueError as exc:
             errors.append(f"functions.{fn.name}.type_name: {exc}")
 
     for policy in manifest.freshness.policies:
@@ -162,7 +178,7 @@ def _concept_errors(concept, concepts) -> list[str]:
     errors: list[str] = []
     try:
         _validate_type_leaf(concept.name)
-    except GraphScopeError as exc:
+    except ValueError as exc:
         errors.append(f"concepts.{concept.name}: {exc}")
     if concept.parent_type and concept.parent_type not in concepts:
         errors.append(
@@ -176,22 +192,32 @@ def _concept_errors(concept, concepts) -> list[str]:
                 f"concepts.{concept.name}.attributes: duplicate {attr.name!r}"
             )
         seen.add(attr.name)
-        errors.extend(_attribute_errors(concept.name, attr))
-    identity_unknown = [key for key in concept.identity if key not in seen]
+        errors.extend(_attribute_errors(concept.name, attr, concepts))
+    by_name = {a.name: a for a in concept.attributes}
+    identity_unknown = [key for key in concept.identity if key not in by_name]
     if identity_unknown:
         errors.append(
             f"concepts.{concept.name}.identity: unknown attributes "
             f"{identity_unknown}"
         )
+    for key in concept.identity:
+        slot = by_name.get(key)
+        if slot is not None and slot.kind != "literal":
+            errors.append(
+                f"concepts.{concept.name}.identity: {key!r} must be a literal "
+                "(identity keys are not type-ranged)"
+            )
     return errors
 
 
-def _attribute_errors(type_name: str, attr: ConceptAttribute) -> list[str]:
+def _attribute_errors(
+    type_name: str, attr: ConceptAttribute, concepts: dict
+) -> list[str]:
     errors: list[str] = []
     prefix = f"concepts.{type_name}.attributes.{attr.name}"
     try:
         _validate_attr_leaf(attr.name)
-    except GraphScopeError as exc:
+    except ValueError as exc:
         errors.append(f"{prefix}: {exc}")
     if attr.cardinality not in VALID_CARDINALITIES:
         errors.append(
@@ -200,9 +226,13 @@ def _attribute_errors(type_name: str, attr: ConceptAttribute) -> list[str]:
     range_token = attr.datatype if attr.kind == "literal" else attr.range_type
     try:
         kind, datatype, range_type = classify_attr_range(range_token or "")
-    except GraphScopeError as exc:
+    except ValueError as exc:
         errors.append(f"{prefix}: {exc}")
         return errors
+    if attr.kind == "relationship" and attr.range_type not in concepts:
+        errors.append(
+            f"{prefix}.range_type: unknown concept {attr.range_type!r}"
+        )
     if kind != attr.kind:
         errors.append(
             f"{prefix}: classify_attr_range({range_token!r}) is {kind}, "
@@ -256,9 +286,21 @@ def _relationship_errors(rel, concepts, attr_index) -> list[str]:
     return errors
 
 
+def _url_embeds_credentials(url: str) -> bool:
+    if _URL_USERINFO.search(url) or _URL_CRED_PARAM.search(url):
+        return True
+    parsed = urlparse(url)
+    return bool(parsed.username or parsed.password)
+
+
 def _source_errors(source, attr_index, rel_names, _source_ids) -> list[str]:
     errors: list[str] = []
     prefix = f"sources.{source.id}"
+    if _url_embeds_credentials(source.url):
+        errors.append(
+            f"{prefix}.url: definition URLs must not embed credentials "
+            "(userinfo or key/token query params)"
+        )
     for i, mapping in enumerate(source.mappings):
         lands = mapping.lands_on
         slot = attr_index.get(lands)
