@@ -1,10 +1,13 @@
-"""Frozen v1 Blueprint manifest models (INF-563).
+"""Frozen v1 Blueprint manifest models (INF-563 / ADR 0014).
+
+This is the *document* schema for ``blueprint.yaml`` (JSON alias allowed).
+The directory layout is ADR 0014; a loader that assembles sibling files
+into this object is INF-565. This module does not read a graph and does
+not write one.
 
 Pydantic shapes only. Cross-field rules live in ``validate.py``. Unknown
 keys are rejected (``extra="forbid"``) at every object — a field that does
 not exist cannot be filled by an author in a hurry (INF-564).
-
-This module does not read a graph and does not write one.
 """
 
 from __future__ import annotations
