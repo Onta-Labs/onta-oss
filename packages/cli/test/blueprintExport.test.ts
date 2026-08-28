@@ -53,7 +53,7 @@ describe("blueprint export — canonical route via shared SDK", () => {
     const got = await makeClient().validateBlueprint({
       manifest: { id: "infona/clinical-trials" },
     });
-    expect(got).toEqual({ errors: [] });
+    expect(got).toEqual({ valid: true, errors: [] });
     expect(calls[0]!.init.method).toBe("POST");
     expect(calls[0]!.url).toBe(`${PREFIX}/blueprint/validate`);
   });
