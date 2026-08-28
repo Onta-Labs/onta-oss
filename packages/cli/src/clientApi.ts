@@ -152,6 +152,58 @@ export class ClientApi extends ClientIngest {
   }
 
   /**
+   * Export a live KG as a Blueprint package
+   * (`POST /graphs/{tenant}/kgs/{kg}/blueprint/export`, INF-565).
+   * Returns the validated manifest plus directory files (`blueprint.yaml`).
+   * This is not {@link exportKg} — that dumps instance rows.
+   */
+  async exportBlueprint(
+    kg: string,
+    opts: {
+      namespace?: string;
+      version?: string;
+      license?: string;
+      attribution?: string;
+      name?: string;
+      packageId?: string;
+      acquisitionRevision?: number;
+    } = {},
+  ): Promise<{ kg: string; manifest: Record<string, unknown>; files: Record<string, string> }> {
+    const body: Record<string, unknown> = {};
+    if (opts.namespace) body.namespace = opts.namespace;
+    if (opts.version) body.version = opts.version;
+    if (opts.license) body.license = opts.license;
+    if (opts.attribution) body.attribution = opts.attribution;
+    if (opts.name) body.name = opts.name;
+    if (opts.packageId) body.package_id = opts.packageId;
+    if (opts.acquisitionRevision != null) {
+      body.acquisition_revision = opts.acquisitionRevision;
+    }
+    return this.request(
+      "POST",
+      this.pBlueprintExport(kg),
+      body,
+      60_000,
+    );
+  }
+
+  /**
+   * Validate a Blueprint document via the canonical route
+   * (`POST /graphs/{tenant}/blueprint/validate`).
+   */
+  async validateBlueprint(opts: {
+    manifest?: Record<string, unknown>;
+    files?: Record<string, string>;
+  }): Promise<{ errors: string[] }> {
+    return this.request(
+      "POST",
+      this.pBlueprintValidate(),
+      opts,
+      20_000,
+    );
+  }
+
+  /**
    * Effective workspace ontology — layered C+A/B read with shadowing applied
    * (`GET /graphs/{tenant}/ontology`, ONTA-397/408). Returns the full browser
    * payload (`tenant_id`, `entitled`, `layers`, `types` with sources/skills

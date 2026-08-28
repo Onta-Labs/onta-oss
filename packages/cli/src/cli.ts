@@ -12,6 +12,7 @@ import "./cliQuery.js";
 import "./cliOnto.js";
 import "./cliJobs.js";
 import "./cliMisc.js";
+import "./cliBlueprint.js";
 
 export { runAgentCommand } from "./cliQuery.js";
 

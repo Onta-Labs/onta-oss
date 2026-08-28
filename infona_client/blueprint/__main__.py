@@ -2,7 +2,8 @@
 
     python -m infona_client.blueprint validate path/to/package
 
-Install is INF-565 and is not implemented here.
+Uses the PyYAML loader so the Clinical Trials seed and export-written
+packages both validate. Install is a later ticket.
 """
 
 from __future__ import annotations

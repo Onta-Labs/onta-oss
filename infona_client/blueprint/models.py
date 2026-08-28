@@ -1,8 +1,9 @@
 """Frozen v1 Blueprint manifest models (INF-563 / ADR 0014).
 
 This is the *document* schema for ``blueprint.yaml`` (JSON alias allowed).
-The directory layout is ADR 0014; a loader that assembles sibling files
-into this object is INF-565. This module does not read a graph and does
+The directory layout is ADR 0014. ``load.load_blueprint_package`` (INF-566)
+reads a root manifest; ``package.load_blueprint_package`` (INF-565) also
+assembles sibling section files. This module does not read a graph and does
 not write one.
 
 Pydantic shapes only. Cross-field rules live in ``validate.py``. Unknown
