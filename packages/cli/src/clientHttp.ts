@@ -279,6 +279,14 @@ export class ClientHttp {
   pExport(kg: string, query?: string): string {
     return `${this.pKg(kg)}/export${query ?? ""}`;
   }
+  /** @internal Blueprint export (INF-565) — means, never instance rows. */
+  pBlueprintExport(kg: string): string {
+    return `${this.pKg(kg)}/blueprint/export`;
+  }
+  /** @internal Blueprint validate (INF-563 validator over the canonical route). */
+  pBlueprintValidate(): string {
+    return `${this.base()}/blueprint/validate`;
+  }
   /** @internal */ pExploreSummary(kg: string, typeName: string): string {
     return `${this.base()}/explore/kgs/${encodeURIComponent(kg)}/types/${encodeURIComponent(typeName)}/summary`;
   }

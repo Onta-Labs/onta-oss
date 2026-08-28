@@ -111,3 +111,12 @@ def entity_uri(type_name: str, raw_id: str) -> str:
     source of truth every write rail mints entity nodes through — keep it byte-for-
     byte stable, since the slug is the node's identity (changing it orphans data)."""
     return f"{IRI_BASE}/entities/{type_name}/{_safe_id(raw_id)}"
+
+
+async def schema_types_for_kg(*args, **kwargs):
+    """KG-scoped catalog read. Delegates to ``ontology_catalog`` — do not fork."""
+    from infona_client.graph.ontology_catalog import (
+        schema_types_for_kg as _schema_types_for_kg,
+    )
+
+    return await _schema_types_for_kg(*args, **kwargs)

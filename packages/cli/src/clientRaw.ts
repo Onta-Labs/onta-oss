@@ -383,6 +383,22 @@ export class RawApi extends RawSkillsApi {
     );
   }
 
+  /** `POST /graphs/{tenant}/kgs/{kg}/blueprint/export` (INF-565). */
+  exportBlueprint(kg: string, body: unknown = {}, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("POST", this.client.pBlueprintExport(kg), {
+      body,
+      ...init,
+    });
+  }
+
+  /** `POST /graphs/{tenant}/blueprint/validate`. */
+  validateBlueprint(body: unknown, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("POST", this.client.pBlueprintValidate(), {
+      body,
+      ...init,
+    });
+  }
+
   /** `POST /graphs/{tenant}/search` — canonical semantic instance search
    *  (ONTA-178). Body `{query, kg_name?, type?, top_k?}`. */
   search(body: unknown, init?: RawInit): Promise<Response> {
