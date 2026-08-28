@@ -20,11 +20,11 @@ from infona_client.blueprint.models import (
 )
 from infona_client.blueprint.validate import (
     resolve_sample_rel_target,
+    sample_subject_iri,
     validate_blueprint,
 )
 from infona_client.graph.facts import Fact
 from infona_client.graph.iri import ONTO_PRED_PREFIX
-from infona_client.graph.ontology_queries import entity_uri
 from infona_client.models.ontology import OntologyMutation, OntologyOpKind
 
 SAMPLE_SOURCE_MARK = "blueprint-sample"
@@ -176,15 +176,14 @@ def mutations_from_manifest(manifest: BlueprintManifest) -> list[OntologyMutatio
 
 def sample_subject(concept: Concept, entity: SampleEntity) -> str:
     """Mint the shared entity IRI from the concept identity keys."""
-    parts: list[str] = []
-    for key in concept.identity:
-        value = entity.attributes.get(key)
-        if value is None:
-            raise BlueprintValidationError(
-                f"sample {entity.type} is missing identity key {key}"
-            )
-        parts.append(str(value))
-    return entity_uri(entity.type, "_".join(parts))
+    iri = sample_subject_iri(concept, entity)
+    if iri is None:
+        missing = [k for k in concept.identity if k not in entity.attributes]
+        raise BlueprintValidationError(
+            f"sample {entity.type} is missing identity key "
+            f"{missing[0] if missing else '?'}"
+        )
+    return iri
 
 
 def sample_source(manifest: BlueprintManifest) -> str:

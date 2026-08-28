@@ -365,33 +365,37 @@ def _er_errors(cfg, concepts, attr_index) -> list[str]:
     return errors
 
 
-def _sample_entity_ids(manifest: BlueprintManifest, type_name: str) -> set[str]:
-    """Full identity-join strings and minted IRIs for sample entities.
+def sample_subject_iri(concept, entity) -> str | None:
+    """Mint the shared entity IRI from the concept identity keys.
 
-    Individual identity parts are not ids. ``Facility`` identity is
-    ``[facility_name, country]``; ``"MGH"`` alone must not resolve.
+    Same join ``sample_subject`` uses: ``entity_uri(type, "_".join(parts))``.
+    ``None`` if an identity key is missing.
     """
+    parts: list[str] = []
+    for key in concept.identity:
+        value = entity.attributes.get(key)
+        if value is None:
+            return None
+        parts.append(str(value))
+    if not parts:
+        return None
+    return entity_uri(entity.type, "_".join(parts))
+
+
+def _sample_entity_iris(manifest: BlueprintManifest, type_name: str) -> set[str]:
+    """Minted sample subject IRIs only — not identity parts, not join strings."""
     concept = next((c for c in manifest.concepts if c.name == type_name), None)
     sample = manifest.sample
     if concept is None or sample is None:
         return set()
-    ids: set[str] = set()
+    iris: set[str] = set()
     for entity in sample.entities:
         if entity.type != type_name:
             continue
-        parts: list[str] = []
-        missing = False
-        for key in concept.identity:
-            value = entity.attributes.get(key)
-            if value is None:
-                missing = True
-                break
-            parts.append(str(value))
-        if not missing and parts:
-            joined = "_".join(parts)
-            ids.add(joined)
-            ids.add(entity_uri(type_name, joined))
-    return ids
+        iri = sample_subject_iri(concept, entity)
+        if iri:
+            iris.add(iri)
+    return iris
 
 
 def resolve_sample_rel_target(
@@ -399,20 +403,17 @@ def resolve_sample_rel_target(
 ) -> str | None:
     """Return the minted sample subject IRI, or ``None`` if ``raw`` is not one.
 
-    Accepts the identity-join string ``sample_subject`` uses or that IRI.
-    Used by both the validator and ``facts_for_sample`` so they cannot
-    disagree (INF-576 / ADR 0009).
+    Accepts that IRI, or the identity-join string that mints it. Never an
+    identity *part*. Used by the validator and ``facts_for_sample``.
     """
     if not type_name or not isinstance(raw, str) or not raw.strip():
         return None
     token = raw.strip()
-    ids = _sample_entity_ids(manifest, type_name)
+    iris = _sample_entity_iris(manifest, type_name)
     if token.startswith(ENTITY_URI_PREFIX):
-        return token if token in ids else None
+        return token if token in iris else None
     minted = entity_uri(type_name, token)
-    if minted in ids:
-        return minted
-    return None
+    return minted if minted in iris else None
 
 
 def _sample_errors(manifest: BlueprintManifest, attr_index) -> list[str]:
@@ -470,4 +471,8 @@ def _sample_errors(manifest: BlueprintManifest, attr_index) -> list[str]:
     return errors
 
 
-__all__ = ["resolve_sample_rel_target", "validate_blueprint"]
+__all__ = [
+    "resolve_sample_rel_target",
+    "sample_subject_iri",
+    "validate_blueprint",
+]
