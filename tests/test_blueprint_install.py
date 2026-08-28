@@ -324,11 +324,9 @@ async def test_clinical_trials_install_writes_through_shared_path(monkeypatch):
     assert {f.kind for f in facts} <= {"type", "literal", "rel"}
     assert any(f.kind == "type" for f in facts)
     assert any(f.kind == "literal" for f in facts)
-    for fact in facts:
-        if fact.kind == "rel":
-            pred = instance_edge_predicate(fact.key)
-            assert pred.endswith(f"/onto/{fact.key}")
-            assert "/attrs/" not in pred
+    # Shipped seed sample is still literals-only. Rel edges are proven
+    # by test_install_relationship_lands_on_onto_not_attrs.
+    assert not any(f.kind == "rel" for f in facts)
     assert len(refresh_calls) == 1
     assert refresh_calls[0][1]["tenant_id"] == TENANT
     assert refresh_calls[0][1]["kg_name"] == KG
@@ -376,6 +374,57 @@ async def test_install_relationship_lands_on_onto_not_attrs():
         session, trial_uri, property_uri("lead_sponsor")
     )
     assert lits == []
+    await uninstall_blueprint(TENANT, "infona/clinical-trials")
+
+
+@pytest.mark.asyncio
+async def test_install_composite_rel_uses_sample_subject_not_a_partial_key():
+    """INF-576 — conducted_at lands on the Facility sample_subject IRI."""
+    from infona_client.blueprint import load_blueprint_package
+    from infona_client.blueprint.models import SampleEntity
+    from infona_client.blueprint.plan import (
+        BlueprintValidationError,
+        facts_for_sample,
+        sample_subject,
+    )
+    from infona_client.graph.assertion_model import property_uri
+    from infona_client.graph.rdfs_helpers import session_object_values
+    from infona_client.graph.scope import GraphScope
+    from infona_client.graph.store import get_graph_store
+
+    manifest = load_blueprint_package(CLINICAL_TRIALS)
+    assert manifest.sample is not None
+    # Seed is at the 25-entity cap. Drop interventions so a Facility fits.
+    manifest.sample.entities = [
+        e for e in manifest.sample.entities if e.type != "Intervention"
+    ]
+    facility = next(c for c in manifest.concepts if c.name == "Facility")
+    site = SampleEntity(
+        type="Facility",
+        attributes={"facility_name": "MGH", "country": "USA"},
+    )
+    manifest.sample.entities.append(site)
+    trial = next(
+        e
+        for e in manifest.sample.entities
+        if e.type == "ClinicalTrial" and e.attributes.get("nct_id") == "SAMPLE-001"
+    )
+    trial.attributes["conducted_at"] = "MGH"
+    with pytest.raises(BlueprintValidationError, match="does not resolve"):
+        facts_for_sample(manifest)
+
+    trial.attributes["conducted_at"] = "MGH_USA"
+    await install_blueprint(manifest, tenant_id=TENANT, kg=KG)
+    expected = sample_subject(facility, site)
+    session = get_graph_store().session(GraphScope.for_instance(TENANT, KG))
+    objs = await session_object_values(
+        session,
+        entity_uri("ClinicalTrial", "SAMPLE-001"),
+        property_uri("conducted_at"),
+    )
+    assert objs == [expected]
+    assert expected == entity_uri("Facility", "MGH_USA")
+    assert entity_uri("Facility", "MGH") not in objs
     await uninstall_blueprint(TENANT, "infona/clinical-trials")
 
 

@@ -22,8 +22,10 @@ and the rest of the Blueprint still validates.
 - **Never current.** Do not render a healthy freshness light. Do not let
   these rows feed a staleness gauge.
 
-Sample values are literals only. Relationship edges (`lead_sponsor`,
-`studies_condition`, …) appear after acquisition, not in this preview.
+This shipped preview is literals only. The protocol now accepts a
+type-ranged sample value when it resolves to a sample entity of the
+declared range (INF-576); those edges land through `insert_facts` as
+`kind=rel`. This seed does not populate them — acquisition does.
 
 ## Why 25
 

@@ -333,6 +333,85 @@ def test_sample_relationship_must_resolve_to_a_sample_entity(sample_doc):
     assert any("does not resolve" in err for err in errors)
 
 
+def _with_facility(sample_doc: dict) -> dict:
+    sample_doc["concepts"].append(
+        {
+            "name": "Facility",
+            "label": "Facility",
+            "identity": ["facility_name", "country"],
+            "attributes": [
+                {
+                    "name": "facility_name",
+                    "kind": "literal",
+                    "datatype": "string",
+                    "optional": False,
+                    "cardinality": "1:1",
+                },
+                {
+                    "name": "country",
+                    "kind": "literal",
+                    "datatype": "string",
+                    "optional": False,
+                    "cardinality": "1:1",
+                },
+            ],
+        }
+    )
+    sample_doc["concepts"][0]["attributes"].append(
+        {
+            "name": "conducted_at",
+            "kind": "relationship",
+            "range_type": "Facility",
+            "cardinality": "N:N",
+        }
+    )
+    sample_doc["relationships"].append(
+        {
+            "name": "conducted_at",
+            "source": "ClinicalTrial",
+            "target": "Facility",
+            "cardinality": "N:N",
+        }
+    )
+    sample_doc["sample"]["entities"].append(
+        {
+            "type": "Facility",
+            "attributes": {"facility_name": "MGH", "country": "USA"},
+        }
+    )
+    sample_doc["freshness"]["er"].append(
+        {
+            "type_name": "Facility",
+            "identity": ["facility_name", "country"],
+            "blocking": ["facility_name", "country"],
+            "signals": ["facility_name", "country"],
+            "weights": [0.5, 0.5],
+            "auto_merge_threshold": 0.95,
+            "review_threshold": 0.75,
+            "decisive_signals": [],
+            "reversible": True,
+        }
+    )
+    return sample_doc
+
+
+def test_sample_composite_identity_rejects_a_partial_key(sample_doc):
+    """INF-576 — Facility identity is name+country; ``MGH`` alone is not a target."""
+    from infona_client.graph.ontology_queries import entity_uri
+
+    doc = _with_facility(sample_doc)
+    trial = doc["sample"]["entities"][0]["attributes"]
+    trial["conducted_at"] = "MGH"
+    errors = validate_blueprint(doc)
+    assert any("does not resolve" in err for err in errors)
+
+    trial["conducted_at"] = "MGH_USA"
+    assert validate_blueprint(doc) == []
+
+    trial["conducted_at"] = entity_uri("Facility", "MGH_USA")
+    assert validate_blueprint(doc) == []
+
+
 def test_sample_entity_cap():
     assert SAMPLE_MAX_ENTITIES == 25
     assert SAMPLE_MAX_BYTES == 64 * 1024

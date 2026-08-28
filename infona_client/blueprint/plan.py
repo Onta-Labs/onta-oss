@@ -18,7 +18,10 @@ from infona_client.blueprint.models import (
     dumps_blueprint,
     parse_blueprint,
 )
-from infona_client.blueprint.validate import validate_blueprint
+from infona_client.blueprint.validate import (
+    resolve_sample_rel_target,
+    validate_blueprint,
+)
 from infona_client.graph.facts import Fact
 from infona_client.graph.iri import ONTO_PRED_PREFIX
 from infona_client.graph.ontology_queries import entity_uri
@@ -208,17 +211,17 @@ def facts_for_sample(manifest: BlueprintManifest) -> tuple[list[Fact], list[str]
         for key, value in entity.attributes.items():
             spec = attrs.get(key)
             if spec is not None and spec.kind == "relationship":
-                # INF-576: kind=rel → insert_facts lands
-                # instance_edge_predicate(key) == onto/<leaf>.
-                # kind=literal of the same slot is attrs/<leaf> and
-                # invisible to the NL planner (ADR 0009).
-                target_type = spec.range_type or ""
-                raw = str(value)
-                target = (
-                    raw
-                    if raw.startswith("https://graph.infona.ai/entities/")
-                    else entity_uri(target_type, raw)
+                # INF-576: kind=rel → insert_facts object Assertion.
+                # NL reconstructs onto/<leaf>; attrs/<leaf> is the
+                # literal / schema form (ADR 0009).
+                target = resolve_sample_rel_target(
+                    manifest, spec.range_type or "", str(value)
                 )
+                if target is None:
+                    raise BlueprintValidationError(
+                        f"sample {entity.type}.{key} does not resolve to "
+                        f"a sample {spec.range_type}"
+                    )
                 facts.append(
                     Fact(
                         subject_id=subject,

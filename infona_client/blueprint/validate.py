@@ -366,7 +366,11 @@ def _er_errors(cfg, concepts, attr_index) -> list[str]:
 
 
 def _sample_entity_ids(manifest: BlueprintManifest, type_name: str) -> set[str]:
-    """Identity values + minted IRIs for sample entities of ``type_name``."""
+    """Full identity-join strings and minted IRIs for sample entities.
+
+    Individual identity parts are not ids. ``Facility`` identity is
+    ``[facility_name, country]``; ``"MGH"`` alone must not resolve.
+    """
     concept = next((c for c in manifest.concepts if c.name == type_name), None)
     sample = manifest.sample
     if concept is None or sample is None:
@@ -383,10 +387,32 @@ def _sample_entity_ids(manifest: BlueprintManifest, type_name: str) -> set[str]:
                 missing = True
                 break
             parts.append(str(value))
-            ids.add(str(value))
         if not missing and parts:
-            ids.add(entity_uri(type_name, "_".join(parts)))
+            joined = "_".join(parts)
+            ids.add(joined)
+            ids.add(entity_uri(type_name, joined))
     return ids
+
+
+def resolve_sample_rel_target(
+    manifest: BlueprintManifest, type_name: str, raw: str
+) -> str | None:
+    """Return the minted sample subject IRI, or ``None`` if ``raw`` is not one.
+
+    Accepts the identity-join string ``sample_subject`` uses or that IRI.
+    Used by both the validator and ``facts_for_sample`` so they cannot
+    disagree (INF-576 / ADR 0009).
+    """
+    if not type_name or not isinstance(raw, str) or not raw.strip():
+        return None
+    token = raw.strip()
+    ids = _sample_entity_ids(manifest, type_name)
+    if token.startswith(ENTITY_URI_PREFIX):
+        return token if token in ids else None
+    minted = entity_uri(type_name, token)
+    if minted in ids:
+        return minted
+    return None
 
 
 def _sample_errors(manifest: BlueprintManifest, attr_index) -> list[str]:
@@ -420,19 +446,13 @@ def _sample_errors(manifest: BlueprintManifest, attr_index) -> list[str]:
                         f"{prefix}.attributes.{leaf}: relationship sample "
                         "value must be a non-empty string"
                     )
-                else:
-                    raw = value.strip()
-                    targets = _sample_entity_ids(manifest, slot.range_type or "")
-                    minted = (
-                        raw
-                        if raw.startswith(ENTITY_URI_PREFIX)
-                        else entity_uri(slot.range_type or "", raw)
+                elif resolve_sample_rel_target(
+                    manifest, slot.range_type or "", value
+                ) is None:
+                    errors.append(
+                        f"{prefix}.attributes.{leaf}: does not resolve to "
+                        f"a sample {slot.range_type}"
                     )
-                    if raw not in targets and minted not in targets:
-                        errors.append(
-                            f"{prefix}.attributes.{leaf}: does not resolve to "
-                            f"a sample {slot.range_type}"
-                        )
             elif slot.kind != "literal":
                 errors.append(
                     f"{prefix}.attributes.{leaf}: sample values must be "
@@ -450,4 +470,4 @@ def _sample_errors(manifest: BlueprintManifest, attr_index) -> list[str]:
     return errors
 
 
-__all__ = ["validate_blueprint"]
+__all__ = ["resolve_sample_rel_target", "validate_blueprint"]
