@@ -517,6 +517,7 @@ async def uninstall_blueprint(
     from infona_client.blueprint.overlay import make_blueprint_overlay_store
 
     await make_blueprint_overlay_store().delete(tenant_id, blueprint_id)
+    await make_blueprint_package_store().delete(tenant_id, blueprint_id)
     return {
         "status": "uninstalled",
         "blueprint_id": blueprint_id,

@@ -13,11 +13,13 @@ from infona_client.blueprint import (
     fork_blueprint,
     inspect_blueprint,
     install_blueprint,
+    uninstall_blueprint,
     update_blueprint,
 )
 from infona_client.blueprint.catalog import reset_blueprint_package_store
 from infona_client.blueprint.install import BlueprintNotInstalled, manifest_content_hash
 from infona_client.blueprint.lock import reset_blueprint_lock_store
+from infona_client.graph.store import get_graph_store
 from infona_client.blueprint.models import parse_blueprint
 from infona_client.blueprint.overlay import (
     BlueprintIdMismatch,
@@ -245,6 +247,44 @@ async def test_reinstall_of_new_version_also_preserves_overlay():
     assert "SiteMonitor" in await _type_names()
     card = await inspect_blueprint(TENANT, base["id"])
     assert card["overlay"] is not None
+
+
+@pytest.mark.asyncio
+async def test_overlay_survives_store_wrapper_reload():
+    """extend + bounce + inspect still shows the private layer."""
+    from infona_client.blueprint.overlay import (
+        GraphStoreBlueprintOverlayStore,
+        make_blueprint_overlay_store,
+    )
+
+    base = _min()
+    await install_blueprint(base, tenant_id=TENANT, kg=KG, include_sample=False)
+    await extend_blueprint(TENANT, base["id"], EXTEND_TRIAL)
+    assert isinstance(make_blueprint_overlay_store(), GraphStoreBlueprintOverlayStore)
+
+    reset_blueprint_lock_store()
+    reset_blueprint_package_store()
+    reset_blueprint_overlay_store()
+    card = await inspect_blueprint(TENANT, base["id"])
+    assert card["overlay"] is not None
+    assert card["overlay"]["sources"][0]["declared_cadence"] == "daily"
+    names = {c["name"] for c in card["overlay"]["concepts"]}
+    assert "SiteMonitor" in names
+    raw = await get_graph_store().blueprint_overlay_get(TENANT, base["id"])
+    assert raw is not None
+    assert raw["base_version"] == "1.0.0"
+
+
+@pytest.mark.asyncio
+async def test_uninstall_removes_overlay_from_graph_store():
+    base = _min()
+    await install_blueprint(base, tenant_id=TENANT, kg=KG, include_sample=False)
+    await extend_blueprint(TENANT, base["id"], EXTEND_TRIAL)
+    await uninstall_blueprint(TENANT, base["id"])
+    reset_blueprint_overlay_store()
+    assert await get_graph_store().blueprint_overlay_get(TENANT, base["id"]) is None
+    with pytest.raises(BlueprintNotInstalled):
+        await inspect_blueprint(TENANT, base["id"])
 
 
 @pytest.mark.asyncio

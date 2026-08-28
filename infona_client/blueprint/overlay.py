@@ -6,14 +6,17 @@ rules, skills. The delta is not a new package identity — that is fork
 (INF-579). Overlay rows never enter the catalogued public document, so
 they cannot flow upstream or to another tenant (INF-580).
 
-The store is process-local in-memory (lost on restart and across ECS
-tasks). The install lock is not — it lives on the tenant GraphStore.
+Persistence is the same tenant-confined GraphStore the install lock
+uses — a ``:BlueprintOverlay`` node keyed ``(tenant_id, blueprint_id)``.
+Process restart and multi-task ECS share that store. Not a hosted
+registry. Not Postgres.
 
 Boundary: OSS protocol. ``infona_client.*`` / stdlib only.
 """
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from typing import Any, Optional, Protocol
 
@@ -27,6 +30,7 @@ from infona_client.blueprint.models import (
     TombstoneRule,
 )
 from infona_client.blueprint.plan import BlueprintError
+from infona_client.graph.store import get_graph_store
 from infona_client.models.ontology import OntologyMutation, OntologyOpKind
 
 _Strict = ConfigDict(extra="forbid", str_strip_whitespace=True)
@@ -124,6 +128,31 @@ class StoredOverlay:
     base_version: str = ""
     base_content_hash: str = ""
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "tenant_id": self.tenant_id,
+            "blueprint_id": self.blueprint_id,
+            "document": self.document.model_dump(mode="json"),
+            "conflicts": [c.to_dict() for c in self.conflicts],
+            "updated_at": self.updated_at,
+            "base_version": self.base_version,
+            "base_content_hash": self.base_content_hash,
+        }
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> "StoredOverlay":
+        return cls(
+            tenant_id=raw["tenant_id"],
+            blueprint_id=raw["blueprint_id"],
+            document=OverlayDocument.model_validate(raw.get("document") or {}),
+            conflicts=[
+                OverlayConflict.from_dict(c) for c in (raw.get("conflicts") or [])
+            ],
+            updated_at=str(raw.get("updated_at") or ""),
+            base_version=str(raw.get("base_version") or ""),
+            base_content_hash=str(raw.get("base_content_hash") or ""),
+        )
+
     def to_public(self) -> dict[str, Any]:
         return {
             "concepts": [c.model_dump(mode="json") for c in self.document.concepts],
@@ -149,7 +178,11 @@ class BlueprintOverlayStore(Protocol):
 
 
 class InMemoryBlueprintOverlayStore:
-    """Tenant-confined. No cross-tenant read."""
+    """Process-local map. Tests that do not want a GraphStore can use this.
+
+    Production extend / update / inspect use
+    :class:`GraphStoreBlueprintOverlayStore`.
+    """
 
     def __init__(self) -> None:
         self._rows: dict[tuple[str, str], StoredOverlay] = {}
@@ -165,17 +198,126 @@ class InMemoryBlueprintOverlayStore:
         return self._rows.pop((tenant_id, blueprint_id), None) is not None
 
 
+def _overlay_from_payload(raw: Any) -> Optional[StoredOverlay]:
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        raw = json.loads(raw)
+    if not isinstance(raw, dict):
+        return None
+    return StoredOverlay.from_dict(raw)
+
+
+# Store-level Cypher (same privilege as :BlueprintInstallLock — tenant-scoped
+# metadata, not session Cypher). Isolation is the MATCH key.
+_GET_CYPHER = """
+MATCH (o:BlueprintOverlay {tenant_id: $tenant_id, blueprint_id: $blueprint_id})
+RETURN o.payload AS payload
+"""
+
+_PUT_CYPHER = """
+MERGE (o:BlueprintOverlay {tenant_id: $tenant_id, blueprint_id: $blueprint_id})
+SET o.payload = $payload
+RETURN o.payload AS payload
+"""
+
+_DELETE_CYPHER = """
+MATCH (o:BlueprintOverlay {tenant_id: $tenant_id, blueprint_id: $blueprint_id})
+WITH o, 1 AS n
+DETACH DELETE o
+RETURN n
+"""
+
+
+class GraphStoreBlueprintOverlayStore:
+    """Overlay backend over the process GraphStore (Memory or Neo4j).
+
+    Native ``blueprint_overlay_*`` methods win (MemoryGraphStore). Neo4j uses
+    store-level ``_run`` Cypher, same as :mod:`infona_client.blueprint.lock`.
+    Every call resolves :func:`get_graph_store` so a new wrapper after
+    process reload still sees overlays written before the bounce.
+    """
+
+    def _store(self) -> Any:
+        return get_graph_store()
+
+    async def get(self, tenant_id: str, blueprint_id: str) -> Optional[StoredOverlay]:
+        store = self._store()
+        native = getattr(store, "blueprint_overlay_get", None)
+        if callable(native):
+            return _overlay_from_payload(await native(tenant_id, blueprint_id))
+        run = getattr(store, "_run", None)
+        if not callable(run):
+            raise RuntimeError("GraphStore cannot read Blueprint overlays")
+        rows = await run(
+            _GET_CYPHER,
+            {"tenant_id": tenant_id, "blueprint_id": blueprint_id},
+            writing=False,
+            database=None,
+        )
+        if not rows:
+            return None
+        return _overlay_from_payload(rows[0].get("payload"))
+
+    async def put(self, row: StoredOverlay) -> StoredOverlay:
+        store = self._store()
+        payload = row.to_dict()
+        native = getattr(store, "blueprint_overlay_put", None)
+        if callable(native):
+            await native(row.tenant_id, row.blueprint_id, payload)
+            return row
+        run = getattr(store, "_run", None)
+        if not callable(run):
+            raise RuntimeError("GraphStore cannot persist Blueprint overlays")
+        await run(
+            _PUT_CYPHER,
+            {
+                "tenant_id": row.tenant_id,
+                "blueprint_id": row.blueprint_id,
+                "payload": json.dumps(payload),
+            },
+            writing=True,
+            database=None,
+        )
+        return row
+
+    async def delete(self, tenant_id: str, blueprint_id: str) -> bool:
+        store = self._store()
+        native = getattr(store, "blueprint_overlay_delete", None)
+        if callable(native):
+            return bool(await native(tenant_id, blueprint_id))
+        run = getattr(store, "_run", None)
+        if not callable(run):
+            raise RuntimeError("GraphStore cannot delete Blueprint overlays")
+        rows = await run(
+            _DELETE_CYPHER,
+            {"tenant_id": tenant_id, "blueprint_id": blueprint_id},
+            writing=True,
+            database=None,
+        )
+        if not rows:
+            return False
+        return int(rows[0].get("n") or 0) > 0
+
+
 _store: Optional[BlueprintOverlayStore] = None
 
 
 def make_blueprint_overlay_store() -> BlueprintOverlayStore:
+    """Process wrapper over the tenant-confined GraphStore.
+
+    Reloading the wrapper (``reset_blueprint_overlay_store``) does not drop
+    overlays — they live on the GraphStore. A new process / ECS task that
+    shares the store still sees the private layer.
+    """
     global _store
     if _store is None:
-        _store = InMemoryBlueprintOverlayStore()
+        _store = GraphStoreBlueprintOverlayStore()
     return _store
 
 
 def reset_blueprint_overlay_store() -> None:
+    """Test helper — drop the memoized wrapper. Does not wipe GraphStore rows."""
     global _store
     _store = None
 
@@ -457,6 +599,7 @@ __all__ = [
     "BlueprintIdMismatch",
     "BlueprintOverlayError",
     "BlueprintOverlayStore",
+    "GraphStoreBlueprintOverlayStore",
     "InMemoryBlueprintOverlayStore",
     "OverlayConcept",
     "OverlayConflict",

@@ -104,6 +104,8 @@ async def test_clinical_trials_install_is_idempotent_and_reversible():
 
     with pytest.raises(BlueprintNotInstalled):
         await inspect_blueprint(TENANT, "infona/clinical-trials")
+    assert await graph.blueprint_overlay_get(TENANT, "infona/clinical-trials") is None
+    assert await graph.blueprint_package_get(TENANT, "infona/clinical-trials") is None
 
 
 @pytest.mark.asyncio

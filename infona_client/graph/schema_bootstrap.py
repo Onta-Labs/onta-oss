@@ -161,6 +161,18 @@ SCHEMA_STATEMENTS: tuple[tuple[str, str], ...] = (
         "FOR (l:BlueprintInstallLock) REQUIRE "
         "(l.tenant_id, l.blueprint_id) IS UNIQUE",
     ),
+    (
+        "blueprint_overlay_tenant_id_unique",
+        "CREATE CONSTRAINT blueprint_overlay_tenant_id_unique IF NOT EXISTS "
+        "FOR (o:BlueprintOverlay) REQUIRE "
+        "(o.tenant_id, o.blueprint_id) IS UNIQUE",
+    ),
+    (
+        "blueprint_package_tenant_id_unique",
+        "CREATE CONSTRAINT blueprint_package_tenant_id_unique IF NOT EXISTS "
+        "FOR (p:BlueprintPackage) REQUIRE "
+        "(p.tenant_id, p.blueprint_id) IS UNIQUE",
+    ),
 )
 
 

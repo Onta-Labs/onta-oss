@@ -10,7 +10,12 @@ from infona_client.blueprint import (
     install_blueprint,
     load_blueprint_package,
 )
-from infona_client.blueprint.catalog import reset_blueprint_package_store
+from infona_client.blueprint.catalog import (
+    GraphStoreBlueprintPackageStore,
+    make_blueprint_package_store,
+    reset_blueprint_package_store,
+)
+from infona_client.graph.store import get_graph_store
 from infona_client.blueprint.overlay import reset_blueprint_overlay_store
 from infona_client.blueprint.fork import copy_as_fork, default_fork_id
 from infona_client.blueprint.install import manifest_content_hash
@@ -118,6 +123,26 @@ async def test_fork_of_fork_keeps_the_chain():
         "acme/clinical-trials",
         SEED_ID,
     ]
+
+
+@pytest.mark.asyncio
+async def test_fork_survives_store_wrapper_reload():
+    """fork + bounce + inspect still shows the forked package."""
+    await fork_blueprint(TENANT, SEED_ID, as_id="acme/clinical-trials")
+    assert isinstance(make_blueprint_package_store(), GraphStoreBlueprintPackageStore)
+
+    reset_blueprint_lock_store()
+    reset_blueprint_package_store()
+    reset_blueprint_overlay_store()
+    card = await inspect_blueprint(TENANT, "acme/clinical-trials")
+    assert card["blueprint_id"] == "acme/clinical-trials"
+    assert card["lineage"]["parent"]["id"] == SEED_ID
+    assert card.get("installed") is False
+    raw = await get_graph_store().blueprint_package_get(TENANT, "acme/clinical-trials")
+    assert raw is not None
+    assert raw["origin"] == "fork"
+    with pytest.raises(BlueprintNotInstalled):
+        await inspect_blueprint(PEER, "acme/clinical-trials")
 
 
 @pytest.mark.asyncio
