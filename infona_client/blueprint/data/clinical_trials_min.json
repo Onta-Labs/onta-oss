@@ -1,0 +1,255 @@
+{
+  "schema_version": "1",
+  "schema_status": "v1-frozen",
+  "id": "infona/clinical-trials",
+  "name": "Clinical Trials",
+  "namespace": "infona",
+  "version": "1.0.0",
+  "acquisition_revision": 1,
+  "license": "Apache-2.0",
+  "attribution": "Infona (infona.ai). ClinicalTrials.gov is U.S. government work.",
+  "published_at": "2026-08-28",
+  "last_reviewed_at": "2026-08-28",
+  "lineage": {
+    "chain": []
+  },
+  "concepts": [
+    {
+      "name": "ClinicalTrial",
+      "label": "Clinical trial",
+      "description": "A registered interventional or observational study.",
+      "identity": ["nct_id"],
+      "attributes": [
+        {
+          "name": "nct_id",
+          "kind": "literal",
+          "datatype": "string",
+          "description": "ClinicalTrials.gov identifier",
+          "optional": false,
+          "cardinality": "1:1"
+        },
+        {
+          "name": "official_title",
+          "kind": "literal",
+          "datatype": "string",
+          "optional": false,
+          "cardinality": "1:1"
+        },
+        {
+          "name": "overall_status",
+          "kind": "literal",
+          "datatype": "string",
+          "optional": false,
+          "cardinality": "1:1"
+        },
+        {
+          "name": "phase",
+          "kind": "literal",
+          "datatype": "string",
+          "optional": true,
+          "cardinality": "1:1"
+        },
+        {
+          "name": "enrollment",
+          "kind": "literal",
+          "datatype": "integer",
+          "optional": true,
+          "cardinality": "1:1"
+        },
+        {
+          "name": "lead_sponsor",
+          "kind": "relationship",
+          "range_type": "Organization",
+          "cardinality": "N:1",
+          "description": "The owner you attribute by default."
+        }
+      ]
+    },
+    {
+      "name": "Organization",
+      "label": "Organization",
+      "description": "A sponsor or collaborator.",
+      "identity": ["org_name"],
+      "attributes": [
+        {
+          "name": "org_name",
+          "kind": "literal",
+          "datatype": "string",
+          "optional": false,
+          "cardinality": "1:1"
+        },
+        {
+          "name": "org_class",
+          "kind": "literal",
+          "datatype": "string",
+          "optional": true,
+          "cardinality": "1:1"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "name": "lead_sponsor",
+      "source": "ClinicalTrial",
+      "target": "Organization",
+      "cardinality": "N:1",
+      "description": "The owner you attribute by default."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "acquire_condition_set",
+      "description": "First pull for the declared condition query. Mints trials and related nodes.",
+      "writes": true,
+      "attaches_to": "ClinicalTrial",
+      "inputs": ["condition_query"]
+    }
+  ],
+  "rules": {
+    "conflict": [
+      {
+        "attribute": "ClinicalTrial.overall_status",
+        "winner": "ctgov",
+        "notes": "ClinicalTrials.gov wins on overall_status and dates."
+      }
+    ],
+    "tombstones": {
+      "disappeared_row": "withdrawn",
+      "delete_forbidden": true
+    }
+  },
+  "sources": [
+    {
+      "id": "ctgov",
+      "title": "ClinicalTrials.gov v2 API",
+      "kind": "public_registry",
+      "publisher": "U.S. National Library of Medicine",
+      "description": "Public registry. U.S. government work; no copyright.",
+      "license": "CC0-1.0",
+      "url": "https://clinicaltrials.gov/api/v2/studies",
+      "credential": "none",
+      "declared_cadence": "weekly for overall_status; monthly for enrollment",
+      "mappings": [
+        {
+          "source_field": "protocolSection.identificationModule.nctId",
+          "lands_on": "ClinicalTrial.nct_id",
+          "kind": "literal"
+        },
+        {
+          "source_field": "protocolSection.identificationModule.officialTitle",
+          "lands_on": "ClinicalTrial.official_title",
+          "kind": "literal"
+        },
+        {
+          "source_field": "protocolSection.statusModule.overallStatus",
+          "lands_on": "ClinicalTrial.overall_status",
+          "kind": "literal"
+        },
+        {
+          "source_field": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+          "lands_on": "lead_sponsor",
+          "kind": "relationship"
+        }
+      ]
+    }
+  ],
+  "acquisition": [
+    {
+      "source": "ctgov",
+      "seed_query": "query.cond=obesity OR overweight",
+      "page_cap": 5000,
+      "first_pull": "Mint a ClinicalTrial per NCT and related Organization nodes from the mapping table.",
+      "later_refresh": "Re-fetch trials whose overall_status is past the stale-after window. Do not re-mint.",
+      "disappeared_row": "If an NCT the workspace already has is gone from the API, set overall_status to WITHDRAWN and stop refreshing it. Do not delete the node.",
+      "conflict": "ClinicalTrials.gov wins on overall_status and dates."
+    }
+  ],
+  "validation": [
+    {
+      "id": "trial-has-nct",
+      "description": "A trial without nct_id is rejected.",
+      "rule": "ClinicalTrial.nct_id must be a non-empty string."
+    }
+  ],
+  "freshness": {
+    "policies": [
+      {
+        "target": "ClinicalTrial.overall_status",
+        "stale_after_days": 14,
+        "cadence": "weekly"
+      },
+      {
+        "target": "ClinicalTrial.nct_id",
+        "stale_after_days": "never",
+        "cadence": "on_create"
+      }
+    ],
+    "er": [
+      {
+        "type_name": "ClinicalTrial",
+        "identity": ["nct_id"],
+        "blocking": ["nct_id"],
+        "signals": ["nct_id"],
+        "weights": [1.0],
+        "auto_merge_threshold": 1.0,
+        "review_threshold": 1.0,
+        "decisive_signals": ["nct_id"],
+        "reversible": true
+      },
+      {
+        "type_name": "Organization",
+        "identity": ["org_name"],
+        "blocking": ["org_name"],
+        "signals": ["org_name", "org_class"],
+        "weights": [0.8, 0.2],
+        "auto_merge_threshold": 0.9,
+        "review_threshold": 0.7,
+        "decisive_signals": [],
+        "reversible": true
+      }
+    ]
+  },
+  "skills": [
+    {
+      "slug": "cite-nct",
+      "type_name": "ClinicalTrial",
+      "title": "Cite the NCT",
+      "summary": "Always cite the NCT ID. Treat overall_status as time-sensitive.",
+      "body": "Always cite the NCT ID. Treat overall_status as time-sensitive; if the value is older than the freshness policy, say so before answering."
+    }
+  ],
+  "functions": [
+    {
+      "name": "is_recruiting",
+      "type_name": "ClinicalTrial",
+      "description": "True when overall_status is a recruiting state."
+    }
+  ],
+  "mcp_tools": ["ask"],
+  "examples": [
+    {"question": "Which Phase 3 trials for obesity are currently recruiting?"},
+    {"question": "Who is the lead sponsor of this NCT, and is that status fresher than two weeks?"},
+    {"question": "How many recruiting trials list a given organization as lead sponsor?"}
+  ],
+  "evals": [
+    {
+      "id": "every-trial-has-nct",
+      "kind": "structural",
+      "description": "Every trial has an nct_id.",
+      "still_works_when": "count of trials with empty identity = 0"
+    },
+    {
+      "id": "lead-sponsor-is-org",
+      "kind": "structural",
+      "description": "Every lead_sponsor points at an Organization.",
+      "still_works_when": "no string in that slot; no dangling edge"
+    },
+    {
+      "id": "refresh-does-not-split-nct",
+      "kind": "structural",
+      "description": "Refresh does not split an NCT.",
+      "still_works_when": "same nct_id maps to one node, before and after"
+    }
+  ]
+}

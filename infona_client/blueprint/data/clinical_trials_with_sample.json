@@ -1,0 +1,223 @@
+{
+  "schema_version": "1",
+  "schema_status": "v1-frozen",
+  "id": "infona/clinical-trials",
+  "name": "Clinical Trials",
+  "namespace": "infona",
+  "version": "1.0.0",
+  "acquisition_revision": 1,
+  "license": "Apache-2.0",
+  "attribution": "Infona (infona.ai). ClinicalTrials.gov is U.S. government work.",
+  "published_at": "2026-08-28",
+  "last_reviewed_at": "2026-08-28",
+  "lineage": {
+    "chain": []
+  },
+  "concepts": [
+    {
+      "name": "ClinicalTrial",
+      "label": "Clinical trial",
+      "description": "A registered interventional or observational study.",
+      "identity": ["nct_id"],
+      "attributes": [
+        {
+          "name": "nct_id",
+          "kind": "literal",
+          "datatype": "string",
+          "optional": false,
+          "cardinality": "1:1"
+        },
+        {
+          "name": "official_title",
+          "kind": "literal",
+          "datatype": "string",
+          "optional": false,
+          "cardinality": "1:1"
+        },
+        {
+          "name": "overall_status",
+          "kind": "literal",
+          "datatype": "string",
+          "optional": false,
+          "cardinality": "1:1"
+        },
+        {
+          "name": "phase",
+          "kind": "literal",
+          "datatype": "string",
+          "optional": true,
+          "cardinality": "1:1"
+        },
+        {
+          "name": "lead_sponsor",
+          "kind": "relationship",
+          "range_type": "Organization",
+          "cardinality": "N:1"
+        }
+      ]
+    },
+    {
+      "name": "Organization",
+      "label": "Organization",
+      "identity": ["org_name"],
+      "attributes": [
+        {
+          "name": "org_name",
+          "kind": "literal",
+          "datatype": "string",
+          "optional": false,
+          "cardinality": "1:1"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "name": "lead_sponsor",
+      "source": "ClinicalTrial",
+      "target": "Organization",
+      "cardinality": "N:1"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "acquire_condition_set",
+      "description": "First pull for the declared condition query.",
+      "writes": true
+    }
+  ],
+  "rules": {
+    "conflict": [
+      {
+        "attribute": "ClinicalTrial.overall_status",
+        "winner": "ctgov"
+      }
+    ],
+    "tombstones": {
+      "disappeared_row": "withdrawn",
+      "delete_forbidden": true
+    }
+  },
+  "sources": [
+    {
+      "id": "ctgov",
+      "title": "ClinicalTrials.gov v2 API",
+      "kind": "public_registry",
+      "publisher": "U.S. National Library of Medicine",
+      "license": "CC0-1.0",
+      "url": "https://clinicaltrials.gov/api/v2/studies",
+      "credential": "none",
+      "declared_cadence": "weekly",
+      "mappings": [
+        {
+          "source_field": "protocolSection.identificationModule.nctId",
+          "lands_on": "ClinicalTrial.nct_id",
+          "kind": "literal"
+        }
+      ]
+    }
+  ],
+  "acquisition": [
+    {
+      "source": "ctgov",
+      "seed_query": "query.cond=obesity OR overweight",
+      "page_cap": 5000,
+      "first_pull": "Mint a ClinicalTrial per NCT.",
+      "later_refresh": "Re-fetch stale overall_status. Do not re-mint.",
+      "disappeared_row": "Mark withdrawn. Do not delete.",
+      "conflict": "ClinicalTrials.gov wins on overall_status."
+    }
+  ],
+  "validation": [
+    {
+      "id": "trial-has-nct",
+      "description": "A trial without nct_id is rejected.",
+      "rule": "ClinicalTrial.nct_id must be a non-empty string."
+    }
+  ],
+  "freshness": {
+    "policies": [
+      {
+        "target": "ClinicalTrial.overall_status",
+        "stale_after_days": 14,
+        "cadence": "weekly"
+      }
+    ],
+    "er": [
+      {
+        "type_name": "ClinicalTrial",
+        "identity": ["nct_id"],
+        "blocking": ["nct_id"],
+        "signals": ["nct_id"],
+        "weights": [1.0],
+        "auto_merge_threshold": 1.0,
+        "review_threshold": 1.0,
+        "decisive_signals": ["nct_id"],
+        "reversible": true
+      },
+      {
+        "type_name": "Organization",
+        "identity": ["org_name"],
+        "blocking": ["org_name"],
+        "reversible": true
+      }
+    ]
+  },
+  "skills": [],
+  "examples": [
+    {"question": "Which Phase 3 trials for obesity are currently recruiting?"},
+    {"question": "Who is the lead sponsor of this NCT?"},
+    {"question": "How many recruiting trials list a given organization as lead sponsor?"}
+  ],
+  "evals": [
+    {
+      "id": "every-trial-has-nct",
+      "kind": "structural",
+      "description": "Every trial has an nct_id.",
+      "still_works_when": "count of trials with empty identity = 0"
+    },
+    {
+      "id": "lead-sponsor-is-org",
+      "kind": "structural",
+      "description": "Every lead_sponsor points at an Organization.",
+      "still_works_when": "no string in that slot"
+    },
+    {
+      "id": "sample-answers-are-labelled",
+      "kind": "question",
+      "description": "Answers derived from the sample say they are sample-derived.",
+      "still_works_when": "every sample-derived answer carries captured_at"
+    }
+  ],
+  "sample": {
+    "captured_at": "2026-06-01",
+    "license": "CC0-1.0",
+    "kind": "synthetic",
+    "entities": [
+      {
+        "type": "ClinicalTrial",
+        "attributes": {
+          "nct_id": "SAMPLE-001",
+          "official_title": "(synthetic sample) Example once-weekly GLP-1 obesity study",
+          "overall_status": "COMPLETED",
+          "phase": "PHASE3"
+        }
+      },
+      {
+        "type": "ClinicalTrial",
+        "attributes": {
+          "nct_id": "SAMPLE-002",
+          "official_title": "(synthetic sample) Example dual-agonist obesity study",
+          "overall_status": "COMPLETED",
+          "phase": "PHASE3"
+        }
+      },
+      {
+        "type": "Organization",
+        "attributes": {
+          "org_name": "Example Pharma A"
+        }
+      }
+    ]
+  }
+}
