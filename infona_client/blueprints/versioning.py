@@ -65,16 +65,18 @@ def _range_narrowed(old: Attribute, new: Attribute) -> bool:
         return True
     if old.range != new.range:
         return True
+    old_had = old.allowed_values is not None
+    new_had = new.allowed_values is not None
     old_vals = set(old.allowed_values or [])
     new_vals = set(new.allowed_values or [])
-    if old_vals and new_vals and not old_vals <= new_vals and new_vals < old_vals:
+    if not old_had and new_had:
+        # Introducing an enum where any string was legal is a narrow.
         return True
-    if old_vals and new_vals and new_vals < old_vals:
-        return True
-    if old_vals and new_vals == set() and old.allowed_values is not None:
-        # Dropping an enum widens, not narrows.
+    if old_had and not new_had:
+        # Dropping the enum widens.
         return False
-    if (not old_vals) and new_vals:
+    if old_had and new_had and not old_vals <= new_vals:
+        # Lost at least one allowed value (subset or replacement).
         return True
     return False
 

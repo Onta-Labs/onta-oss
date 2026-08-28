@@ -25,7 +25,7 @@ from datetime import date
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # ---------------------------------------------------------------------------
 # Frozen identity
@@ -356,11 +356,24 @@ class Validation(StrictModel):
 class StaleAfter(StrictModel):
     """Per-attribute stale-after *policy*. ``never=true`` means the value
     does not go stale (identity keys, official titles). There is no field
-    for the live staleness of a cell."""
+    for the live staleness of a cell. ``days`` and ``never`` are mutually
+    exclusive — a window that is also never-stale is not a policy."""
 
     attribute: str = Field(min_length=1, max_length=200)
     days: int | None = Field(default=None, ge=1)
     never: bool = False
+
+    @model_validator(mode="after")
+    def _days_xor_never(self) -> "StaleAfter":
+        if self.never and self.days is not None:
+            raise ValueError(
+                "stale_after cannot set both days and never=true"
+            )
+        if not self.never and self.days is None:
+            raise ValueError(
+                "stale_after must set days or never=true"
+            )
+        return self
 
 
 class Freshness(StrictModel):

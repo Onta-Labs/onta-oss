@@ -196,6 +196,8 @@ def test_sample_independently_validates_and_is_droppable():
     raw = _load_raw()
     sample = validate_sample(raw["sample"])
     assert sample.kind == "sample"
+    again = validate_sample(sample)
+    assert again.captured_at == sample.captured_at
     raw_without = copy.deepcopy(raw)
     del raw_without["sample"]
     manifest = validate_manifest(raw_without)
@@ -317,6 +319,27 @@ def test_classify_add_optional_attribute_is_minor():
     report = classify_change(old, new)
     assert report.version_bump is VersionBump.minor
     assert report.acquisition_revision_bump is False
+
+
+def test_classify_replaced_enum_value_is_major():
+    old = validate_manifest(FIXTURE)
+    raw = _load_raw()
+    for concept in raw["concepts"]:
+        if concept["name"] == "Organization":
+            for attr in concept["attributes"]:
+                if attr["name"] == "org_class":
+                    attr["allowed_values"] = ["industry", "nih", "other", "academic"]
+    new = validate_manifest(raw)
+    report = classify_change(old, new)
+    assert report.version_bump is VersionBump.major
+    assert any("narrowed" in r for r in report.reasons)
+
+
+def test_stale_after_days_and_never_are_exclusive():
+    raw = _load_raw()
+    raw["freshness"]["stale_after"][0]["never"] = True
+    with pytest.raises(BlueprintValidationError, match="never"):
+        validate_manifest(raw)
 
 
 def test_classify_narrow_range_is_major():

@@ -905,7 +905,7 @@
     },
     "StaleAfter": {
       "additionalProperties": false,
-      "description": "Per-attribute stale-after *policy*. ``never=true`` means the value\ndoes not go stale (identity keys, official titles). There is no field\nfor the live staleness of a cell.",
+      "description": "Per-attribute stale-after *policy*. ``never=true`` means the value\ndoes not go stale (identity keys, official titles). There is no field\nfor the live staleness of a cell. ``days`` and ``never`` are mutually\nexclusive \u2014 a window that is also never-stale is not a policy.",
       "properties": {
         "attribute": {
           "maxLength": 200,

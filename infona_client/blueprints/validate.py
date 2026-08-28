@@ -37,7 +37,7 @@ class BlueprintValidationError(ValueError):
 
 
 def _as_mapping(source: Any) -> dict[str, Any]:
-    if isinstance(source, BlueprintManifest):
+    if isinstance(source, (BlueprintManifest, Sample)):
         return source.model_dump(mode="json")
     if isinstance(source, Mapping):
         return dict(source)
