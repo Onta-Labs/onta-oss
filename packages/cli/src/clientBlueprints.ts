@@ -37,7 +37,6 @@ export interface BlueprintInstallBody {
   include_sample?: boolean;
   manifest?: Record<string, unknown>;
   manifest_yaml?: string;
-  package_path?: string;
 }
 
 export interface BlueprintUninstallResult {

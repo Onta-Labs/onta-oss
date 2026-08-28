@@ -61,19 +61,16 @@ class InstallRequest(BaseModel):
     include_sample: bool = True
     manifest: Optional[dict[str, Any]] = None
     manifest_yaml: Optional[str] = None
-    package_path: Optional[str] = None
 
 
 def _manifest_from_body(body: ValidateRequest | InstallRequest):
-    if getattr(body, "package_path", None):
-        return body.package_path
     if body.manifest is not None:
         return body.manifest
     if body.manifest_yaml:
         return body.manifest_yaml
     raise HTTPException(
         status_code=400,
-        detail="provide manifest, manifest_yaml, or package_path",
+        detail="provide manifest or manifest_yaml",
     )
 
 
