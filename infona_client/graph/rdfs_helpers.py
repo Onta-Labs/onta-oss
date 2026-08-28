@@ -82,13 +82,15 @@ from infona_client.graph.rdfs_helpers_templates import (  # noqa: F401 — publi
     TEMPLATE_SUBCLASS_OF_CLOSURE,
     _PARENT_FIELD_RE,
     _TYPE_LINE_RE,
-    bind_subclass_attribute,
-    declared_attr_leaves_by_type,
     descendants_of,
     extract_subclass_map_from_ontology,
     semantic_templates,
-    subclass_attribute_predicates,
     type_names_with_subclasses,
+)
+from infona_client.graph.rdfs_helpers_subclass_attrs import (  # noqa: F401
+    bind_subclass_attribute,
+    declared_attr_leaves_by_type,
+    subclass_attribute_predicates,
 )
 
 __all__ = [

@@ -222,7 +222,7 @@ def rewrite_parent_attr_to_subclass_predicates(
     ``?_subattr_<leaf>`` is left alone for that leaf.
     """
     import re
-    from infona_client.graph.rdfs_helpers_templates import bind_subclass_attribute
+    from infona_client.graph.rdfs_helpers_subclass_attrs import bind_subclass_attribute
 
     if not sparql or not child_to_parent:
         return sparql
