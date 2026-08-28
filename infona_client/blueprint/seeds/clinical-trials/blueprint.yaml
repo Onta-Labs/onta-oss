@@ -1,0 +1,888 @@
+# Clinical Trials Blueprint v0 — INF-566
+# Inspectable know-how. Not the graph. Sample rows are synthetic and not current.
+schema_version: "1"
+schema_status: v1-frozen
+id: infona/clinical-trials
+name: Clinical Trials
+namespace: infona
+version: "0.1.0"
+acquisition_revision: 1
+license: Apache-2.0
+attribution: >-
+  Infona (infona.ai). Source definitions describe ClinicalTrials.gov
+  (U.S. National Library of Medicine) and the NPPES NPI Registry (CMS).
+  Both are U.S. government work. This package ships the means to acquire
+  those records, not the records.
+published_at: 2026-08-28
+last_reviewed_at: 2026-08-28
+lineage:
+  chain: []
+
+concepts:
+  - name: ClinicalTrial
+    label: Clinical trial
+    description: >-
+      A registered interventional or observational study. Identity is the
+      ClinicalTrials.gov NCT number. Status and dates go stale; the NCT
+      and official title do not.
+    identity: [nct_id]
+    attributes:
+      - name: nct_id
+        kind: literal
+        datatype: string
+        description: ClinicalTrials.gov identifier (NCT + eight digits on acquired rows).
+        optional: false
+        cardinality: "1:1"
+      - name: official_title
+        kind: literal
+        datatype: string
+        description: Registry official title.
+        optional: false
+        cardinality: "1:1"
+      - name: brief_title
+        kind: literal
+        datatype: string
+        description: Short public title.
+        optional: true
+        cardinality: "1:1"
+      - name: overall_status
+        kind: literal
+        datatype: string
+        description: >-
+          Registry overall status (RECRUITING, ACTIVE_NOT_RECRUITING,
+          COMPLETED, TERMINATED, WITHDRAWN, NOT_YET_RECRUITING,
+          ENROLLING_BY_INVITATION, and other CT.gov tokens).
+        optional: false
+        cardinality: "1:1"
+      - name: phase
+        kind: literal
+        datatype: string
+        description: >-
+          Design phase token (PHASE1, PHASE2, PHASE3, PHASE4, EARLY_PHASE1,
+          NA) or empty when the registry has none.
+        optional: true
+        cardinality: "1:1"
+      - name: enrollment
+        kind: literal
+        datatype: integer
+        description: Planned or actual enrollment count from the registry.
+        optional: true
+        cardinality: "1:1"
+      - name: start_date
+        kind: literal
+        datatype: string
+        description: >-
+          Study start date as the registry published it (often YYYY-MM,
+          not a full day). Stored as string so partial dates are not coerced.
+        optional: true
+        cardinality: "1:1"
+      - name: primary_completion_date
+        kind: literal
+        datatype: string
+        description: Primary completion date as published (often YYYY-MM).
+        optional: true
+        cardinality: "1:1"
+      - name: study_type
+        kind: literal
+        datatype: string
+        description: INTERVENTIONAL or OBSERVATIONAL.
+        optional: true
+        cardinality: "1:1"
+      - name: lead_sponsor
+        kind: relationship
+        range_type: Organization
+        cardinality: "N:1"
+        description: The owner you attribute by default. One per trial.
+      - name: collaborator
+        kind: relationship
+        range_type: Organization
+        cardinality: "N:N"
+        description: Additional organizations. Not instead of lead_sponsor.
+      - name: studies_condition
+        kind: relationship
+        range_type: MedicalCondition
+        cardinality: "N:N"
+        description: Conditions the trial lists. A trial may list several.
+      - name: uses_intervention
+        kind: relationship
+        range_type: Intervention
+        cardinality: "N:N"
+      - name: has_investigator
+        kind: relationship
+        range_type: Investigator
+        cardinality: "N:N"
+      - name: conducted_at
+        kind: relationship
+        range_type: Facility
+        cardinality: "N:N"
+
+  - name: Organization
+    label: Organization
+    description: >-
+      A sponsor, collaborator, or investigator affiliation. Identity is the
+      normalized organization name. Entity.name is reserved, so the slot is
+      org_name.
+    identity: [org_name]
+    attributes:
+      - name: org_name
+        kind: literal
+        datatype: string
+        description: Normalized organization name (the reserved-leaf stand-in for name).
+        optional: false
+        cardinality: "1:1"
+      - name: org_class
+        kind: literal
+        datatype: string
+        description: Registry class — INDUSTRY, NIH, OTHER, INDIVIDUAL, or empty.
+        optional: true
+        cardinality: "1:1"
+
+  - name: MedicalCondition
+    label: Medical condition
+    description: A studied condition. Identity is the normalized condition name.
+    identity: [condition_name]
+    attributes:
+      - name: condition_name
+        kind: literal
+        datatype: string
+        description: Normalized condition name. Entity.name is reserved.
+        optional: false
+        cardinality: "1:1"
+      - name: mesh_term
+        kind: literal
+        datatype: string
+        description: MeSH heading when the registry supplies one.
+        optional: true
+        cardinality: "1:1"
+
+  - name: Intervention
+    label: Intervention
+    description: A drug, device, biological, or other intervention under study.
+    identity: [intervention_name]
+    attributes:
+      - name: intervention_name
+        kind: literal
+        datatype: string
+        description: Normalized intervention name. Entity.name is reserved.
+        optional: false
+        cardinality: "1:1"
+      - name: intervention_type
+        kind: literal
+        datatype: string
+        description: DRUG, DEVICE, BIOLOGICAL, BEHAVIORAL, PROCEDURE, OTHER, or empty.
+        optional: true
+        cardinality: "1:1"
+
+  - name: Investigator
+    label: Investigator
+    description: >-
+      A person listed as an overall official. Identity is investigator_name
+      when NPI is absent; NPI is decisive when present. Do not merge on
+      surname alone.
+    identity: [investigator_name]
+    attributes:
+      - name: investigator_name
+        kind: literal
+        datatype: string
+        description: Display name as listed on the trial. Entity.name is reserved.
+        optional: false
+        cardinality: "1:1"
+      - name: npi
+        kind: literal
+        datatype: string
+        description: National Provider Identifier when known (from NPPES enrichment).
+        optional: true
+        cardinality: "1:1"
+      - name: specialty
+        kind: literal
+        datatype: string
+        description: Taxonomy description from NPPES when bound.
+        optional: true
+        cardinality: "1:1"
+      - name: affiliated_with
+        kind: relationship
+        range_type: Organization
+        cardinality: "N:1"
+        description: Affiliation used when NPI is missing.
+
+  - name: Facility
+    label: Facility
+    description: >-
+      A study site. City, state, and country live here as literals. They
+      are not first-class types — promoting them is a modeling accident
+      this Blueprint refuses to copy.
+    identity: [facility_name, country]
+    attributes:
+      - name: facility_name
+        kind: literal
+        datatype: string
+        description: Site name. Entity.name is reserved.
+        optional: false
+        cardinality: "1:1"
+      - name: city
+        kind: literal
+        datatype: string
+        optional: true
+        cardinality: "1:1"
+      - name: state
+        kind: literal
+        datatype: string
+        description: State or region. A property of the facility, not a type.
+        optional: true
+        cardinality: "1:1"
+      - name: country
+        kind: literal
+        datatype: string
+        optional: false
+        cardinality: "1:1"
+
+relationships:
+  - name: lead_sponsor
+    source: ClinicalTrial
+    target: Organization
+    cardinality: "N:1"
+    description: The owner you attribute by default. One lead sponsor per trial.
+  - name: collaborator
+    source: ClinicalTrial
+    target: Organization
+    cardinality: "N:N"
+    description: Additional, not instead of lead.
+  - name: studies_condition
+    source: ClinicalTrial
+    target: MedicalCondition
+    cardinality: "N:N"
+  - name: uses_intervention
+    source: ClinicalTrial
+    target: Intervention
+    cardinality: "N:N"
+  - name: has_investigator
+    source: ClinicalTrial
+    target: Investigator
+    cardinality: "N:N"
+  - name: conducted_at
+    source: ClinicalTrial
+    target: Facility
+    cardinality: "N:N"
+  - name: affiliated_with
+    source: Investigator
+    target: Organization
+    cardinality: "N:1"
+    description: Used when NPI is missing.
+
+tasks:
+  - id: acquire_condition_set
+    description: >-
+      First pull for the declared ClinicalTrials.gov condition and
+      intervention query. Mints ClinicalTrial nodes and the related
+      Organization, MedicalCondition, Intervention, Investigator, and
+      Facility nodes from the field mapping. Does not write sample rows
+      as if they were acquired.
+    writes: true
+    attaches_to: ClinicalTrial
+    inputs: [condition_query, intervention_query]
+  - id: refresh_stale_status
+    description: >-
+      Re-fetch overall_status and dates for trials past the 14-day window,
+      and enrollment for trials past the 45-day window. Match on nct_id.
+      Do not re-mint.
+    writes: true
+    attaches_to: ClinicalTrial
+    inputs: [stale_after_days]
+  - id: verify_trial
+    description: >-
+      Check one NCT against ClinicalTrials.gov and return match, drift, or
+      missing. Read-only. Does not write.
+    writes: false
+    attaches_to: ClinicalTrial
+    inputs: [nct_id]
+  - id: answer_supported_question
+    description: >-
+      Run one of the shipped supported questions against this workspace's
+      graph, with citations. If the answer is derived from the sample,
+      say so and include captured_at.
+    writes: false
+    inputs: [question]
+  - id: watch_status_change
+    description: >-
+      Given NCT ids the workspace already has, report which overall_status
+      values flipped since the last refresh. Signals only — the package
+      cannot mail an alert.
+    writes: false
+    attaches_to: ClinicalTrial
+    inputs: [nct_ids]
+
+rules:
+  conflict:
+    - attribute: ClinicalTrial.overall_status
+      winner: ctgov
+      notes: ClinicalTrials.gov wins on overall_status.
+    - attribute: ClinicalTrial.start_date
+      winner: ctgov
+      notes: ClinicalTrials.gov wins on dates.
+    - attribute: ClinicalTrial.primary_completion_date
+      winner: ctgov
+      notes: ClinicalTrials.gov wins on dates.
+    - attribute: ClinicalTrial.enrollment
+      winner: ctgov
+    - attribute: Investigator.npi
+      winner: nppes
+      notes: NPPES wins on NPI when enrichment has a single high-confidence hit.
+    - attribute: Investigator.specialty
+      winner: nppes
+      notes: >-
+        A later private overlay may win on investigator affiliation.
+        Affiliation is not claimed here as an NPPES win.
+  tombstones:
+    disappeared_row: withdrawn
+    delete_forbidden: true
+
+sources:
+  - id: ctgov
+    title: ClinicalTrials.gov v2 API
+    kind: public_registry
+    publisher: U.S. National Library of Medicine
+    description: >-
+      Public U.S. trial registry. U.S. government work; no copyright.
+      No credential. The package stores the definition and mapping, not
+      a connection and not any records.
+    license: CC0-1.0
+    url: https://clinicaltrials.gov/api/v2/studies
+    credential: none
+    declared_cadence: weekly for overall_status and dates; monthly for enrollment and sites
+    mappings:
+      - source_field: protocolSection.identificationModule.nctId
+        lands_on: ClinicalTrial.nct_id
+        kind: literal
+      - source_field: protocolSection.identificationModule.officialTitle
+        lands_on: ClinicalTrial.official_title
+        kind: literal
+      - source_field: protocolSection.identificationModule.briefTitle
+        lands_on: ClinicalTrial.brief_title
+        kind: literal
+      - source_field: protocolSection.statusModule.overallStatus
+        lands_on: ClinicalTrial.overall_status
+        kind: literal
+      - source_field: protocolSection.statusModule.startDateStruct.date
+        lands_on: ClinicalTrial.start_date
+        kind: literal
+      - source_field: protocolSection.statusModule.primaryCompletionDateStruct.date
+        lands_on: ClinicalTrial.primary_completion_date
+        kind: literal
+      - source_field: protocolSection.designModule.phases[]
+        lands_on: ClinicalTrial.phase
+        kind: literal
+      - source_field: protocolSection.designModule.enrollmentInfo.count
+        lands_on: ClinicalTrial.enrollment
+        kind: literal
+      - source_field: protocolSection.designModule.studyType
+        lands_on: ClinicalTrial.study_type
+        kind: literal
+      - source_field: protocolSection.sponsorCollaboratorsModule.leadSponsor.name
+        lands_on: lead_sponsor
+        kind: relationship
+      - source_field: protocolSection.sponsorCollaboratorsModule.leadSponsor.class
+        lands_on: Organization.org_class
+        kind: literal
+      - source_field: protocolSection.sponsorCollaboratorsModule.collaborators[].name
+        lands_on: collaborator
+        kind: relationship
+      - source_field: protocolSection.conditionsModule.conditions[]
+        lands_on: studies_condition
+        kind: relationship
+      - source_field: protocolSection.armsInterventionsModule.interventions[].name
+        lands_on: uses_intervention
+        kind: relationship
+      - source_field: protocolSection.armsInterventionsModule.interventions[].type
+        lands_on: Intervention.intervention_type
+        kind: literal
+      - source_field: protocolSection.contactsLocationsModule.overallOfficials[].name
+        lands_on: has_investigator
+        kind: relationship
+      - source_field: protocolSection.contactsLocationsModule.overallOfficials[].affiliation
+        lands_on: affiliated_with
+        kind: relationship
+      - source_field: protocolSection.contactsLocationsModule.locations[]
+        lands_on: conducted_at
+        kind: relationship
+      - source_field: protocolSection.contactsLocationsModule.locations[].city
+        lands_on: Facility.city
+        kind: literal
+      - source_field: protocolSection.contactsLocationsModule.locations[].state
+        lands_on: Facility.state
+        kind: literal
+      - source_field: protocolSection.contactsLocationsModule.locations[].country
+        lands_on: Facility.country
+        kind: literal
+  - id: nppes
+    title: NPPES NPI Registry
+    kind: public_registry
+    publisher: Centers for Medicare & Medicaid Services
+    description: >-
+      Public NPI registry. U.S. government work. No credential on the
+      public API. Enrichment only — fills npi and specialty on an
+      Investigator that already exists. Does not mint a second person.
+    license: CC0-1.0
+    url: https://npiregistry.cms.hhs.gov/api/
+    credential: none
+    declared_cadence: on new investigator, then quarterly
+    mappings:
+      - source_field: results[].number
+        lands_on: Investigator.npi
+        kind: literal
+      - source_field: results[].taxonomies[].desc
+        lands_on: Investigator.specialty
+        kind: literal
+      - source_field: results[].basic.first_name
+        lands_on: Investigator.investigator_name
+        kind: literal
+
+acquisition:
+  - source: ctgov
+    seed_query: >-
+      query.cond=obesity OR overweight&query.intr=GLP-1 OR semaglutide
+      OR tirzepatide OR retatrutide OR cagrilintide
+    page_cap: 5000
+    first_pull: >-
+      GET /api/v2/studies with the seed query. Follow nextPageToken until
+      it is gone or 5,000 studies, whichever first. Mint one ClinicalTrial
+      per NCT and related Organization / MedicalCondition / Intervention /
+      Investigator / Facility nodes from the mapping table. Relationship
+      instance edges land on https://graph.infona.ai/onto/<leaf>, never
+      on attrs/<leaf>. Do not treat sample rows as acquired.
+    later_refresh: >-
+      Re-fetch only trials whose overall_status is past the 14-day window
+      (weekly job) or whose enrollment is past 45 days (monthly). Match
+      on nct_id. Update literals and re-link relationships. Do not re-mint
+      a second node for the same NCT.
+    disappeared_row: >-
+      If an NCT the workspace already has is gone from the API, set
+      overall_status to WITHDRAWN and stop refreshing it. Do not delete
+      the node.
+    conflict: >-
+      ClinicalTrials.gov wins on overall_status, dates, and enrollment.
+      A private overlay installed later may win on investigator affiliation.
+  - source: nppes
+    seed_query: >-
+      version=2.1 lookup by investigator_name plus affiliated_with
+      organization, only for Investigator nodes that have a name and no npi
+    page_cap: 10
+    first_pull: >-
+      Enrichment, not acquisition of new people. Given an Investigator that
+      already exists, look up NPPES. If one high-confidence hit, fill npi
+      and specialty. If several hits, leave those attributes empty and
+      surface the candidates for review. Do not mint a second investigator.
+    later_refresh: >-
+      Quarterly re-check of specialty for investigators that already have
+      an npi. Do not overwrite a private-overlay affiliation.
+    disappeared_row: >-
+      If the NPI is deactivated, keep the Investigator node, clear
+      specialty, and stop refreshing that NPI. Do not delete the node.
+    conflict: NPPES wins on npi and specialty when the hit is unique.
+
+validation:
+  - id: trial-has-nct
+    description: A trial without nct_id is rejected.
+    rule: ClinicalTrial.nct_id must be a non-empty string.
+  - id: acquired-nct-form
+    description: Acquired trials use the real NCT form. Sample ids must not.
+    rule: >-
+      After first pull, every non-sample ClinicalTrial.nct_id matches
+      NCT########. Synthetic SAMPLE-* ids are legal only in the sample
+      section.
+  - id: phase-known-or-empty
+    description: phase must be a known token or empty.
+    rule: >-
+      ClinicalTrial.phase is empty or one of PHASE1, PHASE2, PHASE3,
+      PHASE4, EARLY_PHASE1, NA (and comma-joined combinations the
+      registry emits).
+  - id: lead-sponsor-is-org
+    description: lead_sponsor must point at an Organization, not a string.
+    rule: >-
+      The lead_sponsor slot is a type-ranged edge to Organization. A
+      string in that slot is invalid.
+  - id: enrollment-non-negative
+    description: enrollment, when present, is a non-negative integer.
+    rule: ClinicalTrial.enrollment is absent or an integer >= 0.
+
+freshness:
+  policies:
+    - target: ClinicalTrial.overall_status
+      stale_after_days: 14
+      cadence: weekly
+    - target: ClinicalTrial.start_date
+      stale_after_days: 14
+      cadence: weekly
+    - target: ClinicalTrial.primary_completion_date
+      stale_after_days: 14
+      cadence: weekly
+    - target: ClinicalTrial.enrollment
+      stale_after_days: 45
+      cadence: monthly
+    - target: ClinicalTrial.nct_id
+      stale_after_days: never
+      cadence: on_create
+    - target: ClinicalTrial.official_title
+      stale_after_days: never
+      cadence: on_create
+    - target: ctgov
+      stale_after_days: 14
+      cadence: weekly for status; monthly for enrollment and sites
+    - target: nppes
+      stale_after_days: 90
+      cadence: on new investigator, then quarterly
+  er:
+    - type_name: ClinicalTrial
+      identity: [nct_id]
+      blocking: [nct_id]
+      signals: [nct_id]
+      weights: [1.0]
+      auto_merge_threshold: 1.0
+      review_threshold: 1.0
+      decisive_signals: [nct_id]
+      reversible: true
+    - type_name: Organization
+      identity: [org_name]
+      blocking: [org_name]
+      signals: [org_name, org_class]
+      weights: [0.8, 0.2]
+      auto_merge_threshold: 0.9
+      review_threshold: 0.7
+      decisive_signals: []
+      reversible: true
+    - type_name: Investigator
+      identity: [investigator_name]
+      blocking: [npi, investigator_name]
+      signals: [npi, investigator_name]
+      weights: [0.7, 0.3]
+      auto_merge_threshold: 0.95
+      review_threshold: 0.7
+      decisive_signals: [npi]
+      reversible: true
+    - type_name: MedicalCondition
+      identity: [condition_name]
+      blocking: [condition_name]
+      signals: [condition_name]
+      weights: [1.0]
+      auto_merge_threshold: 1.0
+      review_threshold: 0.85
+      decisive_signals: []
+      reversible: true
+    - type_name: Intervention
+      identity: [intervention_name]
+      blocking: [intervention_name]
+      signals: [intervention_name]
+      weights: [1.0]
+      auto_merge_threshold: 1.0
+      review_threshold: 0.85
+      decisive_signals: []
+      reversible: true
+    - type_name: Facility
+      identity: [facility_name, country]
+      blocking: [country, facility_name]
+      signals: [facility_name, country, city]
+      weights: [0.5, 0.3, 0.2]
+      auto_merge_threshold: 0.95
+      review_threshold: 0.75
+      decisive_signals: []
+      reversible: true
+
+skills:
+  - slug: cite-nct
+    type_name: ClinicalTrial
+    title: Cite the NCT and treat status as time-sensitive
+    summary: Always cite the NCT. Say so if overall_status is older than 14 days.
+    body: >-
+      Always cite the ClinicalTrials.gov NCT id when you mention a trial.
+      Treat overall_status as time-sensitive. If the stored value is older
+      than the freshness policy (14 days), say that before answering — do
+      not present a stale recruiting flag as current. Sample rows are
+      synthetic, timestamped, and not current; if you used them, say
+      "sample, captured <captured_at>" and do not feed them to a freshness
+      indicator.
+  - slug: lead-vs-collaborator
+    type_name: ClinicalTrial
+    title: Lead sponsor is the owner; collaborators are additional
+    summary: Attribute a trial to lead_sponsor. Collaborators do not replace it.
+    body: >-
+      The lead sponsor is the owner you attribute by default. Collaborators
+      are additional organizations, not instead of the lead. When someone
+      asks "who runs this trial?", answer with the lead_sponsor Organization
+      and mention collaborators only if asked or if they change the meaning.
+      Do not flatten lead and collaborator into one "sponsors" list.
+  - slug: investigator-identity
+    type_name: Investigator
+    title: NPI is identity; surname is not
+    summary: Merge investigators on NPI. Never on surname alone.
+    body: >-
+      If npi is present, use it as the identity in any comparison across
+      trials. Do not merge investigators on surname alone. Same display
+      name and different affiliated_with, with no NPI, is a review case —
+      not an auto-merge. When NPI is missing, say so; do not invent one.
+  - slug: facility-is-the-site
+    type_name: Facility
+    title: City and country live on the facility
+    summary: Do not promote city, state, or ZIP to their own types.
+    body: >-
+      A facility is the site. city, state, and country are properties of
+      that site. Do not mint City, State, or ZIP nodes. "Which cities host
+      recruiting Phase 3 obesity trials?" is a query over Facility.city
+      on trials that are conducted_at those facilities — not a walk to a
+      City type.
+  - slug: sample-is-not-current
+    type_name: ClinicalTrial
+    title: Sample rows are preview residue
+    summary: Never present SAMPLE-* rows as the living graph.
+    body: >-
+      The package may include a bounded synthetic sample so a workspace is
+      not blank before first pull. Those rows are marked sample, captured
+      at a stored date, and are not current. Never render them with a
+      healthy freshness light. Never use a SAMPLE-* id as if it were an
+      NCT. After acquisition, prefer live rows; if a sample row is still
+      visible, label it.
+
+functions:
+  - name: is_recruiting
+    type_name: ClinicalTrial
+    description: >-
+      True when overall_status is a recruiting state (RECRUITING or
+      ENROLLING_BY_INVITATION).
+  - name: days_to_primary_completion
+    type_name: ClinicalTrial
+    description: Days from today to primary_completion_date, or null if missing or unparseable.
+  - name: sponsor_trial_count
+    type_name: Organization
+    description: How many trials in this workspace list that organization as lead_sponsor.
+
+mcp_tools:
+  - ask
+
+examples:
+  - question: Which Phase 3 trials for obesity are currently recruiting?
+  - question: Who is the lead sponsor of a given NCT, and is that overall_status fresher than two weeks?
+  - question: How many recruiting trials list a given organization as lead sponsor in this condition set?
+  - question: Which investigators appear on more than one recruiting trial in this set?
+  - question: Which trials have a primary completion date in the next 90 days and are not yet completed?
+  - question: Which facilities in the United States are conducting recruiting Phase 3 obesity trials?
+  - question: What interventions appear on recruiting trials that study type 2 diabetes in this set?
+  - question: Which trials in this workspace flipped overall_status since the last refresh?
+  - question: How many trials in this set have an industry lead sponsor versus an NIH lead sponsor?
+  - question: Which recruiting trials list a given investigator, and what is their NPI if known?
+
+evals:
+  - id: every-trial-has-nct
+    kind: structural
+    description: Every trial has an nct_id.
+    still_works_when: count of ClinicalTrial nodes with empty identity is 0
+  - id: lead-sponsor-is-org
+    kind: structural
+    description: Every lead_sponsor points at an Organization.
+    still_works_when: no string in that slot; no dangling edge
+  - id: refresh-does-not-split-nct
+    kind: structural
+    description: Refresh does not split an NCT into two nodes.
+    still_works_when: same nct_id maps to one node, before and after refresh
+  - id: phase-known-or-empty
+    kind: structural
+    description: phase is a known token or empty.
+    still_works_when: no ClinicalTrial.phase outside the known set
+  - id: condition-and-intervention-are-nodes
+    kind: structural
+    description: studies_condition and uses_intervention are type-ranged edges.
+    still_works_when: those slots hold MedicalCondition and Intervention nodes, not strings
+  - id: city-is-not-a-type
+    kind: structural
+    description: Acquisition does not mint City, State, or ZIP types.
+    still_works_when: the workspace has no City / State / ZIP concept after first pull
+  - id: disappeared-row-withdrawn
+    kind: structural
+    description: A trial whose source row disappeared is withdrawn, not deleted.
+    still_works_when: overall_status is WITHDRAWN and the node is still present
+  - id: phase3-obesity-recruiting
+    kind: question
+    description: Which Phase 3 trials for obesity are currently recruiting?
+    still_works_when: >-
+      Answer is a list of NCT ids. Each has phase containing PHASE3,
+      overall_status in {RECRUITING, ENROLLING_BY_INVITATION}, and a
+      studies_condition whose condition_name matches obesity. Re-derive
+      after each refresh — do not pin last week's NCTs. If the answer
+      used only the sample, it must say sample, captured 2026-06-01,
+      and the sample-derived expected ids are SAMPLE-003 and SAMPLE-008.
+  - id: status-freshness-disclosed
+    kind: question
+    description: Who is the lead sponsor of a given NCT, and is status fresher than two weeks?
+    still_works_when: >-
+      Answer names an Organization and states whether overall_status is
+      inside the 14-day window. Pin a real NCT from the workspace after
+      first pull. Do not invent an NCT and do not attach interview facts
+      to a real NCT in this package. Sample-derived answers must say
+      they are sample-derived and carry captured_at=2026-06-01.
+  - id: sample-recruiting-labelled
+    kind: question
+    description: Which sample trials are recruiting? (sample-derived; not current)
+    still_works_when: >-
+      SAMPLE-DERIVED, captured 2026-06-01, not current. Expected
+      nct_id values among sample ClinicalTrial rows with
+      overall_status=RECRUITING are SAMPLE-003, SAMPLE-004, and
+      SAMPLE-008. The answer must say "sample, captured 2026-06-01".
+
+sample:
+  captured_at: 2026-06-01
+  license: CC0-1.0
+  kind: synthetic
+  entities:
+    - type: ClinicalTrial
+      attributes:
+        nct_id: SAMPLE-001
+        official_title: (synthetic sample) Example once-weekly GLP-1 obesity study
+        brief_title: (synthetic sample) Weekly GLP-1 obesity
+        overall_status: COMPLETED
+        phase: PHASE3
+        enrollment: 1961
+        start_date: "2021-06"
+        primary_completion_date: "2023-11"
+        study_type: INTERVENTIONAL
+    - type: ClinicalTrial
+      attributes:
+        nct_id: SAMPLE-002
+        official_title: (synthetic sample) Example dual-agonist obesity study
+        brief_title: (synthetic sample) Dual agonist obesity
+        overall_status: COMPLETED
+        phase: PHASE3
+        enrollment: 2539
+        start_date: "2022-01"
+        primary_completion_date: "2024-04"
+        study_type: INTERVENTIONAL
+    - type: ClinicalTrial
+      attributes:
+        nct_id: SAMPLE-003
+        official_title: (synthetic sample) Example recruiting oral obesity study
+        brief_title: (synthetic sample) Oral GLP-1 obesity
+        overall_status: RECRUITING
+        phase: PHASE3
+        enrollment: 1200
+        start_date: "2025-09"
+        primary_completion_date: "2027-03"
+        study_type: INTERVENTIONAL
+    - type: ClinicalTrial
+      attributes:
+        nct_id: SAMPLE-004
+        official_title: (synthetic sample) Example recruiting type 2 diabetes study
+        brief_title: (synthetic sample) Dual agonist T2D
+        overall_status: RECRUITING
+        phase: PHASE2
+        enrollment: 480
+        start_date: "2025-11"
+        primary_completion_date: "2027-01"
+        study_type: INTERVENTIONAL
+    - type: ClinicalTrial
+      attributes:
+        nct_id: SAMPLE-005
+        official_title: (synthetic sample) Example active-not-recruiting overweight study
+        brief_title: (synthetic sample) Weekly GLP-1 overweight
+        overall_status: ACTIVE_NOT_RECRUITING
+        phase: PHASE3
+        enrollment: 900
+        start_date: "2024-08"
+        primary_completion_date: "2026-10"
+        study_type: INTERVENTIONAL
+    - type: ClinicalTrial
+      attributes:
+        nct_id: SAMPLE-006
+        official_title: (synthetic sample) Example not-yet-recruiting obesity study
+        brief_title: (synthetic sample) Early oral obesity
+        overall_status: NOT_YET_RECRUITING
+        phase: PHASE1
+        enrollment: 80
+        start_date: "2026-09"
+        primary_completion_date: "2027-06"
+        study_type: INTERVENTIONAL
+    - type: ClinicalTrial
+      attributes:
+        nct_id: SAMPLE-007
+        official_title: (synthetic sample) Example terminated NASH study
+        brief_title: (synthetic sample) Dual agonist NASH
+        overall_status: TERMINATED
+        phase: PHASE2
+        enrollment: 210
+        start_date: "2023-02"
+        primary_completion_date: "2025-01"
+        study_type: INTERVENTIONAL
+    - type: ClinicalTrial
+      attributes:
+        nct_id: SAMPLE-008
+        official_title: (synthetic sample) Example recruiting obesity and CVD outcomes study
+        brief_title: (synthetic sample) GLP-1 obesity CVD
+        overall_status: RECRUITING
+        phase: PHASE3
+        enrollment: 4000
+        start_date: "2025-04"
+        primary_completion_date: "2028-12"
+        study_type: INTERVENTIONAL
+    - type: Organization
+      attributes:
+        org_name: Example Pharma A
+        org_class: INDUSTRY
+    - type: Organization
+      attributes:
+        org_name: Example Pharma B
+        org_class: INDUSTRY
+    - type: Organization
+      attributes:
+        org_name: Example University Medical Center
+        org_class: OTHER
+    - type: Organization
+      attributes:
+        org_name: Example NIH Institute
+        org_class: NIH
+    - type: Organization
+      attributes:
+        org_name: Example Device Co
+        org_class: INDUSTRY
+    - type: Organization
+      attributes:
+        org_name: Example Foundation
+        org_class: OTHER
+    - type: MedicalCondition
+      attributes:
+        condition_name: Obesity
+        mesh_term: Obesity
+    - type: MedicalCondition
+      attributes:
+        condition_name: Overweight
+        mesh_term: Overweight
+    - type: MedicalCondition
+      attributes:
+        condition_name: Type 2 Diabetes Mellitus
+        mesh_term: Diabetes Mellitus, Type 2
+    - type: MedicalCondition
+      attributes:
+        condition_name: Nonalcoholic Steatohepatitis
+        mesh_term: Non-alcoholic Fatty Liver Disease
+    - type: MedicalCondition
+      attributes:
+        condition_name: Cardiovascular Disease
+        mesh_term: Cardiovascular Diseases
+    - type: MedicalCondition
+      attributes:
+        condition_name: Prediabetes
+        mesh_term: Prediabetic State
+    - type: Intervention
+      attributes:
+        intervention_name: Example semaglutide analog
+        intervention_type: DRUG
+    - type: Intervention
+      attributes:
+        intervention_name: Example dual GIP/GLP-1 agonist
+        intervention_type: DRUG
+    - type: Intervention
+      attributes:
+        intervention_name: Example oral GLP-1
+        intervention_type: DRUG
+    - type: Intervention
+      attributes:
+        intervention_name: Example lifestyle program
+        intervention_type: BEHAVIORAL
+    - type: Intervention
+      attributes:
+        intervention_name: Example gastric device
+        intervention_type: DEVICE

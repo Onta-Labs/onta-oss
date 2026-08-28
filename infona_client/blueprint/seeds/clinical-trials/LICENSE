@@ -1,0 +1,14 @@
+Apache License 2.0
+
+This Blueprint (the know-how: model, source definitions, acquisition and
+freshness policy, tasks, skills, and evaluations) is licensed under the
+Apache License, Version 2.0.
+
+    https://www.apache.org/licenses/LICENSE-2.0
+
+The bounded sample, if present, is separately licensed CC0-1.0. It is
+synthetic, timestamped, and not current. It is not a Data Feed.
+
+ClinicalTrials.gov and the NPPES NPI Registry are U.S. government work.
+This package does not ship those records. It ships the means to acquire
+them after install.

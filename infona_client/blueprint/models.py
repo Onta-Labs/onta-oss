@@ -502,13 +502,32 @@ class BlueprintManifest(_StrictModel):
         return self
 
 
+def _load_manifest_text(raw: str | bytes) -> Any:
+    """JSON if the text is an object/array; otherwise YAML (ADR 0014 default)."""
+    text = raw.decode("utf-8") if isinstance(raw, bytes) else raw
+    stripped = text.lstrip()
+    if stripped.startswith("{") or stripped.startswith("["):
+        return json.loads(text)
+    try:
+        import yaml
+    except ImportError as exc:
+        raise ValueError(
+            "YAML blueprints require PyYAML (pip install pyyaml)"
+        ) from exc
+    payload = yaml.safe_load(text)
+    if payload is None:
+        raise ValueError("blueprint manifest is empty")
+    return payload
+
+
 def parse_blueprint(raw: Mapping[str, Any] | str | bytes) -> BlueprintManifest:
-    """Parse JSON text or a mapping into a v1 manifest.
+    """Parse JSON, YAML, or a mapping into a v1 manifest.
 
     Unknown top-level keys fail here (``extra="forbid"``), not by ignore.
+    YAML is the human default (ADR 0014 F1); JSON is the machine alias.
     """
     if isinstance(raw, (str, bytes)):
-        payload = json.loads(raw)
+        payload = _load_manifest_text(raw)
     else:
         payload = raw
     if not isinstance(payload, Mapping):
