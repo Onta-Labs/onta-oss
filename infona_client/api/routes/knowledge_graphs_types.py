@@ -76,11 +76,10 @@ async def list_type_counts(
     returned here — fetch them via /ontology/types if the caller needs the
     full schema.
 
-    **Dual-backend (E5):** when ``INFONA_GRAPH_BACKEND=neo4j`` (or a process
-    GraphStore is configured for that backend), counts come from
-    :func:`infona_client.graph.explore_store.type_counts` instead of SPARQL.
+    **GraphStore / Neo4j:** counts come from
+    :func:`infona_client.graph.explore_store.type_counts`.
     Spatio-temporal index flags are still best-effort from the stats graph
-    (Neptune path only; Neo4j returns False until stats port).
+    (retired SPARQL/Neptune residual; Neo4j currently returns False).
     """
     # GraphStore path (E5 explore_store) — same response shape.
     from infona_client.graph.explore_store import type_counts as pg_type_counts

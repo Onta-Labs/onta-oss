@@ -2794,7 +2794,7 @@
           "ingest"
         ],
         "summary": "Ingest",
-        "description": "Ingest raw content into the knowledge graph.\n\nRuns LLM extraction, schema resolution (type matching, attribute\nresolution, validation), and inserts validated triples into Neptune.\n\nONTA-386: opens a tracked ``category=ingest`` job with live stage_trace\n(P0/P2/P5/P6; file is A1-like entry so P1 is skipped). Writes still go\nonly through ``insert_facts`` / ``refresh_after_write``.",
+        "description": "Ingest raw content into the knowledge graph.\n\nRuns LLM extraction, schema resolution (type matching, attribute\nresolution, validation), and writes facts to the Neo4j GraphStore.\n\nONTA-386: opens a tracked ``category=ingest`` job with live stage_trace\n(P0/P2/P5/P6; file is A1-like entry so P1 is skipped). Writes still go\nonly through ``insert_facts`` / ``refresh_after_write``.",
         "operationId": "ingest_graphs__tenant__ingest_post",
         "security": [
           {
@@ -3354,7 +3354,7 @@
           "knowledge_graphs"
         ],
         "summary": "List Type Counts",
-        "description": "List every type that has instances in this KG, sorted by entity count.\n\nTenant-global ontology types with zero instances in this KG are not\nreturned here \u2014 fetch them via /ontology/types if the caller needs the\nfull schema.\n\n**Dual-backend (E5):** when ``INFONA_GRAPH_BACKEND=neo4j`` (or a process\nGraphStore is configured for that backend), counts come from\n:func:`infona_client.graph.explore_store.type_counts` instead of SPARQL.\nSpatio-temporal index flags are still best-effort from the stats graph\n(Neptune path only; Neo4j returns False until stats port).",
+        "description": "List every type that has instances in this KG, sorted by entity count.\n\nTenant-global ontology types with zero instances in this KG are not\nreturned here \u2014 fetch them via /ontology/types if the caller needs the\nfull schema.\n\n**GraphStore / Neo4j:** counts come from\n:func:`infona_client.graph.explore_store.type_counts`.\nSpatio-temporal index flags are still best-effort from the stats graph\n(retired SPARQL/Neptune residual; Neo4j currently returns False).",
         "operationId": "list_type_counts_graphs__tenant__kgs__kg_name__type_counts_get",
         "security": [
           {
@@ -5291,7 +5291,7 @@
           "explore"
         ],
         "summary": "Get Type Records",
-        "description": "Paged entity instances for the Explorer Data table (COG-100).\n\nReturns one page of instances of ``type_name``, ordered deterministically\nby entity URI (``ORDER BY ?e``) with keyset pagination via ``cursor`` (the\nlast entity URI from the previous page).  For each entity the endpoint\nfetches all attribute values, excluding ``rdf:type`` and\n``SYSTEM_PREDICATES``.  Attribute predicates are resolved to display names\nvia the ontology (same ``attr_def`` query shape as ``get_type_summary``).\nThe row ``name`` is the declared ``attrs/name`` attribute value when present\n(ingest stores the human-readable name there; ``rdfs:label`` holds the\nopaque entity-id slug), else ``rdfs:label``, else the entity-URI leaf.\n\nResponse shape::\n\n    {\n        \"columns\": [\"name\", \"<attr1>\", ...],\n        \"rows\": [{\"id\": \"<uri>\", \"name\": \"...\", \"<attr1>\": \"...\", ...}],\n        \"total\": <int>,\n        \"next_cursor\": \"<uri>\" | null,\n    }\n\nNever errors on an empty/missing type; returns the empty sentinel instead.\nA type name that could not exist at all \u2014 one carrying a character no IRI may\ncontain \u2014 is a different thing from a type with no rows, and is a 422\n(ONTA-425). The sentinel keeps covering every name that is merely absent.\n\n**Dual-backend (E9):** when ``INFONA_GRAPH_BACKEND=neo4j``, reads via\n:mod:`infona_client.graph.explore_store`. Default Neptune path unchanged.",
+        "description": "Paged entity instances for the Explorer Data table (COG-100).\n\nReturns one page of instances of ``type_name``, ordered deterministically\nby entity URI (``ORDER BY ?e``) with keyset pagination via ``cursor`` (the\nlast entity URI from the previous page).  For each entity the endpoint\nfetches all attribute values, excluding ``rdf:type`` and\n``SYSTEM_PREDICATES``.  Attribute predicates are resolved to display names\nvia the ontology (same ``attr_def`` query shape as ``get_type_summary``).\nThe row ``name`` is the declared ``attrs/name`` attribute value when present\n(ingest stores the human-readable name there; ``rdfs:label`` holds the\nopaque entity-id slug), else ``rdfs:label``, else the entity-URI leaf.\n\nResponse shape::\n\n    {\n        \"columns\": [\"name\", \"<attr1>\", ...],\n        \"rows\": [{\"id\": \"<uri>\", \"name\": \"...\", \"<attr1>\": \"...\", ...}],\n        \"total\": <int>,\n        \"next_cursor\": \"<uri>\" | null,\n    }\n\nNever errors on an empty/missing type; returns the empty sentinel instead.\nA type name that could not exist at all \u2014 one carrying a character no IRI may\ncontain \u2014 is a different thing from a type with no rows, and is a 422\n(ONTA-425). The sentinel keeps covering every name that is merely absent.\n\n**GraphStore / Neo4j:** reads via :mod:`infona_client.graph.explore_store`.\nResidual SPARQL/Neptune is retired (hermetic tests / QC), not the product path.",
         "operationId": "get_type_records_graphs__tenant__explore_kgs__kg_name__types__type_name__records_get",
         "security": [
           {
@@ -5390,7 +5390,7 @@
           "explore"
         ],
         "summary": "Get Entity Detail Route",
-        "description": "Entity detail (properties + incident relationships).\n\n**Dual-backend (E9):** under ``INFONA_GRAPH_BACKEND=neo4j`` (or an injected\nGraphStore) uses :func:`infona_client.graph.explore_store.get_entity_detail`.\nOn the default Neptune path, assembles the same shape via SPARQL point\nlookups on the KG graph.",
+        "description": "Entity detail (properties + incident relationships).\n\n**GraphStore / Neo4j:** reads via\n:func:`infona_client.graph.explore_store.get_entity_detail`. Retired\nSPARQL/Neptune point lookups are residual (hermetic tests / QC), not\nthe product path.",
         "operationId": "get_entity_detail_route_graphs__tenant__explore_kgs__kg_name__entities__entity_id__get",
         "security": [
           {

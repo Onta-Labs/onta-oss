@@ -524,8 +524,8 @@ A type name that could not exist at all — one carrying a character no IRI may
 contain — is a different thing from a type with no rows, and is a 422
 (ONTA-425). The sentinel keeps covering every name that is merely absent.
 
-**Dual-backend (E9):** when ``INFONA_GRAPH_BACKEND=neo4j``, reads via
-:mod:`infona_client.graph.explore_store`. Default Neptune path unchanged.
+**GraphStore / Neo4j:** reads via :mod:`infona_client.graph.explore_store`.
+Residual SPARQL/Neptune is retired (hermetic tests / QC), not the product path.
 
 **200:** Successful Response
 **422:** Validation Error
@@ -538,10 +538,10 @@ Get Entity Detail Route
 
 Entity detail (properties + incident relationships).
 
-**Dual-backend (E9):** under ``INFONA_GRAPH_BACKEND=neo4j`` (or an injected
-GraphStore) uses :func:`infona_client.graph.explore_store.get_entity_detail`.
-On the default Neptune path, assembles the same shape via SPARQL point
-lookups on the KG graph.
+**GraphStore / Neo4j:** reads via
+:func:`infona_client.graph.explore_store.get_entity_detail`. Retired
+SPARQL/Neptune point lookups are residual (hermetic tests / QC), not
+the product path.
 
 **200:** Successful Response
 **422:** Validation Error
@@ -818,7 +818,7 @@ Ingest
 Ingest raw content into the knowledge graph.
 
 Runs LLM extraction, schema resolution (type matching, attribute
-resolution, validation), and inserts validated triples into Neptune.
+resolution, validation), and writes facts to the Neo4j GraphStore.
 
 ONTA-386: opens a tracked ``category=ingest`` job with live stage_trace
 (P0/P2/P5/P6; file is A1-like entry so P1 is skipped). Writes still go
@@ -1078,11 +1078,10 @@ Tenant-global ontology types with zero instances in this KG are not
 returned here — fetch them via /ontology/types if the caller needs the
 full schema.
 
-**Dual-backend (E5):** when ``INFONA_GRAPH_BACKEND=neo4j`` (or a process
-GraphStore is configured for that backend), counts come from
-:func:`infona_client.graph.explore_store.type_counts` instead of SPARQL.
+**GraphStore / Neo4j:** counts come from
+:func:`infona_client.graph.explore_store.type_counts`.
 Spatio-temporal index flags are still best-effort from the stats graph
-(Neptune path only; Neo4j returns False until stats port).
+(retired SPARQL/Neptune residual; Neo4j currently returns False).
 
 **200:** Successful Response
 **422:** Validation Error
