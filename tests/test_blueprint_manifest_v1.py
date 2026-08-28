@@ -320,6 +320,19 @@ def test_sample_rejects_real_nct_on_synthetic(sample_doc):
     assert any("NCT" in err for err in errors)
 
 
+def test_sample_relationship_must_resolve_to_a_sample_entity(sample_doc):
+    """INF-576 — a type-ranged sample slot is legal when the target exists."""
+    sample_doc["sample"]["entities"][0]["attributes"]["lead_sponsor"] = (
+        "Example Pharma A"
+    )
+    assert validate_blueprint(sample_doc) == []
+    sample_doc["sample"]["entities"][0]["attributes"]["lead_sponsor"] = (
+        "Missing Org"
+    )
+    errors = validate_blueprint(sample_doc)
+    assert any("does not resolve" in err for err in errors)
+
+
 def test_sample_entity_cap():
     assert SAMPLE_MAX_ENTITIES == 25
     assert SAMPLE_MAX_BYTES == 64 * 1024

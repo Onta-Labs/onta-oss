@@ -28,12 +28,14 @@ from infona_client.blueprint.models import (
     ConceptAttribute,
     parse_blueprint,
 )
+from infona_client.graph.iri import ENTITY_URI_PREFIX
 from infona_client.graph.ontology_catalog_models import (
     VALID_CARDINALITIES,
     classify_attr_range,
     _validate_attr_leaf,
     _validate_type_leaf,
 )
+from infona_client.graph.ontology_queries import entity_uri
 from infona_client.graph.predicates import ATTR_META_SUFFIXES
 
 #: Same shapes as ``tests/test_api_registry_byok_guard.py`` — a source
@@ -363,6 +365,30 @@ def _er_errors(cfg, concepts, attr_index) -> list[str]:
     return errors
 
 
+def _sample_entity_ids(manifest: BlueprintManifest, type_name: str) -> set[str]:
+    """Identity values + minted IRIs for sample entities of ``type_name``."""
+    concept = next((c for c in manifest.concepts if c.name == type_name), None)
+    sample = manifest.sample
+    if concept is None or sample is None:
+        return set()
+    ids: set[str] = set()
+    for entity in sample.entities:
+        if entity.type != type_name:
+            continue
+        parts: list[str] = []
+        missing = False
+        for key in concept.identity:
+            value = entity.attributes.get(key)
+            if value is None:
+                missing = True
+                break
+            parts.append(str(value))
+            ids.add(str(value))
+        if not missing and parts:
+            ids.add(entity_uri(type_name, "_".join(parts)))
+    return ids
+
+
 def _sample_errors(manifest: BlueprintManifest, attr_index) -> list[str]:
     errors: list[str] = []
     sample = manifest.sample
@@ -388,9 +414,29 @@ def _sample_errors(manifest: BlueprintManifest, attr_index) -> list[str]:
                 errors.append(
                     f"{prefix}.attributes.{leaf}: not declared on {entity.type}"
                 )
+            elif slot.kind == "relationship":
+                if not isinstance(value, str) or not value.strip():
+                    errors.append(
+                        f"{prefix}.attributes.{leaf}: relationship sample "
+                        "value must be a non-empty string"
+                    )
+                else:
+                    raw = value.strip()
+                    targets = _sample_entity_ids(manifest, slot.range_type or "")
+                    minted = (
+                        raw
+                        if raw.startswith(ENTITY_URI_PREFIX)
+                        else entity_uri(slot.range_type or "", raw)
+                    )
+                    if raw not in targets and minted not in targets:
+                        errors.append(
+                            f"{prefix}.attributes.{leaf}: does not resolve to "
+                            f"a sample {slot.range_type}"
+                        )
             elif slot.kind != "literal":
                 errors.append(
-                    f"{prefix}.attributes.{leaf}: sample values must be literals"
+                    f"{prefix}.attributes.{leaf}: sample values must be "
+                    f"literal or relationship, not {slot.kind}"
                 )
             if (
                 sample.kind == "synthetic"
