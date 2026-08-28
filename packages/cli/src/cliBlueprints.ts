@@ -103,6 +103,33 @@ bp.command("extend")
     });
   });
 
+bp.command("first-run")
+  .description("Credentials → acquire → first supported answer (after install)")
+  .argument("<id>", "installed blueprint id (namespace/name)")
+  .option("--question <text>", "supported question to answer")
+  .option("--credential <pair>", "KEY_ENV=value (repeatable)", (val: string, prev: string[]) => {
+    prev.push(val);
+    return prev;
+  }, [])
+  .option("--max-rows <n>", "first-pull row cap", "25")
+  .action(async (id: string, opts: { question?: string; credential?: string[]; maxRows?: string }) => {
+    await withErrors(async () => {
+      const credentials: Record<string, string> = {};
+      for (const pair of opts.credential ?? []) {
+        const eq = pair.indexOf("=");
+        if (eq <= 0) fail("credential must be KEY_ENV=value");
+        credentials[pair.slice(0, eq)] = pair.slice(eq + 1);
+      }
+      printJson(
+        await client().firstRunBlueprint(id, {
+          ...(Object.keys(credentials).length ? { credentials } : {}),
+          ...(opts.question ? { question: opts.question } : {}),
+          max_rows: Number(opts.maxRows ?? 25),
+        }),
+      );
+    });
+  });
+
 bp.command("update")
   .description("Apply a new public base without clobbering the private overlay")
   .argument("<id>", "installed blueprint id (namespace/name)")

@@ -3,7 +3,8 @@
 A Blueprint is the **means** to acquire and maintain a domain graph. It is
 not the graph. This package is the inspectable schema, the Clinical
 Trials seed, workspace → directory export, install / inspect /
-uninstall, fork / lineage, and private overlay / non-clobber update.
+uninstall, fork / lineage, private overlay / non-clobber update, and
+post-install first-run (credentials → acquire → first answer).
 Range checks reuse catalog helpers — do not add a second ontology reader.
 
 Boundary: OSS protocol. Stdlib + pydantic + PyYAML + ``infona_client.*``
@@ -50,6 +51,10 @@ from infona_client.blueprint.install import (
     list_installed_blueprints,
     uninstall_blueprint,
 )
+from infona_client.blueprint.first_run import (
+    acquire_condition_set,
+    run_first_run,
+)
 from infona_client.blueprint.fork import fork_blueprint
 from infona_client.blueprint.layer import extend_blueprint, update_blueprint
 
@@ -70,9 +75,11 @@ __all__ = [
     "extend_blueprint",
     "find_manifest",
     "fork_blueprint",
+    "acquire_condition_set",
     "inspect_blueprint",
     "install_blueprint",
     "list_installed_blueprints",
+    "run_first_run",
     "load_blueprint_package",
     "parse_blueprint",
     "uninstall_blueprint",

@@ -92,6 +92,19 @@ Export (workspace → directory) is INF-565. Fork copies this package into
 a new identity with `lineage.parent` pointing here (INF-579); it does
 not copy instance data and does not clobber this seed. A workspace may
 keep this pin and add a private overlay; an upstream update of this
-package must not clobber that overlay (INF-578). First-run
-acquisition (`acquire_condition_set`) is not this package — install
-yields an empty graph plus the optional sample.
+package must not clobber that overlay (INF-578).
+
+## First run (INF-593)
+
+Install does not acquire live data. After install:
+
+```bash
+python -m infona_client.blueprint first-run infona/clinical-trials \
+  --tenant YOUR_TENANT
+```
+
+ClinicalTrials.gov is `credential: none`, so first-run starts
+`acquire_condition_set` without a key. A `byok` source fails closed
+until the workspace supplies `KEY_ENV=value`. The first supported
+question is answered on this tenant graph. Sample rows, if still
+present, are labelled and `sample_is_current` is always false.

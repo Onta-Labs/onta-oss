@@ -13,6 +13,7 @@ not a second identity-scoped family.
   POST   /graphs/{tenant}/blueprints/{namespace}/{name}/fork
   POST   /graphs/{tenant}/blueprints/{namespace}/{name}/extend
   POST   /graphs/{tenant}/blueprints/{namespace}/{name}/update
+  POST   /graphs/{tenant}/blueprints/{namespace}/{name}/first-run
 
 Explorer, CLI, and MCP reach these through the shared SDK. No per-interface
 path strings.
@@ -29,6 +30,7 @@ from pydantic import BaseModel, Field
 
 from infona_client.auth.access import require_tenant_write
 from infona_client.auth.api_keys import TenantContext, get_tenant
+from infona_client.blueprint.first_run import FIRST_RUN_MAX_ROWS, run_first_run
 from infona_client.blueprint.install import (
     BlueprintError,
     fork_blueprint,
@@ -87,6 +89,14 @@ class UpdateRequest(BaseModel):
     include_sample: Optional[bool] = None
     manifest: Optional[dict[str, Any]] = None
     manifest_yaml: Optional[str] = None
+
+
+class FirstRunRequest(BaseModel):
+    """Workspace-side credentials + optional question. Never persisted."""
+
+    credentials: Optional[dict[str, str]] = None
+    question: Optional[str] = None
+    max_rows: int = Field(default=FIRST_RUN_MAX_ROWS, ge=1, le=5000)
 
 
 def _manifest_from_body(body: ValidateRequest | InstallRequest | UpdateRequest):
@@ -235,3 +245,26 @@ async def update_blueprint_route(
     except BlueprintError as exc:
         _raise(exc)
         return
+
+
+@router.post("/{namespace}/{name}/first-run")
+async def first_run_blueprint_route(
+    namespace: str,
+    name: str,
+    body: FirstRunRequest | None = None,
+    tenant: TenantContext = Depends(require_tenant_write),
+):
+    """INF-593 — credentials → acquire_condition_set → first supported answer."""
+    req = body or FirstRunRequest()
+    try:
+        result = await run_first_run(
+            tenant.tenant_id,
+            _package_id(namespace, name),
+            credentials=req.credentials,
+            question=req.question,
+            max_rows=req.max_rows,
+        )
+    except BlueprintError as exc:
+        _raise(exc)
+        return
+    return result.to_dict()

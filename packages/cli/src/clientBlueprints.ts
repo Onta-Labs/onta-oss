@@ -69,6 +69,9 @@ export class ClientBlueprints extends ClientSkills {
   /** @internal */ pBlueprintUpdate(namespace: string, name: string): string {
     return `${this.pBlueprint(namespace, name)}/update`;
   }
+  /** @internal */ pBlueprintFirstRun(namespace: string, name: string): string {
+    return `${this.pBlueprint(namespace, name)}/first-run`;
+  }
 
   async validateBlueprint(body: {
     manifest?: Record<string, unknown>;
@@ -141,6 +144,18 @@ export class ClientBlueprints extends ClientSkills {
   ): Promise<unknown> {
     const { namespace, name } = splitBlueprintId(id);
     return this.request("POST", this.pBlueprintUpdate(namespace, name), body);
+  }
+
+  async firstRunBlueprint(
+    id: string,
+    body: {
+      credentials?: Record<string, string>;
+      question?: string;
+      max_rows?: number;
+    } = {},
+  ): Promise<unknown> {
+    const { namespace, name } = splitBlueprintId(id);
+    return this.request("POST", this.pBlueprintFirstRun(namespace, name), body);
   }
 }
 

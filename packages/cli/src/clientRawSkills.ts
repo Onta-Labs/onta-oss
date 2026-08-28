@@ -206,4 +206,18 @@ export class RawSkillsApi extends RawExtractApi {
       { body, ...init },
     );
   }
+
+  /** `POST /graphs/{tenant}/blueprints/{namespace}/{name}/first-run`. */
+  firstRunBlueprint(
+    namespace: string,
+    name: string,
+    body: unknown = {},
+    init?: RawInit,
+  ): Promise<Response> {
+    return this.client.requestRaw(
+      "POST",
+      this.client.pBlueprintFirstRun(namespace, name),
+      { body, ...init },
+    );
+  }
 }

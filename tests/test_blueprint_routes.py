@@ -268,6 +268,101 @@ def test_extend_and_update_on_the_same_route_family(client, auth_headers):
     assert card.json()["overlay"]["concepts"][0]["name"] == "ClinicalTrial"
 
 
+def test_first_run_via_canonical_route(client, auth_headers, monkeypatch):
+    installed = client.post(
+        f"/graphs/{TENANT}/blueprints/install",
+        json={"kg": KG, "manifest": _manifest()},
+        headers=auth_headers,
+    )
+    assert installed.status_code == 200, installed.text
+
+    async def fake_run(tenant_id, blueprint_id, **kwargs):
+        from infona_client.blueprint.first_run import FirstRunResult
+
+        assert tenant_id == TENANT
+        assert blueprint_id == "infona/clinical-trials"
+        assert kwargs.get("credentials") is None
+        return FirstRunResult(
+            status="answered",
+            tenant_id=tenant_id,
+            blueprint_id=blueprint_id,
+            kg=KG,
+            task="acquire_condition_set",
+            acquired_rows=1,
+            acquired_subjects=["https://graph.infona.ai/entities/ClinicalTrial/NCT09990001"],
+            question="Which Phase 3 trials for obesity are currently recruiting?",
+            answer="NCT09990001",
+            citations=["NCT09990001"],
+            sample_is_current=False,
+            sample_used=False,
+            sample_captured_at="2026-06-01",
+            sources=["ctgov"],
+        )
+
+    monkeypatch.setattr(
+        "infona_client.api.routes.blueprints.run_first_run", fake_run
+    )
+    resp = client.post(
+        f"/graphs/{TENANT}/blueprints/infona/clinical-trials/first-run",
+        json={},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "answered"
+    assert body["sample_is_current"] is False
+    assert "NCT09990001" in body["citations"]
+
+
+def test_first_run_missing_credentials_fail_closed(client, auth_headers):
+    body = _min_manifest()
+    body["sources"].append(
+        {
+            "id": "private-tracker",
+            "title": "Private trial tracker",
+            "kind": "licensed_api",
+            "publisher": "Example",
+            "description": "Keyed source.",
+            "license": "Apache-2.0",
+            "url": "https://example.test/api/trials",
+            "credential": "byok",
+            "key_env": "INFONA_TEST_TRACKER_KEY",
+            "declared_cadence": "weekly",
+            "mappings": [
+                {
+                    "source_field": "id",
+                    "lands_on": "ClinicalTrial.nct_id",
+                    "kind": "literal",
+                }
+            ],
+        }
+    )
+    installed = client.post(
+        f"/graphs/{TENANT}/blueprints/install",
+        json={"kg": KG, "include_sample": False, "manifest": body},
+        headers=auth_headers,
+    )
+    assert installed.status_code == 200, installed.text
+    resp = client.post(
+        f"/graphs/{TENANT}/blueprints/infona/clinical-trials/first-run",
+        json={},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 400, resp.text
+    detail = resp.json()["detail"]
+    assert detail["fail_closed"] is True
+    assert detail["missing"][0]["key_env"] == "INFONA_TEST_TRACKER_KEY"
+
+
+def test_first_run_is_confined_to_path_tenant(client, auth_headers):
+    resp = client.post(
+        "/graphs/someone-else/blueprints/infona/clinical-trials/first-run",
+        json={},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 403
+
+
 def test_extend_and_update_are_confined_to_path_tenant(client, auth_headers):
     ext = client.post(
         "/graphs/someone-else/blueprints/infona/clinical-trials/extend",

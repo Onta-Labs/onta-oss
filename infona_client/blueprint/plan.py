@@ -72,6 +72,24 @@ class BlueprintForkConflict(BlueprintError):
     status_code = 409
 
 
+class BlueprintCredentialsMissing(BlueprintError):
+    """A ``byok`` source has no workspace credential. Fail closed (INF-593)."""
+
+    status_code = 400
+
+
+class BlueprintPaidBinding(BlueprintError):
+    """Paid / hosted acquisition bindings stay premium (ADR 0014 / §35)."""
+
+    status_code = 403
+
+
+class BlueprintAcquisitionFailed(BlueprintError):
+    """Existing acquire machinery returned an error. Fail closed."""
+
+    status_code = 400
+
+
 def manifest_content_hash(manifest: BlueprintManifest) -> str:
     """Pin the v1 document (ADR 0014 F5). Canonical JSON, not archive bytes."""
     payload = dumps_blueprint(manifest).encode("utf-8")

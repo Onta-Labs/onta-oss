@@ -171,6 +171,37 @@ export async function updateBlueprintHandler(
   }
 }
 
+export async function firstRunBlueprintHandler(
+  {
+    id,
+    credentials,
+    question,
+    max_rows,
+  }: {
+    id: string;
+    credentials?: Record<string, string>;
+    question?: string;
+    max_rows?: number;
+  },
+  makeClient: () => Client = client,
+) {
+  try {
+    return textResult(
+      JSON.stringify(
+        await makeClient().firstRunBlueprint(id, {
+          credentials,
+          question,
+          max_rows,
+        }),
+        null,
+        2,
+      ),
+    );
+  } catch (err) {
+    return errorResult(err);
+  }
+}
+
 export function registerBlueprintTools(server: McpServer): void {
   server.registerTool(
     "validate_blueprint",
@@ -257,5 +288,19 @@ export function registerBlueprintTools(server: McpServer): void {
       },
     },
     (args) => updateBlueprintHandler(args),
+  );
+  server.registerTool(
+    "first_run_blueprint",
+    {
+      description:
+        "After install: walk source credentials, run acquire_condition_set, answer one supported question. Sample is never current. Same route as `infona blueprint first-run`.",
+      inputSchema: {
+        id: z.string().describe("Installed blueprint id (namespace/name)."),
+        credentials: z.record(z.string()).optional().describe("Workspace-side KEY_ENV values. Missing byok keys fail closed."),
+        question: z.string().optional().describe("Supported question to answer."),
+        max_rows: z.number().optional(),
+      },
+    },
+    (args) => firstRunBlueprintHandler(args),
   );
 }

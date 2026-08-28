@@ -35,8 +35,11 @@ from infona_client.blueprint.lock import (
 )
 from infona_client.blueprint.models import BlueprintManifest
 from infona_client.blueprint.plan import (
+    BlueprintAcquisitionFailed,
+    BlueprintCredentialsMissing,
     BlueprintError,
     BlueprintNotInstalled,
+    BlueprintPaidBinding,
     BlueprintUninstallRefused,
     BlueprintValidationError,
     facts_for_sample,
@@ -533,8 +536,11 @@ async def uninstall_blueprint(
 
 
 __all__ = [
+    "BlueprintAcquisitionFailed",
+    "BlueprintCredentialsMissing",
     "BlueprintError",
     "BlueprintNotInstalled",
+    "BlueprintPaidBinding",
     "BlueprintUninstallRefused",
     "BlueprintValidationError",
     "InstallResult",

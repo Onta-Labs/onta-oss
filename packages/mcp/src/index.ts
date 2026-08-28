@@ -59,6 +59,7 @@ export {
   forkBlueprintHandler,
   extendBlueprintHandler,
   updateBlueprintHandler,
+  firstRunBlueprintHandler,
 } from "./mcpBlueprints.js";
 
 const server = new McpServer(

@@ -6,6 +6,7 @@ import {
   uninstallBlueprintHandler,
   extendBlueprintHandler,
   updateBlueprintHandler,
+  firstRunBlueprintHandler,
 } from "../src/index.js";
 
 afterEach(() => vi.restoreAllMocks());
@@ -72,6 +73,19 @@ describe("blueprint tools — SDK forwarding", () => {
     expect(updateBlueprint).toHaveBeenCalledWith("infona/clinical-trials", {
       include_sample: undefined,
       manifest_yaml: "id: x\n",
+    });
+    const firstRunBlueprint = vi.fn(async () => ({
+      status: "answered",
+      sample_is_current: false,
+    }));
+    await firstRunBlueprintHandler(
+      { id: "infona/clinical-trials", question: "Which Phase 3 trials for obesity are currently recruiting?" },
+      () => stub({ firstRunBlueprint }),
+    );
+    expect(firstRunBlueprint).toHaveBeenCalledWith("infona/clinical-trials", {
+      credentials: undefined,
+      question: "Which Phase 3 trials for obesity are currently recruiting?",
+      max_rows: undefined,
     });
   });
 });

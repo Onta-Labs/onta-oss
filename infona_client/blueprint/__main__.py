@@ -7,6 +7,7 @@
     python -m infona_client.blueprint fork namespace/name --tenant T [--as ns/name]
     python -m infona_client.blueprint extend namespace/name --tenant T --overlay file
     python -m infona_client.blueprint update path/to/new --tenant T --id ns/name
+    python -m infona_client.blueprint first-run namespace/name --tenant T
 
 The HTTP / npm / MCP surfaces call the same engine. Export is
 ``infona_client.blueprint.export`` (INF-565).
@@ -20,6 +21,7 @@ import json
 import sys
 from pathlib import Path
 
+from infona_client.blueprint.first_run import run_first_run
 from infona_client.blueprint.install import (
     BlueprintError,
     inspect_blueprint,
@@ -38,7 +40,7 @@ def _run(coro):
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m infona_client.blueprint",
-        description="Validate, install, inspect, uninstall, fork, extend, or update a Blueprint.",
+        description="Validate, install, inspect, uninstall, fork, extend, update, or first-run a Blueprint.",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
@@ -82,6 +84,21 @@ def main(argv: list[str] | None = None) -> int:
     update.add_argument("path", help="new package directory or blueprint.yaml")
     update.add_argument("--tenant", required=True)
     update.add_argument("--id", dest="blueprint_id", required=True, help="installed pin")
+
+    first = sub.add_parser(
+        "first-run",
+        help="credentials → acquire_condition_set → first supported answer",
+    )
+    first.add_argument("id", help="installed blueprint id (namespace/name)")
+    first.add_argument("--tenant", required=True)
+    first.add_argument("--question", default=None, help="supported question to answer")
+    first.add_argument(
+        "--credential",
+        action="append",
+        default=[],
+        help="KEY_ENV=value (repeatable). Missing byok keys fail closed.",
+    )
+    first.add_argument("--max-rows", type=int, default=25)
 
     args = parser.parse_args(argv)
 
@@ -144,6 +161,25 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
             print(json.dumps(body, indent=2))
+            return 0
+        if args.cmd == "first-run":
+            creds: dict[str, str] = {}
+            for item in args.credential:
+                if "=" not in item:
+                    print("credential must be KEY_ENV=value", file=sys.stderr)
+                    return 2
+                key, value = item.split("=", 1)
+                creds[key] = value
+            body = _run(
+                run_first_run(
+                    args.tenant,
+                    args.id,
+                    credentials=creds or None,
+                    question=args.question,
+                    max_rows=args.max_rows,
+                )
+            )
+            print(json.dumps(body.to_dict(), indent=2))
             return 0
     except BlueprintError as exc:
         print(str(exc), file=sys.stderr)
