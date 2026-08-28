@@ -78,7 +78,7 @@ OVERSIZE_ALLOWLIST: dict[str, int] = {
     "infona_client/qc/boundary.py": 689,
     "infona_client/research/harness.py": 706,
     "infona_client/research/types.py": 613,
-    "infona_client/resolver/attribute_resolver.py": 609,
+    "infona_client/resolver/attribute_resolver.py": 596,
     "infona_client/resolver/governance.py": 803,
     "infona_client/resolver/ontology_resolver.py": 710,
     "infona_client/semantic/postgres.py": 1057,

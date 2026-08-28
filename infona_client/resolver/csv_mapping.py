@@ -11,7 +11,8 @@ from infona_client.resolver.models import ExtractedEntity, ExtractedRelationship
 class AppliedMapping:
     """Result of ``CSVResolver.apply_mapping``: the extracted entities and
     relationships plus row-conservation accounting (ADR 0003 §2 — input rows
-    are never silently dropped).
+    are never silently dropped; a mapping with no TYPE_ID column uses a
+    synthetic key per valued row instead of dropping the table).
 
     Iterates as the legacy ``(entities, relationships)`` pair, so existing
     two-value unpacking call sites keep working unchanged; new callers read

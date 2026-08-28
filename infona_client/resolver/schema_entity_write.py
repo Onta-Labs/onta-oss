@@ -56,6 +56,7 @@ class SchemaEntityWriteMixin:
         observed_at: datetime | None = None,
         workspace_id: str | None = None,
         focus_types: list[str] | None = None,
+        allow_prefix_promotion: bool = True, allow_subtype_link: bool = True,
     ) -> IngestResult:
         """Inner pipeline: resolve entities, insert triples. Separated for rollback.
 
@@ -157,6 +158,7 @@ class SchemaEntityWriteMixin:
                 parent_of=parent_of,
                 focus_types=focus_types,
                 is_primary=None if primary_ids is None else entity.id in primary_ids,
+                allow_subtype_link=allow_subtype_link,
             )
             if resolved_type:
                 # Resolve genuine co-types so they exist in the ontology; record
@@ -164,7 +166,7 @@ class SchemaEntityWriteMixin:
                 # type (resolved_type) still owns URI minting + ER.
                 also = await self._resolve_also_types(
                     entity, resolved_type, graph_uri, existing_types, existing_attrs, result,
-                    parent_of=parent_of,
+                    parent_of=parent_of, allow_subtype_link=allow_subtype_link,
                 )
                 if also:
                     entity_also_types[map_key(entity)] = also
@@ -344,6 +346,7 @@ class SchemaEntityWriteMixin:
                 drop_placeholder_values=True,
                 instance_graph=instance_graph,  # ONTA-268: call-local target
                 observed_at=observed_at,  # ONTA-271: replay-stable ingested_at
+                allow_prefix_promotion=allow_prefix_promotion,
             )
 
         # Append ER index triples (block keys + denormalized signals) to the

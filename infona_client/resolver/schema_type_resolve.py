@@ -7,10 +7,29 @@ Do not mint entity instance URIs here — that is ``entity_uri`` on write.
 """
 
 from infona_client.resolver.attribute_resolver import AttributeSchema, is_junk_type_name
-from infona_client.resolver.models import ExtractedEntity, IngestResult, MatchVerdict
+from infona_client.resolver.models import ExtractedEntity, IngestResult, MatchVerdict, TypeMatch
 # Call-time host lookups so tests that patch schema_resolver.logger /
 # insert_facts / _entity_uri / env flags keep working after this extract.
 from infona_client.resolver import schema_resolver as _sr
+
+
+def coerce_subtype_match(
+    match: TypeMatch, *, allow_subtype_link: bool, proposed: str,
+) -> TypeMatch:
+    """Mapped CSV treats TypeMatcher SUBTYPE as a peer type (no subClassOf)."""
+    if allow_subtype_link or match.verdict != MatchVerdict.SUBTYPE:
+        return match
+    _sr.logger.info(
+        "type_subtype_treated_as_different",
+        proposed=proposed,
+        parent=match.parent_type,
+    )
+    return match.model_copy(update={
+        "verdict": MatchVerdict.DIFFERENT,
+        "parent_type": None,
+        "is_new": True,
+        "resolved": proposed,
+    })
 
 
 class SchemaTypeResolveMixin:
@@ -100,6 +119,7 @@ class SchemaTypeResolveMixin:
         result: IngestResult,
         *,
         parent_of: dict[str, str] | None = None,
+        allow_subtype_link: bool = True,
     ) -> None:
         """Attach a freshly-created type to its parent lineage.
 
@@ -115,6 +135,8 @@ class SchemaTypeResolveMixin:
         `_synthesize_ancestors`; falls back to ``self._parent_of``. Runs under the
         caller's ontology-write lock — does not acquire it.
         """
+        if not allow_subtype_link:
+            return
         parent_of = self._parent_of if parent_of is None else parent_of
         pt = entity.parent_type
         linked_as_subtype = False
@@ -167,6 +189,7 @@ class SchemaTypeResolveMixin:
         result: IngestResult,
         *,
         parent_of: dict[str, str] | None = None,
+        allow_subtype_link: bool = True,
     ) -> list[str]:
         """Resolve genuine co-classifications (entity.also_types) so each exists
         in the ontology (ADR rule 1). Returns the resolved co-type names, deduped.
@@ -192,6 +215,7 @@ class SchemaTypeResolveMixin:
             rt = await self._resolve_type(
                 proxy, graph_uri, existing_types, existing_attrs, result,
                 parent_of=parent_of,
+                allow_subtype_link=allow_subtype_link,
             )
             if not rt or rt in seen:
                 continue
@@ -275,6 +299,7 @@ class SchemaTypeResolveMixin:
         parent_of: dict[str, str] | None = None,
         focus_types: list[str] | None = None,
         is_primary: bool | None = None,
+        allow_subtype_link: bool = True,
     ) -> str | None:
         """Pass 1: Resolve the type for an entity. Returns resolved type name or None.
 
@@ -380,6 +405,8 @@ class SchemaTypeResolveMixin:
                         entity_id=entity.id,
                     )
 
+        if not allow_subtype_link and (entity.parent_type or entity.parent_chain):
+            entity = entity.model_copy(update={"parent_type": None, "parent_chain": []})
         parent_of = self._parent_of if parent_of is None else parent_of
         async with self._ontology_lock:
             # ONTA-268: point the embedding pre-filter at THIS ingest's tenant
@@ -389,7 +416,11 @@ class SchemaTypeResolveMixin:
             # production each per-sub-query resolver holds its own TypeMatcher).
             self._type_matcher._graph_uri = graph_uri
             if entity.same_as and entity.same_as in existing_types:
-                match = await self._type_matcher.match(entity.type_name, "", existing_types)
+                match = coerce_subtype_match(
+                    await self._type_matcher.match(entity.type_name, "", existing_types),
+                    allow_subtype_link=allow_subtype_link,
+                    proposed=entity.type_name,
+                )
                 if match.verdict == MatchVerdict.SAME:
                     _sr.logger.info("type_same_as_verified", proposed=entity.type_name, resolved=match.resolved)
                     return match.resolved
@@ -434,7 +465,11 @@ class SchemaTypeResolveMixin:
                     existing_attrs[entity.type_name] = {}
                     return entity.type_name
             else:
-                match = await self._type_matcher.match(entity.type_name, "", existing_types)
+                match = coerce_subtype_match(
+                    await self._type_matcher.match(entity.type_name, "", existing_types),
+                    allow_subtype_link=allow_subtype_link,
+                    proposed=entity.type_name,
+                )
                 if match.verdict == MatchVerdict.SAME:
                     _sr.logger.info("type_matched_existing", proposed=entity.type_name, resolved=match.resolved)
                     return match.resolved
@@ -470,7 +505,7 @@ class SchemaTypeResolveMixin:
                     existing_attrs[entity.type_name] = {}
                     await self._link_parent(
                         entity, graph_uri, existing_types, existing_attrs, result,
-                        parent_of=parent_of,
+                        parent_of=parent_of, allow_subtype_link=allow_subtype_link,
                     )
                     _sr.logger.warning("type_flagged_for_review", proposed=entity.type_name)
                     result.flagged_types.append(entity.type_name)
@@ -486,7 +521,7 @@ class SchemaTypeResolveMixin:
                     existing_attrs[entity.type_name] = {}
                     await self._link_parent(
                         entity, graph_uri, existing_types, existing_attrs, result,
-                        parent_of=parent_of,
+                        parent_of=parent_of, allow_subtype_link=allow_subtype_link,
                     )
                     # Governance seam: the genuinely-new type MAY also be proposed
                     # for the Global-Public layer. No-op unless the flag is on.

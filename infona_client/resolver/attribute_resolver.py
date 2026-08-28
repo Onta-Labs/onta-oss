@@ -20,6 +20,11 @@ from difflib import SequenceMatcher
 
 import structlog
 
+from infona_client.resolver.attr_promotion import (
+    _PROMOTION_CLUSTER_MIN,
+    _cluster_has_identity,
+    prefix_cluster_skip_event,
+)
 from infona_client.resolver.models import (
     AttrAction,
     ExtractedAttribute,
@@ -42,32 +47,6 @@ _STRIP_ATTR_PREFIXES = (
 # versa).
 _STRIP_ROLE_PREFIXES = ("is_", "has_", "was_", "does_", "can_", "get_")
 _STRIP_ROLE_SUFFIXES = ("_of", "_by", "_for", "_to", "_from", "_in", "_at")
-
-# Minimum attributes sharing a prefix to pass the cluster test.
-_PROMOTION_CLUSTER_MIN = 3
-
-# Identity leaves (the short name after the shared prefix is stripped) that
-# satisfy the "can you point at this sub-concept?" test. Domain-free: these are
-# structural identity markers, not domain nouns.
-_IDENTITY_LEAVES = frozenset(
-    {
-        "name",
-        "id",
-        "label",
-        "title",
-        "street",
-        "code",
-        "number",
-        "key",
-        "identifier",
-        "uri",
-        "url",
-        "address",
-        "value",
-        "line1",
-        "line_1",
-    }
-)
 
 # Property / quality / state class tokens (domain-free). A type whose whole name
 # tokenizes into ONLY these, or that ends with a property-class suffix, is a
@@ -251,24 +230,6 @@ def is_junk_type_name(name: str) -> bool:
         non_suffix = tokens - suffix_tokens
         if non_suffix and non_suffix <= _PROPERTY_CLASS_TOKENS:
             return True
-    return False
-
-
-
-
-def _cluster_has_identity(prefix: str, attrs: list[ExtractedAttribute]) -> bool:
-    """True when the cluster has an identity leaf (name/id/street/…) — test 1."""
-    for attr in attrs:
-        short = _normalize_attr_name(attr.name)
-        if short.startswith(prefix + "_"):
-            short = short[len(prefix) + 1 :]
-        # Multi-segment leaf: take the last segment (address_line_1 → line_1 already
-        # handled as full short; also check final token).
-        leaf = short
-        last = short.rsplit("_", 1)[-1]
-        if leaf in _IDENTITY_LEAVES or last in _IDENTITY_LEAVES:
-            return True
-        # Bare prefix used as the name itself is rare; a value that is empty fails.
     return False
 
 
@@ -545,6 +506,17 @@ def check_promotion(
         # itself, not a nested Address-style concept. Promoting it mints a
         # shadow ``{key}-{type}`` node and ``has_{type}`` self-rel.
         if (entity.type_name or "").lower() == promoted_type.lower():
+            continue
+
+        skip_event = prefix_cluster_skip_event(prefix, attrs)
+        if skip_event:
+            logger.info(
+                skip_event,
+                entity=entity.type_name,
+                prefix=prefix,
+                attr_count=len(attrs),
+                promoted_type=promoted_type,
+            )
             continue
 
         # --- Junk-type guard -------------------------------------------------
