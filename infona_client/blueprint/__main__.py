@@ -4,6 +4,7 @@
     python -m infona_client.blueprint install path/to/package --tenant T --kg K
     python -m infona_client.blueprint inspect namespace/name --tenant T
     python -m infona_client.blueprint uninstall namespace/name --tenant T
+    python -m infona_client.blueprint fork namespace/name --tenant T [--as ns/name]
 
 The HTTP / npm / MCP surfaces call the same engine. Export is
 ``infona_client.blueprint.export`` (INF-565).
@@ -22,6 +23,7 @@ from infona_client.blueprint.install import (
     install_blueprint,
     uninstall_blueprint,
 )
+from infona_client.blueprint.fork import fork_blueprint
 from infona_client.blueprint.load import validate_blueprint_package
 
 
@@ -32,7 +34,7 @@ def _run(coro):
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m infona_client.blueprint",
-        description="Validate, install, inspect, or uninstall a Blueprint package.",
+        description="Validate, install, inspect, uninstall, or fork a Blueprint package.",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
@@ -56,6 +58,16 @@ def main(argv: list[str] | None = None) -> int:
     uninstall = sub.add_parser("uninstall", help="remove what install wrote")
     uninstall.add_argument("id", help="blueprint id (namespace/name)")
     uninstall.add_argument("--tenant", required=True)
+
+    fork = sub.add_parser("fork", help="copy the package into a new identity with lineage")
+    fork.add_argument("id", help="parent blueprint id (namespace/name)")
+    fork.add_argument("--tenant", required=True)
+    fork.add_argument(
+        "--as",
+        dest="as_id",
+        default=None,
+        help="new package id (default: {tenant}/{parent-name})",
+    )
 
     args = parser.parse_args(argv)
 
@@ -87,6 +99,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "uninstall":
             body = _run(uninstall_blueprint(args.tenant, args.id))
             print(json.dumps(body, indent=2))
+            return 0
+        if args.cmd == "fork":
+            result = _run(
+                fork_blueprint(args.tenant, args.id, as_id=args.as_id)
+            )
+            print(json.dumps(result.to_dict(), indent=2))
             return 0
     except BlueprintError as exc:
         print(str(exc), file=sys.stderr)

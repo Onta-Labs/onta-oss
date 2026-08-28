@@ -61,7 +61,7 @@ describe("blueprints — one path family", () => {
     await c.installBlueprint({ kg: "clinical-trials", manifest: { id: "infona/clinical-trials" } });
     await c.inspectBlueprint("infona/clinical-trials");
     await c.uninstallBlueprint("infona/clinical-trials");
-    await c.forkBlueprint("infona/clinical-trials");
+    await c.forkBlueprint("infona/clinical-trials", { as: "acme/clinical-trials" });
     expect(calls[0]!.init.method).toBe("POST");
     expect(calls[0]!.url).toBe(`${PREFIX}/blueprints/install`);
     expect(calls[1]!.init.method).toBe("GET");
@@ -70,6 +70,9 @@ describe("blueprints — one path family", () => {
     expect(calls[2]!.url).toBe(`${PREFIX}/blueprints/infona/clinical-trials`);
     expect(calls[3]!.init.method).toBe("POST");
     expect(calls[3]!.url).toBe(`${PREFIX}/blueprints/infona/clinical-trials/fork`);
+    expect(JSON.parse(String(calls[3]!.init.body))).toEqual({
+      as: "acme/clinical-trials",
+    });
   });
 
   it("raw passthrough uses the same builders", async () => {

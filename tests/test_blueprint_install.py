@@ -14,6 +14,7 @@ from infona_client.blueprint.install import (
     BlueprintUninstallRefused,
     manifest_content_hash,
 )
+from infona_client.blueprint.catalog import reset_blueprint_package_store
 from infona_client.blueprint.lock import reset_blueprint_lock_store
 from infona_client.blueprint.seeds import CLINICAL_TRIALS
 from infona_client.graph.facts import Fact
@@ -39,9 +40,11 @@ SEED_TYPES = {
 @pytest.fixture(autouse=True)
 def _reset_blueprint_state():
     reset_blueprint_lock_store()
+    reset_blueprint_package_store()
     reset_type_skill_store()
     yield
     reset_blueprint_lock_store()
+    reset_blueprint_package_store()
     reset_type_skill_store()
 
 

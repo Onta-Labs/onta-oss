@@ -48,8 +48,12 @@ class BlueprintUninstallRefused(BlueprintError):
     status_code = 409
 
 
-class BlueprintForkNotImplemented(BlueprintError):
-    status_code = 501
+class BlueprintNotFound(BlueprintError):
+    status_code = 404
+
+
+class BlueprintForkConflict(BlueprintError):
+    status_code = 409
 
 
 def manifest_content_hash(manifest: BlueprintManifest) -> str:

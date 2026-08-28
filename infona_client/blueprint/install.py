@@ -20,6 +20,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Mapping
 
+from infona_client.blueprint.catalog import (
+    CatalogedPackage,
+    make_blueprint_package_store,
+    shipped_seed_path,
+)
+from infona_client.blueprint.fork import fork_blueprint, fork_card
 from infona_client.blueprint.lock import (
     BlueprintLock,
     _now,
@@ -28,7 +34,6 @@ from infona_client.blueprint.lock import (
 from infona_client.blueprint.models import BlueprintManifest
 from infona_client.blueprint.plan import (
     BlueprintError,
-    BlueprintForkNotImplemented,
     BlueprintNotInstalled,
     BlueprintUninstallRefused,
     BlueprintValidationError,
@@ -190,6 +195,25 @@ async def _dependent_instances(
     return hits
 
 
+async def _retained_by_peers(
+    store: Any, tenant_id: str, blueprint_id: str
+) -> tuple[set[str], set[tuple[str, str]], set[tuple[str, str]], set[str]]:
+    """Types / attrs / skills / sample subjects still owned by another pin."""
+    types: set[str] = set()
+    attrs: set[tuple[str, str]] = set()
+    skills: set[tuple[str, str]] = set()
+    subjects: set[str] = set()
+    for other in await store.list_for_tenant(tenant_id):
+        if other.blueprint_id == blueprint_id:
+            continue
+        types.update(other.owned_types)
+        types.update(other.created_types)
+        attrs.update(other.owned_attributes)
+        skills.update(other.owned_skills)
+        subjects.update(other.sample_subjects)
+    return types, attrs, skills, subjects
+
+
 async def install_blueprint(
     source: str | Path | Mapping[str, Any] | BlueprintManifest,
     *,
@@ -305,6 +329,21 @@ async def install_blueprint(
         owned_skills=owned_skills,
     )
     await store.put(lock)
+    catalog = make_blueprint_package_store()
+    prior_pkg = await catalog.get(tenant_id, manifest.id)
+    origin = (
+        prior_pkg.origin
+        if prior_pkg is not None and prior_pkg.origin == "fork"
+        else "install"
+    )
+    await catalog.put(
+        CatalogedPackage(
+            tenant_id=tenant_id,
+            manifest=manifest,
+            origin=origin,
+            stored_at=_now(),
+        )
+    )
     status: Literal["installed", "updated"] = (
         "updated" if existing is not None else "installed"
     )
@@ -326,11 +365,13 @@ def _card(manifest: BlueprintManifest | None, lock: BlueprintLock) -> dict[str, 
         "sample_captured_at": lock.sample_captured_at,
         "sample_subject_count": len(lock.sample_subjects),
         "skills": [f"{t}/{s}" for t, s in lock.owned_skills],
+        "installed": True,
     }
     if manifest is not None:
         card["license"] = manifest.license
         card["attribution"] = manifest.attribution
         card["namespace"] = manifest.namespace
+        card["lineage"] = manifest.lineage.model_dump(mode="json", exclude_none=True)
         card["sources"] = [
             {
                 "id": s.id,
@@ -353,12 +394,21 @@ async def inspect_blueprint(
     """Return the workspace lock + card. 404 if this tenant has no install."""
     store = make_blueprint_lock_store()
     lock = await store.get(tenant_id, blueprint_id)
-    if lock is None:
-        raise BlueprintNotInstalled(
-            f"blueprint {blueprint_id!r} is not installed in this workspace"
-        )
     manifest = load_and_validate(source) if source is not None else None
-    return _card(manifest, lock)
+    cataloged = await make_blueprint_package_store().get(tenant_id, blueprint_id)
+    if manifest is None and cataloged is not None:
+        manifest = cataloged.manifest
+    if manifest is None:
+        seed = shipped_seed_path(blueprint_id)
+        if seed is not None:
+            manifest = load_and_validate(seed)
+    if lock is not None:
+        return _card(manifest, lock)
+    if cataloged is not None and cataloged.origin == "fork":
+        return fork_card(cataloged.manifest)
+    raise BlueprintNotInstalled(
+        f"blueprint {blueprint_id!r} is not installed in this workspace"
+    )
 
 
 async def list_installed_blueprints(tenant_id: str) -> list[dict[str, Any]]:
@@ -380,10 +430,13 @@ async def uninstall_blueprint(
         raise BlueprintNotInstalled(
             f"blueprint {blueprint_id!r} is not installed in this workspace"
         )
+    peer_types, peer_attrs, peer_skills, peer_subjects = await _retained_by_peers(
+        store, tenant_id, blueprint_id
+    )
     dependents = await _dependent_instances(
         tenant_id,
         lock.owned_types,
-        ignore_subjects=set(lock.sample_subjects),
+        ignore_subjects=set(lock.sample_subjects) | peer_subjects,
         extra_kgs=[lock.kg],
     )
     if dependents:
@@ -392,20 +445,24 @@ async def uninstall_blueprint(
             "this Blueprint's types",
             details={"dependents": dependents},
         )
+    sample_to_delete = [s for s in lock.sample_subjects if s not in peer_subjects]
+    skills_to_remove = [s for s in lock.owned_skills if s not in peer_skills]
+    attrs_to_remove = [p for p in lock.owned_attributes if p not in peer_attrs]
+    types_to_remove = [t for t in lock.created_types if t not in peer_types]
 
-    if lock.sample_subjects:
+    if sample_to_delete:
         await delete_facts(
             neptune,
             kg_graph_uri(tenant_id, lock.kg),
-            subjects=list(lock.sample_subjects),
+            subjects=list(sample_to_delete),
             touched_types=lock.owned_types,
             reason="blueprint_uninstall",
         )
 
-    removed_skills = await _remove_skills(tenant_id, lock.owned_skills)
+    removed_skills = await _remove_skills(tenant_id, skills_to_remove)
 
     undo: list[OntologyMutation] = []
-    for type_name, slot in lock.owned_attributes:
+    for type_name, slot in attrs_to_remove:
         undo.append(
             OntologyMutation(
                 op=OntologyOpKind.DELETE_ATTRIBUTE,
@@ -413,7 +470,7 @@ async def uninstall_blueprint(
                 slot_name=slot,
             )
         )
-    for type_name in lock.created_types:
+    for type_name in types_to_remove:
         undo.append(
             OntologyMutation(
                 op=OntologyOpKind.DELETE_TYPE,
@@ -434,14 +491,14 @@ async def uninstall_blueprint(
         tenant_id=tenant_id,
         kg_name=lock.kg,
         affected_types=lock.owned_types,
-        deleted_subjects=lock.sample_subjects,
+        deleted_subjects=sample_to_delete,
     )
     await store.delete(tenant_id, blueprint_id)
     return {
         "status": "uninstalled",
         "blueprint_id": blueprint_id,
-        "removed_types": list(lock.created_types),
-        "removed_sample": list(lock.sample_subjects),
+        "removed_types": list(types_to_remove),
+        "removed_sample": list(sample_to_delete),
         "removed_skills": removed_skills,
         "left_in_place": {
             "pre_existing_types": [
@@ -451,17 +508,8 @@ async def uninstall_blueprint(
     }
 
 
-def fork_blueprint(*_args: Any, **_kwargs: Any) -> None:
-    """INF-579 lineage is not in this PR. Same route family, honest 501."""
-    raise BlueprintForkNotImplemented(
-        "Blueprint fork/lineage is not implemented (INF-579). "
-        "Copy the inspectable package directory; do not invent a second endpoint."
-    )
-
-
 __all__ = [
     "BlueprintError",
-    "BlueprintForkNotImplemented",
     "BlueprintNotInstalled",
     "BlueprintUninstallRefused",
     "BlueprintValidationError",

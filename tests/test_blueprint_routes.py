@@ -1,10 +1,11 @@
-"""INF-575 — one /graphs/{tenant}/blueprints family; fork is 501."""
+"""INF-575 / INF-579 — one /graphs/{tenant}/blueprints family."""
 
 from __future__ import annotations
 
 import pytest
 
 from infona_client.blueprint import load_blueprint_package
+from infona_client.blueprint.catalog import reset_blueprint_package_store
 from infona_client.blueprint.lock import reset_blueprint_lock_store
 from infona_client.blueprint.seeds import CLINICAL_TRIALS
 from infona_client.skills.store import reset_type_skill_store
@@ -16,9 +17,11 @@ KG = "clinical-trials"
 @pytest.fixture(autouse=True)
 def _reset_blueprint_state():
     reset_blueprint_lock_store()
+    reset_blueprint_package_store()
     reset_type_skill_store()
     yield
     reset_blueprint_lock_store()
+    reset_blueprint_package_store()
     reset_type_skill_store()
 
 
@@ -73,14 +76,94 @@ def test_install_inspect_uninstall_via_canonical_routes(client, auth_headers):
     assert missing.status_code == 404
 
 
-def test_fork_is_501_on_the_same_route_family(client, auth_headers):
+def test_fork_copies_the_seed_with_lineage_on_the_same_route_family(
+    client, auth_headers
+):
     resp = client.post(
         f"/graphs/{TENANT}/blueprints/infona/clinical-trials/fork",
+        json={"as": "acme/clinical-trials"},
         headers=auth_headers,
     )
-    assert resp.status_code == 501
-    detail = resp.json()["detail"]
-    assert "INF-579" in str(detail)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "forked"
+    assert body["blueprint_id"] == "acme/clinical-trials"
+    assert body["parent_id"] == "infona/clinical-trials"
+    assert body["parent_version"] == "0.1.0"
+    assert body["lineage"]["parent"] == {
+        "id": "infona/clinical-trials",
+        "version": "0.1.0",
+    }
+    assert "Infona" in body["attribution"]
+    assert body["sample_is_current"] is False
+
+    card = client.get(
+        f"/graphs/{TENANT}/blueprints/acme/clinical-trials",
+        headers=auth_headers,
+    )
+    assert card.status_code == 200, card.text
+    assert card.json()["lineage"]["parent"]["id"] == "infona/clinical-trials"
+    assert card.json()["sample_is_current"] is False
+
+    listed = client.get(f"/graphs/{TENANT}/blueprints", headers=auth_headers)
+    assert listed.json()["blueprints"] == []
+
+
+def test_install_of_fork_is_a_separate_pin(client, auth_headers):
+    parent = client.post(
+        f"/graphs/{TENANT}/blueprints/install",
+        json={"kg": KG, "manifest": _manifest()},
+        headers=auth_headers,
+    )
+    assert parent.status_code == 200, parent.text
+    forked = client.post(
+        f"/graphs/{TENANT}/blueprints/infona/clinical-trials/fork",
+        json={"as": "acme/clinical-trials"},
+        headers=auth_headers,
+    )
+    assert forked.status_code == 200, forked.text
+    child = client.post(
+        f"/graphs/{TENANT}/blueprints/install",
+        json={"kg": "fork-kg", "manifest": forked.json()["manifest"]},
+        headers=auth_headers,
+    )
+    assert child.status_code == 200, child.text
+    assert child.json()["status"] == "installed"
+    assert child.json()["blueprint_id"] == "acme/clinical-trials"
+    assert child.json()["blueprint_id"] != parent.json()["blueprint_id"]
+
+    listed = client.get(f"/graphs/{TENANT}/blueprints", headers=auth_headers)
+    ids = [row["blueprint_id"] for row in listed.json()["blueprints"]]
+    assert "infona/clinical-trials" in ids
+    assert "acme/clinical-trials" in ids
+
+    again_parent = client.post(
+        f"/graphs/{TENANT}/blueprints/install",
+        json={"kg": KG, "manifest": _manifest()},
+        headers=auth_headers,
+    )
+    assert again_parent.json()["status"] == "already_installed"
+
+    gone = client.delete(
+        f"/graphs/{TENANT}/blueprints/acme/clinical-trials",
+        headers=auth_headers,
+    )
+    assert gone.status_code == 200
+    still = client.get(
+        f"/graphs/{TENANT}/blueprints/infona/clinical-trials",
+        headers=auth_headers,
+    )
+    assert still.status_code == 200
+    assert still.json()["blueprint_id"] == "infona/clinical-trials"
+
+
+def test_fork_is_confined_to_path_tenant(client, auth_headers):
+    resp = client.post(
+        "/graphs/someone-else/blueprints/infona/clinical-trials/fork",
+        json={"as": "acme/clinical-trials"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 403
 
 
 def test_install_is_confined_to_path_tenant(client, auth_headers):

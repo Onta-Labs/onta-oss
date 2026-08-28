@@ -1,4 +1,4 @@
-"""Canonical Blueprint routes — one family, every client (INF-575 / INF-577).
+"""Canonical Blueprint routes — one family, every client (INF-575 / INF-579).
 
 Workspace mutations stay on ``/graphs/{tenant}/…`` so ``get_tenant`` confines
 the install to the path tenant (INF-580). INF-575's ``/v1/blueprints/{id}``
@@ -10,7 +10,7 @@ identity-scoped family.
   GET    /graphs/{tenant}/blueprints
   GET    /graphs/{tenant}/blueprints/{namespace}/{name}
   DELETE /graphs/{tenant}/blueprints/{namespace}/{name}
-  POST   /graphs/{tenant}/blueprints/{namespace}/{name}/fork   (501)
+  POST   /graphs/{tenant}/blueprints/{namespace}/{name}/fork
 
 Explorer, CLI, and MCP reach these through the shared SDK. No per-interface
 path strings.
@@ -61,6 +61,14 @@ class InstallRequest(BaseModel):
     include_sample: bool = True
     manifest: Optional[dict[str, Any]] = None
     manifest_yaml: Optional[str] = None
+
+
+class ForkRequest(BaseModel):
+    """Optional new identity. Default is ``{tenant}/{parent-name}``."""
+
+    as_id: Optional[str] = Field(default=None, alias="as")
+
+    model_config = {"populate_by_name": True}
 
 
 def _manifest_from_body(body: ValidateRequest | InstallRequest):
@@ -145,10 +153,17 @@ async def uninstall_blueprint_route(
 async def fork_blueprint_route(
     namespace: str,
     name: str,
+    body: ForkRequest | None = None,
     tenant: TenantContext = Depends(require_tenant_write),
 ):
-    _ = (namespace, name, tenant)
+    req = body or ForkRequest()
     try:
-        fork_blueprint()
+        result = await fork_blueprint(
+            tenant.tenant_id,
+            _package_id(namespace, name),
+            as_id=req.as_id,
+        )
     except BlueprintError as exc:
         _raise(exc)
+        return
+    return result.to_dict()

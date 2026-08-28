@@ -88,7 +88,8 @@ Re-install of this pin is a no-op. `inspect` shows the lock.
 `uninstall` removes the ontology slice, skills, and sample this package
 wrote, and leaves the rest of the workspace (INF-577).
 
-Export (workspace → directory) is still INF-565 and is not implemented.
-Fork/lineage is a 501 on `POST .../blueprints/{namespace}/{name}/fork`
-until INF-579. First-run acquisition (`acquire_condition_set`) is not
-this package — install yields an empty graph plus the optional sample.
+Export (workspace → directory) is INF-565. Fork copies this package into
+a new identity with `lineage.parent` pointing here (INF-579); it does
+not copy instance data and does not clobber this seed. First-run
+acquisition (`acquire_condition_set`) is not this package — install
+yields an empty graph plus the optional sample.

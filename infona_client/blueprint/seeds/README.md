@@ -15,4 +15,6 @@ python -m infona_client.blueprint validate \
   infona_client/blueprint/seeds/clinical-trials
 ```
 
-Install is INF-565 and is not implemented in this tree.
+Install, inspect, uninstall, and fork live on
+`/graphs/{tenant}/blueprints` (INF-575 / INF-579). Seeds are not a
+hosted registry.

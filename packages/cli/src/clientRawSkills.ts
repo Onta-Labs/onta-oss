@@ -170,7 +170,7 @@ export class RawSkillsApi extends RawExtractApi {
     );
   }
 
-  /** `POST /graphs/{tenant}/blueprints/{namespace}/{name}/fork` (501 until INF-579). */
+  /** `POST /graphs/{tenant}/blueprints/{namespace}/{name}/fork`. */
   forkBlueprint(namespace: string, name: string, init?: RawInit): Promise<Response> {
     return this.client.requestRaw(
       "POST",

@@ -215,8 +215,10 @@ def test_install_and_export_are_both_on_the_package():
 
     assert "install_blueprint" in pkg.__all__
     assert "export_blueprint" in pkg.__all__
+    assert "fork_blueprint" in pkg.__all__
     assert hasattr(pkg, "install_blueprint")
     assert hasattr(pkg, "export_blueprint")
+    assert hasattr(pkg, "fork_blueprint")
     readme = (SEED / "README.md").read_text(encoding="utf-8")
     assert "INF-565" in readme
 

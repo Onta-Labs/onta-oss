@@ -95,11 +95,13 @@ export async function uninstallBlueprintHandler(
 }
 
 export async function forkBlueprintHandler(
-  { id }: { id: string },
+  { id, as: asId }: { id: string; as?: string },
   makeClient: () => Client = client,
 ) {
   try {
-    return textResult(JSON.stringify(await makeClient().forkBlueprint(id), null, 2));
+    return textResult(
+      JSON.stringify(await makeClient().forkBlueprint(id, { as: asId }), null, 2),
+    );
   } catch (err) {
     return errorResult(err);
   }
@@ -157,9 +159,10 @@ export function registerBlueprintTools(server: McpServer): void {
     "fork_blueprint",
     {
       description:
-        "Fork a Blueprint. Currently returns 501 (INF-579 lineage not implemented).",
+        "Fork a Blueprint package into a new identity with lineage. Does not copy instance data. Same route as `infona blueprint fork`.",
       inputSchema: {
-        id: z.string().describe("Blueprint id (namespace/name)."),
+        id: z.string().describe("Parent blueprint id (namespace/name)."),
+        as: z.string().optional().describe("New package id (namespace/name). Default: {tenant}/{parent-name}."),
       },
     },
     (args) => forkBlueprintHandler(args),

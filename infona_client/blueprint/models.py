@@ -131,6 +131,7 @@ class Lineage(_StrictModel):
 
     parent: LineageEntry | None = None
     chain: list[LineageEntry] = Field(default_factory=list)
+    forked_at: date | None = None
 
     @model_validator(mode="after")
     def _fork_has_parent_in_chain(self) -> Lineage:

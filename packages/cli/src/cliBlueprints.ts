@@ -1,8 +1,8 @@
-/** ``infona blueprint`` install / inspect / uninstall / fork (INF-575).
+/** ``infona blueprint`` install / inspect / uninstall / fork (INF-575 / INF-579).
 
 Shares the ``blueprint`` command group with ``cliBlueprint.ts`` (export /
-validate, INF-565). Install POSTs the document to
-``/graphs/{tenant}/blueprints``. Fork is 501 (INF-579).
+validate, INF-565). Install and fork POST to
+``/graphs/{tenant}/blueprints``.
 */
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -77,10 +77,11 @@ bp.command("uninstall")
   });
 
 bp.command("fork")
-  .description("Fork a Blueprint (501 until lineage lands)")
-  .argument("<id>", "blueprint id (namespace/name)")
-  .action(async (id: string) => {
+  .description("Copy a Blueprint package into a new identity with lineage")
+  .argument("<id>", "parent blueprint id (namespace/name)")
+  .option("--as <id>", "new package id (namespace/name)")
+  .action(async (id: string, opts: { as?: string }) => {
     await withErrors(async () => {
-      printJson(await client().forkBlueprint(id));
+      printJson(await client().forkBlueprint(id, { as: opts.as }));
     });
   });

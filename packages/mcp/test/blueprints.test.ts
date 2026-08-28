@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  forkBlueprintHandler,
   inspectBlueprintHandler,
   installBlueprintHandler,
   uninstallBlueprintHandler,
@@ -41,5 +42,16 @@ describe("blueprint tools — SDK forwarding", () => {
       () => stub({ uninstallBlueprint }),
     );
     expect(uninstallBlueprint).toHaveBeenCalledWith("infona/clinical-trials");
+    const forkBlueprint = vi.fn(async () => ({
+      status: "forked",
+      blueprint_id: "acme/clinical-trials",
+    }));
+    await forkBlueprintHandler(
+      { id: "infona/clinical-trials", as: "acme/clinical-trials" },
+      () => stub({ forkBlueprint }),
+    );
+    expect(forkBlueprint).toHaveBeenCalledWith("infona/clinical-trials", {
+      as: "acme/clinical-trials",
+    });
   });
 });

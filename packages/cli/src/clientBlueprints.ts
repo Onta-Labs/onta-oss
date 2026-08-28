@@ -109,9 +109,12 @@ export class ClientBlueprints extends ClientSkills {
     return this.request("DELETE", this.pBlueprint(namespace, name));
   }
 
-  async forkBlueprint(id: string): Promise<unknown> {
+  async forkBlueprint(
+    id: string,
+    body: { as?: string } = {},
+  ): Promise<unknown> {
     const { namespace, name } = splitBlueprintId(id);
-    return this.request("POST", this.pBlueprintFork(namespace, name), {});
+    return this.request("POST", this.pBlueprintFork(namespace, name), body);
   }
 }
 
