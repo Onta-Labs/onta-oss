@@ -58,23 +58,50 @@ def manifest_content_hash(manifest: BlueprintManifest) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def _parse_document(text: str) -> BlueprintManifest:
+    try:
+        return parse_blueprint(text)
+    except Exception as exc:  # noqa: BLE001 — document parse → 400
+        raise BlueprintValidationError(
+            "blueprint package is invalid",
+            details={"errors": [str(exc)]},
+        ) from exc
+
+
+def _load_path(path: Path) -> BlueprintManifest:
+    errors = validate_blueprint_package(path)
+    if errors:
+        raise BlueprintValidationError(
+            "blueprint package is invalid",
+            details={"errors": errors},
+        )
+    return load_blueprint_package(path)
+
+
 def load_and_validate(
     source: str | Path | Mapping[str, Any] | BlueprintManifest,
 ) -> BlueprintManifest:
-    """Load a package directory, document, or already-parsed manifest and validate."""
+    """Load a package directory, document, or already-parsed manifest and validate.
+
+    CLI / MCP POST the YAML (or JSON) document as a string. Only an
+    existing short path — no newlines — is treated as a filesystem root.
+    """
     if isinstance(source, BlueprintManifest):
         manifest = source
     elif isinstance(source, Mapping):
         manifest = parse_blueprint(source)
+    elif isinstance(source, Path):
+        manifest = _load_path(source)
     else:
-        path = Path(source)
-        errors = validate_blueprint_package(path)
-        if errors:
-            raise BlueprintValidationError(
-                "blueprint package is invalid",
-                details={"errors": errors},
-            )
-        manifest = load_blueprint_package(path)
+        text = source if isinstance(source, str) else str(source)
+        path = Path(text)
+        looks_like_path = (
+            "\n" not in text
+            and "\r" not in text
+            and len(text) < 1024
+            and path.exists()
+        )
+        manifest = _load_path(path) if looks_like_path else _parse_document(text)
     errors = validate_blueprint(manifest)
     if errors:
         raise BlueprintValidationError(

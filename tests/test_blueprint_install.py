@@ -162,12 +162,53 @@ async def test_install_without_sample_is_an_empty_graph():
     await uninstall_blueprint(TENANT, "infona/clinical-trials")
 
 
+@pytest.mark.asyncio
+async def test_sample_flag_flip_keeps_ownership_for_uninstall():
+    first = await install_blueprint(CLINICAL_TRIALS, tenant_id=TENANT, kg=KG)
+    assert first.status == "installed"
+    flipped = await install_blueprint(
+        CLINICAL_TRIALS, tenant_id=TENANT, kg=KG, include_sample=False
+    )
+    assert flipped.status == "updated"
+    assert flipped.sample_included is False
+    removed = await uninstall_blueprint(TENANT, "infona/clinical-trials")
+    assert set(removed["removed_types"]) == SEED_TYPES
+    assert not (SEED_TYPES & await _type_names())
+
+
+@pytest.mark.asyncio
+async def test_uninstall_refuses_when_kg_scan_fails(monkeypatch):
+    await install_blueprint(CLINICAL_TRIALS, tenant_id=TENANT, kg=KG)
+
+    async def boom(_tenant_id: str):
+        raise RuntimeError("registry down")
+
+    monkeypatch.setattr(
+        "infona_client.graph.kg_registry.list_registered_kgs", boom
+    )
+    with pytest.raises(BlueprintUninstallRefused) as exc:
+        await uninstall_blueprint(TENANT, "infona/clinical-trials")
+    assert exc.value.status_code == 409
+    assert "ClinicalTrial" in await _type_names()
+    card = await inspect_blueprint(TENANT, "infona/clinical-trials")
+    assert card["sample_subject_count"] == 25
+
+
 def test_content_hash_is_stable():
     from infona_client.blueprint import load_blueprint_package
 
     manifest = load_blueprint_package(CLINICAL_TRIALS)
     assert manifest_content_hash(manifest) == manifest_content_hash(manifest)
     assert len(manifest_content_hash(manifest)) == 64
+
+
+def test_load_and_validate_parses_yaml_document_not_as_a_path():
+    from infona_client.blueprint.install import load_and_validate
+
+    yaml_text = (CLINICAL_TRIALS / "blueprint.yaml").read_text(encoding="utf-8")
+    manifest = load_and_validate(yaml_text)
+    assert manifest.id == "infona/clinical-trials"
+    assert load_and_validate(CLINICAL_TRIALS).id == manifest.id
 
 
 def test_sample_relationship_facts_use_rel_kind():

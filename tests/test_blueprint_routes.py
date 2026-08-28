@@ -92,6 +92,25 @@ def test_install_is_confined_to_path_tenant(client, auth_headers):
     assert resp.status_code == 403
 
 
+def test_install_accepts_manifest_yaml_like_the_cli(client, auth_headers):
+    yaml_text = (CLINICAL_TRIALS / "blueprint.yaml").read_text(encoding="utf-8")
+    installed = client.post(
+        f"/graphs/{TENANT}/blueprints/install",
+        json={"kg": KG, "manifest_yaml": yaml_text},
+        headers=auth_headers,
+    )
+    assert installed.status_code == 200, installed.text
+    assert installed.json()["status"] == "installed"
+    assert installed.json()["sample_is_current"] is False
+    validated = client.post(
+        f"/graphs/{TENANT}/blueprints/validate",
+        json={"manifest_yaml": yaml_text},
+        headers=auth_headers,
+    )
+    assert validated.status_code == 200
+    assert validated.json()["valid"] is True
+
+
 def test_validate_writes_nothing(client, auth_headers):
     resp = client.post(
         f"/graphs/{TENANT}/blueprints/validate",

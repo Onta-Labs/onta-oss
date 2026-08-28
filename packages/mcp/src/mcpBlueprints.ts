@@ -1,17 +1,40 @@
 /** Blueprint MCP tools — same SDK methods as the CLI (INF-575). */
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Client } from "@infona-ai/cli";
 import { z } from "zod";
 import { client, errorResult, textResult } from "./mcpShared.js";
+
+function readPackageDocument(
+  path: string,
+): { manifest_yaml?: string; manifest?: Record<string, unknown> } {
+  let file = path;
+  if (statSync(path).isDirectory()) {
+    const yaml = join(path, "blueprint.yaml");
+    const yml = join(path, "blueprint.yml");
+    const json = join(path, "blueprint.json");
+    if (existsSync(yaml)) file = yaml;
+    else if (existsSync(yml)) file = yml;
+    else if (existsSync(json)) file = json;
+    else throw new Error(`${path} is not a Blueprint package (missing blueprint.yaml)`);
+  }
+  const text = readFileSync(file, "utf-8");
+  if (file.endsWith(".json")) {
+    return { manifest: JSON.parse(text) as Record<string, unknown> };
+  }
+  return { manifest_yaml: text };
+}
 
 export async function validateBlueprintHandler(
   { path, manifest_yaml }: { path?: string; manifest_yaml?: string },
   makeClient: () => Client = client,
 ) {
   try {
-    const body: { manifest_yaml?: string; package_path?: string } = {};
-    if (path) body.package_path = path;
-    if (manifest_yaml) body.manifest_yaml = manifest_yaml;
+    const body = {
+      ...(path ? readPackageDocument(path) : {}),
+      ...(manifest_yaml ? { manifest_yaml } : {}),
+    };
     const got = await makeClient().validateBlueprint(body);
     if (got.valid) return textResult("valid");
     return textResult(`invalid\n${(got.errors ?? []).join("\n")}`);
@@ -38,7 +61,7 @@ export async function installBlueprintHandler(
     const got = await makeClient().installBlueprint({
       kg,
       include_sample: include_sample !== false,
-      ...(path ? { package_path: path } : {}),
+      ...(path ? readPackageDocument(path) : {}),
       ...(manifest_yaml ? { manifest_yaml } : {}),
     });
     return textResult(JSON.stringify(got, null, 2));
@@ -89,7 +112,7 @@ export function registerBlueprintTools(server: McpServer): void {
       description:
         "Validate a Blueprint v1 document. Writes nothing. Same route as `infona blueprint validate`.",
       inputSchema: {
-        path: z.string().optional().describe("Server-visible package directory."),
+        path: z.string().optional().describe("Local package directory; MCP reads blueprint.yaml and POSTs the document."),
         manifest_yaml: z.string().optional().describe("Inline blueprint.yaml text."),
       },
     },
@@ -102,7 +125,7 @@ export function registerBlueprintTools(server: McpServer): void {
         "Install a Blueprint into this workspace (idempotent). Optional bounded sample is never current. Same route as `infona blueprint install`.",
       inputSchema: {
         kg: z.string().describe("Knowledge graph that receives the optional sample."),
-        path: z.string().optional(),
+        path: z.string().optional().describe("Local package directory; MCP reads blueprint.yaml and POSTs the document."),
         manifest_yaml: z.string().optional(),
         include_sample: z.boolean().optional(),
       },

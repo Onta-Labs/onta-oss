@@ -1,7 +1,7 @@
 """Load an ADR 0014 Blueprint directory (or a single manifest file).
 
-This is inspect + validate input only. It does not apply ontology, write
-facts, or register jobs — that is INF-565 install.
+This is inspect + validate input only. Apply is ``install_blueprint``
+(INF-575 / INF-577). Export (workspace → directory) is still INF-565.
 """
 
 from __future__ import annotations

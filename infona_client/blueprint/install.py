@@ -163,8 +163,11 @@ async def _dependent_instances(
             name = row.get("name") if isinstance(row, dict) else None
             if name:
                 kgs.append(str(name))
-    except Exception:  # noqa: BLE001 — registry is best-effort for refuse
-        pass
+    except Exception as exc:  # noqa: BLE001 — refuse, do not silently orphan
+        raise BlueprintUninstallRefused(
+            "uninstall refused: could not scan tenant KGs for typed dependents",
+            details={"reason": str(exc)},
+        ) from exc
     kgs = list(dict.fromkeys(kgs))
     store = get_graph_store()
     hits: list[dict[str, str]] = []
@@ -175,8 +178,11 @@ async def _dependent_instances(
                 uris = await session_entities_of_type(
                     session, type_uri(type_name), include_subclasses=False
                 )
-            except Exception:  # noqa: BLE001 — missing type is not a dependent
-                continue
+            except Exception as exc:  # noqa: BLE001 — refuse, do not silently orphan
+                raise BlueprintUninstallRefused(
+                    "uninstall refused: could not scan typed instances",
+                    details={"kg": kg, "type": type_name, "reason": str(exc)},
+                ) from exc
             for uri in uris:
                 if uri in ignore_subjects:
                     continue
@@ -225,6 +231,19 @@ async def install_blueprint(
     created_types = [n for n in owned_types if n not in prior_types]
     # Attrs that already lived on a pre-existing type stay on uninstall.
     created_attrs = [p for p in owned_attrs if p not in prior_attrs]
+    # A pin-changing re-install (sample flag, kg, version) must keep
+    # ownership of what the first install created, or uninstall orphans it.
+    if existing is not None:
+        created_types = [
+            n
+            for n in dict.fromkeys([*existing.created_types, *created_types])
+            if n in owned_types
+        ]
+        created_attrs = [
+            p
+            for p in dict.fromkeys([*existing.owned_attributes, *created_attrs])
+            if p in owned_attrs
+        ]
 
     sample_subjects: list[str] = []
     if existing is not None and existing.sample_subjects:
@@ -259,6 +278,10 @@ async def install_blueprint(
             )
 
     owned_skills = await _write_skills(tenant_id, manifest)
+    if existing is not None:
+        stale_skills = [s for s in existing.owned_skills if s not in owned_skills]
+        if stale_skills:
+            await _remove_skills(tenant_id, stale_skills)
     captured = (
         str(manifest.sample.captured_at)
         if include_sample and manifest.sample is not None

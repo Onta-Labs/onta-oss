@@ -4,9 +4,10 @@ Records what install wrote so re-install can no-op and uninstall can
 remove only Blueprint-owned schema, skills, and sample rows.
 
 The lock is tenant-scoped (ontology is tenant-scoped). Sample subjects
-are KG-scoped and listed explicitly. Process-local by default, same
-shape as the skill store — Postgres when ``settings.database_url`` is
-set is a follow-up, not a second secret store.
+are KG-scoped and listed explicitly. This PR ships an in-memory store
+only — process restart and multi-task ECS lose the pin (inspect 404s,
+re-install is not a no-op, uninstall cannot find what install wrote).
+A durable backend (same pattern as the skill store) is a leftover.
 
 Boundary: OSS. ``infona_client.*`` / stdlib only.
 """
@@ -16,9 +17,6 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional, Protocol
-
-from infona_client.config import settings
-
 
 @dataclass
 class BlueprintLock:
@@ -107,11 +105,10 @@ _store: Optional[BlueprintLockStore] = None
 
 
 def make_blueprint_lock_store() -> BlueprintLockStore:
-    """Process singleton. In-memory unless a durable backend is wired later."""
+    """Process singleton. Always in-memory in this PR (durable store leftover)."""
     global _store
     if _store is None:
         _store = InMemoryBlueprintLockStore()
-        _ = settings.database_url  # reserved: Postgres lock store is a follow-up
     return _store
 
 
