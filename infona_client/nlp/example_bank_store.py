@@ -159,6 +159,7 @@ class ExampleBank(ExampleBankRetrieveMixin):
         *,
         tenant_id: str = "",
         origin: str = "",
+        blueprint_id: str = "",
     ) -> bool:
         """Embed and store an example. Returns True if the bank changed.
 
@@ -168,10 +169,11 @@ class ExampleBank(ExampleBankRetrieveMixin):
         (a re-add with identical content does not). Enforces MAX_BANK_SIZE for
         NEW examples only; a refresh is always allowed, since it cannot grow the
         bank. Benchmark KGs are refused outright (ONTA-449). Unscoped Blueprint
-        examples (origin=blueprint, no tenant_id) are refused (INF-567).
+        examples (origin=blueprint or ``blueprint_id``, no tenant_id) are
+        refused (INF-567).
         """
         host = _host()
-        origin = host.normalize_example_origin(origin)
+        origin = host.normalize_example_origin(origin, blueprint_id=blueprint_id)
         tenant_id = (tenant_id or "").strip()
         if host.is_benchmark_kg(kg_name):
             logger.debug("Refusing benchmark-KG example from %s (ONTA-449)", kg_name)
@@ -223,6 +225,7 @@ class ExampleBank(ExampleBankRetrieveMixin):
         sparql: str = "",
         tenant_id: str = "",
         origin: str = "",
+        blueprint_id: str = "",
     ) -> bool:
         """Embed and store a Cypher (or mixed) example. Returns True if changed.
 
@@ -231,7 +234,7 @@ class ExampleBank(ExampleBankRetrieveMixin):
         refresh without losing their SPARQL answer.
         """
         host = _host()
-        origin = host.normalize_example_origin(origin)
+        origin = host.normalize_example_origin(origin, blueprint_id=blueprint_id)
         tenant_id = (tenant_id or "").strip()
         if host.is_benchmark_kg(kg_name):
             logger.debug("Refusing benchmark-KG example from %s (ONTA-449)", kg_name)

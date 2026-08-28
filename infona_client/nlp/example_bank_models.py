@@ -429,7 +429,7 @@ class Example:
         if not sparql and not cypher:
             raise KeyError("example requires sparql and/or cypher")
         origin = normalize_example_origin(
-            d.get("origin", "") or "",
+            d.get("origin") or d.get("source") or "",
             blueprint_id=d.get("blueprint_id") or "",
         )
         return cls(

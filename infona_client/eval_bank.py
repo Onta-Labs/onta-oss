@@ -76,7 +76,7 @@ async def rebuild_example_bank(
                 "kg_name": kg,
                 "ontology_context": p.get("ontology", ""),
                 "tenant_id": p.get("tenant_id", "") or "",
-                "origin": p.get("origin") or "",
+                "origin": p.get("origin") or p.get("source") or "",
                 "blueprint_id": p.get("blueprint_id") or "",
             })
         except (json.JSONDecodeError, KeyError):

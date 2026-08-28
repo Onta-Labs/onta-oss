@@ -177,6 +177,50 @@ async def test_add_refuses_an_unscoped_blueprint_example(tmp_path):
     assert bank.size == 0
 
 
+async def test_add_refuses_blueprint_id_without_tenant(tmp_path):
+    bank = _bank(tmp_path)
+    bank._embed_texts = _no_embed  # type: ignore[method-assign]
+
+    assert (
+        await bank.add(
+            PUBLISHER_Q,
+            PUBLISHER_SPARQL,
+            "clinical-trials",
+            "",
+            blueprint_id="infona/clinical-trials",
+        )
+        is False
+    )
+    assert bank.size == 0
+
+
+async def test_add_cypher_refuses_an_unscoped_blueprint_example(tmp_path):
+    bank = _bank(tmp_path)
+    bank._embed_texts = _no_embed  # type: ignore[method-assign]
+
+    assert (
+        await bank.add_cypher(
+            PUBLISHER_Q,
+            "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) RETURN e",
+            "clinical-trials",
+            "",
+            origin=BLUEPRINT_ORIGIN,
+        )
+        is False
+    )
+    assert (
+        await bank.add_cypher(
+            PUBLISHER_Q,
+            "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) RETURN e",
+            "clinical-trials",
+            "",
+            blueprint_id="infona/clinical-trials",
+        )
+        is False
+    )
+    assert bank.size == 0
+
+
 async def test_add_accepts_a_scoped_blueprint_example(tmp_path):
     bank = _bank(tmp_path)
     bank._embed_texts = _fake_embed  # type: ignore[method-assign]
@@ -337,6 +381,38 @@ async def test_populate_from_eval_reports_skips_unscoped_blueprint(tmp_path):
 # ── Layer 3: the read path ───────────────────────────────────────────────
 
 
+def test_to_dict_omits_empty_isolation_fields():
+    """Shared-bank load→save must not grow tenant_id/origin keys."""
+    d = Example(
+        question="how many films",
+        sparql="SELECT ?x",
+        kg_name="imdb-movies",
+    ).to_dict()
+    assert "tenant_id" not in d
+    assert "origin" not in d
+
+
+def test_from_dict_folds_blueprint_id_and_source():
+    via_id = Example.from_dict(
+        {
+            "question": PUBLISHER_Q,
+            "sparql": "SELECT ?x",
+            "kg_name": "clinical-trials",
+            "blueprint_id": "infona/clinical-trials",
+        }
+    )
+    assert via_id.origin == BLUEPRINT_ORIGIN
+    via_source = Example.from_dict(
+        {
+            "question": PUBLISHER_Q,
+            "sparql": "SELECT ?x",
+            "kg_name": "clinical-trials",
+            "source": "blueprint",
+        }
+    )
+    assert via_source.origin == BLUEPRINT_ORIGIN
+
+
 def test_load_filters_unscoped_blueprint_rows(tmp_path):
     path = tmp_path / "bank.jsonl"
     _write_bank(
@@ -360,6 +436,19 @@ def test_load_filters_unscoped_blueprint_rows(tmp_path):
         ("clinical-trials", "acme-ws"),
         ("imdb-movies", ""),
     ]
+
+
+def test_load_filters_blueprint_id_only_unscoped_rows(tmp_path):
+    """from_dict must keep folding blueprint_id; load() only sees origin."""
+    path = tmp_path / "bank.jsonl"
+    row = _row("clinical-trials", PUBLISHER_Q)
+    row["blueprint_id"] = "infona/clinical-trials"
+    _write_bank(path, [row, _row("imdb-movies", "how many films")])
+
+    bank = ExampleBank(openrouter_api_key="unused", bank_path=path)
+    assert bank.load() == 1
+    assert bank.skipped_unscoped_blueprint_on_load == 1
+    assert [ex.kg_name for ex in bank._examples] == ["imdb-movies"]
 
 
 def test_load_leaves_a_clean_bank_untouched(tmp_path):
@@ -460,6 +549,103 @@ async def test_leaked_blueprint_example_would_look_legitimate():
     )
     assert caller_graph in text
     assert "publisher-ws" not in text
+
+
+async def test_blueprint_retrieve_isolation_holds_for_cypher(tmp_path):
+    """Production /ask is Cypher; the pool filter must hold on that language."""
+    path = tmp_path / "bank.jsonl"
+    publisher = _row(
+        "clinical-trials",
+        PUBLISHER_Q,
+        tenant_id="publisher-ws",
+        origin="blueprint",
+    )
+    publisher["cypher"] = (
+        "MATCH (e:Entity {tenant_id: 'publisher-ws', kg: $kg}) RETURN e"
+    )
+    shared = _row("imdb-movies", "how many films")
+    shared["cypher"] = "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) RETURN count(*)"
+    _write_bank(path, [publisher, shared])
+
+    bank = ExampleBank(openrouter_api_key="unused", bank_path=path)
+    assert bank.load() == 2
+    bank._embed_texts = _fake_embed  # type: ignore[method-assign]
+
+    other = await bank.retrieve(
+        PUBLISHER_Q, tenant_id="other-ws", top_k=10, language="cypher"
+    )
+    assert PUBLISHER_Q not in {ex.question for ex in other}
+    assert {ex.kg_name for ex in other} == {"imdb-movies"}
+
+
+async def test_unscoped_blueprint_rebuild_leaves_the_committed_bank_alone(tmp_path):
+    """ONTA-449 analog: an all-Blueprint rebuild must not rewrite the bank."""
+    from infona_client.eval import rebuild_example_bank
+
+    bank_path = tmp_path / "bank.jsonl"
+    _write_bank(
+        bank_path,
+        [_row("imdb-movies", "how many films"), _row("events-sf", "how many events")],
+    )
+    before = bank_path.read_text()
+
+    pairs = tmp_path / "finetune_pairs.jsonl"
+    pairs.write_text(
+        json.dumps(
+            {
+                "question": PUBLISHER_Q,
+                "sparql": "SELECT ?x",
+                "graph_uri": GRAPH.format(tenant="publisher-ws", kg="clinical-trials"),
+                "origin": "blueprint",
+            }
+        )
+        + "\n"
+        + json.dumps(
+            {
+                "question": "how many stadiums",
+                "sparql": "SELECT ?x",
+                "graph_uri": GRAPH.format(tenant="publisher-ws", kg="clinical-trials"),
+                "blueprint_id": "infona/clinical-trials",
+            }
+        )
+        + "\n"
+    )
+
+    bank = ExampleBank(openrouter_api_key="unused", bank_path=bank_path)
+    bank._embed_texts = _no_embed  # type: ignore[method-assign]
+
+    assert await rebuild_example_bank(pairs, bank=bank) == 0
+    assert bank_path.read_text() == before
+
+
+async def test_scoped_blueprint_rebuild_merges_for_that_tenant(tmp_path):
+    from infona_client.eval import rebuild_example_bank
+
+    bank_path = tmp_path / "bank.jsonl"
+    _write_bank(bank_path, [_row("imdb-movies", "how many films")])
+
+    pairs = tmp_path / "finetune_pairs.jsonl"
+    pairs.write_text(
+        json.dumps(
+            {
+                "question": PUBLISHER_Q,
+                "sparql": "SELECT ?y",
+                "graph_uri": GRAPH.format(tenant="acme-ws", kg="clinical-trials"),
+                "origin": "blueprint",
+                "tenant_id": "acme-ws",
+            }
+        )
+        + "\n"
+    )
+
+    bank = ExampleBank(openrouter_api_key="unused", bank_path=bank_path)
+    bank._embed_texts = _fake_embed  # type: ignore[method-assign]
+
+    assert await rebuild_example_bank(pairs, bank=bank) == 1
+    assert sorted((ex.kg_name, ex.tenant_id) for ex in bank._examples) == [
+        ("clinical-trials", "acme-ws"),
+        ("imdb-movies", ""),
+    ]
 
 
 def test_kg_delete_does_not_purge_another_tenant_blueprint_row():
