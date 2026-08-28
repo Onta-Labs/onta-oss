@@ -10,12 +10,15 @@ and markers are enforced here.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
-from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
 
+from infona_client.blueprints.load import (
+    BlueprintValidationError,
+    load_package,
+    load_sample_section,
+)
 from infona_client.blueprints.schema import (
     ALLOWED_TOP_LEVEL,
     MAX_SAMPLE_BYTES,
@@ -28,61 +31,8 @@ from infona_client.blueprints.schema import (
 )
 
 
-class BlueprintValidationError(ValueError):
-    """One or more structural problems. ``errors`` is the full list."""
-
-    def __init__(self, errors: list[str]) -> None:
-        self.errors = list(errors)
-        super().__init__("; ".join(self.errors))
-
-
 def _as_mapping(source: Any) -> dict[str, Any]:
-    if isinstance(source, (BlueprintManifest, Sample)):
-        return source.model_dump(mode="json")
-    if isinstance(source, Mapping):
-        return dict(source)
-    if isinstance(source, Path) or (
-        isinstance(source, str)
-        and not source.lstrip().startswith(("{", "["))
-        and len(source) < 4096
-    ):
-        path = Path(source)
-        if path.exists() and path.is_file():
-            raw = path.read_text(encoding="utf-8")
-        elif isinstance(source, Path):
-            raise BlueprintValidationError([f"file not found: {source}"])
-        else:
-            raw = source
-        text = raw.strip()
-    elif isinstance(source, str):
-        text = source.strip()
-    else:
-        text = None
-    if text is not None:
-        if text.startswith("{") or text.startswith("["):
-            try:
-                data = json.loads(text)
-            except json.JSONDecodeError as exc:
-                raise BlueprintValidationError([f"invalid JSON: {exc}"]) from exc
-        else:
-            try:
-                import yaml  # type: ignore
-            except ImportError as exc:
-                raise BlueprintValidationError(
-                    [
-                        "YAML input requires PyYAML; pass JSON, a dict, "
-                        "or install PyYAML"
-                    ]
-                ) from exc
-            data = yaml.safe_load(text)
-        if not isinstance(data, dict):
-            raise BlueprintValidationError(
-                ["manifest must be a JSON/YAML object at the top level"]
-            )
-        return data
-    raise BlueprintValidationError(
-        [f"unsupported manifest type: {type(source).__name__}"]
-    )
+    return load_package(source)
 
 
 def _pydantic_errors(exc: ValidationError) -> list[str]:
@@ -239,13 +189,7 @@ def _check_sample(sample: Sample, concept_names: set[str] | None = None) -> list
 def validate_sample(source: Any) -> Sample:
     """Validate a sample section on its own (independently droppable)."""
 
-    data = _as_mapping(source)
-    # A whole manifest passed by mistake: pull the section.
-    if "schema_version" in data and "sample" in data:
-        inner = data["sample"]
-        if inner is None:
-            raise BlueprintValidationError(["sample section is absent"])
-        data = inner
+    data = load_sample_section(source)
     unknown = [key for key in data if key not in {"kind", "origin", "license", "captured_at", "entities"}]
     if unknown:
         raise BlueprintValidationError(

@@ -1,0 +1,53 @@
+validation:
+  checks:
+  - name: trial-has-nct
+    'on': ClinicalTrial.nct_id
+    rule: A trial without nct_id is rejected.
+  - name: lead-sponsor-is-org
+    'on': lead_sponsor
+    rule: lead_sponsor must point at an Organization, not a string.
+  entity_resolution:
+  - type: ClinicalTrial
+    identity: exact nct_id
+    blocking:
+    - nct_id
+    auto_merge: same NCT
+    review: never — NCT collision is a source bug
+    reversible: true
+  - type: Organization
+    identity: normalized name
+    blocking:
+    - name_prefix_4
+    auto_merge: high name similarity, same org_class
+    review: close names, different class
+    reversible: true
+  - type: Investigator
+    identity: npi if present else name + affiliation
+    blocking:
+    - npi
+    - surname_initial
+    auto_merge: same NPI
+    review: same name, different affiliation, no NPI
+    reversible: true
+  - type: MedicalCondition
+    identity: normalized name
+    blocking:
+    - normalized_name
+    auto_merge: exact normalized match
+    review: near-duplicates
+    reversible: true
+  - type: Intervention
+    identity: normalized name
+    blocking:
+    - normalized_name
+    auto_merge: exact normalized match
+    review: near-duplicates
+    reversible: true
+  - type: Facility
+    identity: normalized name + country
+    blocking:
+    - country
+    - name_prefix
+    auto_merge: same name and country
+    review: same name, different country
+    reversible: true

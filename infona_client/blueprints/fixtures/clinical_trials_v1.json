@@ -18,102 +18,330 @@
       "name": "ClinicalTrial",
       "label": "Clinical trial",
       "description": "A registered interventional or observational study.",
-      "identity_keys": ["nct_id"],
+      "identity_keys": [
+        "nct_id"
+      ],
       "attributes": [
-        {"name": "nct_id", "kind": "literal", "range": "string", "required": true, "identity": true, "description": "Registry identifier."},
-        {"name": "official_title", "kind": "literal", "range": "string", "required": true},
-        {"name": "brief_title", "kind": "literal", "range": "string"},
-        {"name": "overall_status", "kind": "literal", "range": "string"},
-        {"name": "phase", "kind": "literal", "range": "string"},
-        {"name": "enrollment", "kind": "literal", "range": "integer"},
-        {"name": "start_date", "kind": "literal", "range": "date"},
-        {"name": "primary_completion_date", "kind": "literal", "range": "date"},
-        {"name": "study_type", "kind": "literal", "range": "string"},
-        {"name": "lead_sponsor", "kind": "type_ranged", "range": "Organization"},
-        {"name": "collaborator", "kind": "type_ranged", "range": "Organization"},
-        {"name": "studies_condition", "kind": "type_ranged", "range": "MedicalCondition"},
-        {"name": "uses_intervention", "kind": "type_ranged", "range": "Intervention"},
-        {"name": "has_investigator", "kind": "type_ranged", "range": "Investigator"},
-        {"name": "conducted_at", "kind": "type_ranged", "range": "Facility"}
+        {
+          "name": "nct_id",
+          "kind": "literal",
+          "range": "string",
+          "required": true,
+          "identity": true,
+          "description": "Registry identifier."
+        },
+        {
+          "name": "official_title",
+          "kind": "literal",
+          "range": "string",
+          "required": true
+        },
+        {
+          "name": "brief_title",
+          "kind": "literal",
+          "range": "string"
+        },
+        {
+          "name": "overall_status",
+          "kind": "literal",
+          "range": "string"
+        },
+        {
+          "name": "phase",
+          "kind": "literal",
+          "range": "string"
+        },
+        {
+          "name": "enrollment",
+          "kind": "literal",
+          "range": "integer"
+        },
+        {
+          "name": "start_date",
+          "kind": "literal",
+          "range": "date"
+        },
+        {
+          "name": "primary_completion_date",
+          "kind": "literal",
+          "range": "date"
+        },
+        {
+          "name": "study_type",
+          "kind": "literal",
+          "range": "string"
+        },
+        {
+          "name": "lead_sponsor",
+          "kind": "type_ranged",
+          "range": "Organization"
+        },
+        {
+          "name": "collaborator",
+          "kind": "type_ranged",
+          "range": "Organization"
+        },
+        {
+          "name": "studies_condition",
+          "kind": "type_ranged",
+          "range": "MedicalCondition"
+        },
+        {
+          "name": "uses_intervention",
+          "kind": "type_ranged",
+          "range": "Intervention"
+        },
+        {
+          "name": "has_investigator",
+          "kind": "type_ranged",
+          "range": "Investigator"
+        },
+        {
+          "name": "conducted_at",
+          "kind": "type_ranged",
+          "range": "Facility"
+        }
       ]
     },
     {
       "name": "Organization",
       "label": "Organization",
       "description": "A sponsor, collaborator, or affiliation.",
-      "identity_keys": ["name"],
+      "identity_keys": [
+        "name"
+      ],
       "attributes": [
-        {"name": "name", "kind": "literal", "range": "string", "required": true, "identity": true},
-        {"name": "org_class", "kind": "literal", "range": "string", "allowed_values": ["industry", "nih", "other", "individual"]}
+        {
+          "name": "name",
+          "kind": "literal",
+          "range": "string",
+          "required": true,
+          "identity": true
+        },
+        {
+          "name": "org_class",
+          "kind": "literal",
+          "range": "string",
+          "allowed_values": [
+            "industry",
+            "nih",
+            "other",
+            "individual"
+          ]
+        }
       ]
     },
     {
       "name": "MedicalCondition",
       "label": "Medical condition",
       "description": "A condition a trial studies.",
-      "identity_keys": ["name"],
+      "identity_keys": [
+        "name"
+      ],
       "attributes": [
-        {"name": "name", "kind": "literal", "range": "string", "required": true, "identity": true},
-        {"name": "mesh_term", "kind": "literal", "range": "string"}
+        {
+          "name": "name",
+          "kind": "literal",
+          "range": "string",
+          "required": true,
+          "identity": true
+        },
+        {
+          "name": "mesh_term",
+          "kind": "literal",
+          "range": "string"
+        }
       ]
     },
     {
       "name": "Intervention",
       "label": "Intervention",
       "description": "A drug, device, biological, or other intervention.",
-      "identity_keys": ["name"],
+      "identity_keys": [
+        "name"
+      ],
       "attributes": [
-        {"name": "name", "kind": "literal", "range": "string", "required": true, "identity": true},
-        {"name": "intervention_type", "kind": "literal", "range": "string", "allowed_values": ["drug", "device", "biological", "other"]}
+        {
+          "name": "name",
+          "kind": "literal",
+          "range": "string",
+          "required": true,
+          "identity": true
+        },
+        {
+          "name": "intervention_type",
+          "kind": "literal",
+          "range": "string",
+          "allowed_values": [
+            "drug",
+            "device",
+            "biological",
+            "other"
+          ]
+        }
       ]
     },
     {
       "name": "Investigator",
       "label": "Investigator",
       "description": "A person listed on a trial.",
-      "identity_keys": ["npi", "name"],
+      "identity_keys": [
+        "npi",
+        "name"
+      ],
       "attributes": [
-        {"name": "name", "kind": "literal", "range": "string", "required": true, "identity": true},
-        {"name": "npi", "kind": "literal", "range": "string", "identity": true},
-        {"name": "specialty", "kind": "literal", "range": "string"},
-        {"name": "affiliated_with", "kind": "type_ranged", "range": "Organization"}
+        {
+          "name": "name",
+          "kind": "literal",
+          "range": "string",
+          "required": true,
+          "identity": true
+        },
+        {
+          "name": "npi",
+          "kind": "literal",
+          "range": "string",
+          "identity": true
+        },
+        {
+          "name": "specialty",
+          "kind": "literal",
+          "range": "string"
+        },
+        {
+          "name": "affiliated_with",
+          "kind": "type_ranged",
+          "range": "Organization"
+        }
       ]
     },
     {
       "name": "Facility",
       "label": "Facility",
       "description": "A site where a trial is conducted. City and country stay on the facility.",
-      "identity_keys": ["name"],
+      "identity_keys": [
+        "name"
+      ],
       "attributes": [
-        {"name": "name", "kind": "literal", "range": "string", "required": true, "identity": true},
-        {"name": "city", "kind": "literal", "range": "string"},
-        {"name": "country", "kind": "literal", "range": "string"}
+        {
+          "name": "name",
+          "kind": "literal",
+          "range": "string",
+          "required": true,
+          "identity": true
+        },
+        {
+          "name": "city",
+          "kind": "literal",
+          "range": "string"
+        },
+        {
+          "name": "country",
+          "kind": "literal",
+          "range": "string"
+        }
       ]
     }
   ],
   "relationships": [
-    {"name": "lead_sponsor", "source": "ClinicalTrial", "target": "Organization", "cardinality": "1", "kind": "type_ranged", "description": "The owner you attribute by default."},
-    {"name": "collaborator", "source": "ClinicalTrial", "target": "Organization", "cardinality": "N", "kind": "type_ranged"},
-    {"name": "studies_condition", "source": "ClinicalTrial", "target": "MedicalCondition", "cardinality": "N", "kind": "type_ranged"},
-    {"name": "uses_intervention", "source": "ClinicalTrial", "target": "Intervention", "cardinality": "N", "kind": "type_ranged"},
-    {"name": "has_investigator", "source": "ClinicalTrial", "target": "Investigator", "cardinality": "N", "kind": "type_ranged"},
-    {"name": "conducted_at", "source": "ClinicalTrial", "target": "Facility", "cardinality": "N", "kind": "type_ranged"},
-    {"name": "affiliated_with", "source": "Investigator", "target": "Organization", "cardinality": "1", "kind": "type_ranged"}
+    {
+      "name": "lead_sponsor",
+      "source": "ClinicalTrial",
+      "target": "Organization",
+      "cardinality": "1",
+      "kind": "type_ranged",
+      "description": "The owner you attribute by default."
+    },
+    {
+      "name": "collaborator",
+      "source": "ClinicalTrial",
+      "target": "Organization",
+      "cardinality": "N",
+      "kind": "type_ranged"
+    },
+    {
+      "name": "studies_condition",
+      "source": "ClinicalTrial",
+      "target": "MedicalCondition",
+      "cardinality": "N",
+      "kind": "type_ranged"
+    },
+    {
+      "name": "uses_intervention",
+      "source": "ClinicalTrial",
+      "target": "Intervention",
+      "cardinality": "N",
+      "kind": "type_ranged"
+    },
+    {
+      "name": "has_investigator",
+      "source": "ClinicalTrial",
+      "target": "Investigator",
+      "cardinality": "N",
+      "kind": "type_ranged"
+    },
+    {
+      "name": "conducted_at",
+      "source": "ClinicalTrial",
+      "target": "Facility",
+      "cardinality": "N",
+      "kind": "type_ranged"
+    },
+    {
+      "name": "affiliated_with",
+      "source": "Investigator",
+      "target": "Organization",
+      "cardinality": "1",
+      "kind": "type_ranged"
+    }
   ],
   "tasks": [
-    {"name": "acquire_condition_set", "writes": true, "description": "First pull for the declared condition query. Mints trials and related nodes."},
-    {"name": "refresh_stale_status", "writes": true, "description": "Re-fetch overall_status and dates for trials past the stale-after window."},
-    {"name": "verify_trial", "writes": false, "attaches_to": "ClinicalTrial", "inputs": ["nct_id"], "description": "Check one NCT against ClinicalTrials.gov and return match, drift, or missing."}
+    {
+      "name": "acquire_condition_set",
+      "writes": true,
+      "description": "First pull for the declared condition query. Mints trials and related nodes."
+    },
+    {
+      "name": "refresh_stale_status",
+      "writes": true,
+      "description": "Re-fetch overall_status and dates for trials past the stale-after window."
+    },
+    {
+      "name": "verify_trial",
+      "writes": false,
+      "attaches_to": "ClinicalTrial",
+      "inputs": [
+        "nct_id"
+      ],
+      "description": "Check one NCT against ClinicalTrials.gov and return match, drift, or missing."
+    }
   ],
   "rules": {
     "conflict": [
-      {"attribute": "overall_status", "winner": "clinicaltrials-gov", "notes": "ClinicalTrials.gov wins on status and dates."},
-      {"attribute": "start_date", "winner": "clinicaltrials-gov"},
-      {"attribute": "primary_completion_date", "winner": "clinicaltrials-gov"}
+      {
+        "attribute": "overall_status",
+        "winner": "clinicaltrials-gov",
+        "notes": "ClinicalTrials.gov wins on status and dates."
+      },
+      {
+        "attribute": "start_date",
+        "winner": "clinicaltrials-gov"
+      },
+      {
+        "attribute": "primary_completion_date",
+        "winner": "clinicaltrials-gov"
+      }
     ],
     "tombstones": [
-      {"when": "source_row_gone", "action": "mark_withdrawn", "notes": "Set overall_status to WITHDRAWN. Do not delete the node."},
-      {"when": "source_row_gone", "action": "stop_refresh"}
+      {
+        "when": "source_row_gone",
+        "action": "mark_withdrawn",
+        "notes": "Set overall_status to WITHDRAWN. Do not delete the node."
+      },
+      {
+        "when": "source_row_gone",
+        "action": "stop_refresh"
+      }
     ]
   },
   "sources": [
@@ -130,11 +358,31 @@
         "credential": "none"
       },
       "mapping": [
-        {"source_field": "protocolSection.identificationModule.nctId", "lands_on": "ClinicalTrial.nct_id", "kind": "literal"},
-        {"source_field": "protocolSection.identificationModule.officialTitle", "lands_on": "ClinicalTrial.official_title", "kind": "literal"},
-        {"source_field": "protocolSection.statusModule.overallStatus", "lands_on": "ClinicalTrial.overall_status", "kind": "literal"},
-        {"source_field": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name", "lands_on": "lead_sponsor", "kind": "type_ranged"},
-        {"source_field": "protocolSection.conditionsModule.conditions[]", "lands_on": "studies_condition", "kind": "type_ranged"}
+        {
+          "source_field": "protocolSection.identificationModule.nctId",
+          "lands_on": "ClinicalTrial.nct_id",
+          "kind": "literal"
+        },
+        {
+          "source_field": "protocolSection.identificationModule.officialTitle",
+          "lands_on": "ClinicalTrial.official_title",
+          "kind": "literal"
+        },
+        {
+          "source_field": "protocolSection.statusModule.overallStatus",
+          "lands_on": "ClinicalTrial.overall_status",
+          "kind": "literal"
+        },
+        {
+          "source_field": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+          "lands_on": "lead_sponsor",
+          "kind": "type_ranged"
+        },
+        {
+          "source_field": "protocolSection.conditionsModule.conditions[]",
+          "lands_on": "studies_condition",
+          "kind": "type_ranged"
+        }
       ]
     },
     {
@@ -147,22 +395,44 @@
         "docs_url": "https://npiregistry.cms.hhs.gov/api-page",
         "license": "US-PD",
         "publisher": "CMS",
-        "credential": "byok",
-        "key_env": "NPPES_API_KEY"
+        "credential": "none"
       },
       "mapping": [
-        {"source_field": "number", "lands_on": "Investigator.npi", "kind": "literal"},
-        {"source_field": "taxonomies[].desc", "lands_on": "Investigator.specialty", "kind": "literal"}
+        {
+          "source_field": "number",
+          "lands_on": "Investigator.npi",
+          "kind": "literal"
+        },
+        {
+          "source_field": "taxonomies[].desc",
+          "lands_on": "Investigator.specialty",
+          "kind": "literal"
+        }
       ]
     }
   ],
   "acquisition": {
     "steps": [
-      {"name": "seed", "instruction": "query.cond=obesity OR overweight plus intervention terms GLP-1, semaglutide, tirzepatide. Not every trial on earth."},
-      {"name": "page", "instruction": "Follow nextPageToken on /api/v2/studies until the token is gone, or 5000 studies, whichever first."},
-      {"name": "first-pull", "instruction": "Mint a ClinicalTrial per NCT and the related Organization, MedicalCondition, Intervention, Investigator, and Facility nodes from the mapping table."},
-      {"name": "refresh", "instruction": "Re-fetch only trials whose overall_status is past the 14-day window or whose enrollment is past 45 days. Do not re-mint."},
-      {"name": "disappeared-row", "instruction": "If an NCT the workspace already has is gone from the API, set overall_status to WITHDRAWN and stop refreshing it. Do not delete the node."}
+      {
+        "name": "seed",
+        "instruction": "query.cond=obesity OR overweight plus intervention terms GLP-1, semaglutide, tirzepatide. Not every trial on earth."
+      },
+      {
+        "name": "page",
+        "instruction": "Follow nextPageToken on /api/v2/studies until the token is gone, or 5000 studies, whichever first."
+      },
+      {
+        "name": "first-pull",
+        "instruction": "Mint a ClinicalTrial per NCT and the related Organization, MedicalCondition, Intervention, Investigator, and Facility nodes from the mapping table."
+      },
+      {
+        "name": "refresh",
+        "instruction": "Re-fetch only trials whose overall_status is past the 14-day window or whose enrollment is past 45 days. Do not re-mint."
+      },
+      {
+        "name": "disappeared-row",
+        "instruction": "If an NCT the workspace already has is gone from the API, set overall_status to WITHDRAWN and stop refreshing it. Do not delete the node."
+      }
     ],
     "enrichment": [
       {
@@ -175,51 +445,166 @@
   },
   "validation": {
     "checks": [
-      {"name": "trial-has-nct", "on": "ClinicalTrial.nct_id", "rule": "A trial without nct_id is rejected."},
-      {"name": "lead-sponsor-is-org", "on": "lead_sponsor", "rule": "lead_sponsor must point at an Organization, not a string."}
+      {
+        "name": "trial-has-nct",
+        "on": "ClinicalTrial.nct_id",
+        "rule": "A trial without nct_id is rejected."
+      },
+      {
+        "name": "lead-sponsor-is-org",
+        "on": "lead_sponsor",
+        "rule": "lead_sponsor must point at an Organization, not a string."
+      }
     ],
     "entity_resolution": [
-      {"type": "ClinicalTrial", "identity": "exact nct_id", "blocking": ["nct_id"], "auto_merge": "same NCT", "review": "never — NCT collision is a source bug", "reversible": true},
-      {"type": "Organization", "identity": "normalized name", "blocking": ["name_prefix_4"], "auto_merge": "high name similarity, same org_class", "review": "close names, different class", "reversible": true},
-      {"type": "Investigator", "identity": "npi if present else name + affiliation", "blocking": ["npi", "surname_initial"], "auto_merge": "same NPI", "review": "same name, different affiliation, no NPI", "reversible": true},
-      {"type": "MedicalCondition", "identity": "normalized name", "blocking": ["normalized_name"], "auto_merge": "exact normalized match", "review": "near-duplicates", "reversible": true},
-      {"type": "Intervention", "identity": "normalized name", "blocking": ["normalized_name"], "auto_merge": "exact normalized match", "review": "near-duplicates", "reversible": true},
-      {"type": "Facility", "identity": "normalized name + country", "blocking": ["country", "name_prefix"], "auto_merge": "same name and country", "review": "same name, different country", "reversible": true}
+      {
+        "type": "ClinicalTrial",
+        "identity": "exact nct_id",
+        "blocking": [
+          "nct_id"
+        ],
+        "auto_merge": "same NCT",
+        "review": "never \u2014 NCT collision is a source bug",
+        "reversible": true
+      },
+      {
+        "type": "Organization",
+        "identity": "normalized name",
+        "blocking": [
+          "name_prefix_4"
+        ],
+        "auto_merge": "high name similarity, same org_class",
+        "review": "close names, different class",
+        "reversible": true
+      },
+      {
+        "type": "Investigator",
+        "identity": "npi if present else name + affiliation",
+        "blocking": [
+          "npi",
+          "surname_initial"
+        ],
+        "auto_merge": "same NPI",
+        "review": "same name, different affiliation, no NPI",
+        "reversible": true
+      },
+      {
+        "type": "MedicalCondition",
+        "identity": "normalized name",
+        "blocking": [
+          "normalized_name"
+        ],
+        "auto_merge": "exact normalized match",
+        "review": "near-duplicates",
+        "reversible": true
+      },
+      {
+        "type": "Intervention",
+        "identity": "normalized name",
+        "blocking": [
+          "normalized_name"
+        ],
+        "auto_merge": "exact normalized match",
+        "review": "near-duplicates",
+        "reversible": true
+      },
+      {
+        "type": "Facility",
+        "identity": "normalized name + country",
+        "blocking": [
+          "country",
+          "name_prefix"
+        ],
+        "auto_merge": "same name and country",
+        "review": "same name, different country",
+        "reversible": true
+      }
     ]
   },
   "freshness": {
     "stale_after": [
-      {"attribute": "overall_status", "days": 14},
-      {"attribute": "enrollment", "days": 45},
-      {"attribute": "nct_id", "never": true},
-      {"attribute": "official_title", "never": true}
+      {
+        "attribute": "overall_status",
+        "days": 14
+      },
+      {
+        "attribute": "enrollment",
+        "days": 45
+      },
+      {
+        "attribute": "nct_id",
+        "never": true
+      },
+      {
+        "attribute": "official_title",
+        "never": true
+      }
     ]
   },
   "skills": {
     "prose": [
-      {"slug": "cite-nct", "type_name": "ClinicalTrial", "title": "Cite the NCT", "body": "Always cite the NCT ID. Treat overall_status as time-sensitive; if the value is older than the freshness policy, say so before answering."},
-      {"slug": "lead-vs-collaborator", "type_name": "ClinicalTrial", "title": "Lead sponsor", "body": "Lead sponsor is the owner you attribute by default. Collaborators are additional, not instead."}
+      {
+        "slug": "cite-nct",
+        "type_name": "ClinicalTrial",
+        "title": "Cite the NCT",
+        "body": "Always cite the NCT ID. Treat overall_status as time-sensitive; if the value is older than the freshness policy, say so before answering."
+      },
+      {
+        "slug": "lead-vs-collaborator",
+        "type_name": "ClinicalTrial",
+        "title": "Lead sponsor",
+        "body": "Lead sponsor is the owner you attribute by default. Collaborators are additional, not instead."
+      }
     ],
     "functions": [
-      {"name": "is-recruiting", "entity_type": "ClinicalTrial", "description": "True when overall_status is a recruiting state."},
-      {"name": "days-to-primary-completion", "entity_type": "ClinicalTrial", "description": "Days from today to primary_completion_date, or null."}
+      {
+        "name": "is-recruiting",
+        "entity_type": "ClinicalTrial",
+        "description": "True when overall_status is a recruiting state."
+      },
+      {
+        "name": "days-to-primary-completion",
+        "entity_type": "ClinicalTrial",
+        "description": "Days from today to primary_completion_date, or null."
+      }
     ],
-    "mcp_tools": ["ask", "view_ontology"]
+    "mcp_tools": [
+      "ask",
+      "view_ontology"
+    ]
   },
   "examples": {
     "leak_policy": "workspace_only",
     "questions": [
-      {"question": "Which Phase 3 trials for obesity are currently recruiting?"},
-      {"question": "Who is the lead sponsor of a given NCT, and is that status fresher than two weeks?"},
-      {"question": "How many recruiting trials list Novo Nordisk as lead sponsor in this condition set?"}
+      {
+        "question": "Which Phase 3 trials for obesity are currently recruiting?"
+      },
+      {
+        "question": "Who is the lead sponsor of a given NCT, and is that status fresher than two weeks?"
+      },
+      {
+        "question": "How many recruiting trials list Novo Nordisk as lead sponsor in this condition set?"
+      }
     ]
   },
   "evals": {
     "leak_policy": "workspace_only",
     "items": [
-      {"name": "every-trial-has-nct", "kind": "structural", "still_works_when": "count of trials with empty identity = 0"},
-      {"name": "lead-sponsor-is-org", "kind": "structural", "still_works_when": "no string in that slot; no dangling edge"},
-      {"name": "phase3-recruiting", "kind": "question", "still_works_when": "answer is a list of NCTs; each has phase containing Phase 3 and overall_status in a recruiting state"}
+      {
+        "name": "every-trial-has-nct",
+        "kind": "structural",
+        "still_works_when": "count of trials with empty identity = 0"
+      },
+      {
+        "name": "lead-sponsor-is-org",
+        "kind": "structural",
+        "still_works_when": "no string in that slot; no dangling edge"
+      },
+      {
+        "name": "phase3-recruiting",
+        "kind": "question",
+        "still_works_when": "answer is a list of NCTs; each has phase containing Phase 3 and overall_status in a recruiting state"
+      }
     ]
   },
   "sample": {

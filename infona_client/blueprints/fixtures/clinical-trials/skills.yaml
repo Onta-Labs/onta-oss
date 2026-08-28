@@ -1,0 +1,22 @@
+skills:
+  prose:
+  - slug: cite-nct
+    type_name: ClinicalTrial
+    title: Cite the NCT
+    body: Always cite the NCT ID. Treat overall_status as time-sensitive; if the value
+      is older than the freshness policy, say so before answering.
+  - slug: lead-vs-collaborator
+    type_name: ClinicalTrial
+    title: Lead sponsor
+    body: Lead sponsor is the owner you attribute by default. Collaborators are additional,
+      not instead.
+  functions:
+  - name: is-recruiting
+    entity_type: ClinicalTrial
+    description: True when overall_status is a recruiting state.
+  - name: days-to-primary-completion
+    entity_type: ClinicalTrial
+    description: Days from today to primary_completion_date, or null.
+  mcp_tools:
+  - ask
+  - view_ontology

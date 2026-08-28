@@ -1,0 +1,13 @@
+schema_version: v1-frozen
+id: clinical-trials
+namespace: infona
+name: Clinical Trials
+version: 1.0.0
+acquisition_revision: 1
+license: Apache-2.0
+attribution: Infona Clinical Trials Blueprint. Preserve this attribution on fork.
+published_at: '2026-08-28'
+last_reviewed_at: '2026-08-28'
+lineage:
+  parent: null
+  chain: []

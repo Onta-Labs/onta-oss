@@ -1,0 +1,15 @@
+rules:
+  conflict:
+  - attribute: overall_status
+    winner: clinicaltrials-gov
+    notes: ClinicalTrials.gov wins on status and dates.
+  - attribute: start_date
+    winner: clinicaltrials-gov
+  - attribute: primary_completion_date
+    winner: clinicaltrials-gov
+  tombstones:
+  - when: source_row_gone
+    action: mark_withdrawn
+    notes: Set overall_status to WITHDRAWN. Do not delete the node.
+  - when: source_row_gone
+    action: stop_refresh

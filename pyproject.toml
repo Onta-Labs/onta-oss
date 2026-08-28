@@ -51,6 +51,8 @@ dependencies = [
     # list (same reason asyncpg / pgvector / cryptography are dual-listed), so
     # without it the raw-SPARQL route 503s in production.
     "rdflib>=7.0.0",
+    # Blueprint packages are YAML (ADR 0014: root file blueprint.yaml).
+    "pyyaml>=6.0.0",
 ]
 
 [project.urls]

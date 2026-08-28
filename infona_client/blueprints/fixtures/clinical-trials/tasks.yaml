@@ -1,0 +1,15 @@
+tasks:
+- name: acquire_condition_set
+  writes: true
+  description: First pull for the declared condition query. Mints trials and related
+    nodes.
+- name: refresh_stale_status
+  writes: true
+  description: Re-fetch overall_status and dates for trials past the stale-after window.
+- name: verify_trial
+  writes: false
+  attaches_to: ClinicalTrial
+  inputs:
+  - nct_id
+  description: Check one NCT against ClinicalTrials.gov and return match, drift, or
+    missing.

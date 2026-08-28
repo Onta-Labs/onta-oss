@@ -1,0 +1,8 @@
+examples:
+  leak_policy: workspace_only
+  questions:
+  - question: Which Phase 3 trials for obesity are currently recruiting?
+  - question: Who is the lead sponsor of a given NCT, and is that status fresher than
+      two weeks?
+  - question: How many recruiting trials list Novo Nordisk as lead sponsor in this
+      condition set?

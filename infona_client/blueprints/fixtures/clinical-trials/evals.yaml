@@ -1,0 +1,13 @@
+evals:
+  leak_policy: workspace_only
+  items:
+  - name: every-trial-has-nct
+    kind: structural
+    still_works_when: count of trials with empty identity = 0
+  - name: lead-sponsor-is-org
+    kind: structural
+    still_works_when: no string in that slot; no dangling edge
+  - name: phase3-recruiting
+    kind: question
+    still_works_when: answer is a list of NCTs; each has phase containing Phase 3
+      and overall_status in a recruiting state

@@ -1,0 +1,184 @@
+concepts:
+- name: ClinicalTrial
+  label: Clinical trial
+  description: A registered interventional or observational study.
+  identity_keys:
+  - nct_id
+  attributes:
+  - name: nct_id
+    kind: literal
+    range: string
+    required: true
+    identity: true
+    description: Registry identifier.
+  - name: official_title
+    kind: literal
+    range: string
+    required: true
+  - name: brief_title
+    kind: literal
+    range: string
+  - name: overall_status
+    kind: literal
+    range: string
+  - name: phase
+    kind: literal
+    range: string
+  - name: enrollment
+    kind: literal
+    range: integer
+  - name: start_date
+    kind: literal
+    range: date
+  - name: primary_completion_date
+    kind: literal
+    range: date
+  - name: study_type
+    kind: literal
+    range: string
+  - name: lead_sponsor
+    kind: type_ranged
+    range: Organization
+  - name: collaborator
+    kind: type_ranged
+    range: Organization
+  - name: studies_condition
+    kind: type_ranged
+    range: MedicalCondition
+  - name: uses_intervention
+    kind: type_ranged
+    range: Intervention
+  - name: has_investigator
+    kind: type_ranged
+    range: Investigator
+  - name: conducted_at
+    kind: type_ranged
+    range: Facility
+- name: Organization
+  label: Organization
+  description: A sponsor, collaborator, or affiliation.
+  identity_keys:
+  - name
+  attributes:
+  - name: name
+    kind: literal
+    range: string
+    required: true
+    identity: true
+  - name: org_class
+    kind: literal
+    range: string
+    allowed_values:
+    - industry
+    - nih
+    - other
+    - individual
+- name: MedicalCondition
+  label: Medical condition
+  description: A condition a trial studies.
+  identity_keys:
+  - name
+  attributes:
+  - name: name
+    kind: literal
+    range: string
+    required: true
+    identity: true
+  - name: mesh_term
+    kind: literal
+    range: string
+- name: Intervention
+  label: Intervention
+  description: A drug, device, biological, or other intervention.
+  identity_keys:
+  - name
+  attributes:
+  - name: name
+    kind: literal
+    range: string
+    required: true
+    identity: true
+  - name: intervention_type
+    kind: literal
+    range: string
+    allowed_values:
+    - drug
+    - device
+    - biological
+    - other
+- name: Investigator
+  label: Investigator
+  description: A person listed on a trial.
+  identity_keys:
+  - npi
+  - name
+  attributes:
+  - name: name
+    kind: literal
+    range: string
+    required: true
+    identity: true
+  - name: npi
+    kind: literal
+    range: string
+    identity: true
+  - name: specialty
+    kind: literal
+    range: string
+  - name: affiliated_with
+    kind: type_ranged
+    range: Organization
+- name: Facility
+  label: Facility
+  description: A site where a trial is conducted. City and country stay on the facility.
+  identity_keys:
+  - name
+  attributes:
+  - name: name
+    kind: literal
+    range: string
+    required: true
+    identity: true
+  - name: city
+    kind: literal
+    range: string
+  - name: country
+    kind: literal
+    range: string
+relationships:
+- name: lead_sponsor
+  source: ClinicalTrial
+  target: Organization
+  cardinality: '1'
+  kind: type_ranged
+  description: The owner you attribute by default.
+- name: collaborator
+  source: ClinicalTrial
+  target: Organization
+  cardinality: N
+  kind: type_ranged
+- name: studies_condition
+  source: ClinicalTrial
+  target: MedicalCondition
+  cardinality: N
+  kind: type_ranged
+- name: uses_intervention
+  source: ClinicalTrial
+  target: Intervention
+  cardinality: N
+  kind: type_ranged
+- name: has_investigator
+  source: ClinicalTrial
+  target: Investigator
+  cardinality: N
+  kind: type_ranged
+- name: conducted_at
+  source: ClinicalTrial
+  target: Facility
+  cardinality: N
+  kind: type_ranged
+- name: affiliated_with
+  source: Investigator
+  target: Organization
+  cardinality: '1'
+  kind: type_ranged

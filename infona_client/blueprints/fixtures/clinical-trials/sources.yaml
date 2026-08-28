@@ -1,0 +1,44 @@
+sources:
+- id: clinicaltrials-gov
+  cadence: weekly for overall_status; monthly for enrollment and sites
+  definition:
+    name: ClinicalTrials.gov v2 API
+    kind: public_registry
+    url: https://clinicaltrials.gov/api/v2/studies
+    docs_url: https://clinicaltrials.gov/data-api/api
+    license: US-PD
+    publisher: U.S. National Library of Medicine (NIH)
+    credential: none
+  mapping:
+  - source_field: protocolSection.identificationModule.nctId
+    lands_on: ClinicalTrial.nct_id
+    kind: literal
+  - source_field: protocolSection.identificationModule.officialTitle
+    lands_on: ClinicalTrial.official_title
+    kind: literal
+  - source_field: protocolSection.statusModule.overallStatus
+    lands_on: ClinicalTrial.overall_status
+    kind: literal
+  - source_field: protocolSection.sponsorCollaboratorsModule.leadSponsor.name
+    lands_on: lead_sponsor
+    kind: type_ranged
+  - source_field: protocolSection.conditionsModule.conditions[]
+    lands_on: studies_condition
+    kind: type_ranged
+- id: nppes
+  cadence: on new investigator, then quarterly
+  definition:
+    name: NPPES / NPI
+    kind: public_registry
+    url: https://npiregistry.cms.hhs.gov/api/
+    docs_url: https://npiregistry.cms.hhs.gov/api-page
+    license: US-PD
+    publisher: CMS
+    credential: none
+  mapping:
+  - source_field: number
+    lands_on: Investigator.npi
+    kind: literal
+  - source_field: taxonomies[].desc
+    lands_on: Investigator.specialty
+    kind: literal

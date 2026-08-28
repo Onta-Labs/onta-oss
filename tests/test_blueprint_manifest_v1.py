@@ -37,13 +37,14 @@ from infona_client.blueprints.schema import (
     iter_schema_property_names,
 )
 
-FIXTURE = (
+_FIXTURES = (
     Path(__file__).resolve().parents[1]
     / "infona_client"
     / "blueprints"
     / "fixtures"
-    / "clinical_trials_v1.json"
 )
+FIXTURE = _FIXTURES / "clinical_trials_v1.json"
+PACKAGE_DIR = _FIXTURES / "clinical-trials"
 SCHEMA_FILE = (
     Path(__file__).resolve().parents[1]
     / "infona_client"
@@ -172,6 +173,7 @@ def test_literal_attribute_cannot_be_a_relationship():
 
 def test_byok_requires_key_env_name():
     raw = _load_raw()
+    raw["sources"][1]["definition"]["credential"] = "byok"
     raw["sources"][1]["definition"]["key_env"] = None
     with pytest.raises(BlueprintValidationError, match="key_env"):
         validate_manifest(raw)
@@ -179,6 +181,7 @@ def test_byok_requires_key_env_name():
 
 def test_key_env_rejects_secret_shaped_value():
     raw = _load_raw()
+    raw["sources"][1]["definition"]["credential"] = "byok"
     raw["sources"][1]["definition"]["key_env"] = "sk-this-is-a-value-not-a-name"
     with pytest.raises(BlueprintValidationError, match="UPPER_SNAKE"):
         validate_manifest(raw)
@@ -370,6 +373,52 @@ def test_classify_acquisition_change_is_revision_not_silent_minor():
 def test_module_cli_accepts_fixture(capsys):
     from infona_client.blueprints.__main__ import main
 
-    assert main([str(FIXTURE)]) == 0
+    assert main([str(PACKAGE_DIR)]) == 0
     out = capsys.readouterr().out
     assert '"schema_version": "v1-frozen"' in out
+
+
+def test_directory_package_validates():
+    """ADR 0014: canonical package is a directory with blueprint.yaml."""
+
+    manifest = validate_manifest(PACKAGE_DIR)
+    assert manifest.id == "clinical-trials"
+    assert manifest.sample is not None
+    assert manifest.sample.kind == "sample"
+
+
+def test_sample_directory_is_independently_droppable(tmp_path):
+    import shutil
+
+    copied = tmp_path / "pkg"
+    shutil.copytree(PACKAGE_DIR, copied)
+    validate_sample(copied / "sample")
+    shutil.rmtree(copied / "sample")
+    assert validate_manifest(copied).sample is None
+
+
+def test_package_rejects_yaml_and_json_together(tmp_path):
+    import shutil
+
+    copied = tmp_path / "pkg"
+    shutil.copytree(PACKAGE_DIR, copied)
+    (copied / "blueprint.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(BlueprintValidationError, match="must not ship both"):
+        validate_manifest(copied)
+
+
+def test_package_rejects_author_supplied_code(tmp_path):
+    import shutil
+
+    copied = tmp_path / "pkg"
+    shutil.copytree(PACKAGE_DIR, copied)
+    (copied / "hook.py").write_text("print('no')\n", encoding="utf-8")
+    with pytest.raises(BlueprintValidationError, match="author-supplied code"):
+        validate_manifest(copied)
+
+
+def test_archive_is_not_the_package(tmp_path):
+    blob = tmp_path / "blueprint.tar.gz"
+    blob.write_bytes(b"not a real archive")
+    with pytest.raises(BlueprintValidationError, match="transport"):
+        validate_manifest(blob)

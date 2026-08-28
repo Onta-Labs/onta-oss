@@ -1,0 +1,10 @@
+freshness:
+  stale_after:
+  - attribute: overall_status
+    days: 14
+  - attribute: enrollment
+    days: 45
+  - attribute: nct_id
+    never: true
+  - attribute: official_title
+    never: true

@@ -1,0 +1,29 @@
+kind: sample
+origin: synthetic
+license: Apache-2.0
+captured_at: '2026-06-01'
+entities:
+- type: ClinicalTrial
+  id: SAMPLE-001
+  is_sample: true
+  attributes:
+    nct_id: SAMPLE-001
+    official_title: (synthetic sample) Example once-weekly GLP-1 obesity study
+    overall_status: COMPLETED
+    phase: PHASE3
+- type: ClinicalTrial
+  id: SAMPLE-002
+  is_sample: true
+  attributes:
+    nct_id: SAMPLE-002
+    official_title: (synthetic sample) Example dual-agonist obesity study
+    overall_status: COMPLETED
+    phase: PHASE3
+- type: ClinicalTrial
+  id: SAMPLE-003
+  is_sample: true
+  attributes:
+    nct_id: SAMPLE-003
+    official_title: (synthetic sample) Example recruiting oral obesity study
+    overall_status: RECRUITING
+    phase: PHASE3

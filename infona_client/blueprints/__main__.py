@@ -17,7 +17,7 @@ def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if not args or args[0] in {"-h", "--help"}:
         print(
-            "usage: python -m infona_client.blueprints <manifest.json|yaml>",
+            "usage: python -m infona_client.blueprints <package-dir|blueprint.yaml>",
             file=sys.stderr,
         )
         return 2

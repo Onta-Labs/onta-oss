@@ -1,0 +1,24 @@
+acquisition:
+  steps:
+  - name: seed
+    instruction: query.cond=obesity OR overweight plus intervention terms GLP-1, semaglutide,
+      tirzepatide. Not every trial on earth.
+  - name: page
+    instruction: Follow nextPageToken on /api/v2/studies until the token is gone,
+      or 5000 studies, whichever first.
+  - name: first-pull
+    instruction: Mint a ClinicalTrial per NCT and the related Organization, MedicalCondition,
+      Intervention, Investigator, and Facility nodes from the mapping table.
+  - name: refresh
+    instruction: Re-fetch only trials whose overall_status is past the 14-day window
+      or whose enrollment is past 45 days. Do not re-mint.
+  - name: disappeared-row
+    instruction: If an NCT the workspace already has is gone from the API, set overall_status
+      to WITHDRAWN and stop refreshing it. Do not delete the node.
+  enrichment:
+  - name: fill-investigator-npi
+    source: nppes
+    fills: Investigator.npi
+    instruction: Given an Investigator with a name but no npi, look up NPPES by name
+      plus affiliated_with. One high-confidence hit fills npi and specialty. Several
+      hits leave the attributes empty and surface candidates.

@@ -9,18 +9,18 @@ graph. Install writes the model, the source bindings, the tasks, the
 policies, the skills, and the evals. Records appear in *your* workspace
 after you connect what the sources need and acquisition runs (INF-564).
 
-This package is the protocol: schema, validator, fixtures. The hosted
-registry, private extensions, entitlement, and paid source bindings are
-premium (INF-562 starting split). On-disk *package* layout (directory vs
-tarball vs OCI) is still INF-562's ADR. The manifest itself is a JSON
-object; YAML is the same schema if PyYAML is installed.
+This package is the protocol: schema, validator, fixtures (ADR 0014).
+Canonical package = a directory of UTF-8 plain text with `blueprint.yaml`
+at the root. A zip/tar is an envelope, not the format. No author-supplied
+code. The hosted registry, private extensions, entitlement, and paid
+source bindings are premium.
 
 ## Validate
 
 ```bash
 # in the OSS checkout root
 PYTHONPATH=. python -m infona_client.blueprints \
-  infona_client/blueprints/fixtures/clinical_trials_v1.json
+  infona_client/blueprints/fixtures/clinical-trials
 
 PYTHONPATH=. python -m pytest tests/test_blueprint_manifest_v1.py
 ```
