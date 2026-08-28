@@ -665,6 +665,7 @@ async def test_ask_cypher_retrieve_passes_language_cypher(monkeypatch):
     assert retrieve_calls, "expected bank.retrieve to be called on cypher path"
     kw = retrieve_calls[0]["kwargs"]
     assert kw.get("language") == "cypher", retrieve_calls[0]
+    assert kw.get("tenant_id") == "demo-tenant", retrieve_calls[0]
     assert result.timing.get("query_language") == "cypher"
     assert "3" in result.answer
 

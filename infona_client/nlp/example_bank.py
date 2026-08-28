@@ -50,6 +50,7 @@ from infona_client.nlp.example_bank_format import (  # noqa: F401
 from infona_client.nlp.example_bank_models import (  # noqa: F401
     ANTI_CHEAT_THRESHOLD,
     BENCHMARK_KG_PREFIXES,
+    BLUEPRINT_ORIGIN,
     CYPHER_PATTERN_DETECTORS,
     DEFAULT_BANK_PATH,
     EVAL_REPORTS_DIR,
@@ -64,7 +65,12 @@ from infona_client.nlp.example_bank_models import (  # noqa: F401
     detect_pattern_tags,
     detect_pattern_tags_cypher,
     example_key,
+    example_matches_kg_purge,
+    example_visible_to_tenant,
     is_benchmark_kg,
+    is_blueprint_origin,
+    is_unscoped_blueprint_example,
+    normalize_example_origin,
 )
 from infona_client.nlp.example_bank_retrieve import ExampleBankRetrieveMixin  # noqa: F401
 from infona_client.nlp.example_bank_store import ExampleBank  # noqa: F401

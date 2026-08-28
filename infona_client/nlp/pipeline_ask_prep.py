@@ -243,6 +243,7 @@ class PipelineAskPrepMixin:
                     kg_name=kg_name,
                     top_k=3,
                     language="cypher",
+                    tenant_id=tenant_id,
                 )
                 if examples:
                     examples_text = format_examples_for_prompt(

@@ -39,6 +39,10 @@ class ExampleBank(ExampleBankRetrieveMixin):
         # is about to save() can use it to persist that read-side filter and
         # actually clean the file (ONTA-449 note in load()).
         self.skipped_benchmark_on_load = 0
+        # INF-567: unscoped Blueprint rows (origin=blueprint, no tenant_id)
+        # that load() dropped. Same save-to-clean contract as the benchmark
+        # counter: the write gates cannot clean a file already on disk.
+        self.skipped_unscoped_blueprint_on_load = 0
 
     @property
     def size(self) -> int:
@@ -52,11 +56,13 @@ class ExampleBank(ExampleBankRetrieveMixin):
         host = _host()
         self._examples = []
         self.skipped_benchmark_on_load = 0
+        self.skipped_unscoped_blueprint_on_load = 0
         if not self._bank_path.exists():
             logger.info("Example bank file not found, starting empty: %s", self._bank_path)
             return 0
 
         skipped_benchmark = 0
+        skipped_unscoped_blueprint = 0
         with open(self._bank_path) as f:
             for line in f:
                 line = line.strip()
@@ -85,14 +91,30 @@ class ExampleBank(ExampleBankRetrieveMixin):
                 if host.is_benchmark_kg(example.kg_name):
                     skipped_benchmark += 1
                     continue
+                # INF-567. A Blueprint example without tenant_id would be
+                # globally visible — the exact leak. Tenant-scoped Blueprint
+                # rows stay loaded; retrieve() is what hides them from other
+                # tenants.
+                if host.is_unscoped_blueprint_example(
+                    example.origin, example.tenant_id
+                ):
+                    skipped_unscoped_blueprint += 1
+                    continue
                 self._examples.append(example)
 
         self.skipped_benchmark_on_load = skipped_benchmark
+        self.skipped_unscoped_blueprint_on_load = skipped_unscoped_blueprint
         if skipped_benchmark:
             logger.warning(
                 "Example bank at %s contains %d benchmark-KG example(s); "
                 "skipped (ONTA-449). The next save() drops them permanently.",
                 self._bank_path, skipped_benchmark,
+            )
+        if skipped_unscoped_blueprint:
+            logger.warning(
+                "Example bank at %s contains %d unscoped Blueprint example(s); "
+                "skipped (INF-567). The next save() drops them permanently.",
+                self._bank_path, skipped_unscoped_blueprint,
             )
         logger.info("Loaded %d examples from %s", len(self._examples), self._bank_path)
         return len(self._examples)
@@ -123,6 +145,7 @@ class ExampleBank(ExampleBankRetrieveMixin):
         # cycle on the same instance fire unconditionally. Read it before
         # save() if you want it for a log line.
         self.skipped_benchmark_on_load = 0
+        self.skipped_unscoped_blueprint_on_load = 0
         logger.info("Saved %d examples to %s", len(self._examples), self._bank_path)
 
     # ── Add examples ─────────────────────────────────────────────────────
@@ -133,24 +156,33 @@ class ExampleBank(ExampleBankRetrieveMixin):
         sparql: str,
         kg_name: str,
         ontology_context: str,
+        *,
+        tenant_id: str = "",
+        origin: str = "",
     ) -> bool:
         """Embed and store an example. Returns True if the bank changed.
 
-        Identity is ``(question, kg_name)`` -- see :func:`example_key`. An
-        example that is already in the bank is REFRESHED with the new SPARQL /
+        Identity is ``(question, kg_name, tenant_id)`` -- see :func:`example_key`.
+        An example that is already in the bank is REFRESHED with the new SPARQL /
         ontology context rather than dropped, and refreshing counts as a change
         (a re-add with identical content does not). Enforces MAX_BANK_SIZE for
         NEW examples only; a refresh is always allowed, since it cannot grow the
-        bank. Benchmark KGs are refused outright (ONTA-449).
+        bank. Benchmark KGs are refused outright (ONTA-449). Unscoped Blueprint
+        examples (origin=blueprint, no tenant_id) are refused (INF-567).
         """
         host = _host()
+        origin = host.normalize_example_origin(origin)
+        tenant_id = (tenant_id or "").strip()
         if host.is_benchmark_kg(kg_name):
             logger.debug("Refusing benchmark-KG example from %s (ONTA-449)", kg_name)
             return False
+        if host.is_unscoped_blueprint_example(origin, tenant_id):
+            logger.debug("Refusing unscoped Blueprint example (INF-567)")
+            return False
 
-        # Already present for this KG -> refresh in place instead of dropping
-        # the newer answer on the floor (infona-oss#280 follow-up).
-        key = host.example_key(question, kg_name)
+        # Already present for this KG/tenant -> refresh in place instead of
+        # dropping the newer answer on the floor (infona-oss#280 follow-up).
+        key = host.example_key(question, kg_name, tenant_id)
         for ex in self._examples:
             if ex.key == key:
                 if ex.refresh_from(sparql, ontology_context):
@@ -175,6 +207,8 @@ class ExampleBank(ExampleBankRetrieveMixin):
                 pattern_tags=pattern_tags,
                 embedding=embedding,
                 cypher="",
+                tenant_id=tenant_id,
+                origin=origin,
             )
         )
         return True
@@ -187,6 +221,8 @@ class ExampleBank(ExampleBankRetrieveMixin):
         ontology_context: str,
         *,
         sparql: str = "",
+        tenant_id: str = "",
+        origin: str = "",
     ) -> bool:
         """Embed and store a Cypher (or mixed) example. Returns True if changed.
 
@@ -195,13 +231,18 @@ class ExampleBank(ExampleBankRetrieveMixin):
         refresh without losing their SPARQL answer.
         """
         host = _host()
+        origin = host.normalize_example_origin(origin)
+        tenant_id = (tenant_id or "").strip()
         if host.is_benchmark_kg(kg_name):
             logger.debug("Refusing benchmark-KG example from %s (ONTA-449)", kg_name)
+            return False
+        if host.is_unscoped_blueprint_example(origin, tenant_id):
+            logger.debug("Refusing unscoped Blueprint example (INF-567)")
             return False
         if not (cypher or "").strip() and not (sparql or "").strip():
             return False
 
-        key = host.example_key(question, kg_name)
+        key = host.example_key(question, kg_name, tenant_id)
         for ex in self._examples:
             if ex.key == key:
                 if ex.refresh_from(sparql, ontology_context, cypher=cypher):
@@ -229,6 +270,8 @@ class ExampleBank(ExampleBankRetrieveMixin):
                 pattern_tags=tags,
                 embedding=embedding,
                 cypher=cypher or "",
+                tenant_id=tenant_id,
+                origin=origin,
             )
         )
         return True
@@ -243,8 +286,9 @@ class ExampleBank(ExampleBankRetrieveMixin):
         -- newly added PLUS refreshed in place -- so a caller can use it as
         "did the bank change?" (``eval.rebuild_example_bank`` gates its
         ``save()`` on exactly that). Benchmark-KG items are dropped (ONTA-449).
+        Unscoped Blueprint items are dropped (INF-567).
 
-        Identity is ``(question, kg_name)`` -- see :func:`example_key`. Two
+        Identity is ``(question, kg_name, tenant_id)`` -- see :func:`example_key`. Two
         consequences, both deliberate (the infona-oss#280 follow-up):
 
         - An item already in the bank REFRESHES it rather than being dropped.
@@ -279,15 +323,23 @@ class ExampleBank(ExampleBankRetrieveMixin):
         # the rebuild truncates both to the same kg_name), so every subsequent
         # eval re-saved a byte-identical bank and logged a bogus accepted count.
         # Found by independent review of infona-oss#291.
-        collapsed: dict[tuple[str, str], dict] = {}
+        collapsed: dict[tuple[str, str, str], dict] = {}
         for item in items:
             kg_name = item.get("kg_name", "")
             if host.is_benchmark_kg(kg_name):
                 continue
-            collapsed[host.example_key(item["question"], kg_name)] = item
+            origin = host.normalize_example_origin(
+                item.get("origin", "") or "",
+                blueprint_id=item.get("blueprint_id") or "",
+            )
+            tenant_id = (item.get("tenant_id", "") or "").strip()
+            if host.is_unscoped_blueprint_example(origin, tenant_id):
+                continue
+            item = {**item, "origin": origin, "tenant_id": tenant_id}
+            collapsed[host.example_key(item["question"], kg_name, tenant_id)] = item
 
-        refreshed: set[tuple[str, str]] = set()
-        pending: dict[tuple[str, str], dict] = {}
+        refreshed: set[tuple[str, str, str]] = set()
+        pending: dict[tuple[str, str, str], dict] = {}
         for key, item in collapsed.items():
             existing = by_key.get(key)
             if existing is not None:
@@ -340,6 +392,8 @@ class ExampleBank(ExampleBankRetrieveMixin):
                         pattern_tags=tags,
                         embedding=emb,
                         cypher=cypher,
+                        tenant_id=item.get("tenant_id", "") or "",
+                        origin=item.get("origin", "") or "",
                     )
                 )
 
@@ -380,7 +434,7 @@ class ExampleBank(ExampleBankRetrieveMixin):
         # saw it, so the identity fix could not take effect on this path and the
         # winner was whichever KG `sorted(glob(...))` happened to reach first.
         # Found by independent review of infona-oss#291.
-        seen_keys: set[tuple[str, str]] = set()
+        seen_keys: set[tuple[str, str, str]] = set()
 
         # 1. Scan eval report JSON files
         for json_file in sorted(reports_path.glob("eval-*.json")):
@@ -403,6 +457,19 @@ class ExampleBank(ExampleBankRetrieveMixin):
                         kg_name, json_file,
                     )
                     continue
+                origin = host.normalize_example_origin(
+                    report.get("origin") or report.get("source") or "",
+                    blueprint_id=report.get("blueprint_id") or "",
+                )
+                tenant_id = (report.get("tenant_id") or "").strip()
+                # INF-567 — same four-layer shape as the spider- prefix block.
+                # An unscoped Blueprint report would become a global few-shot.
+                if host.is_unscoped_blueprint_example(origin, tenant_id):
+                    logger.debug(
+                        "example_bank: skipping unscoped Blueprint report %s (INF-567)",
+                        json_file,
+                    )
+                    continue
                 ontology = report.get("ontology", "")
                 results = report.get("queries", {}).get("results", [])
 
@@ -413,7 +480,14 @@ class ExampleBank(ExampleBankRetrieveMixin):
                     sparql = result.get("sparql", "").strip()
                     if not question or not sparql:
                         continue
-                    key = host.example_key(question, kg_name)
+                    row_origin = host.normalize_example_origin(
+                        result.get("origin") or origin,
+                        blueprint_id=result.get("blueprint_id") or "",
+                    )
+                    row_tenant = (result.get("tenant_id") or tenant_id or "").strip()
+                    if host.is_unscoped_blueprint_example(row_origin, row_tenant):
+                        continue
+                    key = host.example_key(question, kg_name, row_tenant)
                     if key in seen_keys:
                         continue
                     seen_keys.add(key)
@@ -422,6 +496,8 @@ class ExampleBank(ExampleBankRetrieveMixin):
                         "sparql": sparql,
                         "kg_name": kg_name,
                         "ontology_context": ontology,
+                        "tenant_id": row_tenant,
+                        "origin": row_origin,
                     })
             except (host.json.JSONDecodeError, OSError) as exc:
                 logger.warning("Skipping eval report %s: %s", json_file, exc)
@@ -448,7 +524,12 @@ class ExampleBank(ExampleBankRetrieveMixin):
                             # question.
                             graph_uri = pair.get("graph_uri", "")
                             kg_name = graph_uri.split("/kg/")[-1] if "/kg/" in graph_uri else ""
-                            key = host.example_key(question, kg_name)
+                            origin = host.normalize_example_origin(
+                                pair.get("origin") or pair.get("source") or "",
+                                blueprint_id=pair.get("blueprint_id") or "",
+                            )
+                            tenant_id = (pair.get("tenant_id") or "").strip()
+                            key = host.example_key(question, kg_name, tenant_id)
                             if key in seen_keys:
                                 continue
                             seen_keys.add(key)
@@ -464,11 +545,18 @@ class ExampleBank(ExampleBankRetrieveMixin):
                                     kg_name,
                                 )
                                 continue
+                            if host.is_unscoped_blueprint_example(origin, tenant_id):
+                                logger.debug(
+                                    "example_bank: skipping unscoped Blueprint finetune pair (INF-567)",
+                                )
+                                continue
                             items.append({
                                 "question": question,
                                 "sparql": sparql,
                                 "kg_name": kg_name,
                                 "ontology_context": pair.get("ontology", ""),
+                                "tenant_id": tenant_id,
+                                "origin": origin,
                             })
                         except host.json.JSONDecodeError:
                             continue
@@ -499,7 +587,7 @@ class ExampleBank(ExampleBankRetrieveMixin):
 
         logger.info("Found %d correct examples, balanced to %d across %d KGs", len(items), len(balanced), num_kgs)
         added = await self.add_batch(balanced)
-        if added or self.skipped_benchmark_on_load:
+        if added or self.skipped_benchmark_on_load or self.skipped_unscoped_blueprint_on_load:
             self.save()
         else:
             logger.info("Example bank unchanged by populate; not rewriting %s", self._bank_path)

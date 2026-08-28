@@ -198,6 +198,101 @@ BENCHMARK_KG_PREFIXES: tuple[str, ...] = (
     "eval-mh-",
 )
 
+# ── Blueprint tenant isolation (INF-567) ────────────────────────────────
+#
+# The bank is still one process-scoped JSONL. Shared open-data examples
+# (empty ``tenant_id``) stay globally visible — that is the cross-domain
+# transfer the bank exists for. A Blueprint ships ``evals[]`` and supported
+# questions that MUST work inside the installing tenant and MUST NOT reach
+# any other tenant's retrieval. ``format_examples_for_prompt`` rewrites
+# ``FROM`` to the caller's graph, so a leaked Blueprint example would look
+# legitimate rather than obviously foreign.
+#
+# Decision: admit Blueprint examples with a ``tenant_id``, never as global
+# rows. Four write/load layers refuse an unscoped Blueprint example (same
+# shape as the ONTA-449 spider- prefix block). Retrieval is fail-closed:
+# a row with ``tenant_id`` is visible only when the caller passes that
+# same tenant. Omitting ``tenant_id`` at retrieve hides every scoped row.
+BLUEPRINT_ORIGIN = "blueprint"
+
+
+def normalize_example_origin(
+    origin: str | None = None,
+    *,
+    blueprint_id: str | None = None,
+) -> str:
+    """Canonical origin token. ``blueprint_id`` implies Blueprint origin."""
+    if (blueprint_id or "").strip():
+        return BLUEPRINT_ORIGIN
+    return (origin or "").strip().lower()
+
+
+def is_blueprint_origin(
+    origin: str | None = None,
+    *,
+    blueprint_id: str | None = None,
+) -> bool:
+    """True when the row was sourced from a Blueprint package."""
+    return normalize_example_origin(origin, blueprint_id=blueprint_id) == BLUEPRINT_ORIGIN
+
+
+def is_unscoped_blueprint_example(
+    origin: str | None = None,
+    tenant_id: str | None = None,
+    *,
+    blueprint_id: str | None = None,
+) -> bool:
+    """True when a Blueprint example would be globally visible — refuse it.
+
+    Tolerates ``None`` the same way :func:`is_benchmark_kg` does: ``load()``
+    calls this outside its malformed-line ``except``, so raising here would
+    take down the whole load.
+    """
+    if not is_blueprint_origin(origin, blueprint_id=blueprint_id):
+        return False
+    return not (tenant_id or "").strip()
+
+
+def example_matches_kg_purge(
+    example: "Example",
+    *,
+    tenant_id: str,
+    kg_name: str,
+) -> bool:
+    """True when a KG delete should drop this example.
+
+    Global rows (empty ``tenant_id``) keep the historical kg_name-only
+    match. Tenant-scoped rows — Blueprint installs — are dropped only for
+    the deleting tenant, so two workspaces that installed the same
+    Blueprint do not evict each other's questions.
+    """
+    if (example.kg_name or "").strip() != (kg_name or "").strip():
+        return False
+    scoped = (example.tenant_id or "").strip()
+    if not scoped:
+        return True
+    return scoped == (tenant_id or "").strip()
+
+
+def example_visible_to_tenant(
+    example_tenant_id: str | None,
+    caller_tenant_id: str | None,
+) -> bool:
+    """Whether a stored example may enter this caller's retrieval pool.
+
+    Empty ``example_tenant_id`` is the shared bank (visible to every tenant).
+    A scoped row is visible only to the matching caller. Missing caller
+    tenant is fail-closed for scoped rows so a forgotten ``tenant_id`` at
+    retrieve cannot leak a Blueprint question.
+    """
+    scoped = (example_tenant_id or "").strip()
+    if not scoped:
+        return True
+    caller = (caller_tenant_id or "").strip()
+    if not caller:
+        return False
+    return scoped == caller
+
 
 def is_benchmark_kg(kg_name: str) -> bool:
     """True if ``kg_name`` is an external-benchmark KG barred from the bank.
@@ -215,8 +310,12 @@ def is_benchmark_kg(kg_name: str) -> bool:
     return (kg_name or "").strip().lower().startswith(BENCHMARK_KG_PREFIXES)
 
 
-def example_key(question: str, kg_name: str | None) -> tuple[str, str]:
-    """Identity of an example for dedup/refresh: its question, within its KG.
+def example_key(
+    question: str,
+    kg_name: str | None,
+    tenant_id: str | None = None,
+) -> tuple[str, str, str]:
+    """Identity of an example for dedup/refresh: question, KG, tenant.
 
     This used to be the question text ALONE, which conflated two different
     things and got both wrong:
@@ -231,10 +330,19 @@ def example_key(question: str, kg_name: str | None) -> tuple[str, str]:
       "duplicate" to be dropped, so fresh data lost to whatever was in the bank
       first. See :meth:`ExampleBank.add_batch`, which now refreshes instead.
 
+    ``tenant_id`` is the INF-567 third coordinate: two tenants that install
+    the same Blueprint (same question, same ``kg_name``) must not refresh
+    each other's row. Empty ``tenant_id`` is the shared bank; existing
+    callers that omit it keep the previous ``(question, kg_name)`` identity.
+
     ``question`` is normalized (strip + lowercase) because it is free text a
-    human typed; ``kg_name`` is a slug and is only stripped.
+    human typed; ``kg_name`` and ``tenant_id`` are slugs and are only stripped.
     """
-    return (question.strip().lower(), (kg_name or "").strip())
+    return (
+        question.strip().lower(),
+        (kg_name or "").strip(),
+        (tenant_id or "").strip(),
+    )
 
 
 @dataclass
@@ -253,11 +361,13 @@ class Example:
     pattern_tags: list[str] = field(default_factory=list)
     embedding: list[float] = field(default_factory=list)
     cypher: str = ""
+    tenant_id: str = ""
+    origin: str = ""
 
     @property
-    def key(self) -> tuple[str, str]:
+    def key(self) -> tuple[str, str, str]:
         """See :func:`example_key`."""
-        return example_key(self.question, self.kg_name)
+        return example_key(self.question, self.kg_name, self.tenant_id)
 
     def refresh_from(
         self,
@@ -305,6 +415,11 @@ class Example:
         # Omit empty cypher so SPARQL-only bank lines stay byte-stable.
         if self.cypher:
             d["cypher"] = self.cypher
+        # Omit empty isolation fields so the shared bank stays byte-stable.
+        if self.tenant_id:
+            d["tenant_id"] = self.tenant_id
+        if self.origin:
+            d["origin"] = self.origin
         return d
 
     @classmethod
@@ -313,6 +428,10 @@ class Example:
         cypher = d.get("cypher", "") or ""
         if not sparql and not cypher:
             raise KeyError("example requires sparql and/or cypher")
+        origin = normalize_example_origin(
+            d.get("origin", "") or "",
+            blueprint_id=d.get("blueprint_id") or "",
+        )
         return cls(
             question=d["question"],
             sparql=sparql,
@@ -321,6 +440,8 @@ class Example:
             pattern_tags=d.get("pattern_tags", []),
             embedding=d.get("embedding", []),
             cypher=cypher,
+            tenant_id=d.get("tenant_id", "") or "",
+            origin=origin,
         )
 
 

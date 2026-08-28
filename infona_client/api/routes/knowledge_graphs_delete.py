@@ -85,11 +85,20 @@ async def delete_kg(
 
     # Purge stale examples from the example bank for this KG
     try:
-        from infona_client.nlp.example_bank import get_example_bank
+        from infona_client.nlp.example_bank import (
+            example_matches_kg_purge,
+            get_example_bank,
+        )
         bank = get_example_bank()
         if bank and bank._examples:
             before = len(bank._examples)
-            bank._examples = [e for e in bank._examples if e.kg_name != kg_name]
+            bank._examples = [
+                e
+                for e in bank._examples
+                if not example_matches_kg_purge(
+                    e, tenant_id=tenant.tenant_id, kg_name=kg_name
+                )
+            ]
             removed = before - len(bank._examples)
             if removed > 0:
                 bank.save()

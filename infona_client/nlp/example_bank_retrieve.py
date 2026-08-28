@@ -23,6 +23,7 @@ class ExampleBankRetrieveMixin:
         top_k: int = 3,
         *,
         language: str = "sparql",
+        tenant_id: str = "",
     ) -> list[Example]:
         """Retrieve the best few-shot examples for a query.
 
@@ -45,6 +46,11 @@ class ExampleBankRetrieveMixin:
                 ``cypher`` field so the Neo4j prompt never receives SPARQL-only
                 rows that format away to empty. SPARQL mode only ranks rows
                 with non-empty ``sparql``.
+            tenant_id: Calling tenant (INF-567). Scoped examples (those with
+                a ``tenant_id``) are visible only to this tenant. Fail-closed:
+                omitting it hides every scoped row, so a forgotten argument
+                cannot leak a Blueprint question. Shared-bank rows (empty
+                ``tenant_id``) stay visible to every caller.
 
         Returns:
             List of up to top_k Example objects, pattern-diverse and relevant.
@@ -61,6 +67,8 @@ class ExampleBankRetrieveMixin:
         # a non-empty embedding so the matrix stays well-defined.
         def _in_language_pool(ex: Example) -> bool:
             if not ex.embedding:
+                return False
+            if not host.example_visible_to_tenant(ex.tenant_id, tenant_id):
                 return False
             if lang == "cypher":
                 return bool((ex.cypher or "").strip())

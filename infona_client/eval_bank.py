@@ -75,6 +75,9 @@ async def rebuild_example_bank(
                 "sparql": p["sparql"],
                 "kg_name": kg,
                 "ontology_context": p.get("ontology", ""),
+                "tenant_id": p.get("tenant_id", "") or "",
+                "origin": p.get("origin") or "",
+                "blueprint_id": p.get("blueprint_id") or "",
             })
         except (json.JSONDecodeError, KeyError):
             continue
@@ -86,7 +89,10 @@ async def rebuild_example_bank(
     # 114 identical lines only invites a confusing no-op diff. The one exception
     # is a bank whose file still carries benchmark rows that load() filtered:
     # saving is what finally removes them from disk.
-    purged = bank.skipped_benchmark_on_load  # save() clears it
+    purged = (
+        bank.skipped_benchmark_on_load
+        or getattr(bank, "skipped_unscoped_blueprint_on_load", 0)
+    )  # save() clears both
     if rebuilt or purged:
         bank.save()
         logger.info(
