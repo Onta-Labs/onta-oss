@@ -1,12 +1,16 @@
-"""INF-575 / INF-579 — one /graphs/{tenant}/blueprints family."""
+"""INF-575 / INF-579 / INF-578 — one /graphs/{tenant}/blueprints family."""
 
 from __future__ import annotations
+
+import json
+from pathlib import Path
 
 import pytest
 
 from infona_client.blueprint import load_blueprint_package
 from infona_client.blueprint.catalog import reset_blueprint_package_store
 from infona_client.blueprint.lock import reset_blueprint_lock_store
+from infona_client.blueprint.overlay import reset_blueprint_overlay_store
 from infona_client.blueprint.seeds import CLINICAL_TRIALS
 from infona_client.skills.store import reset_type_skill_store
 
@@ -18,10 +22,12 @@ KG = "clinical-trials"
 def _reset_blueprint_state():
     reset_blueprint_lock_store()
     reset_blueprint_package_store()
+    reset_blueprint_overlay_store()
     reset_type_skill_store()
     yield
     reset_blueprint_lock_store()
     reset_blueprint_package_store()
+    reset_blueprint_overlay_store()
     reset_type_skill_store()
 
 
@@ -204,3 +210,74 @@ def test_validate_writes_nothing(client, auth_headers):
     assert resp.json()["valid"] is True
     listed = client.get(f"/graphs/{TENANT}/blueprints", headers=auth_headers)
     assert listed.json()["blueprints"] == []
+
+
+def _min_manifest() -> dict:
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "infona_client/blueprint/data/clinical_trials_min.json"
+    )
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_extend_and_update_on_the_same_route_family(client, auth_headers):
+    body = _min_manifest()
+    installed = client.post(
+        f"/graphs/{TENANT}/blueprints/install",
+        json={"kg": KG, "include_sample": False, "manifest": body},
+        headers=auth_headers,
+    )
+    assert installed.status_code == 200, installed.text
+    extended = client.post(
+        f"/graphs/{TENANT}/blueprints/infona/clinical-trials/extend",
+        json={
+            "overlay": {
+                "concepts": [
+                    {
+                        "name": "ClinicalTrial",
+                        "attributes": [
+                            {
+                                "name": "internal_priority",
+                                "kind": "literal",
+                                "datatype": "string",
+                                "optional": True,
+                            }
+                        ],
+                    }
+                ]
+            }
+        },
+        headers=auth_headers,
+    )
+    assert extended.status_code == 200, extended.text
+    assert extended.json()["status"] == "extended"
+    nxt = dict(body)
+    nxt["version"] = "0.2.0"
+    updated = client.post(
+        f"/graphs/{TENANT}/blueprints/infona/clinical-trials/update",
+        json={"manifest": nxt, "include_sample": False},
+        headers=auth_headers,
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["status"] == "updated"
+    assert updated.json()["conflicts"] == []
+    card = client.get(
+        f"/graphs/{TENANT}/blueprints/infona/clinical-trials",
+        headers=auth_headers,
+    )
+    assert card.json()["overlay"]["concepts"][0]["name"] == "ClinicalTrial"
+
+
+def test_extend_and_update_are_confined_to_path_tenant(client, auth_headers):
+    ext = client.post(
+        "/graphs/someone-else/blueprints/infona/clinical-trials/extend",
+        json={"overlay": {"concepts": []}},
+        headers=auth_headers,
+    )
+    assert ext.status_code == 403
+    upd = client.post(
+        "/graphs/someone-else/blueprints/infona/clinical-trials/update",
+        json={"manifest": _manifest()},
+        headers=auth_headers,
+    )
+    assert upd.status_code == 403

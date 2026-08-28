@@ -107,6 +107,70 @@ export async function forkBlueprintHandler(
   }
 }
 
+export async function extendBlueprintHandler(
+  {
+    id,
+    overlay,
+    overlay_yaml,
+    path,
+  }: {
+    id: string;
+    overlay?: Record<string, unknown>;
+    overlay_yaml?: string;
+    path?: string;
+  },
+  makeClient: () => Client = client,
+) {
+  try {
+    const fromPath = path ? readPackageDocument(path) : {};
+    return textResult(
+      JSON.stringify(
+        await makeClient().extendBlueprint(id, {
+          overlay,
+          overlay_yaml,
+          ...(fromPath.manifest ? { overlay: fromPath.manifest } : {}),
+          ...(fromPath.manifest_yaml ? { overlay_yaml: fromPath.manifest_yaml } : {}),
+        }),
+        null,
+        2,
+      ),
+    );
+  } catch (err) {
+    return errorResult(err);
+  }
+}
+
+export async function updateBlueprintHandler(
+  {
+    id,
+    path,
+    manifest_yaml,
+    include_sample,
+  }: {
+    id: string;
+    path?: string;
+    manifest_yaml?: string;
+    include_sample?: boolean;
+  },
+  makeClient: () => Client = client,
+) {
+  try {
+    return textResult(
+      JSON.stringify(
+        await makeClient().updateBlueprint(id, {
+          include_sample,
+          ...(path ? readPackageDocument(path) : {}),
+          ...(manifest_yaml ? { manifest_yaml } : {}),
+        }),
+        null,
+        2,
+      ),
+    );
+  } catch (err) {
+    return errorResult(err);
+  }
+}
+
 export function registerBlueprintTools(server: McpServer): void {
   server.registerTool(
     "validate_blueprint",
@@ -166,5 +230,32 @@ export function registerBlueprintTools(server: McpServer): void {
       },
     },
     (args) => forkBlueprintHandler(args),
+  );
+  server.registerTool(
+    "extend_blueprint",
+    {
+      description:
+        "Add a private overlay on an installed Blueprint pin. Same identity. Same route as `infona blueprint extend`.",
+      inputSchema: {
+        id: z.string().describe("Installed blueprint id (namespace/name)."),
+        path: z.string().optional().describe("Local overlay YAML/JSON file."),
+        overlay_yaml: z.string().optional(),
+      },
+    },
+    (args) => extendBlueprintHandler(args),
+  );
+  server.registerTool(
+    "update_blueprint",
+    {
+      description:
+        "Apply a new public base without clobbering the private overlay. Same route as `infona blueprint update`.",
+      inputSchema: {
+        id: z.string().describe("Installed blueprint id (namespace/name)."),
+        path: z.string().optional().describe("New package directory."),
+        manifest_yaml: z.string().optional(),
+        include_sample: z.boolean().optional(),
+      },
+    },
+    (args) => updateBlueprintHandler(args),
   );
 }

@@ -63,6 +63,12 @@ export class ClientBlueprints extends ClientSkills {
   /** @internal */ pBlueprintFork(namespace: string, name: string): string {
     return `${this.pBlueprint(namespace, name)}/fork`;
   }
+  /** @internal */ pBlueprintExtend(namespace: string, name: string): string {
+    return `${this.pBlueprint(namespace, name)}/extend`;
+  }
+  /** @internal */ pBlueprintUpdate(namespace: string, name: string): string {
+    return `${this.pBlueprint(namespace, name)}/update`;
+  }
 
   async validateBlueprint(body: {
     manifest?: Record<string, unknown>;
@@ -115,6 +121,26 @@ export class ClientBlueprints extends ClientSkills {
   ): Promise<unknown> {
     const { namespace, name } = splitBlueprintId(id);
     return this.request("POST", this.pBlueprintFork(namespace, name), body);
+  }
+
+  async extendBlueprint(
+    id: string,
+    body: { overlay?: Record<string, unknown>; overlay_yaml?: string },
+  ): Promise<unknown> {
+    const { namespace, name } = splitBlueprintId(id);
+    return this.request("POST", this.pBlueprintExtend(namespace, name), body);
+  }
+
+  async updateBlueprint(
+    id: string,
+    body: {
+      manifest?: Record<string, unknown>;
+      manifest_yaml?: string;
+      include_sample?: boolean;
+    },
+  ): Promise<unknown> {
+    const { namespace, name } = splitBlueprintId(id);
+    return this.request("POST", this.pBlueprintUpdate(namespace, name), body);
   }
 }
 

@@ -16,5 +16,5 @@ python -m infona_client.blueprint validate \
 ```
 
 Install, inspect, uninstall, and fork live on
-`/graphs/{tenant}/blueprints` (INF-575 / INF-579). Seeds are not a
+`/graphs/{tenant}/blueprints` (INF-575 / INF-579 / INF-578). Seeds are not a
 hosted registry.

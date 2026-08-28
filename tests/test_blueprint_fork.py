@@ -11,6 +11,7 @@ from infona_client.blueprint import (
     load_blueprint_package,
 )
 from infona_client.blueprint.catalog import reset_blueprint_package_store
+from infona_client.blueprint.overlay import reset_blueprint_overlay_store
 from infona_client.blueprint.fork import copy_as_fork, default_fork_id
 from infona_client.blueprint.install import manifest_content_hash
 from infona_client.blueprint.lock import reset_blueprint_lock_store
@@ -32,10 +33,12 @@ SEED_ID = "infona/clinical-trials"
 def _reset_blueprint_state():
     reset_blueprint_lock_store()
     reset_blueprint_package_store()
+    reset_blueprint_overlay_store()
     reset_type_skill_store()
     yield
     reset_blueprint_lock_store()
     reset_blueprint_package_store()
+    reset_blueprint_overlay_store()
     reset_type_skill_store()
 
 

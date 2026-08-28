@@ -178,4 +178,32 @@ export class RawSkillsApi extends RawExtractApi {
       { body: {}, ...init },
     );
   }
+
+  /** `POST /graphs/{tenant}/blueprints/{namespace}/{name}/extend`. */
+  extendBlueprint(
+    namespace: string,
+    name: string,
+    body: unknown,
+    init?: RawInit,
+  ): Promise<Response> {
+    return this.client.requestRaw(
+      "POST",
+      this.client.pBlueprintExtend(namespace, name),
+      { body, ...init },
+    );
+  }
+
+  /** `POST /graphs/{tenant}/blueprints/{namespace}/{name}/update`. */
+  updateBlueprint(
+    namespace: string,
+    name: string,
+    body: unknown,
+    init?: RawInit,
+  ): Promise<Response> {
+    return this.client.requestRaw(
+      "POST",
+      this.client.pBlueprintUpdate(namespace, name),
+      { body, ...init },
+    );
+  }
 }

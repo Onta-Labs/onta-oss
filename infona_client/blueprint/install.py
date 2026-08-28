@@ -344,6 +344,16 @@ async def install_blueprint(
             stored_at=_now(),
         )
     )
+    from infona_client.blueprint.layer import reconcile_overlay_after_base_write
+
+    await reconcile_overlay_after_base_write(
+        tenant_id=tenant_id,
+        blueprint_id=manifest.id,
+        new_base=manifest,
+        old_base=prior_pkg.manifest if prior_pkg is not None else None,
+        content_hash=content_hash,
+        neptune=neptune,
+    )
     status: Literal["installed", "updated"] = (
         "updated" if existing is not None else "installed"
     )
@@ -403,7 +413,14 @@ async def inspect_blueprint(
         if seed is not None:
             manifest = load_and_validate(seed)
     if lock is not None:
-        return _card(manifest, lock)
+        from infona_client.blueprint.layer import overlay_conflicts, overlay_public
+        from infona_client.blueprint.overlay import make_blueprint_overlay_store
+
+        card = _card(manifest, lock)
+        row = await make_blueprint_overlay_store().get(tenant_id, blueprint_id)
+        card["overlay"] = overlay_public(row)
+        card["conflicts"] = overlay_conflicts(row)
+        return card
     if cataloged is not None and cataloged.origin == "fork":
         return fork_card(cataloged.manifest)
     raise BlueprintNotInstalled(
@@ -494,6 +511,9 @@ async def uninstall_blueprint(
         deleted_subjects=sample_to_delete,
     )
     await store.delete(tenant_id, blueprint_id)
+    from infona_client.blueprint.overlay import make_blueprint_overlay_store
+
+    await make_blueprint_overlay_store().delete(tenant_id, blueprint_id)
     return {
         "status": "uninstalled",
         "blueprint_id": blueprint_id,

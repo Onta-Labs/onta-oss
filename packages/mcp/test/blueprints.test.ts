@@ -4,6 +4,8 @@ import {
   inspectBlueprintHandler,
   installBlueprintHandler,
   uninstallBlueprintHandler,
+  extendBlueprintHandler,
+  updateBlueprintHandler,
 } from "../src/index.js";
 
 afterEach(() => vi.restoreAllMocks());
@@ -52,6 +54,24 @@ describe("blueprint tools — SDK forwarding", () => {
     );
     expect(forkBlueprint).toHaveBeenCalledWith("infona/clinical-trials", {
       as: "acme/clinical-trials",
+    });
+    const extendBlueprint = vi.fn(async () => ({ status: "extended" }));
+    await extendBlueprintHandler(
+      { id: "infona/clinical-trials", overlay_yaml: "concepts: []\n" },
+      () => stub({ extendBlueprint }),
+    );
+    expect(extendBlueprint).toHaveBeenCalledWith("infona/clinical-trials", {
+      overlay: undefined,
+      overlay_yaml: "concepts: []\n",
+    });
+    const updateBlueprint = vi.fn(async () => ({ status: "updated", conflicts: [] }));
+    await updateBlueprintHandler(
+      { id: "infona/clinical-trials", manifest_yaml: "id: x\n" },
+      () => stub({ updateBlueprint }),
+    );
+    expect(updateBlueprint).toHaveBeenCalledWith("infona/clinical-trials", {
+      include_sample: undefined,
+      manifest_yaml: "id: x\n",
     });
   });
 });
