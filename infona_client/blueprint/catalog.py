@@ -5,7 +5,8 @@ a new identity here. Install also records what it applied so a later
 fork does not need a hosted registry.
 
 Keyed ``(tenant_id, blueprint_id)``. No cross-tenant read (INF-580).
-In-memory in this PR, same leftover as the lock store.
+In-memory in this PR (fork leftover). The *install lock* is not —
+it lives on the tenant GraphStore (``:BlueprintInstallLock``).
 
 Shipped OSS seeds are readable by id. They are protocol artifacts, not
 a registry index.
