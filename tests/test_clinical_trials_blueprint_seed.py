@@ -92,6 +92,13 @@ def test_domain_model_is_the_contract_slice_not_a_demo_dump():
         "has_investigator",
         "conducted_at",
     } <= rels
+    lead = next(a for a in trial.attributes if a.name == "lead_sponsor")
+    assert lead.kind == "relationship" and lead.cardinality == "N:1"
+    assert lead.range_type == "Organization"
+    reserved = {"name", "id", "label", "source"}
+    for concept in manifest.concepts:
+        leaves = {a.name for a in concept.attributes}
+        assert leaves.isdisjoint(reserved), concept.name
     facility = next(c for c in manifest.concepts if c.name == "Facility")
     assert {a.name for a in facility.attributes} >= {
         "facility_name",
@@ -110,6 +117,11 @@ def test_ctgov_source_and_cadence():
     assert ctgov.key_env == ""
     assert "clinicaltrials.gov/api/v2/studies" in ctgov.url
     assert ctgov.mappings
+    lands = {m.lands_on for m in ctgov.mappings}
+    assert "Facility.facility_name" in lands
+    nppes = next(s for s in manifest.sources if s.id == "nppes")
+    nppes_lands = {m.lands_on for m in nppes.mappings}
+    assert nppes_lands == {"Investigator.npi", "Investigator.specialty"}
     assert any("14" in p.cadence or p.stale_after_days == 14 for p in manifest.freshness.policies)
     status = next(
         p

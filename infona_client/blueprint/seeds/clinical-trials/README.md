@@ -28,8 +28,8 @@ A domain person should recognise this model. It is not a dump of whatever
   `Intervention`, `Investigator`, `Facility`.
 - **Identity:** NCT on a trial; normalized name on org / condition /
   intervention; investigator name, with NPI decisive when present;
-  facility name + country. City, state, and ZIP stay on `Facility`.
-  They are not types.
+  facility name + country. City, state, and country stay on `Facility`.
+  They are not types. ZIP is not modeled.
 - **Tasks:** first pull, stale-status refresh, verify one NCT, answer a
   supported question, watch status flips.
 - **Freshness:** `overall_status` and dates stale after **14 days**
@@ -77,7 +77,7 @@ Empty list means valid against the INF-563 v1 schema.
 
 ## Install — not in this package
 
-Export and install are [INF-565](https://linear.app/infona/issue/INF-565).
+Export and install are INF-565.
 They are not implemented here. There is no `install_blueprint`, no
 premium registry, and no path that writes this ontology into a workspace
 yet.

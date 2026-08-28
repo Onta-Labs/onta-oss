@@ -404,6 +404,9 @@ sources:
       - source_field: protocolSection.contactsLocationsModule.locations[]
         lands_on: conducted_at
         kind: relationship
+      - source_field: protocolSection.contactsLocationsModule.locations[].facility
+        lands_on: Facility.facility_name
+        kind: literal
       - source_field: protocolSection.contactsLocationsModule.locations[].city
         lands_on: Facility.city
         kind: literal
@@ -431,9 +434,6 @@ sources:
         kind: literal
       - source_field: results[].taxonomies[].desc
         lands_on: Investigator.specialty
-        kind: literal
-      - source_field: results[].basic.first_name
-        lands_on: Investigator.investigator_name
         kind: literal
 
 acquisition:
@@ -704,9 +704,11 @@ evals:
       Answer is a list of NCT ids. Each has phase containing PHASE3,
       overall_status in {RECRUITING, ENROLLING_BY_INVITATION}, and a
       studies_condition whose condition_name matches obesity. Re-derive
-      after each refresh — do not pin last week's NCTs. If the answer
-      used only the sample, it must say sample, captured 2026-06-01,
-      and the sample-derived expected ids are SAMPLE-003 and SAMPLE-008.
+      after each refresh — do not pin last week's NCTs. Sample rows have
+      no relationship edges (literals only). If the answer used only the
+      sample, it must say sample, captured 2026-06-01, and the
+      title-inferred expected ids are SAMPLE-003 and SAMPLE-008 — not
+      graph-grounded gold.
   - id: status-freshness-disclosed
     kind: question
     description: Who is the lead sponsor of a given NCT, and is status fresher than two weeks?
