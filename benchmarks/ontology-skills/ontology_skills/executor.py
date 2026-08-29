@@ -76,6 +76,8 @@ def execute_task(
         prompt_template_id=TEMPLATE_ID,
         prompt_sha256=prompt.sha256,
         metrics=metrics,
+        parse=parsed,
+        predicted=parsed.predicted,
         status="ok" if parsed.ok else "error",
         notes=notes,
     )
@@ -215,12 +217,13 @@ def _live_env_help() -> str:
         "  INFONA_BENCH_BASE_URL   default https://openrouter.ai/api/v1 "
         "(alias OPENAI_BASE_URL)\n"
         "  INFONA_BENCH_MODEL      optional override; else by condition:\n"
-        "    4B (1–4, 8): qwen/qwen3-4b\n"
-        "    9B (6):      qwen/qwen3.5-9b\n"
-        "    27B (7):     qwen/qwen3.5-27b\n"
+        "    4b_* (1–4, 8): qwen/qwen3-8b  (no Qwen 4B on OpenRouter)\n"
+        "    9B (6):        qwen/qwen3.5-9b\n"
+        "    27B (7):       qwen/qwen3.5-27b\n"
         "  INFONA_BENCH_QUANTIZATION  optional, recorded on the run log\n"
         "Headers sent: HTTP-Referer https://infona.ai ; "
         "X-Title Infona ontology-skills bench\n"
+        "POST body includes reasoning.enabled=false (Qwen3 thinking off).\n"
         "Pass --task-id; this command does not sweep.\n"
     )
 

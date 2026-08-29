@@ -17,10 +17,12 @@ from typing import Any, Mapping, TextIO
 from .compiler import compile_flat, compile_none, compile_routed
 from .conditions import CONDITION_MATRIX, Condition, condition_by_id
 from .dataset import TASK_FAMILIES, Task, load_fixture_bundle
+from .graph_delta import GraphDelta
 from .models import CompiledSkillSet, Neighborhood, Ontology
+from .parse import ParseResult
 from .scoring import empty_metrics
 
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
 
 
 @dataclass
@@ -104,6 +106,8 @@ class RunResult:
     prompt_template_id: str = "stub.v1"
     prompt_sha256: str | None = None
     metrics: Mapping[str, Any] = field(default_factory=empty_metrics)
+    parse: ParseResult | None = None
+    predicted: GraphDelta = field(default_factory=GraphDelta)
     status: str = "stub"
     run_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     created_at: str = field(
@@ -139,6 +143,11 @@ class RunResult:
             "resources": self.resources.to_dict(),
             "compiler": self.compiled.to_dict(),
             "metrics": dict(self.metrics),
+            "parse": {
+                "ok": None if self.parse is None else self.parse.ok,
+                "error": None if self.parse is None else self.parse.error,
+            },
+            "predicted": self.predicted.to_dict(),
             "notes": self.notes,
         }
 

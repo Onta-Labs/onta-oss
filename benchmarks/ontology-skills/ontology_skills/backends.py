@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Protocol
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from .conditions import Condition
@@ -27,17 +27,20 @@ DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 OPENROUTER_REFERER = "https://infona.ai"
 OPENROUTER_TITLE = "Infona ontology-skills bench"
 
-# Qwen3.5-4B is not on OpenRouter; 4B conditions use Qwen3-4B.
+# OpenRouter catalog 2026-08-29: no Qwen *4b* id (neither Qwen3-4B nor
+# Qwen3.5-4B). Closest same-family SLM is Qwen3-8B. Condition ids stay
+# 4b_*; param_count records 8B so a run is not labeled 4B.
 DEFAULT_MODEL_BY_BUCKET: dict[str, str] = {
-    "4b": "qwen/qwen3-4b",
+    "4b": "qwen/qwen3-8b",
     "9b": "qwen/qwen3.5-9b",
     "27b_or_frontier": "qwen/qwen3.5-27b",
 }
 PARAM_COUNT_BY_BUCKET: dict[str, str] = {
-    "4b": "4B",
+    "4b": "8B",
     "9b": "9B",
     "27b_or_frontier": "27B",
 }
+ERROR_BODY_LIMIT = 2048
 
 CANNED_PATH = PACKAGE_ROOT / "fixtures" / "canned_responses.jsonl"
 
@@ -163,6 +166,9 @@ class LiveBackend:
             "max_tokens": decoding.max_new_tokens,
             "messages": [{"role": "user", "content": prompt}],
             "usage": {"include": True},
+            # Qwen3 thinks by default; exclude / enable_thinking=false still
+            # spend reasoning_tokens. This flag zeros that spend.
+            "reasoning": {"enabled": False},
         }
         if decoding.seed is not None:
             payload["seed"] = decoding.seed
@@ -196,8 +202,33 @@ def _post_json(req: Request, *, timeout: float) -> dict:
     try:
         with urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read().decode("utf-8"))
+    except HTTPError as exc:
+        raise RuntimeError(_http_error_message(exc)) from exc
     except (URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
         raise RuntimeError(f"live backend failed: {exc}") from exc
+
+
+def _http_error_message(exc: HTTPError) -> str:
+    body = _read_http_body(exc)
+    if body:
+        return f"live backend HTTP {exc.code}: {body}"
+    return f"live backend HTTP {exc.code}"
+
+
+def _read_http_body(exc: HTTPError) -> str:
+    try:
+        raw = exc.read()
+    except OSError:
+        return ""
+    if not raw:
+        return ""
+    if isinstance(raw, bytes):
+        text = raw.decode("utf-8", errors="replace")
+    else:
+        text = str(raw)
+    if len(text) > ERROR_BODY_LIMIT:
+        return text[:ERROR_BODY_LIMIT] + "…"
+    return text
 
 
 def _as_int(value: object) -> int | None:

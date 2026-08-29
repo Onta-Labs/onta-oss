@@ -27,7 +27,10 @@ def test_canned_et001_is_exact_success() -> None:
     assert row["resources"]["latency_ms"] is None
     assert row["resources"]["hosted_cost_usd"] is None
     assert "canned-fixture" in row["notes"]
-    assert row["schema_version"] == "1.0.0"
+    assert row["schema_version"] == "1.1.0"
+    assert row["parse"]["ok"] is True
+    assert row["parse"]["error"] is None
+    assert row["predicted"]["type_assertions"]
 
 
 def test_canned_prose_is_parse_error_not_a_score_invention() -> None:
@@ -38,6 +41,10 @@ def test_canned_prose_is_parse_error_not_a_score_invention() -> None:
     assert row["metrics"]["graph_delta_precision"] is None
     assert row["metrics"]["graph_delta_recall"] == 0.0
     assert "parse_failure" in row["notes"]
+    assert row["parse"]["ok"] is False
+    assert row["parse"]["error"]
+    assert row["predicted"]["type_assertions"] == []
+    assert row["predicted"]["literals"] == []
 
 
 def test_condition_5_still_blocked() -> None:

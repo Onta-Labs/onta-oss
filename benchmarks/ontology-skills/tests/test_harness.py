@@ -36,6 +36,8 @@ REQUIRED_ROW_KEYS = {
     "resources",
     "compiler",
     "metrics",
+    "parse",
+    "predicted",
     "notes",
 }
 
@@ -98,6 +100,9 @@ def test_stub_row_has_null_metrics_and_required_keys() -> None:
     assert set(row["resources"]) == REQUIRED_RESOURCE_KEYS
     assert set(row["metrics"]) == REQUIRED_METRIC_KEYS
     assert all(v is None for v in row["metrics"].values())
+    assert row["parse"] == {"ok": None, "error": None}
+    assert row["predicted"]["adds"] == []
+    assert row["predicted"]["type_assertions"] == []
     assert row["compiler"]["mode"] == "routed"
     assert row["compiler"]["skill_ids"]
     assert row["prompt"]["skill_injection"] == "routed"

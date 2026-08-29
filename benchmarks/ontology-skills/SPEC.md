@@ -201,9 +201,9 @@ Harness `compile_for_condition` raises if condition 5 is requested.
 
 ## 11. Run log contract
 
-Every executed task writes one JSON object (JSONL). Schema file: `schemas/run_result.v1.json`. `schema_version` is `1.0.0`.
+Every executed task writes one JSON object (JSONL). Schema file: `schemas/run_result.v1.json`. `schema_version` is `1.1.0` (added `parse` + `predicted`; existing keys unchanged).
 
-Required top-level keys: `schema_version`, `run_id`, `created_at`, `status`, `condition`, `task_id`, `task_family`, `split`, `model`, `prompt`, `context_budget`, `tools`, `decoding`, `resources`, `compiler`, `metrics`, `notes`.
+Required top-level keys: `schema_version`, `run_id`, `created_at`, `status`, `condition`, `task_id`, `task_family`, `split`, `model`, `prompt`, `context_budget`, `tools`, `decoding`, `resources`, `compiler`, `metrics`, `parse`, `predicted`, `notes`.
 
 | Block | Must record |
 |---|---|
@@ -214,6 +214,8 @@ Required top-level keys: `schema_version`, `run_id`, `created_at`, `status`, `co
 | `decoding` | `temperature`, `top_p`, `top_k`, `seed`, `max_new_tokens` |
 | `resources` | `latency_ms`, `prompt_tokens`, `completion_tokens`, `ram_mb`, `vram_mb`, `hosted_cost_usd` |
 | `compiler` | `mode`, `skill_ids`, `type_lineage`, `relation_ids`, `fingerprint` |
+| `parse` | `ok` (bool or null on stubs), `error` (string or null) |
+| `predicted` | GraphDelta object actually scored (`adds`, `deletes`, …). Empty on parse failure. |
 
 Stub runs set `status=stub`, all `metrics` null, resource fields null, `model.name=unspecified`. That is not a published score.
 
@@ -249,7 +251,7 @@ Prompt template id: `ontology_skills.prompt.v1`. The run log records `prompt.sha
 
 Dry-run: `python -m ontology_skills execute --backend canned` reads `fixtures/canned_responses.jsonl` (`task_id`, `text`). Metrics on canned rows are loop tests, not published model scores. `resources.*` stay null on canned rows.
 
-Live env: Bearer key as above; `INFONA_BENCH_BASE_URL` (default OpenRouter; alias `OPENAI_BASE_URL`); `INFONA_BENCH_MODEL` optional override (aliases `OPENAI_MODEL` / `MODEL`), else `qwen/qwen3-4b` for conditions 1–4 and 8, `qwen/qwen3.5-9b` for 6, `qwen/qwen3.5-27b` for 7. OpenRouter headers: `HTTP-Referer https://infona.ai`, `X-Title Infona ontology-skills bench`. Tokens and `hosted_cost_usd` are copied from the response `usage` object when present (`usage.cost` for USD). Do not fabricate cost. Latency is the client wall-clock of that POST.
+Live env: Bearer key as above; `INFONA_BENCH_BASE_URL` (default OpenRouter; alias `OPENAI_BASE_URL`); `INFONA_BENCH_MODEL` optional override (aliases `OPENAI_MODEL` / `MODEL`). OpenRouter catalog 2026-08-29 has no Qwen 4B; the `4b_*` slot defaults to `qwen/qwen3-8b` with recorded `param_count` `8B`. Condition 6: `qwen/qwen3.5-9b`. Condition 7: `qwen/qwen3.5-27b`. Live POST body includes `"reasoning": {"enabled": false}` so thinking cannot consume `max_new_tokens`. HTTP errors include status and response body. OpenRouter headers: `HTTP-Referer https://infona.ai`, `X-Title Infona ontology-skills bench`. Tokens and `hosted_cost_usd` are copied from the response `usage` object when present (`usage.cost` for USD). Do not fabricate cost. Latency is the client wall-clock of that POST.
 
 Scoring (INF-611) is deterministic and does not call a model.
 

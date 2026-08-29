@@ -21,10 +21,12 @@
     "resources",
     "compiler",
     "metrics",
+    "parse",
+    "predicted",
     "notes"
   ],
   "properties": {
-    "schema_version": { "const": "1.0.0" },
+    "schema_version": { "const": "1.1.0" },
     "run_id": { "type": "string", "minLength": 1 },
     "created_at": { "type": "string", "minLength": 1 },
     "status": { "enum": ["stub", "ok", "error", "blocked"] },
@@ -181,6 +183,36 @@
         "er_precision": { "type": ["number", "null"] },
         "er_recall": { "type": ["number", "null"] },
         "er_f1": { "type": ["number", "null"] }
+      }
+    },
+    "parse": {
+      "type": "object",
+      "required": ["ok", "error"],
+      "additionalProperties": false,
+      "properties": {
+        "ok": { "type": ["boolean", "null"] },
+        "error": { "type": ["string", "null"] }
+      }
+    },
+    "predicted": {
+      "type": "object",
+      "required": [
+        "adds",
+        "deletes",
+        "type_assertions",
+        "literals",
+        "merges",
+        "type_extensions",
+        "constraint_repairs"
+      ],
+      "properties": {
+        "adds": { "type": "array" },
+        "deletes": { "type": "array" },
+        "type_assertions": { "type": "array" },
+        "literals": { "type": "array" },
+        "merges": { "type": "array" },
+        "type_extensions": { "type": "array" },
+        "constraint_repairs": { "type": "array", "items": { "type": "string" } }
       }
     },
     "notes": { "type": "string" }

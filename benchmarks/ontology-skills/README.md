@@ -125,7 +125,7 @@ PYTHONPATH=benchmarks/ontology-skills python -m ontology_skills execute \
 
 ## OpenRouter env
 
-Default base URL: `https://openrouter.ai/api/v1`. Every live POST also sends `HTTP-Referer: https://infona.ai` and `X-Title: Infona ontology-skills bench`. Request body includes `"usage": {"include": true}`. `hosted_cost_usd` is copied from OpenRouter `usage.cost` when that field is present; it is left null otherwise. Do not invent a price.
+Default base URL: `https://openrouter.ai/api/v1`. Every live POST also sends `HTTP-Referer: https://infona.ai` and `X-Title: Infona ontology-skills bench`. Request body includes `"usage": {"include": true}` and `"reasoning": {"enabled": false}` (Qwen3 thinks by default; `reasoning.exclude` and `chat_template_kwargs.enable_thinking=false` do **not** stop reasoning-token spend). `hosted_cost_usd` is copied from OpenRouter `usage.cost` when that field is present; it is left null otherwise. Do not invent a price.
 
 | Variable | Alias | Purpose |
 |---|---|---|
@@ -134,13 +134,13 @@ Default base URL: `https://openrouter.ai/api/v1`. Every live POST also sends `HT
 | `INFONA_BENCH_MODEL` | `OPENAI_MODEL` or `MODEL` | Optional override for a single-model run |
 | `INFONA_BENCH_QUANTIZATION` | — | Recorded on the run log (`q4_k_m`, `fp16`, …) |
 
-Default model ids by condition (Qwen3.5-4B is not on OpenRouter, so 4B conditions use Qwen3-4B):
+OpenRouter has **no Qwen 4B** (catalog 2026-08-29: no `*4b*` Qwen id; neither Qwen3-4B nor Qwen3.5-4B). Condition ids stay `4b_*` so the matrix order does not change. The 4B slot’s hosted stand-in is Qwen3-8B; `model.param_count` is recorded as `8B`, not `4B`.
 
-| Conditions | Bucket | Default `model` |
-|---|---|---|
-| 1–4, 8 | 4B | `qwen/qwen3-4b` |
-| 6 | 9B | `qwen/qwen3.5-9b` |
-| 7 | 27B / frontier | `qwen/qwen3.5-27b` |
+| Conditions | Matrix bucket | Default `model` | Recorded `param_count` |
+|---|---|---|---|
+| 1–4, 8 | `4b` | `qwen/qwen3-8b` | `8B` |
+| 6 | `9b` | `qwen/qwen3.5-9b` | `9B` |
+| 7 | `27b_or_frontier` | `qwen/qwen3.5-27b` | `27B` |
 
 CI mocks HTTP. Do not treat canned or mocked-loop metrics as published scores.
 

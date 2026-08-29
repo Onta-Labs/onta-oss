@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+from io import BytesIO
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.request import Request
 
 import pytest
@@ -59,7 +61,7 @@ def _headers(req: Request) -> dict[str, str]:
 
 def test_default_models_by_condition() -> None:
     for cid in FOUR_B_IDS:
-        assert default_model_for_condition(condition_by_id(cid)) == "qwen/qwen3-4b"
+        assert default_model_for_condition(condition_by_id(cid)) == "qwen/qwen3-8b"
     assert (
         default_model_for_condition(condition_by_id("9b_vanilla")) == "qwen/qwen3.5-9b"
     )
@@ -81,8 +83,8 @@ def test_from_env_maps_bucket_and_openrouter_defaults(
     )
     assert four is not None and nine is not None and frontier is not None
     assert four.base_url == DEFAULT_BASE_URL
-    assert four.model_name == "qwen/qwen3-4b"
-    assert four.param_count == "4B"
+    assert four.model_name == "qwen/qwen3-8b"
+    assert four.param_count == "8B"
     assert nine.model_name == "qwen/qwen3.5-9b"
     assert nine.param_count == "9B"
     assert frontier.model_name == "qwen/qwen3.5-27b"
@@ -186,8 +188,9 @@ def test_live_cli_mocked_200_parses_into_graph_delta_scoring(
     assert req.get_method() == "POST"
     assert req.full_url == "https://openrouter.ai/api/v1/chat/completions"
     body = json.loads(req.data.decode("utf-8"))
-    assert body["model"] == "qwen/qwen3-4b"
+    assert body["model"] == "qwen/qwen3-8b"
     assert body["usage"] == {"include": True}
+    assert body["reasoning"] == {"enabled": False}
     headers = _headers(req)
     assert headers["authorization"] == "Bearer sk-test"
     referer = headers.get("http-referer") or headers.get("referer")
@@ -198,9 +201,12 @@ def test_live_cli_mocked_200_parses_into_graph_delta_scoring(
     assert row["status"] == "ok"
     assert row["metrics"]["success"] is True
     assert row["metrics"]["graph_delta_f1"] == 1.0
-    assert row["model"]["name"] == "qwen/qwen3-4b"
-    assert row["model"]["param_count"] == "4B"
+    assert row["model"]["name"] == "qwen/qwen3-8b"
+    assert row["model"]["param_count"] == "8B"
     assert row["model"]["backend"] == "openai-compat"
+    assert row["parse"]["ok"] is True
+    assert row["parse"]["error"] is None
+    assert row["predicted"]["type_assertions"]
     assert row["resources"]["prompt_tokens"] == 100
     assert row["resources"]["completion_tokens"] == 40
     assert row["resources"]["hosted_cost_usd"] == 0.0025
@@ -227,3 +233,25 @@ def test_live_complete_does_not_invent_cost(
     assert result.prompt_tokens == 8
     assert result.completion_tokens == 2
     assert result.hosted_cost_usd is None
+    body = json.loads(capturing.calls[0].data.decode("utf-8"))
+    assert body["reasoning"] == {"enabled": False}
+
+
+def test_live_http_error_includes_status_and_body(
+    clear_live_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("INFONA_BENCH_API_KEY", "sk-test")
+    live = LiveBackend.from_env(condition=condition_by_id("4b_vanilla"))
+    assert live is not None
+    body = b'{"error":{"message":"No endpoints found for qwen/qwen3-4b"}}'
+
+    def boom(request: Request, timeout: float | None = None) -> FakeResponse:
+        del timeout
+        raise HTTPError(
+            request.full_url, 404, "Not Found", hdrs={}, fp=BytesIO(body)
+        )
+
+    monkeypatch.setattr("ontology_skills.backends.urlopen", boom)
+    with pytest.raises(RuntimeError, match="HTTP 404") as caught:
+        live.complete("prompt", decoding=DecodingSpec(), task_id="et-001")
+    assert "No endpoints found for qwen/qwen3-4b" in str(caught.value)
