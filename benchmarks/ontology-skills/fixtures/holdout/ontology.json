@@ -1,0 +1,143 @@
+{
+  "iri_prefix": "https://graph.infona.ai/bench/onto/",
+  "entity_prefix": "https://graph.infona.ai/bench/ent/",
+  "notes": "Holdout logistics tree. Entity → Organization → Company → Carrier is the known leaf the main procurement fixture never golds. Tax numbers are taxId, not registrationId.",
+  "types": [
+    {
+      "type_id": "Entity",
+      "label": "Entity",
+      "parent_ids": []
+    },
+    {
+      "type_id": "Organization",
+      "label": "Organization",
+      "parent_ids": ["Entity"]
+    },
+    {
+      "type_id": "Company",
+      "label": "Company",
+      "parent_ids": ["Organization"]
+    },
+    {
+      "type_id": "Carrier",
+      "label": "Carrier",
+      "parent_ids": ["Company"]
+    },
+    {
+      "type_id": "Consignee",
+      "label": "Consignee",
+      "parent_ids": ["Organization"]
+    },
+    {
+      "type_id": "Person",
+      "label": "Person",
+      "parent_ids": ["Entity"]
+    },
+    {
+      "type_id": "Location",
+      "label": "Location",
+      "parent_ids": ["Entity"]
+    },
+    {
+      "type_id": "Product",
+      "label": "Product",
+      "parent_ids": ["Entity"]
+    }
+  ],
+  "relations": [
+    {
+      "relation_id": "HAULS_FOR",
+      "label": "hauls for",
+      "source_type": "Carrier",
+      "target_type": "Consignee",
+      "parent_ids": []
+    },
+    {
+      "relation_id": "LOCATED_IN",
+      "label": "located in",
+      "source_type": "Organization",
+      "target_type": "Location",
+      "parent_ids": []
+    },
+    {
+      "relation_id": "EMPLOYS",
+      "label": "employs",
+      "source_type": "Organization",
+      "target_type": "Person",
+      "parent_ids": []
+    },
+    {
+      "relation_id": "SUBSIDIARY_OF",
+      "label": "subsidiary of",
+      "source_type": "Company",
+      "target_type": "Company",
+      "parent_ids": []
+    }
+  ],
+  "skills": [
+    {
+      "skill_id": "uri-stability",
+      "title": "One node per party",
+      "kind": "type",
+      "attached_to": "Entity",
+      "provenance": "curated",
+      "body": "Keep a single node when the only change is case, extra spaces, a trailing period, or a Co/LLC/Ltd suffix. Write the discarded spelling on alias. Do not mint a second URI for that."
+    },
+    {
+      "skill_id": "filing-label",
+      "title": "Filing name vs call-sign",
+      "kind": "type",
+      "attached_to": "Organization",
+      "provenance": "curated",
+      "body": "legalName is the string on the corporate filing, suffixes included. A radio call-sign, dock nickname, or shop banner goes on alias. Never overwrite legalName from the short form."
+    },
+    {
+      "skill_id": "tax-and-scac",
+      "title": "Tax numbers are not the fleet key",
+      "kind": "type",
+      "attached_to": "Company",
+      "provenance": "curated",
+      "body": "VAT, EIN, and GST land on taxId. They are never a merge key. SCAC lands on scac. USDOT lands on dotNumber. A Companies House or ASIC number lands on companyNumber. Do not write any of those values onto registrationId."
+    },
+    {
+      "skill_id": "fleet-lane",
+      "title": "Fleet company hygiene",
+      "kind": "type",
+      "attached_to": "Carrier",
+      "provenance": "curated",
+      "body": "A fleet company moves freight for a receiving mill or warehouse. Demand scac or mcNumber. transitDays and serviceClass stay on the fleet company, not on the yard. Do not type the paying mill as the fleet company because a bill of lading listed them under a fleet heading."
+    },
+    {
+      "skill_id": "receiver-dock",
+      "title": "Receiving org hygiene",
+      "kind": "type",
+      "attached_to": "Consignee",
+      "provenance": "curated",
+      "body": "A receiving org takes freight. A BOL 'carrier ref' field that repeats their name does not make them the fleet company."
+    },
+    {
+      "skill_id": "haul-window",
+      "title": "HAULS_FOR window",
+      "kind": "relation",
+      "attached_to": "HAULS_FOR",
+      "provenance": "curated",
+      "body": "HAULS_FOR is one edge per lane and calendar window. Two bills of lading in the same window are the same edge. Source is a fleet company. Target is a receiving org. Do not emit the edge without both ends typed."
+    },
+    {
+      "skill_id": "haul-weight",
+      "title": "HAULS_FOR weight",
+      "kind": "relation",
+      "attached_to": "HAULS_FOR",
+      "provenance": "curated",
+      "body": "palletCount, weightKg, and qty must be zero or greater. A missing count is fine. A negative count is a violation and should be clamped to 0, not dropped as a missing value."
+    },
+    {
+      "skill_id": "human-not-fleet",
+      "title": "A human is not a fleet",
+      "kind": "type",
+      "attached_to": "Person",
+      "provenance": "curated",
+      "body": "A human must not source HAULS_FOR. Type the dispatcher as a person and attach EMPLOYS from the fleet company. Do not promote the human into the fleet company type to keep an illegal edge."
+    }
+  ]
+}
