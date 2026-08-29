@@ -169,6 +169,9 @@ class LiveBackend:
             # Qwen3 thinks by default; exclude / enable_thinking=false still
             # spend reasoning_tokens. This flag zeros that spend.
             "reasoning": {"enabled": False},
+            # OpenRouter lists response_format on qwen/qwen3-8b. Same
+            # condition ids. Closed object for the GraphDelta parser.
+            "response_format": {"type": "json_object"},
         }
         if decoding.seed is not None:
             payload["seed"] = decoding.seed

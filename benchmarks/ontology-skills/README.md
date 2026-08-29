@@ -125,7 +125,7 @@ PYTHONPATH=benchmarks/ontology-skills python -m ontology_skills execute \
   --backend live --condition 4b_ontology_routed --task-id et-001
 ```
 
-Prompt template `ontology_skills.prompt.v3` states the identifier contract without naming a gold type: leaf type only, short local id, never an IRI; camelCase attrs; full relation IRI predicates; full entity URIs minted in-task. `entity_uri` / `mint_as` were stripped from task inputs (a reviewer leak). A v1 live smoke on `et-001` parsed OK for both routed and vanilla and still scored 0 from identifier mismatch, not Infona vs vanilla. Gold ops were not changed.
+Prompt template `ontology_skills.prompt.v5` is a short GraphDelta contract: leaf type only; camelCase attrs (`registrationId`, not `vat`); mint an entity URI if the input has none; types/attrs in `type_assertions`/`literals`, not duplicated as `adds`. The hint does not name a gold type or gold URI. Scoring aligns a minted slug to the gold entity (legalName / mention / single-entity) and drops adds that only restate those facts. Gold ops were not changed.
 
 Condition 9 (`4b_rag_skills`) retrieves the same fixture skill bodies by cosine similarity to `json.dumps(task.input)`. k equals the routed compiled skill count for that task. Live embeddings POST `{base}/embeddings` as `openai/text-embedding-3-small` (override `INFONA_BENCH_EMBED_MODEL`) on the same Bearer key as chat. Missing key fails closed. A local hashing embedder is **not** the published RAG baseline (CI uses `MockEmbedder` only). Retrieval scores are logged; they are not compiler provenance.
 
