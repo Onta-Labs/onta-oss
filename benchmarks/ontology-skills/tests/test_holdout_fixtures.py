@@ -54,6 +54,10 @@ def test_holdout_skill_bodies_are_not_copied() -> None:
     assert main.isdisjoint(hold)
 
 
+def _type_signature(onto) -> frozenset[tuple[str, tuple[str, ...]]]:
+    return frozenset((tid, typ.parent_ids) for tid, typ in onto.types.items())
+
+
 def test_holdout_tree_adds_carrier_leaf() -> None:
     onto = _holdout().ontology
     assert onto.types["Organization"].parent_ids == ("Entity",)
@@ -62,6 +66,27 @@ def test_holdout_tree_adds_carrier_leaf() -> None:
     assert "Carrier" not in load_ontology().types
     assert onto.relations["HAULS_FOR"].source_type == "Carrier"
     assert onto.relations["HAULS_FOR"].target_type == "Consignee"
+
+
+def test_holdout_ontology_types_are_not_a_clone_of_main() -> None:
+    main = load_ontology()
+    hold = _holdout().ontology
+    assert _type_signature(hold) != _type_signature(main)
+    assert set(hold.types) != set(main.types)
+    assert set(hold.relations) != set(main.relations)
+
+
+def test_holdout_skill_bodies_do_not_copy_gold_values() -> None:
+    values = {
+        item.value
+        for task in _holdout().tasks
+        for item in task.gold.literals
+        if len(item.value) >= 5
+    }
+    assert values
+    for skill in _holdout().ontology.skills:
+        leaked = [val for val in values if val in skill.body]
+        assert not leaked, (skill.skill_id, leaked)
 
 
 def test_holdout_gold_is_a_graph_delta() -> None:

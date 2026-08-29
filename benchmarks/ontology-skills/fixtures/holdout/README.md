@@ -25,11 +25,16 @@ Unseen branches use types that are not in the main gold set (`CrossDock`, `RailS
 ## How to load
 
 ```python
-from pathlib import Path
-from ontology_skills.dataset import load_fixture_bundle
-
-root = Path("benchmarks/ontology-skills/fixtures/holdout")
-bundle = load_fixture_bundle(root / "ontology.json", root / "tasks.jsonl")
+from ontology_skills.holdout import load_holdout_bundle, execute_holdout_task
 ```
 
-24 tasks, 3 per SPEC family, one of each SPEC split per family. No scores live in this tree. Do not invent any.
+`load_holdout_bundle()` is the single loader. `execute_holdout_task` reuses the 487 `execute_task` loop and points it at this directory for one call.
+
+```bash
+PYTHONPATH=benchmarks/ontology-skills python -m ontology_skills.holdout \
+  --task-id ho-et-01 --backend canned --canned path/to/canned.jsonl
+```
+
+`--task-id` is required. This CLI does not sweep. Live still needs a Bearer key and will not POST without one. There is no holdout canned bank in-tree and no published score.
+
+24 tasks, 3 per SPEC family. All three SPEC splits appear in the set. No scores live in this tree. Do not invent any.
