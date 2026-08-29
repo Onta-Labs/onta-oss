@@ -185,9 +185,16 @@ async def fork_blueprint(
     blueprint_id: str,
     *,
     as_id: str | None = None,
+    parent: BlueprintManifest | None = None,
 ) -> ForkResult:
-    """Copy ``blueprint_id`` into a new catalog identity. No graph writes."""
-    parent = await resolve_package(tenant_id, blueprint_id)
+    """Copy ``blueprint_id`` into a new catalog identity. No graph writes.
+
+    ``parent`` is the already-resolved document (path-tenant catalog or
+    shipped seed). When omitted, resolve against ``tenant_id``.
+    """
+    parent = parent if parent is not None else await resolve_package(
+        tenant_id, blueprint_id
+    )
     target = _require_package_id(as_id) if as_id else default_fork_id(
         tenant_id, parent.id
     )

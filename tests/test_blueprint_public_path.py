@@ -10,6 +10,7 @@ from infona_client.auth.tenant_directory import (
     TenantProviderError,
     register_tenant_provider,
 )
+from infona_client.blueprint.plan import BlueprintAcquisitionFailed
 from infona_client.blueprint.catalog import reset_blueprint_package_store
 from infona_client.blueprint.install import inspect_blueprint, list_installed_blueprints
 from infona_client.blueprint.lock import reset_blueprint_lock_store
@@ -156,10 +157,12 @@ async def test_public_install_does_not_contaminate_tenant_with_unrelated_kg(
     assert card["sample_is_current"] is False
 
 
-def test_existing_target_still_writes_the_path_tenant_when_dirty(
+@pytest.mark.asyncio
+async def test_existing_target_still_writes_the_path_tenant_when_dirty(
     client, auth_headers
 ):
-    """CLI / explicit existing-workspace install is unchanged."""
+    """CLI / explicit existing-workspace install writes the path tenant."""
+    await upsert_registered_kg(TENANT, UNRELATED_KG, description="pre-existing")
     resp = client.post(
         f"/graphs/{TENANT}/blueprints/install",
         json={"seed": "infona/clinical-trials", "kg": "clinical-trials"},
@@ -249,19 +252,54 @@ def test_public_install_first_run_fail_closed(client, auth_headers):
     detail = resp.json()["detail"]
     assert detail["fail_closed"] is True
     assert detail["missing"][0]["key_env"] == "INFONA_TEST_TRACKER_KEY"
+    listed = client.get(f"/graphs/{TENANT}/blueprints", headers=auth_headers)
+    assert listed.json()["blueprints"] == []
 
 
-def test_public_install_without_directory_refuses_dirty_tenant(
+def test_public_install_retries_same_workspace_after_first_run_failure(
+    client, auth_headers, monkeypatch
+):
+    """Failed first-run leaves a pin; retry must not mint a second workspace."""
+    from infona_client.blueprint import public_path as pp
+
+    real = pp.run_first_run
+    state = {"n": 0}
+
+    async def fail_once(*args, **kwargs):
+        state["n"] += 1
+        if state["n"] == 1:
+            raise BlueprintAcquisitionFailed(
+                "ctgov unavailable", details={"fail_closed": True}
+            )
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(pp, "run_first_run", fail_once)
+    first = client.post(
+        f"/graphs/{TENANT}/blueprints/install",
+        json={"seed": "infona/clinical-trials", "target": "new_workspace"},
+        headers=auth_headers,
+    )
+    assert first.status_code == 400, first.text
+    assert first.json()["detail"]["tenant_id"] == TENANT
+    listed = client.get(f"/graphs/{TENANT}/blueprints", headers=auth_headers)
+    assert listed.json()["blueprints"][0]["blueprint_id"] == "infona/clinical-trials"
+
+    retry = client.post(
+        f"/graphs/{TENANT}/blueprints/install",
+        json={"seed": "infona/clinical-trials", "target": "new_workspace"},
+        headers=auth_headers,
+    )
+    assert retry.status_code == 200, retry.text
+    assert retry.json()["tenant_id"] == TENANT
+    assert retry.json()["first_run"]["status"] == "answered"
+
+
+@pytest.mark.asyncio
+async def test_public_install_without_directory_refuses_dirty_tenant(
     client, auth_headers
 ):
     register_tenant_provider(None)
-    # Seed a pin so the path tenant is not empty.
-    seeded = client.post(
-        f"/graphs/{TENANT}/blueprints/install",
-        json={"seed": "infona/clinical-trials", "include_sample": False},
-        headers=auth_headers,
-    )
-    assert seeded.status_code == 200, seeded.text
+    await upsert_registered_kg(TENANT, UNRELATED_KG, description="pre-existing")
     resp = client.post(
         f"/graphs/{TENANT}/blueprints/install",
         json={
