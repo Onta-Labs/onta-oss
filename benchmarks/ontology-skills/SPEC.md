@@ -231,18 +231,27 @@ Stub runs set `status=stub`, all `metrics` null, resource fields null, `model.na
 
 v1 ships eight families on the procurement fixture (`Entity → Organization → Company → Supplier`, `SUPPLIES_TO`). **INF-608** fills `fixtures/tasks.jsonl` to **10 tasks per family** (80 total) across all three splits. Append lines; do not introduce a second file format. `scripts/emit_tasks.py` regenerates the JSONL; the JSONL is what the loader reads.
 
-## 13. Executor (INF-607, not this slice)
+## 13. Executor (INF-607)
 
-The executor may be any 1–4B/9B/27B local or hosted chat model. It receives:
+The executor may be any 1–4B/9B/27B local or hosted chat model behind an OpenAI-compatible `/v1/chat/completions` endpoint. This slice **does not call that endpoint**.
 
-- the task `input`
-- for condition 2: serialized lineage + relation signatures
+It receives:
+
+- the task `input` (never the gold)
+- for condition 2: serialized lineage + relation signatures, no skill bodies
 - for condition 3: every skill body (flat order)
 - for condition 4/8: routed skill bodies in compiler order
+- for conditions 1/6/7: neither ontology nor skills
 
-It must return a `GraphDelta` JSON object. Parsing failure → `success=false`, empty predicted delta. Do not repair the parse with a second model and call that the primary run.
+It must return a `GraphDelta` JSON object. Parsing failure → empty predicted delta, `status=error`, `success=false`. Do not repair the parse with a second model.
 
-No model execution in this package until INF-607. Scoring (INF-611) is deterministic and does not call a model.
+Prompt template id: `ontology_skills.prompt.v1`. The run log records `prompt.sha256` of the exact prompt bytes.
+
+Dry-run: `python -m ontology_skills execute --backend canned` reads `fixtures/canned_responses.jsonl` (`task_id`, `text`). Metrics on canned rows are loop tests, not published model scores. `resources.*` stay null until a live backend records them.
+
+Live env (documented, not required): `INFONA_BENCH_BASE_URL` + `INFONA_BENCH_MODEL` (aliases `OPENAI_BASE_URL`, `OPENAI_MODEL` / `MODEL`). CLI `--backend live` is refused until a later run slice.
+
+Scoring (INF-611) is deterministic and does not call a model.
 
 ## 14. Out of scope
 

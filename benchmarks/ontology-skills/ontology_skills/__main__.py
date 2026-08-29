@@ -1,4 +1,4 @@
-"""``python -m ontology_skills`` → harness stub or local scorer."""
+"""``python -m ontology_skills`` → stub, scorer, or canned executor."""
 
 from __future__ import annotations
 
@@ -11,6 +11,10 @@ def main(argv: list[str] | None = None) -> int:
         from .scoring import score_main
 
         return score_main(args[1:])
+    if args and args[0] == "execute":
+        from .executor import execute_main
+
+        return execute_main(args[1:])
     from .harness import main as harness_main
 
     return harness_main(args)

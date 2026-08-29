@@ -7,8 +7,11 @@ This package is a research contract, not product runtime. It must not import
 from .compiler import compile_flat, compile_none, compile_routed
 from .conditions import CONDITION_MATRIX, condition_by_id
 from .dataset import load_fixture_bundle, load_ontology, load_tasks
+from .executor import execute_task, run_dry
 from .graph_delta import GraphDelta, graph_delta_prf
 from .harness import RunResult, write_result_row
+from .parse import parse_graph_delta
+from .prompts import build_prompt
 from .scoring import score_prediction, score_task
 from .models import (
     CompiledSkillSet,
@@ -35,10 +38,14 @@ __all__ = [
     "compile_none",
     "compile_routed",
     "condition_by_id",
+    "execute_task",
     "graph_delta_prf",
     "load_fixture_bundle",
     "load_ontology",
     "load_tasks",
+    "parse_graph_delta",
+    "build_prompt",
+    "run_dry",
     "score_prediction",
     "score_task",
     "write_result_row",
