@@ -269,6 +269,9 @@ def test_extend_and_update_on_the_same_route_family(client, auth_headers):
 
 
 def test_first_run_via_canonical_route(client, auth_headers, monkeypatch):
+    """Route runs acquire → answer. Fetch is stubbed; the orchestrator is not."""
+    from infona_client.api_registry.executor import ApiCallResult, RegistryApiSource
+
     installed = client.post(
         f"/graphs/{TENANT}/blueprints/install",
         json={"kg": KG, "manifest": _manifest()},
@@ -276,32 +279,22 @@ def test_first_run_via_canonical_route(client, auth_headers, monkeypatch):
     )
     assert installed.status_code == 200, installed.text
 
-    async def fake_run(tenant_id, blueprint_id, **kwargs):
-        from infona_client.blueprint.first_run import FirstRunResult
-
-        assert tenant_id == TENANT
-        assert blueprint_id == "infona/clinical-trials"
-        assert kwargs.get("credentials") is None
-        return FirstRunResult(
-            status="answered",
-            tenant_id=tenant_id,
-            blueprint_id=blueprint_id,
-            kg=KG,
-            task="acquire_condition_set",
-            acquired_rows=1,
-            acquired_subjects=["https://graph.infona.ai/entities/ClinicalTrial/NCT09990001"],
-            question="Which Phase 3 trials for obesity are currently recruiting?",
-            answer="NCT09990001",
-            citations=["NCT09990001"],
-            sample_is_current=False,
-            sample_used=False,
-            sample_captured_at="2026-06-01",
-            sources=["ctgov"],
+    async def fake_execute(self, spec, bindings=None, **kwargs):
+        return ApiCallResult(
+            slug=spec.slug,
+            rows=[
+                {
+                    "nct_id": "NCT09990001",
+                    "title": "Phase 3 obesity recruiting study",
+                    "status": "RECRUITING",
+                    "phase": "PHASE3",
+                    "lead_sponsor": "Live Example Sponsor",
+                    "conditions": ["Obesity"],
+                }
+            ],
         )
 
-    monkeypatch.setattr(
-        "infona_client.api.routes.blueprints.run_first_run", fake_run
-    )
+    monkeypatch.setattr(RegistryApiSource, "execute", fake_execute)
     resp = client.post(
         f"/graphs/{TENANT}/blueprints/infona/clinical-trials/first-run",
         json={},
@@ -310,8 +303,11 @@ def test_first_run_via_canonical_route(client, auth_headers, monkeypatch):
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["status"] == "answered"
+    assert body["task"] == "acquire_condition_set"
     assert body["sample_is_current"] is False
     assert "NCT09990001" in body["citations"]
+    assert "NCT09990001" in body["answer"]
+    assert body["sample_used"] is False
 
 
 def test_first_run_missing_credentials_fail_closed(client, auth_headers):

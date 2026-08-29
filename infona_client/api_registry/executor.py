@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, Mapping, Optional
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 import httpx
@@ -133,6 +133,7 @@ class RegistryApiSource:
         sample: bool = False,
         budget: Optional[Budget] = None,
         secret_resolver: Optional[SecretResolver] = None,
+        environ: Optional[Mapping[str, str]] = None,
     ) -> ApiCallResult:
         bindings = {k: str(v) for k, v in (bindings or {}).items() if v is not None}
         result = ApiCallResult(slug=spec.slug, source=f"api:{spec.slug}")
@@ -146,15 +147,11 @@ class RegistryApiSource:
             result.error = f"no endpoint {endpoint_name!r}" if endpoint_name else "no endpoints"
             return result
 
-        # Auth: resolve the secret — from a per-tenant encrypted store (via
-        # ``secret_resolver`` when the spec uses ``secret_ref``) or from the named
-        # env var. Missing key => dormant. Auth material is kept SEPARATE from the
-        # stored request URL (so a query-key secret never lands in
-        # provenance/citations) and is applied at fetch time only to the
-        # registered base_url host (so a redirect or a body-supplied next_link to
-        # another host never receives the credential).
+        # Auth: per-tenant store (``secret_ref`` + resolver), request-scoped
+        # ``environ``, or the named process env var. Missing key => dormant.
+        # Auth material is kept SEPARATE from the stored request URL.
         auth_headers, auth_query, auth_err = await self._resolve_auth(
-            spec, secret_resolver
+            spec, secret_resolver, environ=environ
         )
         if auth_err is not None:
             result.dormant = True
@@ -270,7 +267,11 @@ class RegistryApiSource:
 
     # -- request building --------------------------------------------------- #
     async def _resolve_auth(
-        self, spec: ApiSourceSpec, secret_resolver: Optional[SecretResolver]
+        self,
+        spec: ApiSourceSpec,
+        secret_resolver: Optional[SecretResolver],
+        *,
+        environ: Optional[Mapping[str, str]] = None,
     ) -> tuple[dict[str, str], dict[str, str], Optional[str]]:
         """Return (auth-headers, auth-query, dormancy-error-or-None).
 
@@ -278,21 +279,14 @@ class RegistryApiSource:
         caller attaches it per-host. Missing key => dormant (no network).
 
         Bring-your-own-key (ONTA-340): the credential ALWAYS originates from the
-        USER — their env var or their own per-tenant secret — never a platform /
-        shared key baked into OSS. These two are the ONLY resolution origins; a
-        keyed source with neither present goes dormant, never authenticating on
-        the platform's behalf and never falling back to an un-authenticated call.
-        "Managed" keys (the platform provisions/meters/bills a credential) are a
-        premium concern and plug in only via the injected ``secret_resolver`` /
-        the ``register_secret_cipher`` seam — they never live in this OSS core.
+        USER — request-scoped ``environ``, ``secret_resolver``, or their env var
+        — never a platform / shared key. Missing all three ⇒ dormant. Managed
+        keys are premium and plug in only via ``secret_resolver``.
 
-        The secret comes from ONE of two places, per the spec's ``AuthSpec``:
-        * ``secret_ref`` set → the per-tenant encrypted store, via
-          ``secret_resolver`` (decrypted at THIS call). Absent resolver or absent
-          secret ⇒ dormant, never a plaintext fallback.
-        * else → the named env var (curated-catalog form).
-        The resolved plaintext lives only inside this method + the request
-        headers/query it returns; it is never stored, logged, or echoed.
+        ``secret_ref`` → resolver only (no plaintext fallback). Else ``key_env``
+        is resolved from request ``environ``, then ``secret_resolver(key_env)``,
+        then process ``os.environ``. Request credentials are never written into
+        the process environment. Plaintext is not stored, logged, or echoed.
         """
         auth = spec.auth
         if auth.mode is AuthMode.none:
@@ -310,7 +304,18 @@ class RegistryApiSource:
             if not secret:
                 return {}, {}, f"dormant: secret {auth.secret_ref} not set"
         else:
-            secret = os.environ.get(auth.key_env, "").strip()
+            secret = ""
+            if environ is not None:
+                secret = str(environ.get(auth.key_env) or "").strip()
+            if not secret and secret_resolver is not None:
+                try:
+                    resolved = await secret_resolver(auth.key_env)
+                except Exception:  # noqa: BLE001 — never raise out of the executor
+                    logger.debug("api_registry key_env resolve failed slug=%s", spec.slug)
+                    resolved = None
+                secret = (resolved or "").strip()
+            if not secret:
+                secret = os.environ.get(auth.key_env, "").strip()
             if not secret:
                 return {}, {}, f"dormant: env {auth.key_env} not set"
 

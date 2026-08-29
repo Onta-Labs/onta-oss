@@ -105,6 +105,8 @@ python -m infona_client.blueprint first-run infona/clinical-trials \
 
 ClinicalTrials.gov is `credential: none`, so first-run starts
 `acquire_condition_set` without a key. A `byok` source fails closed
-until the workspace supplies `KEY_ENV=value`. The first supported
-question is answered on this tenant graph. Sample rows, if still
-present, are labelled and `sample_is_current` is always false.
+until the workspace supplies `KEY_ENV=value`. First-run answers the
+package's first supported question (Phase 3 obesity recruiting) on
+this tenant graph; `--question` only overrides the echoed prompt.
+Sample rows, if still present, are labelled and `sample_is_current`
+is always false.

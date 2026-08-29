@@ -106,7 +106,7 @@ bp.command("extend")
 bp.command("first-run")
   .description("Credentials → acquire → first supported answer (after install)")
   .argument("<id>", "installed blueprint id (namespace/name)")
-  .option("--question <text>", "supported question to answer")
+  .option("--question <text>", "echo this prompt; always answers the package's first supported question")
   .option("--credential <pair>", "KEY_ENV=value (repeatable)", (val: string, prev: string[]) => {
     prev.push(val);
     return prev;

@@ -91,7 +91,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     first.add_argument("id", help="installed blueprint id (namespace/name)")
     first.add_argument("--tenant", required=True)
-    first.add_argument("--question", default=None, help="supported question to answer")
+    first.add_argument(
+        "--question",
+        default=None,
+        help="echo this prompt; first-run always answers the package's first supported question",
+    )
     first.add_argument(
         "--credential",
         action="append",

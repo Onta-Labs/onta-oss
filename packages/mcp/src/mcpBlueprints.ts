@@ -297,7 +297,7 @@ export function registerBlueprintTools(server: McpServer): void {
       inputSchema: {
         id: z.string().describe("Installed blueprint id (namespace/name)."),
         credentials: z.record(z.string()).optional().describe("Workspace-side KEY_ENV values. Missing byok keys fail closed."),
-        question: z.string().optional().describe("Supported question to answer."),
+        question: z.string().optional().describe("Echo this prompt. First-run always answers the package's first supported question."),
         max_rows: z.number().optional(),
       },
     },
