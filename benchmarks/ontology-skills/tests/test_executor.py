@@ -19,7 +19,7 @@ def test_canned_et001_is_exact_success() -> None:
     assert row["metrics"]["success"] is True
     assert row["metrics"]["graph_delta_f1"] == 1.0
     assert row["prompt"]["sha256"]
-    assert row["prompt"]["template_id"] == "ontology_skills.prompt.v1"
+    assert row["prompt"]["template_id"] == "ontology_skills.prompt.v2"
     assert row["prompt"]["skill_injection"] == "routed"
     assert row["compiler"]["mode"] == "routed"
     assert row["compiler"]["skill_ids"]

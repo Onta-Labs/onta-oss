@@ -123,6 +123,8 @@ PYTHONPATH=benchmarks/ontology-skills python -m ontology_skills execute \
   --backend live --condition 4b_ontology_routed --task-id et-001
 ```
 
+Prompt template `ontology_skills.prompt.v2` states the identifier contract that gold already used: short `type_id` / camelCase `attr`, full relation IRI predicates, full entity URIs. When gold mints a node that is not already in `input`, the task carries `entity_uri` or `mint_as` as a blank-node id (not the type or literals). A v1 live smoke on `et-001` parsed OK for both `4b_ontology_routed` and `4b_vanilla` and still scored 0: the model emitted full type IRIs, ancestor types, and an invented slug (`…/ent/registration-id`). That is identifier mismatch, not an Infona-vs-vanilla result. Gold ops were not changed.
+
 ## OpenRouter env
 
 Default base URL: `https://openrouter.ai/api/v1`. Every live POST also sends `HTTP-Referer: https://infona.ai` and `X-Title: Infona ontology-skills bench`. Request body includes `"usage": {"include": true}` and `"reasoning": {"enabled": false}` (Qwen3 thinks by default; `reasoning.exclude` and `chat_template_kwargs.enable_thinking=false` do **not** stop reasoning-token spend). `hosted_cost_usd` is copied from OpenRouter `usage.cost` when that field is present; it is left null otherwise. Do not invent a price.

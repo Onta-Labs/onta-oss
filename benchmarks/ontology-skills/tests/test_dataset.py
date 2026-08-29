@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+
 from ontology_skills.compiler import compile_routed
 from ontology_skills.dataset import (
+    FIXTURES_DIR,
     SPLITS,
     TASK_FAMILIES,
     load_fixture_bundle,
@@ -68,6 +72,75 @@ def test_unseen_extensions_are_not_in_the_snapshot() -> None:
 def test_no_gold_key_in_input() -> None:
     for task in load_tasks():
         assert "gold" not in task.input, task.task_id
+
+
+GOLD_OPS_SHA256 = (
+    "9b1c641deb4f486d2c81408fa6e4a89e1067fcf36dd7a61cc079383fd44257ce"
+)
+
+
+def test_gold_ops_unchanged_after_mint_id_input() -> None:
+    digest = hashlib.sha256()
+    path = FIXTURES_DIR / "tasks.jsonl"
+    for line in path.read_text(encoding="utf-8").splitlines():
+        obj = json.loads(line)
+        blob = json.dumps(obj["gold"], sort_keys=True, separators=(",", ":"))
+        digest.update(blob.encode("utf-8"))
+    assert digest.hexdigest() == GOLD_OPS_SHA256
+
+
+def test_minted_gold_uris_are_blank_nodes_in_input() -> None:
+    prefix = "https://graph.infona.ai/bench/ent/"
+
+    def walk(obj, found: set[str]) -> None:
+        if isinstance(obj, dict):
+            for value in obj.values():
+                walk(value, found)
+        elif isinstance(obj, list):
+            for value in obj:
+                walk(value, found)
+        elif isinstance(obj, str) and obj.startswith(prefix):
+            found.add(obj)
+
+    def gold_uris(task) -> list[str]:
+        g = task.gold
+        ordered: list[str] = []
+        seen: set[str] = set()
+
+        def add(uri: str) -> None:
+            if uri.startswith(prefix) and uri not in seen:
+                seen.add(uri)
+                ordered.append(uri)
+
+        for item in g.type_assertions:
+            add(item.entity)
+        for item in g.literals:
+            add(item.entity)
+        for item in (*g.adds, *g.deletes):
+            add(item.subject)
+            add(item.object)
+        for item in g.merges:
+            add(item.absorbed)
+            add(item.survivor)
+        return ordered
+
+    for task in load_tasks():
+        inp = dict(task.input)
+        known: set[str] = set()
+        rest = {k: v for k, v in inp.items() if k not in ("entity_uri", "mint_as")}
+        walk(rest, known)
+        minted = [uri for uri in gold_uris(task) if uri not in known]
+        if len(minted) == 1:
+            assert inp.get("entity_uri") == minted[0], task.task_id
+            assert "mint_as" not in inp, task.task_id
+        elif len(minted) > 1:
+            assert inp.get("mint_as") == minted, task.task_id
+            assert "entity_uri" not in inp, task.task_id
+        else:
+            assert "entity_uri" not in inp, task.task_id
+            assert "mint_as" not in inp, task.task_id
+        assert "type_id" not in inp, task.task_id
+        assert "literals" not in inp, task.task_id
 
 
 def test_every_neighborhood_compiles() -> None:

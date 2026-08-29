@@ -17,7 +17,7 @@ from .conditions import Condition
 from .dataset import Task
 from .models import CompiledSkillSet, Ontology
 
-TEMPLATE_ID = "ontology_skills.prompt.v1"
+TEMPLATE_ID = "ontology_skills.prompt.v2"
 
 _SCHEMA_HINT = """Emit a single JSON object and nothing else. Keys (omit empty ones):
   adds: [{subject, predicate, object}]
@@ -27,9 +27,16 @@ _SCHEMA_HINT = """Emit a single JSON object and nothing else. Keys (omit empty o
   merges: [{absorbed, survivor}]
   type_extensions: [{type_id, parent_id, label}]
   constraint_repairs: [string]
-Entity URIs: https://graph.infona.ai/bench/ent/{slug}
-Relation IRIs: https://graph.infona.ai/bench/onto/{RELATION_ID}
-Assert leaf types only. Do not narrate."""
+
+Identifier contract (must match gold):
+  type_id: short local id (Supplier). Never an IRI.
+  attr: short camelCase (legalName, registrationId). Never an IRI.
+  predicate: full IRI https://graph.infona.ai/bench/onto/{RELATION_ID}
+  entity: full URI https://graph.infona.ai/bench/ent/{slug}
+  Assert the leaf type only (Supplier, not Company or Organization).
+If task_input.entity_uri or task_input.mint_as is present, reuse those URIs.
+They are blank-node ids, not the answer. Never invent a second entity URI.
+Do not narrate."""
 
 
 @dataclass(frozen=True, slots=True)

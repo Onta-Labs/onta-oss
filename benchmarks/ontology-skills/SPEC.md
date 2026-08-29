@@ -49,8 +49,9 @@ Types have ordered `parent_ids` (single inheritance in the fixture; multiple is 
 
 Fixture IRIs:
 
-- types/relations: local ids (`Supplier`, `SUPPLIES_TO`); prefix `https://graph.infona.ai/bench/onto/` when writing graph ops
-- entities: `https://graph.infona.ai/bench/ent/{slug}`
+- types/relations: local ids (`Supplier`, `SUPPLIES_TO`); prefix `https://graph.infona.ai/bench/onto/` when writing graph **ops** (`adds`/`deletes` predicates only)
+- `type_assertions.type_id` and `literals.attr` stay short (`Supplier`, `legalName`). Never IRIs.
+- entities: `https://graph.infona.ai/bench/ent/{slug}` (author-stable; not a function of the mention)
 
 Do not call product `entity_uri`. Fixture URIs are author-stable.
 
@@ -228,6 +229,7 @@ Stub runs set `status=stub`, all `metrics` null, resource fields null, `model.na
 - Required task keys: `task_id`, `family`, `split`, `neighborhood`, `input`, `gold`
 - `neighborhood` keys: `type_ids`, `relation_ids`, `include_ancestors`, `include_incident_relations`
 - `gold` is a GraphDelta object (same keys as `GraphDelta.to_dict`)
+- When gold mints an entity URI that is not already in `input`, `input.entity_uri` (one URI) or `input.mint_as` (list of URIs) carries that blank-node id. Do not put `type_id` or literals there. Prompt v2: reuse it; never invent a second URI.
 
 `task_id` unique. Families must stay in the closed set. INF-608 appends lines; it does not introduce a second file format.
 
@@ -247,7 +249,15 @@ It receives:
 
 It must return a `GraphDelta` JSON object. Parsing failure → empty predicted delta, `status=error`, `success=false`. Do not repair the parse with a second model.
 
-Prompt template id: `ontology_skills.prompt.v1`. The run log records `prompt.sha256` of the exact prompt bytes.
+Prompt template id: `ontology_skills.prompt.v2`. Identifier contract (matches gold; v1 only said “Relation IRIs” and `ent/{slug}`):
+
+- `type_id`: short local id (`Supplier`), never an IRI
+- `attr`: short camelCase (`legalName`, `registrationId`), never an IRI
+- `predicate`: full IRI `https://graph.infona.ai/bench/onto/{RELATION_ID}`
+- `entity`: full URI `https://graph.infona.ai/bench/ent/{slug}`
+- leaf type only
+
+The run log records `prompt.sha256` of the exact prompt bytes.
 
 Dry-run: `python -m ontology_skills execute --backend canned` reads `fixtures/canned_responses.jsonl` (`task_id`, `text`). Metrics on canned rows are loop tests, not published model scores. `resources.*` stay null on canned rows.
 

@@ -67,11 +67,26 @@ def test_routed_and_teacher_share_prompt_on_v1_fixture() -> None:
     assert a.sha256 == b.sha256
 
 
-def test_prompt_is_deterministic_and_omits_gold_uri() -> None:
+def test_prompt_is_deterministic_and_omits_gold_key() -> None:
     first, _ = _built("4b_ontology_routed")
     second, _ = _built("4b_ontology_routed")
     assert first.text == second.text
     assert first.sha256 == second.sha256
     assert len(first.sha256) == 64
-    assert "https://graph.infona.ai/bench/ent/acme-components" not in first.text
+    assert first.template_id == "ontology_skills.prompt.v2"
     assert '"gold"' not in first.text
+
+
+def test_v2_prompt_states_short_id_contract_and_reuses_input_entity_uri() -> None:
+    prompt, _ = _built("4b_ontology_routed", "et-001")
+    assert prompt.template_id == "ontology_skills.prompt.v2"
+    text = prompt.text
+    assert "type_id: short local id (Supplier). Never an IRI." in text
+    assert "attr: short camelCase (legalName, registrationId). Never an IRI." in text
+    assert "predicate: full IRI https://graph.infona.ai/bench/onto/{RELATION_ID}" in text
+    assert "entity: full URI https://graph.infona.ai/bench/ent/{slug}" in text
+    assert "Assert the leaf type only" in text
+    assert "https://graph.infona.ai/bench/ent/acme-components" in text
+    assert '"entity_uri"' in text
+    assert "blank-node ids, not the answer" in text
+    assert "Never invent a second entity URI" in text

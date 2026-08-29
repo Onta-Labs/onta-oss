@@ -70,6 +70,59 @@ def e(slug: str) -> str:
     return ENT + slug
 
 
+def _walk_ent_uris(obj) -> set[str]:
+    found: set[str] = set()
+    stack = [obj]
+    while stack:
+        cur = stack.pop()
+        if isinstance(cur, dict):
+            stack.extend(cur.values())
+        elif isinstance(cur, list):
+            stack.extend(cur)
+        elif isinstance(cur, str) and cur.startswith(ENT):
+            found.add(cur)
+    return found
+
+
+def _gold_ent_uris(gold: dict) -> list[str]:
+    ordered: list[str] = []
+    seen: set[str] = set()
+
+    def add(uri: object) -> None:
+        if isinstance(uri, str) and uri.startswith(ENT) and uri not in seen:
+            seen.add(uri)
+            ordered.append(uri)
+
+    for item in gold.get("type_assertions") or []:
+        add(item.get("entity"))
+    for item in gold.get("literals") or []:
+        add(item.get("entity"))
+    for item in gold.get("adds") or []:
+        add(item.get("subject"))
+        add(item.get("object"))
+    for item in gold.get("deletes") or []:
+        add(item.get("subject"))
+        add(item.get("object"))
+    for item in gold.get("merges") or []:
+        add(item.get("absorbed"))
+        add(item.get("survivor"))
+    return ordered
+
+
+def _with_mint_ids(inp: dict, gold: dict) -> dict:
+    """Attach blank-node ids for gold entities that are not already in input."""
+    out = dict(inp)
+    if "entity_uri" in out or "mint_as" in out:
+        return out
+    known = _walk_ent_uris(out)
+    minted = [uri for uri in _gold_ent_uris(gold) if uri not in known]
+    if len(minted) == 1:
+        out["entity_uri"] = minted[0]
+    elif len(minted) > 1:
+        out["mint_as"] = minted
+    return out
+
+
 def task(task_id, family, split, notes, neighborhood, inp, gold) -> dict:
     return {
         "task_id": task_id,
@@ -77,7 +130,7 @@ def task(task_id, family, split, notes, neighborhood, inp, gold) -> dict:
         "split": split,
         "notes": notes,
         "neighborhood": neighborhood,
-        "input": inp,
+        "input": _with_mint_ids(inp, gold),
         "gold": gold,
     }
 

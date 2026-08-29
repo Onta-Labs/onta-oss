@@ -8,6 +8,7 @@ from pathlib import Path
 from ontology_skills.dataset import load_fixture_bundle, load_tasks
 from ontology_skills.graph_delta import (
     GraphDelta,
+    LiteralSet,
     Merge,
     Triple,
     TypeAssertion,
@@ -126,6 +127,24 @@ def test_cvr_does_not_launder_person_into_supplier() -> None:
     metrics = score_task(predicted, task)
     assert metrics["success"] is False
     assert metrics["constraint_valid"] is False
+
+
+def test_full_type_iri_and_wrong_slug_scores_zero_on_et001() -> None:
+    """Live v1 smoke: IRI type_ids + invented slug is a miss, not a score."""
+    task = next(t for t in load_tasks() if t.task_id == "et-001")
+    bogus = "https://graph.infona.ai/bench/ent/registration-id"
+    onto = "https://graph.infona.ai/bench/onto/"
+    predicted = GraphDelta(
+        type_assertions=(
+            TypeAssertion(bogus, onto + "Supplier"),
+            TypeAssertion(bogus, onto + "Company"),
+            TypeAssertion(bogus, onto + "Organization"),
+        ),
+        literals=(LiteralSet(bogus, onto + "has_vat", "GB-000111222"),),
+    )
+    metrics = score_task(predicted, task)
+    assert metrics["success"] is False
+    assert metrics["graph_delta_f1"] == 0.0
 
 
 def test_score_cli_task_id(tmp_path: Path) -> None:
