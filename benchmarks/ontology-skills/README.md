@@ -18,7 +18,7 @@ That dump-all design is our **condition 3** (flat/full skill set), not the Infon
 | Selection | None (full injection) | Deterministic walk: seeds → ancestors → incident relations |
 | Inheritance | Not typed | `Entity → Organization → Company → Supplier` accumulates; same `skill_id` on a more specific type shadows |
 | Relations | Not a compiler input | `SUPPLIES_TO` contributes temporal / validation procedures |
-| Retrieval | Explicitly removed as a confound | Also not retrieval — compilation is a function, not search |
+| Retrieval | Explicitly removed as a confound | Compilation is a function, not search. Condition 9 is RAG over the **same** skill texts — the investor-objection baseline, not Infona. |
 
 WikiSkill's published numbers (average across their five benchmarks, three evolution seeds):
 
@@ -42,14 +42,15 @@ Do **not** run models in this slice. Do **not** start with fine-tuning. Conditio
 | 6 | 9B vanilla | none | yes |
 | 7 | 27B or frontier vanilla | none | yes |
 | 8 | Strong-teacher-generated skills → 4B executor | routed, teacher provenance | yes |
+| 9 | 4B + skills retrieved by embedding similarity | rag | yes |
 
-Primary comparison: **4 vs 1, 2, 3, 7**. Resource story: same success, smaller model / fewer tokens / less VRAM.
+Primary comparison: **4 vs 1, 2, 3, 7, 9**. Dump-all is not the investor objection; RAG is. Resource story: same success, smaller model / fewer tokens / less VRAM. Do not cook routed to beat RAG.
 
 ## Guardrails
 
 - No LLM-as-judge as a primary metric. Gold is a graph delta or other canonical structured object.
 - No fake numbers, no placeholder result JSON with invented F1.
-- No fine-tune-first. Condition 5 stays blocked until 1–4 and 6–8 have real runs.
+- No fine-tune-first. Condition 5 stays blocked until 1–4 and 6–9 have real runs.
 - No product imports. `from infona_client…` in this package is a bug.
 - No revival of the QC fuzzer, public `/ask` eval, or research-harness as this benchmark.
 - Synthetic names only in fixtures (Acme, Globex, Northwind).
@@ -78,7 +79,8 @@ Least-invasive home: a new tree under `benchmarks/`, not `infona_client/` and no
 | Done | INF-608 | ~10 gold GraphDeltas per family, all three splits | Change `RunResult` keys or family ids |
 | Done | INF-611 scoring | Deterministic `score_task` / `score_prediction` | LLM-as-judge, fabricated leaderboards |
 | Done | INF-607 executor | Prompt builders, GraphDelta parser, canned dry-run, live OpenRouter client | Invent scores, unblock FT, sweep 80 tasks from this CLI |
-| Later | INF-611 runs | Run matrix 1–4 and 6–8; plot success vs resources | Unblock condition 5 first; fabricate `hosted_cost_usd` |
+| Done | RAG baseline | Condition 9 `4b_rag_skills`; prompt v3 strips URI/type leaks | Cook routed to beat RAG; hashing embedder as published baseline |
+| Later | INF-611 runs | Run matrix 1–4 and 6–9; plot success vs resources | Unblock condition 5 first; fabricate `hosted_cost_usd` |
 
 ## How to run
 
@@ -123,7 +125,9 @@ PYTHONPATH=benchmarks/ontology-skills python -m ontology_skills execute \
   --backend live --condition 4b_ontology_routed --task-id et-001
 ```
 
-Prompt template `ontology_skills.prompt.v2` states the identifier contract that gold already used: short `type_id` / camelCase `attr`, full relation IRI predicates, full entity URIs. When gold mints a node that is not already in `input`, the task carries `entity_uri` or `mint_as` as a blank-node id (not the type or literals). A v1 live smoke on `et-001` parsed OK for both `4b_ontology_routed` and `4b_vanilla` and still scored 0: the model emitted full type IRIs, ancestor types, and an invented slug (`…/ent/registration-id`). That is identifier mismatch, not an Infona-vs-vanilla result. Gold ops were not changed.
+Prompt template `ontology_skills.prompt.v3` states the identifier contract without naming a gold type: leaf type only, short local id, never an IRI; camelCase attrs; full relation IRI predicates; full entity URIs minted in-task. `entity_uri` / `mint_as` were stripped from task inputs (a reviewer leak). A v1 live smoke on `et-001` parsed OK for both routed and vanilla and still scored 0 from identifier mismatch, not Infona vs vanilla. Gold ops were not changed.
+
+Condition 9 (`4b_rag_skills`) retrieves the same fixture skill bodies by cosine similarity to `json.dumps(task.input)`. k equals the routed compiled skill count for that task. Live embeddings POST `{base}/embeddings` as `openai/text-embedding-3-small` (override `INFONA_BENCH_EMBED_MODEL`) on the same Bearer key as chat. Missing key fails closed. A local hashing embedder is **not** the published RAG baseline (CI uses `MockEmbedder` only). Retrieval scores are logged; they are not compiler provenance.
 
 ## OpenRouter env
 
@@ -135,12 +139,13 @@ Default base URL: `https://openrouter.ai/api/v1`. Every live POST also sends `HT
 | `INFONA_BENCH_BASE_URL` | `OPENAI_BASE_URL` | Root URL (default `https://openrouter.ai/api/v1`) |
 | `INFONA_BENCH_MODEL` | `OPENAI_MODEL` or `MODEL` | Optional override for a single-model run |
 | `INFONA_BENCH_QUANTIZATION` | — | Recorded on the run log (`q4_k_m`, `fp16`, …) |
+| `INFONA_BENCH_EMBED_MODEL` | `OPENAI_EMBED_MODEL` | Live RAG only. Default `openai/text-embedding-3-small` |
 
 OpenRouter has **no Qwen 4B** (catalog 2026-08-29: no `*4b*` Qwen id; neither Qwen3-4B nor Qwen3.5-4B). Condition ids stay `4b_*` so the matrix order does not change. The 4B slot’s hosted stand-in is Qwen3-8B; `model.param_count` is recorded as `8B`, not `4B`.
 
 | Conditions | Matrix bucket | Default `model` | Recorded `param_count` |
 |---|---|---|---|
-| 1–4, 8 | `4b` | `qwen/qwen3-8b` | `8B` |
+| 1–4, 8, 9 | `4b` | `qwen/qwen3-8b` | `8B` |
 | 6 | `9b` | `qwen/qwen3.5-9b` | `9B` |
 | 7 | `27b_or_frontier` | `qwen/qwen3.5-27b` | `27B` |
 

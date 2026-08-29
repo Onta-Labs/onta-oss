@@ -21,12 +21,13 @@ from .backends import (
 )
 from .conditions import condition_by_id
 from .dataset import Task, load_fixture_bundle, load_tasks
+from .embedder import Embedder, MockEmbedder, OpenAICompatEmbedder
 from .harness import (
     ContextBudget,
     DecodingSpec,
     ResourceUse,
     RunResult,
-    compile_for_condition,
+    select_for_condition,
     write_result_row,
 )
 from .parse import parse_graph_delta
@@ -42,11 +43,17 @@ def execute_task(
     condition_id: str,
     backend: CannedBackend | LiveBackend,
     decoding: DecodingSpec | None = None,
+    embedder: Embedder | None = None,
 ) -> RunResult:
     bundle = load_fixture_bundle()
     condition = condition_by_id(condition_id)
-    compiled = compile_for_condition(
-        bundle.ontology, task.neighborhood, condition
+    embedder = embedder or _embedder_for(backend, condition.skill_mode)
+    compiled, retrieval = select_for_condition(
+        bundle.ontology,
+        task.neighborhood,
+        condition,
+        task=task,
+        embedder=embedder,
     )
     prompt = build_prompt(task, bundle.ontology, compiled, condition)
     decoding = decoding or DecodingSpec()
@@ -78,9 +85,30 @@ def execute_task(
         metrics=metrics,
         parse=parsed,
         predicted=parsed.predicted,
+        retrieval=retrieval,
         status="ok" if parsed.ok else "error",
         notes=notes,
     )
+
+
+def _embedder_for(
+    backend: CannedBackend | LiveBackend, skill_mode: str
+) -> Embedder | None:
+    if skill_mode != "rag":
+        return None
+    if isinstance(backend, CannedBackend):
+        return MockEmbedder()
+    embedder = OpenAICompatEmbedder.from_chat_credentials(
+        base_url=backend.base_url, api_key=backend.api_key
+    )
+    if embedder is None:
+        raise RuntimeError(
+            "condition 4b_rag_skills needs OpenAI-compatible embeddings on the "
+            "same base URL/key as chat. Set INFONA_BENCH_API_KEY (or "
+            "OPENAI_API_KEY / OPENROUTER_API_KEY). A local hashing embedder is "
+            "not the published RAG baseline."
+        )
+    return embedder
 
 
 def _resources(completion: CompletionResult) -> ResourceUse:
@@ -217,7 +245,7 @@ def _live_env_help() -> str:
         "  INFONA_BENCH_BASE_URL   default https://openrouter.ai/api/v1 "
         "(alias OPENAI_BASE_URL)\n"
         "  INFONA_BENCH_MODEL      optional override; else by condition:\n"
-        "    4b_* (1–4, 8): qwen/qwen3-8b  (no Qwen 4B on OpenRouter)\n"
+        "    4b_* (1–4, 8, 9): qwen/qwen3-8b  (no Qwen 4B on OpenRouter)\n"
         "    9B (6):        qwen/qwen3.5-9b\n"
         "    27B (7):       qwen/qwen3.5-27b\n"
         "  INFONA_BENCH_QUANTIZATION  optional, recorded on the run log\n"

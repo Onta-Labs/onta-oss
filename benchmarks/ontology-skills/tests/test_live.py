@@ -26,6 +26,7 @@ FOUR_B_IDS = (
     "4b_flat_skills",
     "4b_ontology_routed",
     "teacher_skills_4b",
+    "4b_rag_skills",
 )
 
 

@@ -4,6 +4,7 @@ Conditions 1/6/7 → vanilla (no ontology, no skills).
 Condition 2 → ontology context (types/relations, no skill bodies).
 Condition 3 → flat skill dump.
 Conditions 4/8 → routed compiled skills.
+Condition 9 → RAG over the same fixture skill bodies.
 Condition 5 is refused by the compiler, not this module.
 """
 
@@ -17,9 +18,9 @@ from .conditions import Condition
 from .dataset import Task
 from .models import CompiledSkillSet, Ontology
 
-TEMPLATE_ID = "ontology_skills.prompt.v2"
+TEMPLATE_ID = "ontology_skills.prompt.v3"
 
-_SCHEMA_HINT = """Emit a single JSON object and nothing else. Keys (omit empty ones):
+SCHEMA_HINT = """Emit a single JSON object and nothing else. Keys (omit empty ones):
   adds: [{subject, predicate, object}]
   deletes: [{subject, predicate, object}]
   type_assertions: [{entity, type_id}]
@@ -29,14 +30,11 @@ _SCHEMA_HINT = """Emit a single JSON object and nothing else. Keys (omit empty o
   constraint_repairs: [string]
 
 Identifier contract (must match gold):
-  type_id: short local id (Supplier). Never an IRI.
-  attr: short camelCase (legalName, registrationId). Never an IRI.
+  type_id: leaf type only, short local id, never an IRI
+  attr: short camelCase, never an IRI
   predicate: full IRI https://graph.infona.ai/bench/onto/{RELATION_ID}
   entity: full URI https://graph.infona.ai/bench/ent/{slug}
-  Assert the leaf type only (Supplier, not Company or Organization).
-If task_input.entity_uri or task_input.mint_as is present, reuse those URIs.
-They are blank-node ids, not the answer. Never invent a second entity URI.
-Do not narrate."""
+Mint entity URIs in-task. Do not narrate."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,7 +56,7 @@ def build_prompt(
 ) -> BuiltPrompt:
     """Build the exact prompt bytes a backend will see. Deterministic."""
     parts = [
-        _SCHEMA_HINT,
+        SCHEMA_HINT,
         "",
         f"family: {task.family}",
         f"split: {task.split}",
@@ -84,7 +82,7 @@ def _mode_block(
         return "skills: none\nontology: none"
     if mode == "ontology_context":
         return _ontology_context(ontology, compiled)
-    if mode in ("flat", "routed"):
+    if mode in ("flat", "routed", "rag"):
         return _skill_block(compiled, mode)
     raise RuntimeError(f"unhandled skill_mode {mode!r}")
 

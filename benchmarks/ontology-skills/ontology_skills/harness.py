@@ -17,12 +17,14 @@ from typing import Any, Mapping, TextIO
 from .compiler import compile_flat, compile_none, compile_routed
 from .conditions import CONDITION_MATRIX, Condition, condition_by_id
 from .dataset import TASK_FAMILIES, Task, load_fixture_bundle
+from .embedder import Embedder, MockEmbedder
 from .graph_delta import GraphDelta
 from .models import CompiledSkillSet, Neighborhood, Ontology
 from .parse import ParseResult
+from .rag import empty_retrieval_log, retrieve_skills
 from .scoring import empty_metrics
 
-SCHEMA_VERSION = "1.1.0"
+SCHEMA_VERSION = "1.2.0"
 
 
 @dataclass
@@ -108,6 +110,7 @@ class RunResult:
     metrics: Mapping[str, Any] = field(default_factory=empty_metrics)
     parse: ParseResult | None = None
     predicted: GraphDelta = field(default_factory=GraphDelta)
+    retrieval: dict[str, Any] | None = None
     status: str = "stub"
     run_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     created_at: str = field(
@@ -148,24 +151,58 @@ class RunResult:
                 "error": None if self.parse is None else self.parse.error,
             },
             "predicted": self.predicted.to_dict(),
+            "retrieval": (
+                empty_retrieval_log()
+                if self.retrieval is None
+                else dict(self.retrieval)
+            ),
             "notes": self.notes,
         }
 
 
 def compile_for_condition(
-    ontology: Ontology, neighborhood: Neighborhood, condition: Condition
+    ontology: Ontology,
+    neighborhood: Neighborhood,
+    condition: Condition,
+    *,
+    task: Task | None = None,
+    embedder: Embedder | None = None,
 ) -> CompiledSkillSet:
+    compiled, _retrieval = select_for_condition(
+        ontology, neighborhood, condition, task=task, embedder=embedder
+    )
+    return compiled
+
+
+def select_for_condition(
+    ontology: Ontology,
+    neighborhood: Neighborhood,
+    condition: Condition,
+    *,
+    task: Task | None = None,
+    embedder: Embedder | None = None,
+) -> tuple[CompiledSkillSet, dict[str, Any]]:
     if not condition.runnable:
         raise RuntimeError(
             f"condition {condition.condition_id} is blocked: "
             f"{condition.blocked_reason}"
         )
+    if condition.skill_mode == "rag":
+        if task is None:
+            raise RuntimeError("rag requires a task")
+        if embedder is None:
+            raise RuntimeError(
+                "rag requires an embedder; a hashing fallback is not "
+                "the published RAG baseline"
+            )
+        result = retrieve_skills(ontology, task, embedder)
+        return result.compiled, result.to_log_dict()
     if condition.skill_mode in ("none", "ontology_context"):
-        return compile_none(ontology, neighborhood)
+        return compile_none(ontology, neighborhood), empty_retrieval_log()
     if condition.skill_mode == "flat":
-        return compile_flat(ontology)
+        return compile_flat(ontology), empty_retrieval_log()
     if condition.skill_mode == "routed":
-        return compile_routed(ontology, neighborhood)
+        return compile_routed(ontology, neighborhood), empty_retrieval_log()
     raise RuntimeError(f"unhandled skill_mode {condition.skill_mode!r}")
 
 
@@ -190,10 +227,20 @@ def run_stub(
     rows: list[dict[str, Any]] = []
     target: Path | TextIO = dest if dest is not None else sys.stdout
     for task in bundle.tasks:
-        compiled = compile_for_condition(
-            bundle.ontology, task.neighborhood, condition
+        embedder = MockEmbedder() if condition.skill_mode == "rag" else None
+        compiled, retrieval = select_for_condition(
+            bundle.ontology,
+            task.neighborhood,
+            condition,
+            task=task,
+            embedder=embedder,
         )
-        result = RunResult(condition=condition, task=task, compiled=compiled)
+        result = RunResult(
+            condition=condition,
+            task=task,
+            compiled=compiled,
+            retrieval=retrieval,
+        )
         write_result_row(result, target)
         rows.append(result.to_dict())
     return rows

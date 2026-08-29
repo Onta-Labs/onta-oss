@@ -73,20 +73,23 @@ def test_prompt_is_deterministic_and_omits_gold_key() -> None:
     assert first.text == second.text
     assert first.sha256 == second.sha256
     assert len(first.sha256) == 64
-    assert first.template_id == "ontology_skills.prompt.v2"
+    assert first.template_id == "ontology_skills.prompt.v3"
     assert '"gold"' not in first.text
+    assert '"entity_uri"' not in first.text
+    assert '"mint_as"' not in first.text
 
 
-def test_v2_prompt_states_short_id_contract_and_reuses_input_entity_uri() -> None:
-    prompt, _ = _built("4b_ontology_routed", "et-001")
-    assert prompt.template_id == "ontology_skills.prompt.v2"
-    text = prompt.text
-    assert "type_id: short local id (Supplier). Never an IRI." in text
-    assert "attr: short camelCase (legalName, registrationId). Never an IRI." in text
-    assert "predicate: full IRI https://graph.infona.ai/bench/onto/{RELATION_ID}" in text
-    assert "entity: full URI https://graph.infona.ai/bench/ent/{slug}" in text
-    assert "Assert the leaf type only" in text
-    assert "https://graph.infona.ai/bench/ent/acme-components" in text
-    assert '"entity_uri"' in text
-    assert "blank-node ids, not the answer" in text
-    assert "Never invent a second entity URI" in text
+def test_v3_schema_hint_does_not_name_a_gold_type() -> None:
+    from ontology_skills.prompts import SCHEMA_HINT, TEMPLATE_ID
+
+    assert TEMPLATE_ID == "ontology_skills.prompt.v3"
+    assert "Supplier" not in SCHEMA_HINT
+    assert "Company" not in SCHEMA_HINT
+    assert "Organization" not in SCHEMA_HINT
+    assert "leaf type only, short local id, never an IRI" in SCHEMA_HINT
+    assert "entity_uri" not in SCHEMA_HINT
+    assert "mint_as" not in SCHEMA_HINT
+    prompt, _ = _built("4b_vanilla", "et-001")
+    assert prompt.template_id == TEMPLATE_ID
+    assert SCHEMA_HINT in prompt.text
+    assert "https://graph.infona.ai/bench/ent/acme-components" not in prompt.text

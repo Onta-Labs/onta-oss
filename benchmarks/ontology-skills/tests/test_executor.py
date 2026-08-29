@@ -19,7 +19,7 @@ def test_canned_et001_is_exact_success() -> None:
     assert row["metrics"]["success"] is True
     assert row["metrics"]["graph_delta_f1"] == 1.0
     assert row["prompt"]["sha256"]
-    assert row["prompt"]["template_id"] == "ontology_skills.prompt.v2"
+    assert row["prompt"]["template_id"] == "ontology_skills.prompt.v3"
     assert row["prompt"]["skill_injection"] == "routed"
     assert row["compiler"]["mode"] == "routed"
     assert row["compiler"]["skill_ids"]
@@ -27,7 +27,7 @@ def test_canned_et001_is_exact_success() -> None:
     assert row["resources"]["latency_ms"] is None
     assert row["resources"]["hosted_cost_usd"] is None
     assert "canned-fixture" in row["notes"]
-    assert row["schema_version"] == "1.1.0"
+    assert row["schema_version"] == "1.2.0"
     assert row["parse"]["ok"] is True
     assert row["parse"]["error"] is None
     assert row["predicted"]["type_assertions"]

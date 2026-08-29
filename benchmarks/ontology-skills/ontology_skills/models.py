@@ -7,7 +7,7 @@ from hashlib import sha256
 from typing import Literal, Mapping
 
 SkillKind = Literal["type", "relation"]
-CompileMode = Literal["none", "flat", "routed"]
+CompileMode = Literal["none", "flat", "routed", "rag"]
 
 
 class OntologyError(ValueError):

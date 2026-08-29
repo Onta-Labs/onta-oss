@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-SkillMode = Literal["none", "ontology_context", "flat", "routed"]
+SkillMode = Literal["none", "ontology_context", "flat", "routed", "rag"]
 ModelBucket = Literal["4b", "9b", "27b_or_frontier"]
 SkillSource = Literal["none", "executor", "teacher"]
 
@@ -37,7 +37,8 @@ class Condition:
 
 
 # Locked order. Condition 5 is present so later slices cannot invent a
-# different numbering; it is not runnable in this or the next slice.
+# different numbering; it is not runnable. Condition 9 is RAG over the
+# same fixture skill bodies (not compile_routed / compile_flat).
 CONDITION_MATRIX: tuple[Condition, ...] = (
     Condition(1, "4b_vanilla", "4B vanilla", "4b", "none", False, "none", True),
     Condition(
@@ -79,7 +80,7 @@ CONDITION_MATRIX: tuple[Condition, ...] = (
         True,
         "executor",
         False,
-        "Fine-tuning is blocked until conditions 1–4, 6–8 have been run. "
+        "Fine-tuning is blocked until conditions 1–4, 6–9 have been run. "
         "Do not start with FT.",
     ),
     Condition(6, "9b_vanilla", "9B vanilla", "9b", "none", False, "none", True),
@@ -101,6 +102,16 @@ CONDITION_MATRIX: tuple[Condition, ...] = (
         "routed",
         False,
         "teacher",
+        True,
+    ),
+    Condition(
+        9,
+        "4b_rag_skills",
+        "4B + skills retrieved by embedding similarity",
+        "4b",
+        "rag",
+        False,
+        "executor",
         True,
     ),
 )

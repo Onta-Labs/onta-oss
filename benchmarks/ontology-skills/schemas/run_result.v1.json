@@ -23,10 +23,11 @@
     "metrics",
     "parse",
     "predicted",
+    "retrieval",
     "notes"
   ],
   "properties": {
-    "schema_version": { "const": "1.1.0" },
+    "schema_version": { "const": "1.2.0" },
     "run_id": { "type": "string", "minLength": 1 },
     "created_at": { "type": "string", "minLength": 1 },
     "status": { "enum": ["stub", "ok", "error", "blocked"] },
@@ -34,12 +35,12 @@
       "type": "object",
       "required": ["index", "condition_id", "skill_mode", "runnable"],
       "properties": {
-        "index": { "type": "integer", "minimum": 1, "maximum": 8 },
+        "index": { "type": "integer", "minimum": 1, "maximum": 9 },
         "condition_id": { "type": "string" },
         "name": { "type": "string" },
         "model_bucket": { "enum": ["4b", "9b", "27b_or_frontier"] },
         "skill_mode": {
-          "enum": ["none", "ontology_context", "flat", "routed"]
+          "enum": ["none", "ontology_context", "flat", "routed", "rag"]
         },
         "fine_tuned": { "type": "boolean" },
         "skill_source": { "enum": ["none", "executor", "teacher"] },
@@ -84,7 +85,7 @@
         "template_id": { "type": "string" },
         "sha256": { "type": ["string", "null"] },
         "skill_injection": {
-          "enum": ["none", "ontology_context", "flat", "routed"]
+          "enum": ["none", "ontology_context", "flat", "routed", "rag"]
         }
       }
     },
@@ -151,7 +152,7 @@
         "fingerprint"
       ],
       "properties": {
-        "mode": { "enum": ["none", "flat", "routed"] },
+        "mode": { "enum": ["none", "flat", "routed", "rag"] },
         "skill_ids": { "type": "array", "items": { "type": "string" } },
         "type_lineage": { "type": "array", "items": { "type": "string" } },
         "relation_ids": { "type": "array", "items": { "type": "string" } },
@@ -213,6 +214,26 @@
         "merges": { "type": "array" },
         "type_extensions": { "type": "array" },
         "constraint_repairs": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "retrieval": {
+      "type": "object",
+      "required": ["embedder_id", "k", "hits"],
+      "additionalProperties": false,
+      "properties": {
+        "embedder_id": { "type": ["string", "null"] },
+        "k": { "type": ["integer", "null"] },
+        "hits": {
+          "type": ["array", "null"],
+          "items": {
+            "type": "object",
+            "required": ["skill_id", "score"],
+            "properties": {
+              "skill_id": { "type": "string" },
+              "score": { "type": "number" }
+            }
+          }
+        }
       }
     },
     "notes": { "type": "string" }

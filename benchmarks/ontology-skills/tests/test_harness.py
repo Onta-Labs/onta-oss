@@ -38,6 +38,7 @@ REQUIRED_ROW_KEYS = {
     "metrics",
     "parse",
     "predicted",
+    "retrieval",
     "notes",
 }
 
@@ -71,10 +72,14 @@ def test_matrix_order_is_locked() -> None:
         "9b_vanilla",
         "27b_or_frontier_vanilla",
         "teacher_skills_4b",
+        "4b_rag_skills",
     )
     assert CONDITION_MATRIX[3].index == 4
     assert CONDITION_MATRIX[4].runnable is False
     assert CONDITION_MATRIX[4].fine_tuned is True
+    assert CONDITION_MATRIX[8].condition_id == "4b_rag_skills"
+    assert CONDITION_MATRIX[8].runnable is True
+    assert CONDITION_MATRIX[8].skill_mode == "rag"
 
 
 def test_fine_tune_condition_is_blocked() -> None:
@@ -106,6 +111,7 @@ def test_stub_row_has_null_metrics_and_required_keys() -> None:
     assert row["compiler"]["mode"] == "routed"
     assert row["compiler"]["skill_ids"]
     assert row["prompt"]["skill_injection"] == "routed"
+    assert row["retrieval"] == {"embedder_id": None, "k": None, "hits": None}
 
 
 def test_write_result_row_jsonl(tmp_path) -> None:
