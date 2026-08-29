@@ -671,14 +671,9 @@ async def apply_facts(
 ) -> int:
     """Apply a batch of Facts via Assertion SoT + derived Entity cache (ADR 0013).
 
-    **Order (locked):**
-
-    1. MERGE Entity shells for subjects + rel targets (identity only).
-    2. Write :Assertion nodes as unit of truth for every Fact — **required**.
-       Fails closed if the session lacks ``write_assertion`` (Memory/Neo4j).
-    3. Dual-write derived projections (Entity property cache, shortcut rels,
-       ``INSTANCE_OF``, domain labels) **after** each Assertion succeeds
-       (via :func:`assert_fact` with ``dual_write_cache=True``).
+    Prefer ``session.write_fact_batch`` (Neo4j UNWIND / Memory in-process).
+    Sessions without it fall back to per-fact :func:`assert_fact` (same order:
+    entity shells, Assertions, then dual-write cache + optional ProvEvents).
 
     Returns the number of Facts applied.
     """
@@ -686,12 +681,24 @@ async def apply_facts(
         return 0
 
     write_assertion = getattr(session, "write_assertion", None)
-    if not callable(write_assertion):
+    write_fact_batch = getattr(session, "write_fact_batch", None)
+    if not callable(write_assertion) and not callable(write_fact_batch):
         raise GraphScopeError(
             "GraphSession does not implement write_assertion; Assertion is "
             "required source-of-truth on the store path (ADR 0013). Use "
             "MemoryGraphStore or Neo4jGraphStore."
         )
+
+    # Fast path: one UNWIND (Neo4j) / in-process batch (Memory) after the
+    # ontology catalog exists. Per-fact assert_fact is thousands of Bolt
+    # round-trips and is why CSV ingest was ~1s/row.
+    if callable(write_fact_batch):
+        from infona_client.graph.fact_batch import prepare_fact_batch
+
+        batch = prepare_fact_batch(
+            list(facts), provenance_enabled=provenance_enabled
+        )
+        return int(await write_fact_batch(batch))
 
     from infona_client.graph.rdf_model import assert_fact, fact_to_assertion_fact
 
