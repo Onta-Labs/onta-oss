@@ -36,6 +36,10 @@ class TypeCount(BaseModel):
     # validity bounds or a complete start+end date pair.
     spatially_indexed: bool = False
     temporally_indexed: bool = False
+    # INF-591: sample rows counted separately so Explorer never blends them
+    # into a single "current" number. ``sample_is_current`` is omitted.
+    sample_count: int = 0
+    acquired_count: int = 0
 
 
 class AttributeUsage(BaseModel):
@@ -89,15 +93,23 @@ async def list_type_counts(
         tenant_id=tenant.tenant_id, kg_name=kg_name
     )
     if pg_rows is not None:
-        return [
-            TypeCount(
-                name=r.name,
-                entity_count=r.entity_count,
-                spatially_indexed=False,
-                temporally_indexed=False,
+        from infona_client.blueprint.sample_mark import sample_index_for_kg
+
+        index = await sample_index_for_kg(tenant.tenant_id, kg_name)
+        out: list[TypeCount] = []
+        for r in pg_rows:
+            sample_n = index.count_for_type(r.name)
+            out.append(
+                TypeCount(
+                    name=r.name,
+                    entity_count=r.entity_count,
+                    spatially_indexed=False,
+                    temporally_indexed=False,
+                    sample_count=sample_n,
+                    acquired_count=max(r.entity_count - sample_n, 0),
+                )
             )
-            for r in pg_rows
-        ]
+        return out
 
     graph = kg_graph_uri(tenant.tenant_id, kg_name)
     sparql = (
@@ -111,6 +123,9 @@ async def list_type_counts(
         _read_type_index_flags(client, tenant.tenant_id, kg_name),
     )
     _, bindings = parse_sparql_results(raw)
+    from infona_client.blueprint.sample_mark import sample_index_for_kg
+
+    sample_index = await sample_index_for_kg(tenant.tenant_id, kg_name)
     out: list[TypeCount] = []
     for row in bindings:
         t = row.get("type", "")
@@ -125,11 +140,14 @@ async def list_type_counts(
         except ValueError:
             count = 0
         spatial, temporal = index_flags.get(leaf, (False, False))
+        sample_n = sample_index.count_for_type(leaf)
         out.append(TypeCount(
             name=leaf,
             entity_count=count,
             spatially_indexed=spatial,
             temporally_indexed=temporal,
+            sample_count=sample_n,
+            acquired_count=max(count - sample_n, 0),
         ))
     return out
 

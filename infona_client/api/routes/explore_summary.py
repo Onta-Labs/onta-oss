@@ -77,6 +77,16 @@ async def get_type_summary(
                 detail=f"Type '{type_name}' not found in KG '{kg_name}'",
             )
         result = pg_row.as_api_dict()
+        from infona_client.blueprint.sample_mark import sample_index_for_kg
+
+        index = await sample_index_for_kg(tenant.tenant_id, kg_name)
+        sample_n = index.count_for_type(type_name)
+        result["sample_count"] = sample_n
+        result["acquired_count"] = max(int(result.get("entity_count") or 0) - sample_n, 0)
+        if sample_n:
+            result["sample_is_current"] = False
+            if index.captured_at:
+                result["sample_captured_at"] = index.captured_at
         _summary_cache[cache_key] = (time.monotonic(), result)
         return result
     except GraphConfigError as exc:

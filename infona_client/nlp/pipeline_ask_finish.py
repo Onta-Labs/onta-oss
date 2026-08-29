@@ -136,12 +136,29 @@ class PipelineAskFinishMixin:
             citations = await build_citations(
                 self.neptune, data_graph, variables, bindings
             )
-            stale_count = sum(1 for c in citations if not c.is_current)
+            sample_cites = [c for c in citations if c.is_sample]
+            stale_count = sum(
+                1 for c in citations if not c.is_current and not c.is_sample
+            )
+            sample_captured = next(
+                (c.sample_captured_at for c in sample_cites if c.sample_captured_at),
+                "",
+            )
             coverage_caveat = build_coverage_caveat(
                 run_coverage,
                 stale_count=stale_count,
                 total_cited=len(citations),
+                sample_count=len(sample_cites),
+                sample_captured_at=sample_captured,
             )
+            if sample_cites:
+                from infona_client.blueprint.sample_mark import sample_answer_note
+
+                note = sample_answer_note(sample_captured or None)
+                if note not in (answer or ""):
+                    answer = f"{answer}\n\n{note}" if answer else note
+                if narrative_answer and note not in narrative_answer:
+                    narrative_answer = f"{narrative_answer}\n\n{note}"
             if citations:
                 timing["citations"] = len(citations)
         elif run_coverage is not None:

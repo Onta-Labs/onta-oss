@@ -221,9 +221,12 @@ async def _records_from_explore_store(
         c for c in col_display if c not in declared_set and c not in declared_rel_set
     )
     columns = ["name"] + list(declared_display) + list(declared_rel_display) + extras
+    from infona_client.blueprint.sample_mark import mark_records, sample_index_for_kg
+
+    index = await sample_index_for_kg(tenant_id, kg_name)
     return {
         "columns": columns,
-        "rows": rows_out,
+        "rows": mark_records(rows_out, index),
         "total": page.total,
         "next_cursor": page.next_cursor,
     }
@@ -539,9 +542,12 @@ async def get_type_records(
 
     next_cursor = entity_uris[-1] if len(entity_uris) == limit else None
 
+    from infona_client.blueprint.sample_mark import mark_records, sample_index_for_kg
+
+    index = await sample_index_for_kg(tenant.tenant_id, kg_name)
     return {
         "columns": columns,
-        "rows": rows,
+        "rows": mark_records(rows, index),
         "total": total,
         "next_cursor": next_cursor,
     }

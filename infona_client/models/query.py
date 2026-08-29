@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class SPARQLQuery(BaseModel):
@@ -74,6 +74,20 @@ class FactCitation(BaseModel):
     is_current: bool = True
     source: str = ""
     truth_verdict: str = ""
+    # INF-591 / INF-587: Blueprint sample facts are never current. The
+    # Explorer must render ``is_sample`` as a sample mark, not a freshness
+    # light. ``sample_is_current`` is omitted on purpose — it cannot be true.
+    is_sample: bool = False
+    sample_captured_at: str = ""
+
+    @model_validator(mode="after")
+    def sample_is_never_current(self) -> "FactCitation":
+        """INF-587 / INF-591 — a sample fact cannot present as current."""
+        if self.is_sample:
+            self.is_current = False
+            if self.verdict in ("", "current"):
+                self.verdict = "sample"
+        return self
 
 
 class NLResult(BaseModel):

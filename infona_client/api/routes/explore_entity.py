@@ -80,7 +80,9 @@ async def get_entity_detail_route(
     if detail is None:
         # ONTA-534: no SPARQL fallthrough — store answered "missing".
         raise HTTPException(status_code=404, detail=f"Entity '{eid}' not found")
-    return {
+    from infona_client.blueprint.sample_mark import mark_record, sample_index_for_kg
+
+    payload = {
         "id": detail.id,
         "name": detail.name,
         "primary_type": detail.primary_type,
@@ -110,6 +112,8 @@ async def get_entity_detail_route(
             for r in detail.incoming
         ],
     }
+    index = await sample_index_for_kg(tenant.tenant_id, kg_name)
+    return mark_record(payload, index)
 
     # Residual SPARQL path retired (ONTA-534) — kept below as unreachable
     # archaeology only; GraphStore path always returns or 404s above.

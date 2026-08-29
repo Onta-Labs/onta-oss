@@ -32,12 +32,19 @@ from __future__ import annotations
 
 from typing import Optional
 
+from infona_client.blueprint.sample_mark import (
+    SAMPLE_VERDICT,
+    SampleIndex,
+    is_sample_mark,
+    sample_index_for_kg,
+)
 from infona_client.graph.predicates import RDF_TYPE, is_internal_predicate
 from infona_client.graph.provenance import (
     ProvenanceRecord,
     fetch_provenance,
     fetch_truth_verdict,
 )
+from infona_client.graph.queries import parse_kg_graph_uri
 from infona_client.graph.validity import (
     STATUS_SUPERSEDED,
     ValidityInterval,
@@ -177,13 +184,15 @@ def _citations_from_source_url_columns(bindings: list[dict]) -> list[FactCitatio
             continue
         seen.add(url)
         name = _pick(row, _SOURCE_NAME_KEYS) or url
+        sample = is_sample_mark(url)
         out.append(
             FactCitation(
                 source=url,
                 label=str(name),
                 object=url,
-                verdict="current",
-                is_current=True,
+                verdict=SAMPLE_VERDICT if sample else "current",
+                is_current=not sample,
+                is_sample=sample,
             )
         )
     return out
@@ -209,6 +218,8 @@ async def build_citations(
     citations: list[FactCitation] = []
     if not bindings or not instance_graph:
         return citations
+
+    sample_index = await _sample_index_for_graph(instance_graph)
 
     # 1. Collect keyable facts and the unique (s, p) pairs to read once.
     keyed: list[tuple[str, str, str, str]] = []
@@ -245,19 +256,29 @@ async def build_citations(
     for (s, p, o, label) in keyed:
         interval = _match_interval(history_by_sp.get((s, p), []), o)
         record = _match_provenance(prov_by_sp.get((s, p), []), o)
-        if interval is not None and not interval.is_current:
+        source = record.source if record is not None else ""
+        sample = sample_index.is_sample(s) or is_sample_mark(source)
+        if sample:
+            verdict = SAMPLE_VERDICT
+            is_current = False
+            valid_from = interval.valid_from if interval is not None else ""
+            captured = sample_index.captured_for(s) or ""
+        elif interval is not None and not interval.is_current:
             verdict = interval.status or STATUS_SUPERSEDED
             is_current = False
             valid_from = interval.valid_from
+            captured = ""
         elif interval is not None:
             verdict = "current"
             is_current = True
             valid_from = interval.valid_from
+            captured = ""
         else:
             # No validity node → current by convention (append-only history).
             verdict = "current"
             is_current = True
             valid_from = ""
+            captured = ""
         citations.append(
             FactCitation(
                 subject=s,
@@ -268,9 +289,11 @@ async def build_citations(
                 confidence=(record.confidence if record is not None else None),
                 valid_from=valid_from,
                 is_current=is_current,
-                source=(record.source if record is not None else ""),
+                source=source,
                 # ONTA-375: the A4 epistemic verdict, DISTINCT from `verdict` above.
                 truth_verdict=truth_verdict_by_sp.get((s, p), ""),
+                is_sample=sample,
+                sample_captured_at=captured,
             )
         )
     seen = {c.source for c in citations if c.source}
@@ -286,21 +309,30 @@ def build_coverage_caveat(
     *,
     stale_count: int = 0,
     total_cited: int = 0,
+    sample_count: int = 0,
+    sample_captured_at: str = "",
 ) -> str:
     """Compose the honest coverage caveat for an answer.
 
     Joins the A9 :class:`~infona_client.pipeline.manifest.RunCoverage` summary
     ("N of M items completed; K dropped; <halt reason>", which already contains
-    the "N of M" fragment) with the validity-derived "K facts stale". When no
-    coverage manifest is available (the common ``/ask`` path today), still emits
-    the stale-count caveat on its own so an answer built partly on superseded
-    facts is never silently presented as fully fresh. Returns ``""`` when there is
-    nothing to caveat.
+    the "N of M" fragment) with the validity-derived "K facts stale" and the
+    INF-591 sample mark. Sample facts are never current and are not called
+    stale — stale is superseded; sample is preview residue.
     """
     parts: list[str] = []
     summary = getattr(coverage, "summary", "") if coverage is not None else ""
     if summary:
         parts.append(f"answered from {summary}")
+    if sample_count > 0:
+        noun = "fact" if sample_count == 1 else "facts"
+        if total_cited:
+            clause = f"{sample_count} of {total_cited} cited {noun} are sample, not current"
+        else:
+            clause = f"{sample_count} cited {noun} are sample, not current"
+        if sample_captured_at:
+            clause += f" (captured {sample_captured_at})"
+        parts.append(clause)
     if stale_count > 0:
         noun = "fact" if stale_count == 1 else "facts"
         if total_cited:
@@ -308,6 +340,14 @@ def build_coverage_caveat(
         else:
             parts.append(f"{stale_count} {noun} stale")
     return "; ".join(parts)
+
+
+async def _sample_index_for_graph(instance_graph: str) -> SampleIndex:
+    parsed = parse_kg_graph_uri(instance_graph)
+    if parsed is None:
+        return SampleIndex()
+    tenant_id, kg = parsed
+    return await sample_index_for_kg(tenant_id, kg)
 
 
 __all__ = ["build_citations", "build_coverage_caveat"]
