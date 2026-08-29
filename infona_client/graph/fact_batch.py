@@ -8,7 +8,6 @@ derived Entity cache in a handful of queries.
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -36,20 +35,6 @@ from infona_client.graph.store import require_entity_write_identity
 
 def _ts() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-
-
-def _fact_hash(
-    subject_id: str,
-    attr: str | None,
-    object_repr: str | None,
-    source: str | None,
-) -> str:
-    payload = (
-        f"{subject_id}|{attr or ''}|"
-        f"{object_repr if object_repr is not None else ''}|"
-        f"{source or ''}"
-    )
-    return hashlib.sha1(payload.encode("utf-8")).hexdigest()
 
 
 @dataclass
@@ -203,12 +188,8 @@ def prepare_fact_batch(
                 {"entity_id": af.subject_id, "class_id": object_class_id}
             )
             type_leaf = object_class_id.rstrip("/").rsplit("/", 1)[-1]
-            try:
-                token = sanitize_domain_label(type_leaf)
-            except GraphScopeError:
-                token = None
-            if token:
-                labels.setdefault(token, []).append(af.subject_id)
+            token = sanitize_domain_label(type_leaf)
+            labels.setdefault(token, []).append(af.subject_id)
         elif af.kind == "literal":
             leaf = prop_name
             if leaf not in RESERVED_ENTITY_PROPERTY_KEYS:
@@ -246,6 +227,8 @@ def prepare_fact_batch(
                 obj_repr = str(obj_repr)
             src = f.source_url or f.source
             if obj_repr is not None:
+                from infona_client.graph.pg_ops import prov_fact_hash
+
                 prov_events.append(
                     {
                         "event_type": "assert",
@@ -256,7 +239,7 @@ def prepare_fact_batch(
                         "new_id": None,
                         "reason": "",
                         "source": src,
-                        "fact_hash": _fact_hash(
+                        "fact_hash": prov_fact_hash(
                             f.subject_id, f.key, obj_repr, src
                         ),
                         "ts": f.verified_at or ts,

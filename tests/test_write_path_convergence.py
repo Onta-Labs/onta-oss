@@ -172,11 +172,10 @@ _CYPHER_WRITE_ALLOWLIST: dict[str, str] = {
     "graph/neo4j_store.py": "Neo4j GraphStore facade — session execute_* + store; write_* live in neo4j_store_*.py siblings.",
     "graph/neo4j_store_prov.py": "Neo4j GraphStore — ProvEvent / AttrCitation writes emit scoped Cypher with sanitized tokens.",
     "graph/neo4j_store_assert.py": "Neo4j GraphStore — Assertion / Entity MERGE writes emit scoped Cypher with sanitized tokens.",
-    "graph/neo4j_store_batch.py": "Neo4j GraphStore — UNWIND MERGE Entity/Assertion/ProvEvent; only reached via pg_ops.apply_facts → insert_facts.",
+    "graph/neo4j_store_batch.py": "Neo4j UNWIND apply_facts path; still insert_facts-only.",
     "graph/store.py": "GraphStore protocol + scope gates; no instance CREATE/MERGE payloads.",
     "graph/facts.py": "Fact IR + sanitizers; no store I/O.",
 }
-
 _PKG_ROOT = pathlib.Path(infona_client.__file__).parent
 
 

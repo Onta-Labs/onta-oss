@@ -13,7 +13,6 @@ from infona_client.graph.scope import GraphScopeError
 
 if TYPE_CHECKING:
     from infona_client.graph.fact_batch import FactBatch
-    from infona_client.graph.store import GraphRecord
 
 # Keep each UNWIND under typical server memory; 5k rows is well inside
 # Neo4j's default tx heap for Assertion nodes with small literals.
@@ -38,7 +37,7 @@ class Neo4jBatchMixin:
         if batch.classes:
             await self._unwind_merge_classes(batch.classes)
         for chunk in _chunks(batch.assertions):
-            await self._unwind_assertions(chunk)
+            await self._unwind_assertions(list(chunk))
         if batch.entity_props:
             await self._unwind_entity_props(batch.entity_props)
         if batch.instance_of:
@@ -91,10 +90,8 @@ class Neo4jBatchMixin:
         await self.execute_write(cypher, {"rows": list(rows)})
 
     async def _unwind_assertions(self, rows: Sequence[dict[str, Any]]) -> None:
-        # First-write ingest MERGEs by assertion id. Same-id re-ingest SETs
-        # fields. Object/class edges are MERGEd; we do not DELETE prior
-        # OBJECT edges here (id includes the object key, so a value change
-        # is a new assertion).
+        # Same edge-replace sequence as write_assertion: drop prior OBJECT /
+        # OBJECT_CLASS then MERGE the current target (SoT, not additive).
         cypher = (
             "UNWIND $rows AS row\n"
             "MATCH (s:Entity {tenant_id: $tenant_id, kg: $kg, id: row.subject_id})\n"
@@ -113,6 +110,13 @@ class Neo4jBatchMixin:
             "    a.updated_at = row.ts\n"
             "MERGE (a)-[:SUBJECT]->(s)\n"
             "MERGE (a)-[:PREDICATE]->(p)\n"
+            "WITH a, row\n"
+            "OPTIONAL MATCH (a)-[old_o:OBJECT]->()\n"
+            "DELETE old_o\n"
+            "WITH a, row\n"
+            "OPTIONAL MATCH (a)-[old_c:OBJECT_CLASS]->()\n"
+            "DELETE old_c\n"
+            "WITH a, row\n"
             "FOREACH (_ IN CASE WHEN row.object_id IS NULL THEN [] ELSE [1] END |\n"
             "  MERGE (o:Entity {tenant_id: $tenant_id, kg: $kg, id: row.object_id})\n"
             "  MERGE (a)-[:OBJECT]->(o)\n"
@@ -123,7 +127,12 @@ class Neo4jBatchMixin:
             ")\n"
             "RETURN count(*) AS n"
         )
-        await self.execute_write(cypher, {"rows": list(rows)})
+        recs = await self.execute_write(cypher, {"rows": list(rows)})
+        landed = int(recs[0].get("n") or 0) if recs else 0
+        if landed != len(rows):
+            raise GraphScopeError(
+                f"UNWIND assertion write dropped rows: sent={len(rows)} landed={landed}"
+            )
 
     async def _unwind_entity_props(self, entity_props: dict[str, dict[str, Any]]) -> None:
         rows = [{"id": eid, "props": props} for eid, props in entity_props.items() if props]
