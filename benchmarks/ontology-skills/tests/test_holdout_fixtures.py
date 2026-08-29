@@ -78,40 +78,46 @@ def test_holdout_gold_is_a_graph_delta() -> None:
 
 
 def test_holdout_input_has_no_entity_uri_or_mint_as() -> None:
-    prefix = ENT_PREFIX
-
-    def walk(obj, found: set[str]) -> None:
-        if isinstance(obj, dict):
-            for value in obj.values():
-                walk(value, found)
-        elif isinstance(obj, list):
-            for value in obj:
-                walk(value, found)
-        elif isinstance(obj, str) and obj.startswith(prefix):
-            found.add(obj)
-
-    def gold_uris(task) -> set[str]:
-        found: set[str] = set()
-        g = task.gold
-        for item in g.type_assertions:
-            found.add(item.entity)
-        for item in g.literals:
-            found.add(item.entity)
-        for item in (*g.adds, *g.deletes):
-            found.add(item.subject)
-            found.add(item.object)
-        for item in g.merges:
-            found.add(item.absorbed)
-            found.add(item.survivor)
-        return {u for u in found if u.startswith(prefix)}
-
     for task in _holdout().tasks:
         assert "entity_uri" not in task.input, task.task_id
         assert "mint_as" not in task.input, task.task_id
-        known: set[str] = set()
-        walk(task.input, known)
-        missing = gold_uris(task) - known
-        assert not missing, (task.task_id, missing)
+
+
+def _gold_entity_uris(task) -> set[str]:
+    found: set[str] = set()
+    g = task.gold
+    for item in g.type_assertions:
+        found.add(item.entity)
+    for item in g.literals:
+        found.add(item.entity)
+    for item in (*g.adds, *g.deletes):
+        found.add(item.subject)
+        found.add(item.object)
+    for item in g.merges:
+        found.add(item.absorbed)
+        found.add(item.survivor)
+    return {u for u in found if u.startswith(ENT_PREFIX)}
+
+
+def _input_strings(obj) -> list[str]:
+    out: list[str] = []
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            out.append(str(key))
+            out.extend(_input_strings(value))
+    elif isinstance(obj, list):
+        for value in obj:
+            out.extend(_input_strings(value))
+    elif isinstance(obj, str):
+        out.append(obj)
+    return out
+
+
+def test_holdout_input_has_no_gold_entity_uri() -> None:
+    for task in _holdout().tasks:
+        gold_uris = _gold_entity_uris(task)
+        leaked = [s for s in _input_strings(task.input) if s in gold_uris]
+        assert not leaked, (task.task_id, leaked)
 
 
 def test_holdout_identifier_contract() -> None:

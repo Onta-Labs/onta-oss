@@ -17,7 +17,8 @@ Unseen branches use types that are not in the main gold set (`CrossDock`, `RailS
 - Synthetic names only. Do not reuse Acme, Globex, Northwind, or any other main-fixture party.
 - Gold is a `GraphDelta` with the same keys as `ontology_skills.graph_delta.GraphDelta.to_dict`.
 - Identifier contract matches SPEC: short `type_id`, camelCase `attr`, full relation IRI on `adds`/`deletes`, full `https://graph.infona.ai/bench/ent/{slug}` entity URIs.
-- Do not put `entity_uri` or `mint_as` on `input`. Every gold entity URI must already appear somewhere in `input`.
+- Do not put `entity_uri` or `mint_as` on `input`. Do not put a gold entity URI under any other key either (`uri`, `record.uri`, `existing_uris`, graph subjects). No input string may equal a gold entity URI.
+- Gold entity URIs stay author-stable in gold only. The executor mints them in-task from the mention.
 - Do not mention product `entity_uri`. Fixture URIs are author-stable slugs.
 - `notes` and `input` must not contain any gold `type_id` (the leaf you assert, or the type you extend). Neighborhood seeds are compiler input, not a hint you write into the row.
 
