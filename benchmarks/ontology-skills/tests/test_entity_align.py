@@ -52,6 +52,44 @@ def test_restated_add_does_not_zero_f1() -> None:
     assert metrics["success"] is True
 
 
+def test_ancestor_type_dump_does_not_zero_precision() -> None:
+    task = _et001()
+    predicted = GraphDelta(
+        type_assertions=(
+            TypeAssertion(MINTED, "Supplier"),
+            TypeAssertion(MINTED, "Company"),
+            TypeAssertion(MINTED, "Organization"),
+            TypeAssertion(MINTED, "Entity"),
+        ),
+        literals=(LiteralSet(MINTED, "legalName", "Acme Components Ltd"),),
+    )
+    raw = graph_delta_prf(predicted, task.gold)
+    assert raw["precision"] is not None
+    assert raw["precision"] < 0.5
+    metrics = score_task(predicted, task)
+    assert metrics["graph_delta_precision"] == 1.0
+    assert metrics["graph_delta_recall"] == 2 / 3
+    assert metrics["success"] is False
+
+
+def test_sibling_types_are_not_collapsed() -> None:
+    task = _et001()
+    predicted = GraphDelta(
+        type_assertions=(
+            TypeAssertion(MINTED, "Supplier"),
+            TypeAssertion(MINTED, "Person"),
+        ),
+        literals=(
+            LiteralSet(MINTED, "legalName", "Acme Components Ltd"),
+            LiteralSet(MINTED, "registrationId", "GB-000111222"),
+        ),
+    )
+    metrics = score_task(predicted, task)
+    assert metrics["success"] is False
+    assert metrics["graph_delta_precision"] == 0.75
+    assert metrics["graph_delta_recall"] == 1.0
+
+
 def test_wrong_type_id_still_misses_after_alignment() -> None:
     task = _et001()
     predicted = GraphDelta(

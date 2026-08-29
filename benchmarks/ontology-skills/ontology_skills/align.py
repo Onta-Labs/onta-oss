@@ -18,7 +18,15 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from .graph_delta import GraphDelta, LiteralSet, Merge, Triple, TypeAssertion
+from .graph_delta import (
+    GraphDelta,
+    LiteralSet,
+    Merge,
+    Triple,
+    TypeAssertion,
+    TypeExtension,
+)
+from .models import Ontology
 
 ENT_PREFIX = "https://graph.infona.ai/bench/ent/"
 
@@ -27,11 +35,67 @@ def prepare_for_score(
     predicted: GraphDelta,
     gold: GraphDelta,
     task_input: Mapping[str, Any] | None = None,
+    ontology: Ontology | None = None,
 ) -> GraphDelta:
-    """Drop restated adds, then rewrite predicted entities onto gold entities."""
+    """Drop restated adds and ancestor types, then align minted entities."""
     cleaned = drop_restated_adds(predicted)
+    if ontology is not None:
+        extras = (*predicted.type_extensions, *gold.type_extensions)
+        cleaned = keep_leaf_types(cleaned, ontology, extras)
     mapping = entity_alignment(cleaned, gold, task_input or {})
     return rewrite_delta(cleaned, mapping)
+
+
+def keep_leaf_types(
+    delta: GraphDelta,
+    ontology: Ontology,
+    extra_extensions: tuple[TypeExtension, ...] = (),
+) -> GraphDelta:
+    """Keep only the most specific type_ids per entity.
+
+    If Supplier and Company are both asserted, Company is an ancestor in the
+    fixture ontology and is dropped. Sibling types (Person + Supplier) stay.
+    Unknown ids are not treated as ancestors.
+    """
+    parents = {tid: typ.parent_ids for tid, typ in ontology.types.items()}
+    for ext in extra_extensions:
+        if ext.type_id and ext.parent_id:
+            parents[ext.type_id] = (ext.parent_id,)
+    cache: dict[str, frozenset[str]] = {}
+
+    def ancestors(type_id: str) -> frozenset[str]:
+        if type_id in cache:
+            return cache[type_id]
+        found: set[str] = set()
+        stack = list(parents.get(type_id, ()))
+        while stack:
+            nid = stack.pop()
+            if nid in found:
+                continue
+            found.add(nid)
+            stack.extend(parents.get(nid, ()))
+        cache[type_id] = frozenset(found)
+        return cache[type_id]
+
+    by_entity: dict[str, list[TypeAssertion]] = {}
+    for item in delta.type_assertions:
+        by_entity.setdefault(item.entity, []).append(item)
+    kept: list[TypeAssertion] = []
+    for assertions in by_entity.values():
+        ids = {item.type_id for item in assertions}
+        for item in assertions:
+            if any(item.type_id in ancestors(other) for other in ids if other != item.type_id):
+                continue
+            kept.append(item)
+    return GraphDelta(
+        adds=delta.adds,
+        deletes=delta.deletes,
+        type_assertions=tuple(kept),
+        literals=delta.literals,
+        merges=delta.merges,
+        type_extensions=delta.type_extensions,
+        constraint_repairs=delta.constraint_repairs,
+    )
 
 
 def drop_restated_adds(delta: GraphDelta) -> GraphDelta:

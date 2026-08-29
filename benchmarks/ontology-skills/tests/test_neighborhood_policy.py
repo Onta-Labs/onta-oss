@@ -195,3 +195,23 @@ def test_compile_for_execute_rag_matches_rewritten_k_and_can_disagree() -> None:
                 disagreed = True
                 break
     assert disagreed, "RAG vs routed should differ on at least one task"
+
+
+def test_conflict_and_cvr_skills_are_on_seeded_types_not_wrong_family() -> None:
+    """Vanilla beating Infona on those families is extra ops, not a mis-route."""
+    bundle, conf = _task("conf-001")
+    compiled = compile_for_task(bundle.ontology, conf)
+    assert conf.neighborhood.type_ids == ("Supplier",)
+    assert "legal-name-normalization" in compiled.skill_ids
+    assert "vendor-reconciliation" in compiled.skill_ids
+    assert "temporal-window" not in compiled.skill_ids
+    assert "quantity-validation" not in compiled.skill_ids
+    assert "person-not-org" not in compiled.skill_ids
+
+    bundle, cvr = _task("cvr-001")
+    compiled = compile_for_task(bundle.ontology, cvr)
+    assert "Person" in cvr.neighborhood.type_ids
+    assert "SUPPLIES_TO" in cvr.neighborhood.relation_ids
+    assert "person-not-org" in compiled.skill_ids
+    assert "temporal-window" in compiled.skill_ids
+    assert "SUPPLIES_TO" in compiled.relation_ids

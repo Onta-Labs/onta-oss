@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from .align import prepare_for_score
-from .dataset import Task, load_tasks
+from .dataset import Task, load_ontology, load_tasks
 from .graph_delta import (
     GraphDelta,
     LiteralSet,
@@ -56,9 +56,11 @@ def score_prediction(
     """Fill the locked metric keys for one predicted-vs-gold pair.
 
     ``graph_delta_prf`` / ``task_success`` stay exact-set. This function first
-    aligns minted entities and drops adds that restate structured facts.
+    drops restated adds and ancestor type dumps, then aligns minted entities.
     """
-    prepared = prepare_for_score(predicted, gold, task_input)
+    prepared = prepare_for_score(
+        predicted, gold, task_input, ontology=load_ontology()
+    )
     prf = graph_delta_prf(prepared, gold)
     metrics: dict[str, Any] = {
         "success": task_success(prepared, gold),
