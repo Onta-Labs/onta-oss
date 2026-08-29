@@ -1,4 +1,4 @@
-# Capability Compilation Benchmark — spec (v1.0.0)
+# Capability Compilation Benchmark — spec (v1.2.0)
 
 Status: **locked for INF-606**. Later slices (INF-608 dataset, INF-607 executor, INF-611 runs) implement against this file. Changing families, split ids, matrix order, primary metrics, or run-log keys requires bumping `schema_version` and a spec diff; silent drift is a failed eval.
 
@@ -67,6 +67,7 @@ Inputs: `Ontology`, `Neighborhood(type_ids, relation_ids, include_ancestors=True
    - `none` / ontology-context: empty `skills`, lineage still computed (condition 1, 2, 6, 7).
    - `flat`: all enabled skills sorted by `(kind, attached_to, skill_id)` (condition 3).
    - `routed`: steps 1–4 (conditions 4, 8; condition 5 would use this if unblocked).
+   - `rag` is **not** a compile mode in this algorithm. Condition 9 selects enabled skill bodies by embedding cosine against `json.dumps(task.input)`; k is the routed skill count for that task.
 
 **Determinism.** Same `Ontology` (as typed values, not JSON key order) and same `Neighborhood` → identical `CompiledSkillSet` (skill order, lineage, fingerprint). Shuffling the ontology’s skill tuple must not change output. Seed **order** is part of the neighborhood: it may change lineage order; the **set** of skill ids for the same type set must stay equal.
 
@@ -181,7 +182,7 @@ For each runnable condition, plot **macro-family task-success (y)** against infe
 - model size × quantization (categorical x, or param-count)
 - hosted USD / 1k tasks
 
-The interesting overlay is condition 4 (4B routed) vs condition 7 (27B/frontier vanilla) vs condition 3 (4B flat). Do not produce this plot until real runs exist. A stub JSONL with null metrics is not a result.
+The interesting overlay is condition 4 (4B routed) vs condition 9 (4B RAG) vs condition 7 (27B/frontier vanilla) vs condition 3 (4B flat). Do not produce this plot until real runs exist. A stub JSONL with null metrics is not a result.
 
 ## 10. Comparison matrix
 
@@ -191,30 +192,32 @@ Order is locked in `ontology_skills.conditions.CONDITION_MATRIX`. Ids:
 2. `4b_ontology_context`
 3. `4b_flat_skills`
 4. `4b_ontology_routed` ← primary Infona
-5. `4b_ft_ontology_routed` ← `runnable=False` until 1–4 and 6–8 have been run
+5. `4b_ft_ontology_routed` ← `runnable=False` until 1–4 and 6–9 have been run
 6. `9b_vanilla`
 7. `27b_or_frontier_vanilla`
 8. `teacher_skills_4b`
+9. `4b_rag_skills` ← cosine top-k over the same enabled fixture skill bodies; k = routed compiled skill count for that task; no ontology walk
 
-Condition 2 injects lineage / relation names as schema text and **no** skill bodies. Condition 8 uses `compile_routed` on a skill library whose `provenance` is `teacher`; gold and neighborhoods stay the same. The v1 fixture has only `curated` bodies — INF-608/611 may add a parallel `fixtures/skills_teacher.json` **without** changing this schema.
+Condition 2 injects lineage / relation names as schema text and **no** skill bodies. Condition 8 uses `compile_routed` on a skill library whose `provenance` is `teacher`; gold and neighborhoods stay the same. The v1 fixture has only `curated` bodies — INF-608/611 may add a parallel `fixtures/skills_teacher.json` **without** changing this schema. Condition 9 is retrieval, not compilation. Do not cook routed to beat RAG. Retrieval scores are logged and must not be written as skill provenance.
 
 Harness `compile_for_condition` raises if condition 5 is requested.
 
 ## 11. Run log contract
 
-Every executed task writes one JSON object (JSONL). Schema file: `schemas/run_result.v1.json`. `schema_version` is `1.1.0` (added `parse` + `predicted`; existing keys unchanged).
+Every executed task writes one JSON object (JSONL). Schema file: `schemas/run_result.v1.json`. `schema_version` is `1.2.0` (added condition 9 / `rag`, `retrieval` block; existing keys unchanged).
 
-Required top-level keys: `schema_version`, `run_id`, `created_at`, `status`, `condition`, `task_id`, `task_family`, `split`, `model`, `prompt`, `context_budget`, `tools`, `decoding`, `resources`, `compiler`, `metrics`, `parse`, `predicted`, `notes`.
+Required top-level keys: `schema_version`, `run_id`, `created_at`, `status`, `condition`, `task_id`, `task_family`, `split`, `model`, `prompt`, `context_budget`, `tools`, `decoding`, `resources`, `compiler`, `metrics`, `parse`, `predicted`, `retrieval`, `notes`.
 
 | Block | Must record |
 |---|---|
 | `model` | `name`, `quantization`, `param_count`, `backend` |
-| `prompt` | `template_id`, `sha256` of the exact prompt bytes, `skill_injection` ∈ {`none`, `ontology_context`, `flat`, `routed`} |
+| `prompt` | `template_id`, `sha256` of the exact prompt bytes, `skill_injection` ∈ {`none`, `ontology_context`, `flat`, `routed`, `rag`} |
 | `context_budget` | `max_context_tokens`, `max_output_tokens`, `compiled_skill_chars` |
 | `tools` | list of tool names exposed to the executor (empty if none) |
 | `decoding` | `temperature`, `top_p`, `top_k`, `seed`, `max_new_tokens` |
 | `resources` | `latency_ms`, `prompt_tokens`, `completion_tokens`, `ram_mb`, `vram_mb`, `hosted_cost_usd` |
 | `compiler` | `mode`, `skill_ids`, `type_lineage`, `relation_ids`, `fingerprint` |
+| `retrieval` | `embedder_id`, `k`, `hits` (`skill_id` + cosine). Null fields when the condition is not RAG |
 | `parse` | `ok` (bool or null on stubs), `error` (string or null) |
 | `predicted` | GraphDelta object actually scored (`adds`, `deletes`, …). Empty on parse failure. |
 
@@ -229,7 +232,7 @@ Stub runs set `status=stub`, all `metrics` null, resource fields null, `model.na
 - Required task keys: `task_id`, `family`, `split`, `neighborhood`, `input`, `gold`
 - `neighborhood` keys: `type_ids`, `relation_ids`, `include_ancestors`, `include_incident_relations`
 - `gold` is a GraphDelta object (same keys as `GraphDelta.to_dict`)
-- When gold mints an entity URI that is not already in `input`, `input.entity_uri` (one URI) or `input.mint_as` (list of URIs) carries that blank-node id. Do not put `type_id` or literals there. Prompt v2: reuse it; never invent a second URI.
+- Do **not** put gold `entity_uri` / `mint_as`, `type_id`, or literals into `input`. URI minting is in-task.
 
 `task_id` unique. Families must stay in the closed set. INF-608 appends lines; it does not introduce a second file format.
 
@@ -245,23 +248,26 @@ It receives:
 - for condition 2: serialized lineage + relation signatures, no skill bodies
 - for condition 3: every skill body (flat order)
 - for condition 4/8: routed skill bodies in compiler order
+- for condition 9: top-k retrieved skill bodies (same corpus, k = routed count)
 - for conditions 1/6/7: neither ontology nor skills
 
 It must return a `GraphDelta` JSON object. Parsing failure → empty predicted delta, `status=error`, `success=false`. Do not repair the parse with a second model.
 
-Prompt template id: `ontology_skills.prompt.v2`. Identifier contract (matches gold; v1 only said “Relation IRIs” and `ent/{slug}`):
+Prompt template id: `ontology_skills.prompt.v3`. Identifier contract (matches gold; do not name a gold type in the hint):
 
-- `type_id`: short local id (`Supplier`), never an IRI
-- `attr`: short camelCase (`legalName`, `registrationId`), never an IRI
+- `type_id`: leaf type only, short local id, never an IRI
+- `attr`: short camelCase, never an IRI
 - `predicate`: full IRI `https://graph.infona.ai/bench/onto/{RELATION_ID}`
 - `entity`: full URI `https://graph.infona.ai/bench/ent/{slug}`
-- leaf type only
+- mint entity URIs in-task
 
 The run log records `prompt.sha256` of the exact prompt bytes.
 
 Dry-run: `python -m ontology_skills execute --backend canned` reads `fixtures/canned_responses.jsonl` (`task_id`, `text`). Metrics on canned rows are loop tests, not published model scores. `resources.*` stay null on canned rows.
 
-Live env: Bearer key as above; `INFONA_BENCH_BASE_URL` (default OpenRouter; alias `OPENAI_BASE_URL`); `INFONA_BENCH_MODEL` optional override (aliases `OPENAI_MODEL` / `MODEL`). OpenRouter catalog 2026-08-29 has no Qwen 4B; the `4b_*` slot defaults to `qwen/qwen3-8b` with recorded `param_count` `8B`. Condition 6: `qwen/qwen3.5-9b`. Condition 7: `qwen/qwen3.5-27b`. Live POST body includes `"reasoning": {"enabled": false}` so thinking cannot consume `max_new_tokens`. HTTP errors include status and response body. OpenRouter headers: `HTTP-Referer https://infona.ai`, `X-Title Infona ontology-skills bench`. Tokens and `hosted_cost_usd` are copied from the response `usage` object when present (`usage.cost` for USD). Do not fabricate cost. Latency is the client wall-clock of that POST.
+Live env: Bearer key as above; `INFONA_BENCH_BASE_URL` (default OpenRouter; alias `OPENAI_BASE_URL`); `INFONA_BENCH_MODEL` optional override (aliases `OPENAI_MODEL` / `MODEL`). OpenRouter catalog 2026-08-29 has no Qwen 4B; the `4b_*` slot (conditions 1–4, 8, 9) defaults to `qwen/qwen3-8b` with recorded `param_count` `8B`. Condition 6: `qwen/qwen3.5-9b`. Condition 7: `qwen/qwen3.5-27b`. Live POST body includes `"reasoning": {"enabled": false}` so thinking cannot consume `max_new_tokens`. HTTP errors include status and response body. OpenRouter headers: `HTTP-Referer https://infona.ai`, `X-Title Infona ontology-skills bench`. Tokens and `hosted_cost_usd` are copied from the response `usage` object when present (`usage.cost` for USD). Do not fabricate cost. Latency is the client wall-clock of that POST.
+
+Live RAG embeddings: `POST {base}/embeddings` with `INFONA_BENCH_EMBED_MODEL` (default `openai/text-embedding-3-small`) on the same Bearer key. No key → fail closed. A hashing embedder is not the published RAG baseline.
 
 Scoring (INF-611) is deterministic and does not call a model.
 
