@@ -33,10 +33,14 @@ export interface BlueprintInstallResult extends BlueprintCard {
 }
 
 export interface BlueprintInstallBody {
-  kg: string;
+  kg?: string;
   include_sample?: boolean;
   manifest?: Record<string, unknown>;
   manifest_yaml?: string;
+  seed?: string;
+  target?: "existing" | "new_workspace";
+  first_run?: boolean;
+  credentials?: Record<string, string>;
 }
 
 export interface BlueprintUninstallResult {
@@ -120,7 +124,7 @@ export class ClientBlueprints extends ClientSkills {
 
   async forkBlueprint(
     id: string,
-    body: { as?: string } = {},
+    body: { as?: string; target?: "existing" | "new_workspace" } = {},
   ): Promise<unknown> {
     const { namespace, name } = splitBlueprintId(id);
     return this.request("POST", this.pBlueprintFork(namespace, name), body);

@@ -90,6 +90,13 @@ class BlueprintAcquisitionFailed(BlueprintError):
     status_code = 400
 
 
+class BlueprintNewWorkspaceUnavailable(BlueprintError):
+    """INF-605 — public install cannot mint a workspace, and the path tenant
+    already holds a graph. Fail closed rather than write into that tenant."""
+
+    status_code = 409
+
+
 def manifest_content_hash(manifest: BlueprintManifest) -> str:
     """Pin the v1 document (ADR 0014 F5). Canonical JSON, not archive bytes."""
     payload = dumps_blueprint(manifest).encode("utf-8")

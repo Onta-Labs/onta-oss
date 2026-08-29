@@ -7,6 +7,8 @@ not a second identity-scoped family.
 
   POST   /graphs/{tenant}/blueprints/validate
   POST   /graphs/{tenant}/blueprints/install
+         body may include seed=infona/clinical-trials, target=new_workspace
+         (INF-605: outsider default is a new workspace + first-run)
   GET    /graphs/{tenant}/blueprints
   GET    /graphs/{tenant}/blueprints/{namespace}/{name}
   DELETE /graphs/{tenant}/blueprints/{namespace}/{name}
@@ -23,7 +25,7 @@ Boundary: OSS. ``infona_client.*`` / stdlib only.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -33,14 +35,18 @@ from infona_client.auth.api_keys import TenantContext, get_tenant
 from infona_client.blueprint.first_run import FIRST_RUN_MAX_ROWS, run_first_run
 from infona_client.blueprint.install import (
     BlueprintError,
-    fork_blueprint,
     inspect_blueprint,
-    install_blueprint,
     list_installed_blueprints,
     load_and_validate,
     uninstall_blueprint,
 )
 from infona_client.blueprint.layer import extend_blueprint, update_blueprint
+from infona_client.blueprint.public_path import (
+    TARGET_EXISTING,
+    fork_with_target,
+    install_with_target,
+    resolve_shipped_seed,
+)
 from infona_client.blueprint.validate import validate_blueprint as validate_document
 
 router = APIRouter(prefix="/graphs/{tenant}/blueprints")
@@ -62,16 +68,21 @@ class ValidateRequest(BaseModel):
 
 
 class InstallRequest(BaseModel):
-    kg: str = Field(min_length=1)
+    kg: Optional[str] = Field(default=None, min_length=1)
     include_sample: bool = True
     manifest: Optional[dict[str, Any]] = None
     manifest_yaml: Optional[str] = None
+    seed: Optional[str] = None
+    target: Literal["existing", "new_workspace"] = TARGET_EXISTING
+    first_run: Optional[bool] = None
+    credentials: Optional[dict[str, str]] = None
 
 
 class ForkRequest(BaseModel):
     """Optional new identity. Default is ``{tenant}/{parent-name}``."""
 
     as_id: Optional[str] = Field(default=None, alias="as")
+    target: Literal["existing", "new_workspace"] = TARGET_EXISTING
 
     model_config = {"populate_by_name": True}
 
@@ -110,6 +121,19 @@ def _manifest_from_body(body: ValidateRequest | InstallRequest | UpdateRequest):
     )
 
 
+def _install_source(body: InstallRequest):
+    if body.manifest is not None:
+        return body.manifest
+    if body.manifest_yaml:
+        return body.manifest_yaml
+    if body.seed:
+        return resolve_shipped_seed(body.seed)
+    raise HTTPException(
+        status_code=400,
+        detail="provide manifest, manifest_yaml, or seed",
+    )
+
+
 @router.post("/validate")
 async def validate_blueprint_route(
     body: ValidateRequest,
@@ -132,16 +156,19 @@ async def install_blueprint_route(
     tenant: TenantContext = Depends(require_tenant_write),
 ):
     try:
-        result = await install_blueprint(
-            _manifest_from_body(body),
+        return await install_with_target(
+            _install_source(body),
             tenant_id=tenant.tenant_id,
+            api_key=tenant.api_key,
             kg=body.kg,
             include_sample=body.include_sample,
+            target=body.target,
+            first_run=body.first_run,
+            credentials=body.credentials,
         )
     except BlueprintError as exc:
         _raise(exc)
         return
-    return result.to_dict()
 
 
 @router.get("")
@@ -186,15 +213,16 @@ async def fork_blueprint_route(
 ):
     req = body or ForkRequest()
     try:
-        result = await fork_blueprint(
+        return await fork_with_target(
             tenant.tenant_id,
             _package_id(namespace, name),
+            api_key=tenant.api_key,
             as_id=req.as_id,
+            target=req.target,
         )
     except BlueprintError as exc:
         _raise(exc)
         return
-    return result.to_dict()
 
 
 def _overlay_from_body(body: ExtendRequest) -> dict[str, Any]:

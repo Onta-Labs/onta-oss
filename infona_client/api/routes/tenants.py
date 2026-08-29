@@ -244,6 +244,25 @@ async def _claim_minted_id(api_key: str, label: str) -> str:
     )
 
 
+async def create_untitled_workspace(
+    api_key: str, *, label: str | None = None
+) -> Tenant:
+    """Mint an untitled workspace. Same as ``POST /v1/me/tenants`` with no id.
+
+    INF-605 public install reuses this so the outsider path cannot fork a
+    second naming scheme. The path tenant is authorized separately.
+    """
+    provider = _require_provider()
+    key = _require_key(api_key)
+    owned = await run_in_threadpool(provider.list_tenants, key)
+    resolved = validate_label(
+        next_untitled_label(owned) if label is None else label
+    )
+    ensure_label_available(owned, resolved)
+    tenant_id = await _claim_minted_id(key, resolved)
+    return await run_in_threadpool(provider.add_tenant, key, tenant_id, resolved)
+
+
 @router.post("", response_model=TenantOut, status_code=201)
 async def add_tenant(
     body: TenantCreate | None = None, api_key: str | None = Security(api_key_header)
@@ -251,32 +270,24 @@ async def add_tenant(
     # async (unlike its sync siblings) because the workspace registry is
     # asyncpg-backed; the sync provider calls are bridged via run_in_threadpool
     # so they cannot block the event loop.
-    provider = _require_provider()
     key = _require_key(api_key)
     body = body or TenantCreate()
     try:
-        # Naming the auto-created workspace needs the caller's current list, and
-        # so does "no two of my workspaces share a name" — one read covers both.
-        # This means a malformed create now costs an identity-provider round
-        # trip before its 400, and surfaces a bad key as 401 rather than 400.
-        # Both are fine: the list IS an input to validation now.
+        if body.id is None:
+            created = await create_untitled_workspace(key, label=body.label)
+            return _out(created, role="owner")
+        # Naming an explicit id still needs the caller's current list so
+        # per-user label uniqueness holds. tenant_directory is the shared
+        # source of truth.
+        provider = _require_provider()
         owned = await run_in_threadpool(provider.list_tenants, key)
-        # The rules stay identical across clients — tenant_directory is the
-        # shared source of truth and raises TenantProviderError. An OMITTED
-        # field means "pick one for me"; a PRESENT-but-empty one is a caller
-        # mistake and stays a 400, as it always was. validate_label runs on both
-        # branches so MAX_LABEL_LEN holds however the name arose.
         label = validate_label(
             next_untitled_label(owned) if body.label is None else body.label
         )
         ensure_label_available(owned, label)
-        if body.id is None:
-            # Minted ids claim their own registry row (and must win it).
-            tenant_id = await _claim_minted_id(key, label)
-        else:
-            tenant_id = validate_new_tenant(body.id, label)[0]
-            # Registry row first, provider second — see _claim_or_check_ownership.
-            await _claim_or_check_ownership(key, tenant_id, label)
+        tenant_id = validate_new_tenant(body.id, label)[0]
+        # Registry row first, provider second — see _claim_or_check_ownership.
+        await _claim_or_check_ownership(key, tenant_id, label)
         created = await run_in_threadpool(provider.add_tenant, key, tenant_id, label)
         return _out(created, role="owner")
     except TenantProviderError as exc:
