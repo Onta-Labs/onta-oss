@@ -18,6 +18,7 @@ from .compiler import compile_flat, compile_none, compile_routed
 from .conditions import CONDITION_MATRIX, Condition, condition_by_id
 from .dataset import TASK_FAMILIES, Task, load_fixture_bundle
 from .models import CompiledSkillSet, Neighborhood, Ontology
+from .scoring import empty_metrics
 
 SCHEMA_VERSION = "1.0.0"
 
@@ -88,20 +89,6 @@ class ResourceUse:
             "vram_mb": self.vram_mb,
             "hosted_cost_usd": self.hosted_cost_usd,
         }
-
-
-def empty_metrics() -> dict[str, None]:
-    """Primary metric keys. Values stay null until a real executor runs."""
-    return {
-        "success": None,
-        "graph_delta_precision": None,
-        "graph_delta_recall": None,
-        "graph_delta_f1": None,
-        "constraint_valid": None,
-        "er_precision": None,
-        "er_recall": None,
-        "er_f1": None,
-    }
 
 
 @dataclass

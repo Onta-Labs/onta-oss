@@ -9,6 +9,7 @@ from .conditions import CONDITION_MATRIX, condition_by_id
 from .dataset import load_fixture_bundle, load_ontology, load_tasks
 from .graph_delta import GraphDelta, graph_delta_prf
 from .harness import RunResult, write_result_row
+from .scoring import score_prediction, score_task
 from .models import (
     CompiledSkillSet,
     EntityType,
@@ -38,5 +39,7 @@ __all__ = [
     "load_fixture_bundle",
     "load_ontology",
     "load_tasks",
+    "score_prediction",
+    "score_task",
     "write_result_row",
 ]

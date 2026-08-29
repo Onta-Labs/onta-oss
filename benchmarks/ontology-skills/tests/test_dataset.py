@@ -1,7 +1,8 @@
-"""Dataset loader stubs and gold graph-delta fixtures."""
+"""Dataset volume, splits, and no-leakage guards (INF-608)."""
 
 from __future__ import annotations
 
+from ontology_skills.compiler import compile_routed
 from ontology_skills.dataset import (
     SPLITS,
     TASK_FAMILIES,
@@ -9,6 +10,10 @@ from ontology_skills.dataset import (
     load_ontology,
     load_tasks,
 )
+
+MIN_PER_FAMILY = 8
+MAX_PER_FAMILY = 12
+MIN_PER_SPLIT = 8
 
 
 def test_fixture_ontology_has_supplier_chain() -> None:
@@ -21,33 +26,61 @@ def test_fixture_ontology_has_supplier_chain() -> None:
     assert onto.relations["SUPPLIES_TO"].target_type == "Customer"
 
 
-def test_one_gold_task_per_family() -> None:
-    tasks = load_tasks()
-    families = {t.family for t in tasks}
-    assert families == set(TASK_FAMILIES)
-    assert len(tasks) == len(TASK_FAMILIES)
+def test_volume_per_family_and_split() -> None:
+    bundle = load_fixture_bundle()
+    assert {t.family for t in bundle.tasks} == set(TASK_FAMILIES)
+    for family in TASK_FAMILIES:
+        n = len(bundle.tasks_for(family=family))
+        assert MIN_PER_FAMILY <= n <= MAX_PER_FAMILY, family
+    used = {t.split for t in bundle.tasks}
+    assert used == set(SPLITS)
+    for split in SPLITS:
+        n = len(bundle.tasks_for(split=split))
+        assert n >= MIN_PER_SPLIT, split
 
 
-def test_splits_are_from_the_locked_set() -> None:
-    tasks = load_tasks()
-    assert {t.split for t in tasks} <= set(SPLITS)
-    used = {t.split for t in tasks}
-    assert "known_ontology_unseen_instances" in used
-    assert "unseen_ontology_branches" in used
-    assert "adversarial_conflicting" in used
-
-
-def test_gold_deltas_are_non_empty_and_canonical() -> None:
+def test_gold_deltas_are_non_empty_graph_deltas() -> None:
+    onto = load_ontology()
     for task in load_tasks():
         ops = task.gold.canonical_ops()
         assert ops, f"{task.task_id} gold delta is empty"
         assert task.neighborhood.type_ids, f"{task.task_id} missing neighborhood"
+        for tid in task.neighborhood.type_ids:
+            assert tid in onto.types, f"{task.task_id} seeds unknown type {tid}"
+        for rid in task.neighborhood.relation_ids:
+            assert rid in onto.relations, f"{task.task_id} seeds unknown rel {rid}"
+
+
+def test_unseen_extensions_are_not_in_the_snapshot() -> None:
+    onto = load_ontology()
+    unseen = [
+        t
+        for t in load_tasks()
+        if t.split == "unseen_ontology_branches" and t.gold.type_extensions
+    ]
+    assert unseen, "unseen split needs type_extensions"
+    for task in unseen:
+        for ext in task.gold.type_extensions:
+            assert ext.type_id not in onto.types, task.task_id
+            assert ext.parent_id in onto.types, task.task_id
+
+
+def test_no_gold_key_in_input() -> None:
+    for task in load_tasks():
+        assert "gold" not in task.input, task.task_id
+
+
+def test_every_neighborhood_compiles() -> None:
+    bundle = load_fixture_bundle()
+    for task in bundle.tasks:
+        compiled = compile_routed(bundle.ontology, task.neighborhood)
+        assert compiled.mode == "routed"
 
 
 def test_bundle_filter() -> None:
     bundle = load_fixture_bundle()
     ext = bundle.tasks_for(family="ontology_extension")
-    assert len(ext) == 1
-    assert ext[0].task_id == "ext-001"
+    assert {t.task_id for t in ext} >= {"ext-001"}
     adv = bundle.tasks_for(split="adversarial_conflicting")
-    assert {t.task_id for t in adv} == {"cvr-001", "conf-001"}
+    assert "cvr-001" in {t.task_id for t in adv}
+    assert "conf-001" in {t.task_id for t in adv}

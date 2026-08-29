@@ -13,10 +13,10 @@ from ontology_skills.harness import (
     SCHEMA_VERSION,
     RunResult,
     compile_for_condition,
-    empty_metrics,
     run_stub,
     write_result_row,
 )
+from ontology_skills.scoring import empty_metrics
 
 
 REQUIRED_ROW_KEYS = {

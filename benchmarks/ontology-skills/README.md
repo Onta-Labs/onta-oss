@@ -4,7 +4,7 @@
 
 **Success criterion (measure, do not force).** A 2B/4B local model + Infona ontology-bound skills reaching ~90–95% of a frontier model's ontology-task success at materially lower memory, latency, and cost.
 
-This package is **INF-606** (contract + compiler + fixtures). It is isolated on purpose: it does not import `infona_client`, and it does not reuse `infona_client.qc`, `infona_client.eval`, or product `infona_client.skills`. Those are a different system. Do not merge them in a drive-by.
+This package is **INF-606 + INF-608 + INF-611 scoring**. Isolated on purpose: it does not import `infona_client`, and it does not reuse `infona_client.qc`, `infona_client.eval`, or product `infona_client.skills`. Those are a different system. Do not merge them in a drive-by.
 
 ## Why this is not WikiSkill
 
@@ -62,9 +62,9 @@ benchmarks/ontology-skills/
   SPEC.md                         # locked contract — read this before coding slices
   ontology_skills/                # importable package (stdlib only)
   fixtures/ontology.json          # Supplier inheritance fixture
-  fixtures/tasks.jsonl            # one gold graph-delta per task family
+  fixtures/tasks.jsonl            # gold GraphDeltas (~10 tasks per family)
   schemas/run_result.v1.json      # run-log JSON Schema
-  tests/                          # compiler determinism + inheritance
+  tests/                          # compiler, inheritance, scoring, volume
 ```
 
 Least-invasive home: a new tree under `benchmarks/`, not `infona_client/` and not `packages/` (that directory is npm). The published `infona-client` wheel is unchanged.
@@ -73,10 +73,11 @@ Least-invasive home: a new tree under `benchmarks/`, not `infona_client/` and no
 
 | Slice | Issue | What to do | What not to do |
 |---|---|---|---|
-| **This** | INF-606 | Spec, compiler, fixtures, stub harness | Run models, invent scores, FT |
-| Next | INF-608 | Grow tasks.jsonl under the same families/splits/gold schema | Change `RunResult` keys or family ids |
+| Done | INF-606 | Spec, compiler, fixtures, stub harness | Run models, invent scores, FT |
+| Done | INF-608 | ~10 gold GraphDeltas per family, all three splits | Change `RunResult` keys or family ids |
+| Done | INF-611 scoring | Deterministic `score_task` / `score_prediction` | LLM-as-judge, fabricated leaderboards |
 | Next | INF-607 | Real executor: fill metrics + resource fields | Call an LLM-as-judge for `success` |
-| Later | INF-611 | Run matrix 1–4 and 6–8; plot success vs resources | Unblock condition 5 first |
+| Later | INF-611 runs | Run matrix 1–4 and 6–8; plot success vs resources | Unblock condition 5 first |
 
 ## How to run
 
@@ -93,5 +94,17 @@ PYTHONPATH=benchmarks/ontology-skills python -m ontology_skills --list-condition
 PYTHONPATH=benchmarks/ontology-skills python -m ontology_skills \
   --condition 4b_ontology_routed --out /tmp/ontology-skills-stub.jsonl
 ```
+
+Score a predicted GraphDelta locally (no model). Gold-vs-gold is a sanity check, not a published score:
+
+```bash
+PYTHONPATH=benchmarks/ontology-skills python -m ontology_skills score \
+  --task-id et-001 --predicted pred.json
+# or without a task id:
+PYTHONPATH=benchmarks/ontology-skills python -m ontology_skills score \
+  --family entity_resolution --gold gold.json --predicted pred.json
+```
+
+`pred.json` is a GraphDelta object (`adds`, `deletes`, `type_assertions`, `literals`, `merges`, `type_extensions`, `constraint_repairs`). Empty predicted vs non-empty gold scores precision `null`, recall `0`, f1 `0`.
 
 Later slices execute models. Every run must persist a row matching `schemas/run_result.v1.json` (model, quantization, prompt, context budget, tools, decoding, resources). The headline artifact is **task-success vs inference-resource** (latency, tokens, RAM/VRAM, param count / quant, hosted USD). Protocol: [SPEC.md](SPEC.md).

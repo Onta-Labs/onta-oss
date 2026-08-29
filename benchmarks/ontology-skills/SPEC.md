@@ -105,7 +105,7 @@ Every task has `family` in this closed set. Gold is a `GraphDelta` (and only a `
 
 - **Input:** a graph fragment that violates a typed constraint (example: `Person` as `SUPPLIES_TO` source).
 - **Gold:** `deletes` and/or `constraint_repairs` tokens. Do **not** gold a type change that launders the violation (Person ↛ Supplier).
-- **Primary metrics:** exact op match; `constraint_valid` is true iff the post-repair graph satisfies the fixture constraints listed on the task (v1: “Person must not source SUPPLIES_TO”; “qty ≥ 0”).
+- **Primary metrics:** exact op match; `constraint_valid` is true iff the post-repair graph satisfies the fixture constraints listed on the task (v1: “Person must not source SUPPLIES_TO”; “qty ≥ 0”; `registrationId` not on Person; `SUPPLIES_TO` source is Supplier; `EMPLOYS` target is Person). Constraints live on `input.constraints`. A predicted literal whose value is `""` clears that attr on the post-repair graph.
 
 ### 6.6 `conflict_resolution`
 
@@ -229,7 +229,7 @@ Stub runs set `status=stub`, all `metrics` null, resource fields null, `model.na
 
 `task_id` unique. Families must stay in the closed set. INF-608 appends lines; it does not introduce a second file format.
 
-v1 ships **eight** golds, one per family, on the procurement fixture (`Entity → Organization → Company → Supplier`, `SUPPLIES_TO`).
+v1 ships eight families on the procurement fixture (`Entity → Organization → Company → Supplier`, `SUPPLIES_TO`). **INF-608** fills `fixtures/tasks.jsonl` to **10 tasks per family** (80 total) across all three splits. Append lines; do not introduce a second file format. `scripts/emit_tasks.py` regenerates the JSONL; the JSONL is what the loader reads.
 
 ## 13. Executor (INF-607, not this slice)
 
@@ -242,7 +242,7 @@ The executor may be any 1–4B/9B/27B local or hosted chat model. It receives:
 
 It must return a `GraphDelta` JSON object. Parsing failure → `success=false`, empty predicted delta. Do not repair the parse with a second model and call that the primary run.
 
-No model execution in INF-606.
+No model execution in this package until INF-607. Scoring (INF-611) is deterministic and does not call a model.
 
 ## 14. Out of scope
 
