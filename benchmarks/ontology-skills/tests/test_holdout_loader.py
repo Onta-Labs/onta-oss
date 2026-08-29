@@ -45,12 +45,37 @@ def test_execute_holdout_task_compiles_against_holdout_ontology() -> None:
     )
     assert "Carrier" in result.compiled.type_lineage
     assert "Supplier" not in result.compiled.type_lineage
+    assert result.prompt_template_id == "ontology_skills.prompt.v5"
     assert result.metrics["success"] is False
     from ontology_skills.dataset import load_ontology
     from ontology_skills.executor import load_fixture_bundle as live_loader
 
     assert "Supplier" in load_ontology().types
     assert live_loader().ontology.types["Supplier"].type_id == "Supplier"
+
+
+def test_holdout_gold_runs_through_prepare_for_score() -> None:
+    """Minted slug + matching legalName is aligned. Gold ops stay as authored."""
+    from ontology_skills.graph_delta import GraphDelta, LiteralSet, TypeAssertion
+    from ontology_skills.scoring import graph_delta_prf, score_task
+
+    task = next(t for t in load_holdout_bundle().tasks if t.task_id == "ho-et-01")
+    minted = "https://graph.infona.ai/bench/ent/not-the-gold-slug"
+    predicted = GraphDelta(
+        type_assertions=(TypeAssertion(minted, "Carrier"),),
+        literals=(
+            LiteralSet(minted, "legalName", "Kestrel Haul Ltd"),
+            LiteralSet(minted, "scac", "KSTL"),
+        ),
+    )
+    raw = graph_delta_prf(predicted, task.gold)
+    assert raw["recall"] == 0.0
+    metrics = score_task(predicted, task)
+    assert metrics["graph_delta_recall"] == 1.0
+    assert metrics["success"] is True
+    gold_ent = task.gold.type_assertions[0].entity
+    assert minted != gold_ent
+    assert gold_ent not in task.input.values()
 
 
 def test_holdout_cli_requires_task_id() -> None:
