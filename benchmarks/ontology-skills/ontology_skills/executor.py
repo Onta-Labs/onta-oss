@@ -27,10 +27,10 @@ from .harness import (
     DecodingSpec,
     ResourceUse,
     RunResult,
-    select_for_condition,
     write_result_row,
 )
 from .parse import parse_graph_delta
+from .policy_compile import select_for_execute
 from .prompts import TEMPLATE_ID, build_prompt
 from .scoring import score_task
 
@@ -48,11 +48,10 @@ def execute_task(
     bundle = load_fixture_bundle()
     condition = condition_by_id(condition_id)
     embedder = embedder or _embedder_for(backend, condition.skill_mode)
-    compiled, retrieval = select_for_condition(
+    compiled, retrieval = select_for_execute(
         bundle.ontology,
-        task.neighborhood,
+        task,
         condition,
-        task=task,
         embedder=embedder,
     )
     prompt = build_prompt(task, bundle.ontology, compiled, condition)

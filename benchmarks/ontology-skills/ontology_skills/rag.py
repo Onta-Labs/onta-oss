@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from .compiler import compile_routed
 from .dataset import Task
 from .embedder import Embedder
-from .models import CompiledSkillSet, Ontology, Skill
+from .models import CompiledSkillSet, Neighborhood, Ontology, Skill
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,10 +45,20 @@ def empty_retrieval_log() -> dict[str, object]:
 
 
 def retrieve_skills(
-    ontology: Ontology, task: Task, embedder: Embedder
+    ontology: Ontology,
+    task: Task,
+    embedder: Embedder,
+    *,
+    neighborhood: Neighborhood | None = None,
 ) -> RetrievalResult:
-    """Cosine top-k over enabled skill bodies vs json.dumps(task.input)."""
-    routed = compile_routed(ontology, task.neighborhood)
+    """Cosine top-k over enabled skill bodies vs json.dumps(task.input).
+
+    ``k`` is the routed skill count on ``neighborhood`` (the family rewrite when
+    the executor called us, else the task's authored neighborhood).
+    """
+    routed = compile_routed(
+        ontology, neighborhood if neighborhood is not None else task.neighborhood
+    )
     k = len(routed.skills)
     corpus = _enabled_skills(ontology)
     query = json.dumps(dict(task.input), sort_keys=True, ensure_ascii=False)

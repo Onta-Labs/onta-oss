@@ -6,9 +6,9 @@ from io import StringIO
 
 import pytest
 
-from ontology_skills.backends import LiveBackend, load_canned
+from ontology_skills.backends import CannedBackend, LiveBackend, load_canned
 from ontology_skills.executor import execute_main, execute_task, run_dry
-from ontology_skills.harness import DecodingSpec
+from ontology_skills.harness import DecodingSpec, ModelSpec
 
 
 def test_canned_et001_is_exact_success() -> None:
@@ -23,6 +23,9 @@ def test_canned_et001_is_exact_success() -> None:
     assert row["prompt"]["skill_injection"] == "routed"
     assert row["compiler"]["mode"] == "routed"
     assert row["compiler"]["skill_ids"]
+    assert "temporal-window" not in row["compiler"]["skill_ids"]
+    assert "quantity-validation" not in row["compiler"]["skill_ids"]
+    assert "vendor-reconciliation" in row["compiler"]["skill_ids"]
     assert row["model"]["backend"] == "fixture"
     assert row["resources"]["latency_ms"] is None
     assert row["resources"]["hosted_cost_usd"] is None
@@ -79,3 +82,27 @@ def test_execute_cli_dry_run_jsonl() -> None:
     dumped = buf.getvalue().strip().splitlines()
     assert len(dumped) == 1
     assert '"success": true' in dumped[0]
+
+
+def test_executor_relation_inference_keeps_relation_skills() -> None:
+    from ontology_skills.dataset import load_tasks
+
+    task = next(t for t in load_tasks() if t.task_id == "rel-001")
+    backend = CannedBackend(
+        responses={task.task_id: "{}"},
+        model=ModelSpec(
+            name="canned",
+            quantization="none",
+            param_count="n/a",
+            backend="fixture",
+        ),
+    )
+    result = execute_task(
+        task,
+        condition_id="4b_ontology_routed",
+        backend=backend,
+        decoding=DecodingSpec(),
+    )
+    assert "temporal-window" in result.compiled.skill_ids
+    assert "quantity-validation" in result.compiled.skill_ids
+    assert "SUPPLIES_TO" in result.compiled.relation_ids
