@@ -198,7 +198,10 @@ async def test_clinical_trials_first_run_acquires_and_answers():
     assert NCT in result.citations
     assert NCT in result.answer
     assert "SAMPLE-" not in result.answer
-    assert "not current" not in result.answer.lower() or NCT in result.answer
+    assert "sample" not in result.answer.lower()
+    assert "not current" not in result.answer.lower()
+    assert result.sample_is_current is False
+    assert result.sample_used is False
     assert entity_uri("ClinicalTrial", NCT) in result.acquired_subjects
     assert "ctgov" in result.sources
 
@@ -250,6 +253,36 @@ async def test_byok_in_acquisition_missing_key_fails_closed():
         )
     assert exc.value.details["fail_closed"] is True
     assert exc.value.details["missing"][0]["key_env"] == "INFONA_TEST_TRACKER_KEY"
+    await uninstall_blueprint(tenant, "infona/clinical-trials")
+
+
+@pytest.mark.asyncio
+async def test_acquire_dormant_without_credential_fails_closed(monkeypatch):
+    """Executor auth, not only the package walk: missing key ⇒ no fetch."""
+    from infona_client.blueprint.first_run_acquire import acquire_condition_set
+
+    tenant = "bp-fr-acquire-dormant"
+    monkeypatch.setattr(
+        "infona_client.blueprint.first_run_acquire.make_api_source_catalog",
+        _keyed_ctgov_catalog,
+    )
+
+    def must_not_fetch(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("dormant source must not hit the network")
+
+    await install_blueprint(_byok_acquisition_manifest(), tenant_id=tenant, kg=KG)
+    manifest = load_and_validate(_byok_acquisition_manifest())
+    with pytest.raises(BlueprintCredentialsMissing) as exc:
+        await acquire_condition_set(
+            manifest,
+            tenant_id=tenant,
+            kg=KG,
+            executor=RegistryApiSource(transport=httpx.MockTransport(must_not_fetch)),
+            credentials=None,
+            environ={},
+        )
+    assert exc.value.details["fail_closed"] is True
+    assert exc.value.details["source_id"] == "private-tracker"
     await uninstall_blueprint(tenant, "infona/clinical-trials")
 
 
@@ -425,6 +458,7 @@ async def test_acquire_error_fails_closed():
         return httpx.Response(500, json={"error": "nope"})
 
     bad = RegistryApiSource(transport=httpx.MockTransport(boom))
-    with pytest.raises((BlueprintAcquisitionFailed, BlueprintCredentialsMissing)):
+    with pytest.raises(BlueprintAcquisitionFailed) as exc:
         await run_first_run(tenant, "infona/clinical-trials", executor=bad)
+    assert exc.value.details["fail_closed"] is True
     await uninstall_blueprint(tenant, "infona/clinical-trials")

@@ -305,9 +305,11 @@ def test_first_run_via_canonical_route(client, auth_headers, monkeypatch):
     assert body["status"] == "answered"
     assert body["task"] == "acquire_condition_set"
     assert body["sample_is_current"] is False
+    assert body["sample_used"] is False
     assert "NCT09990001" in body["citations"]
     assert "NCT09990001" in body["answer"]
-    assert body["sample_used"] is False
+    assert "SAMPLE-" not in body["answer"]
+    assert "sample" not in body["answer"].lower()
 
 
 def test_first_run_missing_credentials_fail_closed(client, auth_headers):
@@ -320,7 +322,7 @@ def test_first_run_missing_credentials_fail_closed(client, auth_headers):
             "publisher": "Example",
             "description": "Keyed source.",
             "license": "Apache-2.0",
-            "url": "https://example.test/api/trials",
+            "url": "https://clinicaltrials.gov/api/v2/studies",
             "credential": "byok",
             "key_env": "INFONA_TEST_TRACKER_KEY",
             "declared_cadence": "weekly",
@@ -333,6 +335,8 @@ def test_first_run_missing_credentials_fail_closed(client, auth_headers):
             ],
         }
     )
+    ctgov = next(row for row in body["acquisition"] if row["source"] == "ctgov")
+    body["acquisition"] = [{**ctgov, "source": "private-tracker"}]
     installed = client.post(
         f"/graphs/{TENANT}/blueprints/install",
         json={"kg": KG, "include_sample": False, "manifest": body},

@@ -92,7 +92,7 @@ class FirstRunResult:
             "question": self.question,
             "answer": self.answer,
             "citations": list(self.citations),
-            "sample_is_current": False,
+            "sample_is_current": self.sample_is_current,
             "sample_used": self.sample_used,
             "sample_captured_at": self.sample_captured_at,
             "sources": list(self.sources),
