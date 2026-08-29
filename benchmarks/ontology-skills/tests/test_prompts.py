@@ -73,22 +73,25 @@ def test_prompt_is_deterministic_and_omits_gold_key() -> None:
     assert first.text == second.text
     assert first.sha256 == second.sha256
     assert len(first.sha256) == 64
-    assert first.template_id == "ontology_skills.prompt.v3"
+    assert first.template_id == "ontology_skills.prompt.v4"
     assert '"gold"' not in first.text
     assert '"entity_uri"' not in first.text
     assert '"mint_as"' not in first.text
 
 
-def test_v3_schema_hint_does_not_name_a_gold_type() -> None:
+def test_v4_schema_hint_does_not_name_a_gold_type() -> None:
     from ontology_skills.prompts import SCHEMA_HINT, TEMPLATE_ID
 
-    assert TEMPLATE_ID == "ontology_skills.prompt.v3"
+    assert TEMPLATE_ID == "ontology_skills.prompt.v4"
     assert "Supplier" not in SCHEMA_HINT
     assert "Company" not in SCHEMA_HINT
     assert "Organization" not in SCHEMA_HINT
     assert "leaf type only, short local id, never an IRI" in SCHEMA_HINT
+    assert "No prose" in SCHEMA_HINT
+    assert "No code fences" in SCHEMA_HINT
     assert "entity_uri" not in SCHEMA_HINT
     assert "mint_as" not in SCHEMA_HINT
+    assert "acme-components" not in SCHEMA_HINT
     prompt, _ = _built("4b_vanilla", "et-001")
     assert prompt.template_id == TEMPLATE_ID
     assert SCHEMA_HINT in prompt.text

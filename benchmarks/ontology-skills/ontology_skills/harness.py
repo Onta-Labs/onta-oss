@@ -25,6 +25,8 @@ from .rag import empty_retrieval_log, retrieve_skills
 from .scoring import empty_metrics
 
 SCHEMA_VERSION = "1.2.0"
+# 512 cut routed et-001 mid-brace. A small GraphDelta must be able to finish.
+LIVE_MAX_NEW_TOKENS = 2048
 
 
 @dataclass
@@ -49,7 +51,7 @@ class DecodingSpec:
     top_p: float = 1.0
     top_k: int | None = None
     seed: int | None = 0
-    max_new_tokens: int = 512
+    max_new_tokens: int = LIVE_MAX_NEW_TOKENS
 
     def to_dict(self) -> dict[str, Any]:
         return {

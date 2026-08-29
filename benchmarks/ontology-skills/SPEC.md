@@ -253,19 +253,20 @@ It receives:
 
 It must return a `GraphDelta` JSON object. Parsing failure → empty predicted delta, `status=error`, `success=false`. Do not repair the parse with a second model.
 
-Prompt template id: `ontology_skills.prompt.v3`. Identifier contract (matches gold; do not name a gold type in the hint):
+Prompt template id: `ontology_skills.prompt.v4`. Compact GraphDelta contract (do not name a gold type or gold URI in the hint):
 
+- emit only the JSON object: no prose, no code fences, omit empty keys, no extra ops
 - `type_id`: leaf type only, short local id, never an IRI
-- `attr`: short camelCase, never an IRI
-- `predicate`: full IRI `https://graph.infona.ai/bench/onto/{RELATION_ID}`
-- `entity`: full URI `https://graph.infona.ai/bench/ent/{slug}`
-- mint entity URIs in-task
+- `attr`: camelCase, never an IRI
+- `predicate`: `https://graph.infona.ai/bench/onto/{RELATION_ID}`
+- `entity`: `https://graph.infona.ai/bench/ent/{slug}`
+- mint an entity URI if the input has none
 
 The run log records `prompt.sha256` of the exact prompt bytes.
 
 Dry-run: `python -m ontology_skills execute --backend canned` reads `fixtures/canned_responses.jsonl` (`task_id`, `text`). Metrics on canned rows are loop tests, not published model scores. `resources.*` stay null on canned rows.
 
-Live env: Bearer key as above; `INFONA_BENCH_BASE_URL` (default OpenRouter; alias `OPENAI_BASE_URL`); `INFONA_BENCH_MODEL` optional override (aliases `OPENAI_MODEL` / `MODEL`). OpenRouter catalog 2026-08-29 has no Qwen 4B; the `4b_*` slot (conditions 1–4, 8, 9) defaults to `qwen/qwen3-8b` with recorded `param_count` `8B`. Condition 6: `qwen/qwen3.5-9b`. Condition 7: `qwen/qwen3.5-27b`. Live POST body includes `"reasoning": {"enabled": false}` so thinking cannot consume `max_new_tokens`. HTTP errors include status and response body. OpenRouter headers: `HTTP-Referer https://infona.ai`, `X-Title Infona ontology-skills bench`. Tokens and `hosted_cost_usd` are copied from the response `usage` object when present (`usage.cost` for USD). Do not fabricate cost. Latency is the client wall-clock of that POST.
+Live env: Bearer key as above; `INFONA_BENCH_BASE_URL` (default OpenRouter; alias `OPENAI_BASE_URL`); `INFONA_BENCH_MODEL` optional override (aliases `OPENAI_MODEL` / `MODEL`). OpenRouter catalog 2026-08-29 has no Qwen 4B; the `4b_*` slot (conditions 1–4, 8, 9) defaults to `qwen/qwen3-8b` with recorded `param_count` `8B`. Condition 6: `qwen/qwen3.5-9b`. Condition 7: `qwen/qwen3.5-27b`. Live POST body includes `"reasoning": {"enabled": false}` so thinking cannot consume `max_new_tokens`, `"response_format": {"type": "json_object"}` (listed on `qwen/qwen3-8b`), and `max_tokens` from `DecodingSpec.max_new_tokens` (default 2048; 512 truncated routed et-001). HTTP errors include status and response body. OpenRouter headers: `HTTP-Referer https://infona.ai`, `X-Title Infona ontology-skills bench`. Tokens and `hosted_cost_usd` are copied from the response `usage` object when present (`usage.cost` for USD). Do not fabricate cost. Latency is the client wall-clock of that POST.
 
 Live RAG embeddings: `POST {base}/embeddings` with `INFONA_BENCH_EMBED_MODEL` (default `openai/text-embedding-3-small`) on the same Bearer key. No key → fail closed. A hashing embedder is not the published RAG baseline.
 

@@ -18,23 +18,18 @@ from .conditions import Condition
 from .dataset import Task
 from .models import CompiledSkillSet, Ontology
 
-TEMPLATE_ID = "ontology_skills.prompt.v3"
+TEMPLATE_ID = "ontology_skills.prompt.v4"
 
-SCHEMA_HINT = """Emit a single JSON object and nothing else. Keys (omit empty ones):
-  adds: [{subject, predicate, object}]
-  deletes: [{subject, predicate, object}]
-  type_assertions: [{entity, type_id}]
-  literals: [{entity, attr, value}]
-  merges: [{absorbed, survivor}]
-  type_extensions: [{type_id, parent_id, label}]
-  constraint_repairs: [string]
-
-Identifier contract (must match gold):
-  type_id: leaf type only, short local id, never an IRI
-  attr: short camelCase, never an IRI
-  predicate: full IRI https://graph.infona.ai/bench/onto/{RELATION_ID}
-  entity: full URI https://graph.infona.ai/bench/ent/{slug}
-Mint entity URIs in-task. Do not narrate."""
+SCHEMA_HINT = """Emit only a GraphDelta JSON object. No prose. No code fences. Omit empty keys.
+adds[{subject,predicate,object}] deletes[{subject,predicate,object}]
+type_assertions[{entity,type_id}] literals[{entity,attr,value}]
+merges[{absorbed,survivor}] type_extensions[{type_id,parent_id,label}]
+constraint_repairs[string]
+type_id: leaf type only, short local id, never an IRI
+attr: camelCase, never an IRI
+predicate: https://graph.infona.ai/bench/onto/{RELATION_ID}
+entity: https://graph.infona.ai/bench/ent/{slug}
+Mint entity URI if input has none. No extra ops."""
 
 
 @dataclass(frozen=True, slots=True)

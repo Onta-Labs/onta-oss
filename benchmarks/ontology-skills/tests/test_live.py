@@ -18,7 +18,7 @@ from ontology_skills.backends import (
 )
 from ontology_skills.conditions import condition_by_id
 from ontology_skills.executor import execute_main
-from ontology_skills.harness import DecodingSpec
+from ontology_skills.harness import LIVE_MAX_NEW_TOKENS, DecodingSpec
 
 FOUR_B_IDS = (
     "4b_vanilla",
@@ -192,6 +192,9 @@ def test_live_cli_mocked_200_parses_into_graph_delta_scoring(
     assert body["model"] == "qwen/qwen3-8b"
     assert body["usage"] == {"include": True}
     assert body["reasoning"] == {"enabled": False}
+    assert body["max_tokens"] == LIVE_MAX_NEW_TOKENS
+    assert body["max_tokens"] > 512
+    assert body["response_format"] == {"type": "json_object"}
     headers = _headers(req)
     assert headers["authorization"] == "Bearer sk-test"
     referer = headers.get("http-referer") or headers.get("referer")
@@ -236,6 +239,14 @@ def test_live_complete_does_not_invent_cost(
     assert result.hosted_cost_usd is None
     body = json.loads(capturing.calls[0].data.decode("utf-8"))
     assert body["reasoning"] == {"enabled": False}
+    assert body["response_format"] == {"type": "json_object"}
+
+
+def test_live_max_new_tokens_can_finish_a_small_delta() -> None:
+    spec = DecodingSpec()
+    assert spec.max_new_tokens == LIVE_MAX_NEW_TOKENS
+    assert spec.max_new_tokens > 512
+    assert spec.max_new_tokens >= 1024
 
 
 def test_live_http_error_includes_status_and_body(

@@ -88,7 +88,7 @@ def test_rag_prompt_uses_v3_hint_without_supplier_in_schema() -> None:
         embedder=MockEmbedder(),
     )
     prompt = build_prompt(task, bundle.ontology, compiled, cond)
-    assert prompt.template_id == "ontology_skills.prompt.v3"
+    assert prompt.template_id == "ontology_skills.prompt.v4"
     assert SCHEMA_HINT in prompt.text
     assert "Supplier" not in SCHEMA_HINT
     assert "skills (rag):" in prompt.text
