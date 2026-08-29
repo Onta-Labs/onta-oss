@@ -189,3 +189,43 @@ async def test_build_citations_sample_subject_is_never_current():
     assert "sample, not current" in caveat
     assert "stale" not in caveat
     assert "2026-06-01" in caveat
+
+
+@pytest.mark.asyncio
+async def test_build_citations_cypher_id_name_row_is_never_current():
+    """Production /ask is Cypher (id/name), not describe-shape s/p/o."""
+    first = await install_blueprint(CLINICAL_TRIALS, tenant_id=TENANT, kg=KG)
+    subject = first.sample_subjects[0]
+    from infona_client.blueprint.sample_mark import sample_answer_note
+    from infona_client.graph.queries import kg_graph_uri
+
+    graph = kg_graph_uri(TENANT, KG)
+    citations = await build_citations(
+        None,
+        graph,
+        ["id", "name", "nct_id"],
+        [
+            {
+                "id": subject,
+                "name": "Oral GLP-1 obesity",
+                "nct_id": "SAMPLE-003",
+            }
+        ],
+    )
+    assert citations
+    for cite in citations:
+        assert cite.is_sample is True
+        assert cite.is_current is False
+        assert cite.verdict == "sample"
+        assert cite.sample_captured_at == "2026-06-01"
+    caveat = build_coverage_caveat(
+        None,
+        sample_count=len(citations),
+        total_cited=len(citations),
+        sample_captured_at="2026-06-01",
+    )
+    assert "sample, not current" in caveat
+    assert "stale" not in caveat
+    note = sample_answer_note("2026-06-01")
+    assert "not current" in note
+    assert "current" not in note.lower().replace("not current", "")

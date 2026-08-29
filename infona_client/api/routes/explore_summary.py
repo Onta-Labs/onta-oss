@@ -77,16 +77,13 @@ async def get_type_summary(
                 detail=f"Type '{type_name}' not found in KG '{kg_name}'",
             )
         result = pg_row.as_api_dict()
-        from infona_client.blueprint.sample_mark import sample_index_for_kg
+        from infona_client.blueprint.sample_mark import (
+            sample_index_for_kg,
+            stamp_type_summary,
+        )
 
         index = await sample_index_for_kg(tenant.tenant_id, kg_name)
-        sample_n = index.count_for_type(type_name)
-        result["sample_count"] = sample_n
-        result["acquired_count"] = max(int(result.get("entity_count") or 0) - sample_n, 0)
-        if sample_n:
-            result["sample_is_current"] = False
-            if index.captured_at:
-                result["sample_captured_at"] = index.captured_at
+        stamp_type_summary(result, type_name, index)
         _summary_cache[cache_key] = (time.monotonic(), result)
         return result
     except GraphConfigError as exc:
@@ -160,6 +157,14 @@ async def get_type_summary(
     result = _assemble_summary(
         type_name, onto_row, parent_type, entity_count, pred_records, attr_defs,
         index_flags=index_flags,
+    )
+    from infona_client.blueprint.sample_mark import (
+        sample_index_for_kg,
+        stamp_type_summary,
+    )
+
+    stamp_type_summary(
+        result, type_name, await sample_index_for_kg(tenant.tenant_id, kg_name)
     )
     _summary_cache[cache_key] = (time.monotonic(), result)
     return result

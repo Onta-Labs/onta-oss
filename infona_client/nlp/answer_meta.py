@@ -23,7 +23,9 @@ failure yields no citation for that fact rather than breaking the answer.
 **CENTRAL CONSTRAINT.** Describe-shape rows (subject + predicate + object) get
 validity/provenance citations. Rows that only expose a user-facing
 ``source_url`` still get a citation from that URL (ingest/enrich provenance).
-Entity IRIs under ``graph.infona.ai/entities/`` are not cited as sources.
+Cypher ``/ask`` rows (``id`` / ``name``) that are Blueprint sample subjects
+get a sample citation even without ``s``/``p``/``o``. Other entity IRIs under
+``graph.infona.ai/entities/`` are not cited as sources.
 
 Boundary: OSS. Imports only stdlib / ``infona_client.*`` — no ``from infona.*``.
 """
@@ -38,6 +40,7 @@ from infona_client.blueprint.sample_mark import (
     is_sample_mark,
     sample_index_for_kg,
 )
+from infona_client.graph.iri import ENTITY_URI_PREFIX
 from infona_client.graph.predicates import RDF_TYPE, is_internal_predicate
 from infona_client.graph.provenance import (
     ProvenanceRecord,
@@ -56,7 +59,7 @@ from infona_client.models.query import FactCitation
 # describe-shape query typically projects ``?s ?p ?o`` (or ``?p ?o`` with a
 # projected ``?uri`` subject); other shapes expose the same facts under these
 # common synonyms. Matched case-insensitively (see :func:`_pick`).
-_SUBJECT_KEYS = ("s", "subject", "subj", "uri", "iri", "entity")
+_SUBJECT_KEYS = ("s", "subject", "subj", "uri", "iri", "entity", "id")
 _PREDICATE_KEYS = ("p", "predicate", "pred", "prop", "property")
 _OBJECT_KEYS = ("o", "object", "obj", "value", "val")
 _LABEL_KEYS = ("label", "name", "title", "l")
@@ -198,6 +201,62 @@ def _citations_from_source_url_columns(bindings: list[dict]) -> list[FactCitatio
     return out
 
 
+def _entity_iris_in_row(row: dict) -> list[str]:
+    """Entity IRIs on a Cypher or describe row (``id`` / ``uri`` / any cell)."""
+    found: list[str] = []
+    seen: set[str] = set()
+    for key in _SUBJECT_KEYS:
+        val = _pick(row, (key,))
+        if val and val.startswith(ENTITY_URI_PREFIX) and val not in seen:
+            seen.add(val)
+            found.append(val)
+    for val in row.values():
+        if (
+            isinstance(val, str)
+            and val.startswith(ENTITY_URI_PREFIX)
+            and val not in seen
+        ):
+            seen.add(val)
+            found.append(val)
+    return found
+
+
+def _citations_from_sample_subjects(
+    bindings: list[dict],
+    index: SampleIndex,
+    *,
+    already: set[str] | None = None,
+) -> list[FactCitation]:
+    """Cite lock sample subjects on Cypher-shaped rows (no ``s``/``p``/``o``).
+
+    Production ``/ask`` projects ``id`` / ``name`` (ONTA-534). Describe-shape
+    citations already stamp ``is_sample`` from the same index; this rail
+    covers the empty-keyed path so SAMPLE-NCT answers cannot look current.
+    """
+    if not index.subjects or not bindings:
+        return []
+    out: list[FactCitation] = []
+    seen: set[str] = set(already or ())
+    for row in bindings:
+        for sid in _entity_iris_in_row(row):
+            if sid in seen or not index.is_sample(sid):
+                continue
+            seen.add(sid)
+            label = _pick(row, _LABEL_KEYS) or sid.rsplit("/", 1)[-1]
+            captured = index.captured_for(sid) or ""
+            out.append(
+                FactCitation(
+                    subject=sid,
+                    label=str(label),
+                    verdict=SAMPLE_VERDICT,
+                    is_current=False,
+                    is_sample=True,
+                    sample_captured_at=captured,
+                )
+            )
+    return out
+
+
 async def build_citations(
     neptune,
     instance_graph: str,
@@ -236,7 +295,11 @@ async def build_citations(
     if not keyed:
         # User-facing source_url on the row (ingest/enrich citations) still
         # counts when the SELECT was not a describe-shape (s, p, o) projection.
-        return _citations_from_source_url_columns(bindings)
+        # Cypher /ask rows project id/name — stamp lock sample subjects so
+        # SAMPLE-NCT answers cannot present as current (INF-591).
+        extras = _citations_from_source_url_columns(bindings)
+        extras.extend(_citations_from_sample_subjects(bindings, sample_index))
+        return extras
 
     # 2. Batch the validity + provenance + A4 verdict reads per (s, p).
     history_by_sp: dict[tuple[str, str], list[ValidityInterval]] = {}
@@ -301,6 +364,12 @@ async def build_citations(
         if extra.source and extra.source not in seen:
             citations.append(extra)
             seen.add(extra.source)
+    already_subjects = {c.subject for c in citations if c.subject}
+    citations.extend(
+        _citations_from_sample_subjects(
+            bindings, sample_index, already=already_subjects
+        )
+    )
     return citations
 
 

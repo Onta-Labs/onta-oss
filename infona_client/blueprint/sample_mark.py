@@ -137,6 +137,26 @@ def mark_records(
     return [mark_record(dict(row), index) for row in rows]
 
 
+def stamp_type_summary(
+    result: dict[str, Any],
+    type_name: str,
+    index: SampleIndex,
+) -> dict[str, Any]:
+    """Split sample vs acquired on a type-summary / type-count payload.
+
+    ``sample_is_current`` is omitted unless there is sample, and is then
+    always false. Type-stats must not blend sample into one current number.
+    """
+    sample_n = index.count_for_type(type_name)
+    result["sample_count"] = sample_n
+    result["acquired_count"] = max(int(result.get("entity_count") or 0) - sample_n, 0)
+    if sample_n:
+        result["sample_is_current"] = False
+        if index.captured_at:
+            result["sample_captured_at"] = index.captured_at
+    return result
+
+
 def sample_status_label(
     *,
     included: bool,
@@ -166,6 +186,7 @@ __all__ = [
     "mark_record",
     "mark_records",
     "sample_answer_note",
+    "stamp_type_summary",
     "sample_index_for_kg",
     "sample_status_label",
 ]
