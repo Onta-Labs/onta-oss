@@ -147,8 +147,8 @@ Primary metrics live on every run row under `metrics` (null in the stub):
 
 | Key | Type | Rule |
 |---|---|---|
-| `success` | bool | `predicted.canonical_ops() == gold.canonical_ops()` |
-| `graph_delta_precision` | float \| null | exact-set P over canonical ops |
+| `success` | bool | exact canonical-op match **after** score-time prepare (below) |
+| `graph_delta_precision` | float \| null | exact-set P over prepared canonical ops |
 | `graph_delta_recall` | float \| null | exact-set R |
 | `graph_delta_f1` | float \| null | harmonic mean |
 | `constraint_valid` | bool \| null | required for `constraint_violation_repair`; null elsewhere is fine |
@@ -167,6 +167,8 @@ REPAIR<TAB>token
 ```
 
 Empty predicted vs non-empty gold: precision null, recall 0, f1 0. Both empty: P=R=F1=1.
+
+`graph_delta_prf` / `task_success` remain exact string match on canonical ops. `score_task` / `score_prediction` first run `prepare_for_score`: drop predicted `adds` whose object restates a `type_assertions.type_id` or `literals.value` on the same subject, then rewrite predicted entity URIs onto gold URIs. Alignment order: `legalName` value (case-insensitive); else input `mention` / `record.name` matching a gold `legalName` with one leftover predicted entity; else one predicted entity and one gold entity. This is so a minted slug that is not the author-stable gold URI can still score type_id / attr / value. Do **not** put the gold URI in the prompt or in `input` to make strings match. `graph_delta_prf(raw_predicted, gold)` without prepare is still a miss on a different slug.
 
 **Forbidden as primary:** LLM-as-judge, BLEU/ROUGE on prose, “helpfulness”, extra credit for ancestor types. A later diagnostic judge, if added, must use a different key and must not populate `success`.
 
@@ -253,7 +255,7 @@ It receives:
 
 It must return a `GraphDelta` JSON object. Parsing failure → empty predicted delta, `status=error`, `success=false`. Do not repair the parse with a second model.
 
-Prompt template id: `ontology_skills.prompt.v4`. Compact GraphDelta contract (do not name a gold type or gold URI in the hint):
+Prompt template id: `ontology_skills.prompt.v5`. Compact GraphDelta contract (do not name a gold type or gold URI in the hint):
 
 - emit only the JSON object: no prose, no code fences, omit empty keys, no extra ops
 - `type_id`: leaf type only, short local id, never an IRI
@@ -261,6 +263,8 @@ Prompt template id: `ontology_skills.prompt.v4`. Compact GraphDelta contract (do
 - `predicate`: `https://graph.infona.ai/bench/onto/{RELATION_ID}`
 - `entity`: `https://graph.infona.ai/bench/ent/{slug}`
 - mint an entity URI if the input has none
+- types and attrs go in `type_assertions` / `literals`; do not repeat them as `adds`
+- `registrationId`, not `vat`
 
 The run log records `prompt.sha256` of the exact prompt bytes.
 

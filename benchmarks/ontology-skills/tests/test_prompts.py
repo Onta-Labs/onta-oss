@@ -73,16 +73,16 @@ def test_prompt_is_deterministic_and_omits_gold_key() -> None:
     assert first.text == second.text
     assert first.sha256 == second.sha256
     assert len(first.sha256) == 64
-    assert first.template_id == "ontology_skills.prompt.v4"
+    assert first.template_id == "ontology_skills.prompt.v5"
     assert '"gold"' not in first.text
     assert '"entity_uri"' not in first.text
     assert '"mint_as"' not in first.text
 
 
-def test_v4_schema_hint_does_not_name_a_gold_type() -> None:
+def test_v5_schema_hint_does_not_name_a_gold_type() -> None:
     from ontology_skills.prompts import SCHEMA_HINT, TEMPLATE_ID
 
-    assert TEMPLATE_ID == "ontology_skills.prompt.v4"
+    assert TEMPLATE_ID == "ontology_skills.prompt.v5"
     assert "Supplier" not in SCHEMA_HINT
     assert "Company" not in SCHEMA_HINT
     assert "Organization" not in SCHEMA_HINT

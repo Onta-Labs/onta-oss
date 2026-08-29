@@ -18,7 +18,7 @@ from .conditions import Condition
 from .dataset import Task
 from .models import CompiledSkillSet, Ontology
 
-TEMPLATE_ID = "ontology_skills.prompt.v4"
+TEMPLATE_ID = "ontology_skills.prompt.v5"
 
 SCHEMA_HINT = """Emit only a GraphDelta JSON object. No prose. No code fences. Omit empty keys.
 adds[{subject,predicate,object}] deletes[{subject,predicate,object}]
@@ -26,10 +26,11 @@ type_assertions[{entity,type_id}] literals[{entity,attr,value}]
 merges[{absorbed,survivor}] type_extensions[{type_id,parent_id,label}]
 constraint_repairs[string]
 type_id: leaf type only, short local id, never an IRI
-attr: camelCase, never an IRI
+attr: camelCase (registrationId, not vat), never an IRI
 predicate: https://graph.infona.ai/bench/onto/{RELATION_ID}
 entity: https://graph.infona.ai/bench/ent/{slug}
-Mint entity URI if input has none. No extra ops."""
+Mint entity URI if input has none. Put types and attrs in type_assertions and
+literals; do not repeat those facts as adds. No extra ops."""
 
 
 @dataclass(frozen=True, slots=True)

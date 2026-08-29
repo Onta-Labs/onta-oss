@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from .align import prepare_for_score
 from .dataset import Task, load_tasks
 from .graph_delta import (
     GraphDelta,
@@ -50,11 +51,17 @@ def score_prediction(
     family: str,
     constraints: tuple[str, ...] = (),
     base_graph: GraphDelta | None = None,
+    task_input: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Fill the locked metric keys for one predicted-vs-gold pair."""
-    prf = graph_delta_prf(predicted, gold)
+    """Fill the locked metric keys for one predicted-vs-gold pair.
+
+    ``graph_delta_prf`` / ``task_success`` stay exact-set. This function first
+    aligns minted entities and drops adds that restate structured facts.
+    """
+    prepared = prepare_for_score(predicted, gold, task_input)
+    prf = graph_delta_prf(prepared, gold)
     metrics: dict[str, Any] = {
-        "success": task_success(predicted, gold),
+        "success": task_success(prepared, gold),
         "graph_delta_precision": prf["precision"],
         "graph_delta_recall": prf["recall"],
         "graph_delta_f1": prf["f1"],
@@ -65,11 +72,11 @@ def score_prediction(
     }
     if family == "constraint_violation_repair":
         metrics["constraint_valid"] = constraints_hold(
-            apply_delta(base_graph or GraphDelta(), predicted),
+            apply_delta(base_graph or GraphDelta(), prepared),
             constraints,
         )
     if family == "entity_resolution":
-        er = pairwise_er_prf(predicted.merges, gold.merges)
+        er = pairwise_er_prf(prepared.merges, gold.merges)
         metrics["er_precision"] = er["precision"]
         metrics["er_recall"] = er["recall"]
         metrics["er_f1"] = er["f1"]
@@ -84,6 +91,7 @@ def score_task(predicted: GraphDelta, task: Task) -> dict[str, Any]:
         family=task.family,
         constraints=constraints,
         base_graph=base_graph_from_input(task.input),
+        task_input=task.input,
     )
 
 
