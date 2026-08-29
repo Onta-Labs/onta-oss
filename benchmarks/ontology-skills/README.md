@@ -4,7 +4,7 @@
 
 **Success criterion (measure, do not force).** A 2B/4B local model + Infona ontology-bound skills reaching ~90–95% of a frontier model's ontology-task success at materially lower memory, latency, and cost.
 
-This package is **INF-606 + INF-608 + INF-611 scoring + INF-607 executor interface**. Isolated on purpose: it does not import `infona_client`, and it does not reuse `infona_client.qc`, `infona_client.eval`, or product `infona_client.skills`. Those are a different system. Do not merge them in a drive-by.
+This package is **INF-606 + INF-608 + INF-611 scoring + INF-607 executor** (canned + live OpenRouter client). Isolated on purpose: it does not import `infona_client`, and it does not reuse `infona_client.qc`, `infona_client.eval`, or product `infona_client.skills`. Those are a different system. Do not merge them in a drive-by.
 
 ## Why this is not WikiSkill
 
@@ -77,8 +77,8 @@ Least-invasive home: a new tree under `benchmarks/`, not `infona_client/` and no
 | Done | INF-606 | Spec, compiler, fixtures, stub harness | Run models, invent scores, FT |
 | Done | INF-608 | ~10 gold GraphDeltas per family, all three splits | Change `RunResult` keys or family ids |
 | Done | INF-611 scoring | Deterministic `score_task` / `score_prediction` | LLM-as-judge, fabricated leaderboards |
-| Done | INF-607 executor | Prompt builders, GraphDelta parser, canned dry-run | Call APIs, invent scores, unblock FT |
-| Later | INF-611 runs | Run matrix 1–4 and 6–8; plot success vs resources | Unblock condition 5 first |
+| Done | INF-607 executor | Prompt builders, GraphDelta parser, canned dry-run, live OpenRouter client | Invent scores, unblock FT, sweep 80 tasks from this CLI |
+| Later | INF-611 runs | Run matrix 1–4 and 6–8; plot success vs resources | Unblock condition 5 first; fabricate `hosted_cost_usd` |
 
 ## How to run
 
@@ -115,15 +115,33 @@ PYTHONPATH=benchmarks/ontology-skills python -m ontology_skills execute \
   --backend canned --condition 4b_ontology_routed --task-id et-001
 ```
 
-## Env vars for a future live run (not required now)
+Live executor POSTs to an OpenAI-compatible `/chat/completions` endpoint (OpenRouter by default) **only when a Bearer key is present**. Missing key → exit 2, no POST. `--task-id` is required; this CLI will not sweep the 80-task set.
 
-Do not set these for this slice. The live backend is implemented as an OpenAI-compatible `POST {base}/chat/completions` client and is **disabled** in the CLI (`--backend live` exits 2 without posting). A later GPU/API slice can enable it.
+```bash
+export INFONA_BENCH_API_KEY=...   # or OPENAI_API_KEY / OPENROUTER_API_KEY
+PYTHONPATH=benchmarks/ontology-skills python -m ontology_skills execute \
+  --backend live --condition 4b_ontology_routed --task-id et-001
+```
+
+## OpenRouter env
+
+Default base URL: `https://openrouter.ai/api/v1`. Every live POST also sends `HTTP-Referer: https://infona.ai` and `X-Title: Infona ontology-skills bench`. Request body includes `"usage": {"include": true}`. `hosted_cost_usd` is copied from OpenRouter `usage.cost` when that field is present; it is left null otherwise. Do not invent a price.
 
 | Variable | Alias | Purpose |
 |---|---|---|
-| `INFONA_BENCH_BASE_URL` | `OPENAI_BASE_URL` | Root URL, e.g. `http://127.0.0.1:8000/v1` |
-| `INFONA_BENCH_MODEL` | `OPENAI_MODEL` or `MODEL` | Model id the server expects |
-| `INFONA_BENCH_API_KEY` | `OPENAI_API_KEY` | Optional; many local servers ignore it |
+| `INFONA_BENCH_API_KEY` | `OPENAI_API_KEY` or `OPENROUTER_API_KEY` | Bearer token. Required for `--backend live` to POST |
+| `INFONA_BENCH_BASE_URL` | `OPENAI_BASE_URL` | Root URL (default `https://openrouter.ai/api/v1`) |
+| `INFONA_BENCH_MODEL` | `OPENAI_MODEL` or `MODEL` | Optional override for a single-model run |
 | `INFONA_BENCH_QUANTIZATION` | — | Recorded on the run log (`q4_k_m`, `fp16`, …) |
+
+Default model ids by condition (Qwen3.5-4B is not on OpenRouter, so 4B conditions use Qwen3-4B):
+
+| Conditions | Bucket | Default `model` |
+|---|---|---|
+| 1–4, 8 | 4B | `qwen/qwen3-4b` |
+| 6 | 9B | `qwen/qwen3.5-9b` |
+| 7 | 27B / frontier | `qwen/qwen3.5-27b` |
+
+CI mocks HTTP. Do not treat canned or mocked-loop metrics as published scores.
 
 Every real run must persist a row matching `schemas/run_result.v1.json` (model, quantization, prompt, context budget, tools, decoding, resources). The headline artifact is **task-success vs inference-resource** (latency, tokens, RAM/VRAM, param count / quant, hosted USD). Protocol: [SPEC.md](SPEC.md).

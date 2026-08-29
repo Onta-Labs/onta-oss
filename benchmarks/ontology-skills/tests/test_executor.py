@@ -54,15 +54,8 @@ def test_condition_5_still_blocked() -> None:
         )
 
 
-def test_live_from_env_absent_is_none(monkeypatch: pytest.MonkeyPatch) -> None:
-    for key in (
-        "INFONA_BENCH_BASE_URL",
-        "INFONA_BENCH_MODEL",
-        "OPENAI_BASE_URL",
-        "OPENAI_MODEL",
-        "MODEL",
-    ):
-        monkeypatch.delenv(key, raising=False)
+def test_live_from_env_absent_is_none(clear_live_env: None) -> None:
+    del clear_live_env
     assert LiveBackend.from_env() is None
 
 

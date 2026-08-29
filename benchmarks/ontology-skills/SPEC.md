@@ -233,7 +233,7 @@ v1 ships eight families on the procurement fixture (`Entity → Organization →
 
 ## 13. Executor (INF-607)
 
-The executor may be any 1–4B/9B/27B local or hosted chat model behind an OpenAI-compatible `/v1/chat/completions` endpoint. This slice **does not call that endpoint**.
+The executor may be any 1–4B/9B/27B local or hosted chat model behind an OpenAI-compatible `/v1/chat/completions` endpoint. Default host is OpenRouter (`https://openrouter.ai/api/v1`). `--backend live` POSTs only when `INFONA_BENCH_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_KEY` is set; missing key exits 2 without posting. Live also requires `--task-id` so this CLI cannot sweep the dataset.
 
 It receives:
 
@@ -247,9 +247,9 @@ It must return a `GraphDelta` JSON object. Parsing failure → empty predicted d
 
 Prompt template id: `ontology_skills.prompt.v1`. The run log records `prompt.sha256` of the exact prompt bytes.
 
-Dry-run: `python -m ontology_skills execute --backend canned` reads `fixtures/canned_responses.jsonl` (`task_id`, `text`). Metrics on canned rows are loop tests, not published model scores. `resources.*` stay null until a live backend records them.
+Dry-run: `python -m ontology_skills execute --backend canned` reads `fixtures/canned_responses.jsonl` (`task_id`, `text`). Metrics on canned rows are loop tests, not published model scores. `resources.*` stay null on canned rows.
 
-Live env (documented, not required): `INFONA_BENCH_BASE_URL` + `INFONA_BENCH_MODEL` (aliases `OPENAI_BASE_URL`, `OPENAI_MODEL` / `MODEL`). CLI `--backend live` is refused until a later run slice.
+Live env: Bearer key as above; `INFONA_BENCH_BASE_URL` (default OpenRouter; alias `OPENAI_BASE_URL`); `INFONA_BENCH_MODEL` optional override (aliases `OPENAI_MODEL` / `MODEL`), else `qwen/qwen3-4b` for conditions 1–4 and 8, `qwen/qwen3.5-9b` for 6, `qwen/qwen3.5-27b` for 7. OpenRouter headers: `HTTP-Referer https://infona.ai`, `X-Title Infona ontology-skills bench`. Tokens and `hosted_cost_usd` are copied from the response `usage` object when present (`usage.cost` for USD). Do not fabricate cost. Latency is the client wall-clock of that POST.
 
 Scoring (INF-611) is deterministic and does not call a model.
 
