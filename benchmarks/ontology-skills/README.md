@@ -1,0 +1,97 @@
+# SLM × Ontology Skills — Capability Compilation Benchmark
+
+**Claim.** Domain intelligence should live in a typed knowledge environment, not in model weights. Infona attaches reusable procedural skills to ontology types and relations, then **deterministically compiles** the skills that apply to the local neighborhood (types, relations, inheritance, provenance). A 1–4B SLM executes only that compiled set. The ontology is a capability router / compiler, not a retriever.
+
+**Success criterion (measure, do not force).** A 2B/4B local model + Infona ontology-bound skills reaching ~90–95% of a frontier model's ontology-task success at materially lower memory, latency, and cost.
+
+This package is **INF-606** (contract + compiler + fixtures). It is isolated on purpose: it does not import `infona_client`, and it does not reuse `infona_client.qc`, `infona_client.eval`, or product `infona_client.skills`. Those are a different system. Do not merge them in a drive-by.
+
+## Why this is not WikiSkill
+
+[WikiSkill](https://arxiv.org/abs/2608.27454) (Google Research, 27 Aug 2026) co-evolves skills with a persistent wiki. At inference it **injects the full active skill set** into the system prompt, on purpose, so skill *triggering / retrieval* cannot confound the study (§3.2.1).
+
+That dump-all design is our **condition 3** (flat/full skill set), not the Infona condition.
+
+| | WikiSkill inference | Infona compiler (this benchmark) |
+|---|---|---|
+| What the SLM sees | Every active skill | Skills compiled from the local type/relation neighborhood |
+| Selection | None (full injection) | Deterministic walk: seeds → ancestors → incident relations |
+| Inheritance | Not typed | `Entity → Organization → Company → Supplier` accumulates; same `skill_id` on a more specific type shadows |
+| Relations | Not a compiler input | `SUPPLIES_TO` contributes temporal / validation procedures |
+| Retrieval | Explicitly removed as a confound | Also not retrieval — compilation is a function, not search |
+
+WikiSkill's published numbers (average across their five benchmarks, three evolution seeds):
+
+- Qwen-3.5-9B + WikiSkill **47.4** vs Qwen-3.6-27B with no skills **39.4**
+- Qwen-3.5-4B **26.2 → 38.5** with WikiSkill
+- Skills transfer across models; teacher-evolved skills can beat self-evolved
+
+Those numbers are **WikiSkill's**, on WikiSkill's tasks. They are motivation, not this benchmark's results. This tree contains **no benchmark scores**. Do not invent any.
+
+## Comparison matrix (locked order)
+
+Do **not** run models in this slice. Do **not** start with fine-tuning. Condition 5 is in the matrix so numbering stays stable; the harness refuses it.
+
+| # | Condition | Skill mode | Runnable now |
+|---|---|---|---|
+| 1 | 4B vanilla | none | yes |
+| 2 | 4B + ontology context only | types/relations, no skills | yes |
+| 3 | 4B + flat/full skill set | dump-all (WikiSkill-like) | yes |
+| 4 | 4B + ontology-routed skills | **primary Infona** | yes |
+| 5 | 4B fine-tuned + ontology-routed skills | routed | **blocked** |
+| 6 | 9B vanilla | none | yes |
+| 7 | 27B or frontier vanilla | none | yes |
+| 8 | Strong-teacher-generated skills → 4B executor | routed, teacher provenance | yes |
+
+Primary comparison: **4 vs 1, 2, 3, 7**. Resource story: same success, smaller model / fewer tokens / less VRAM.
+
+## Guardrails
+
+- No LLM-as-judge as a primary metric. Gold is a graph delta or other canonical structured object.
+- No fake numbers, no placeholder result JSON with invented F1.
+- No fine-tune-first. Condition 5 stays blocked until 1–4 and 6–8 have real runs.
+- No product imports. `from infona_client…` in this package is a bug.
+- No revival of the QC fuzzer, public `/ask` eval, or research-harness as this benchmark.
+- Synthetic names only in fixtures (Acme, Globex, Northwind).
+- Grow the dataset by appending `fixtures/tasks.jsonl` rows that obey `SPEC.md`. Do not change task families, split ids, metric keys, or matrix order without a schema version bump.
+
+## Layout
+
+```
+benchmarks/ontology-skills/
+  SPEC.md                         # locked contract — read this before coding slices
+  ontology_skills/                # importable package (stdlib only)
+  fixtures/ontology.json          # Supplier inheritance fixture
+  fixtures/tasks.jsonl            # one gold graph-delta per task family
+  schemas/run_result.v1.json      # run-log JSON Schema
+  tests/                          # compiler determinism + inheritance
+```
+
+Least-invasive home: a new tree under `benchmarks/`, not `infona_client/` and not `packages/` (that directory is npm). The published `infona-client` wheel is unchanged.
+
+## This slice vs later slices
+
+| Slice | Issue | What to do | What not to do |
+|---|---|---|---|
+| **This** | INF-606 | Spec, compiler, fixtures, stub harness | Run models, invent scores, FT |
+| Next | INF-608 | Grow tasks.jsonl under the same families/splits/gold schema | Change `RunResult` keys or family ids |
+| Next | INF-607 | Real executor: fill metrics + resource fields | Call an LLM-as-judge for `success` |
+| Later | INF-611 | Run matrix 1–4 and 6–8; plot success vs resources | Unblock condition 5 first |
+
+## How to run
+
+Compiler tests (no GPU, no keys):
+
+```bash
+PYTHONPATH=benchmarks/ontology-skills pytest benchmarks/ontology-skills/tests -q
+```
+
+Stub harness (writes JSONL rows with **null** metrics — this is not a result):
+
+```bash
+PYTHONPATH=benchmarks/ontology-skills python -m ontology_skills --list-conditions
+PYTHONPATH=benchmarks/ontology-skills python -m ontology_skills \
+  --condition 4b_ontology_routed --out /tmp/ontology-skills-stub.jsonl
+```
+
+Later slices execute models. Every run must persist a row matching `schemas/run_result.v1.json` (model, quantization, prompt, context budget, tools, decoding, resources). The headline artifact is **task-success vs inference-resource** (latency, tokens, RAM/VRAM, param count / quant, hosted USD). Protocol: [SPEC.md](SPEC.md).

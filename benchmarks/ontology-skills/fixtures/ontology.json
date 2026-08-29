@@ -1,0 +1,135 @@
+{
+  "iri_prefix": "https://graph.infona.ai/bench/onto/",
+  "entity_prefix": "https://graph.infona.ai/bench/ent/",
+  "notes": "Synthetic procurement fixture. Entity → Organization → Company → Supplier is the inheritance example locked by INF-606.",
+  "types": [
+    {
+      "type_id": "Entity",
+      "label": "Entity",
+      "parent_ids": []
+    },
+    {
+      "type_id": "Organization",
+      "label": "Organization",
+      "parent_ids": ["Entity"]
+    },
+    {
+      "type_id": "Company",
+      "label": "Company",
+      "parent_ids": ["Organization"]
+    },
+    {
+      "type_id": "Supplier",
+      "label": "Supplier",
+      "parent_ids": ["Company"]
+    },
+    {
+      "type_id": "Customer",
+      "label": "Customer",
+      "parent_ids": ["Organization"]
+    },
+    {
+      "type_id": "Person",
+      "label": "Person",
+      "parent_ids": ["Entity"]
+    },
+    {
+      "type_id": "Location",
+      "label": "Location",
+      "parent_ids": ["Entity"]
+    },
+    {
+      "type_id": "Product",
+      "label": "Product",
+      "parent_ids": ["Entity"]
+    }
+  ],
+  "relations": [
+    {
+      "relation_id": "SUPPLIES_TO",
+      "label": "supplies to",
+      "source_type": "Supplier",
+      "target_type": "Customer",
+      "parent_ids": []
+    },
+    {
+      "relation_id": "LOCATED_IN",
+      "label": "located in",
+      "source_type": "Organization",
+      "target_type": "Location",
+      "parent_ids": []
+    },
+    {
+      "relation_id": "EMPLOYS",
+      "label": "employs",
+      "source_type": "Organization",
+      "target_type": "Person",
+      "parent_ids": []
+    },
+    {
+      "relation_id": "SUBSIDIARY_OF",
+      "label": "subsidiary of",
+      "source_type": "Company",
+      "target_type": "Company",
+      "parent_ids": []
+    }
+  ],
+  "skills": [
+    {
+      "skill_id": "identity-hygiene",
+      "title": "Identity hygiene",
+      "kind": "type",
+      "attached_to": "Entity",
+      "provenance": "curated",
+      "body": "Mint one entity URI per real-world individual. Never invent a second URI because a name string differs in case, punctuation, or legal suffix (Ltd, Inc, GmbH). Carry aliases as literals, not as extra nodes."
+    },
+    {
+      "skill_id": "legal-name-normalization",
+      "title": "Legal name normalization",
+      "kind": "type",
+      "attached_to": "Organization",
+      "provenance": "curated",
+      "body": "Store legalName as the registry form. Collapse whitespace. Preserve Inc/Ltd/GmbH as part of legalName. Trade names go on alias, never overwrite legalName from a nickname."
+    },
+    {
+      "skill_id": "registration-id",
+      "title": "Company registration id",
+      "kind": "type",
+      "attached_to": "Company",
+      "provenance": "curated",
+      "body": "Map VAT, EIN, company-number, and 'registration no' columns onto registrationId. Treat registrationId as a unique key for entity resolution when present. Do not put a registration id on a Person."
+    },
+    {
+      "skill_id": "vendor-reconciliation",
+      "title": "Supplier vendor reconciliation",
+      "kind": "type",
+      "attached_to": "Supplier",
+      "provenance": "curated",
+      "body": "A Supplier is a Company that sells to a Customer. Require vendorId or registrationId. Incoterms and payment terms are literals on the Supplier, not on the supplied Product. Do not type a buying organization as Supplier."
+    },
+    {
+      "skill_id": "temporal-window",
+      "title": "SUPPLIES_TO temporal window",
+      "kind": "relation",
+      "attached_to": "SUPPLIES_TO",
+      "provenance": "curated",
+      "body": "SUPPLIES_TO is a temporally qualified edge. If the source row has valid_from / valid_to, write them as edge literals. Two invoices in the same window are one edge, not two. Do not emit SUPPLIES_TO without a typed Supplier source and Customer target."
+    },
+    {
+      "skill_id": "quantity-validation",
+      "title": "SUPPLIES_TO quantity validation",
+      "kind": "relation",
+      "attached_to": "SUPPLIES_TO",
+      "provenance": "curated",
+      "body": "Quantity and currency must be non-negative. Reject or repair rows where qty < 0. A missing qty is allowed; a negative qty is a constraint violation."
+    },
+    {
+      "skill_id": "person-not-org",
+      "title": "Person is not an Organization",
+      "kind": "type",
+      "attached_to": "Person",
+      "provenance": "curated",
+      "body": "A Person must not be the source of SUPPLIES_TO. If a vendor row names a human, type them Person and attach EMPLOYS from the Supplier; do not coerce the Person into Supplier."
+    }
+  ]
+}
