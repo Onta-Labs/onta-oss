@@ -19,17 +19,7 @@ _ROUTED_CORE = (
     "legal-name-normalization",
     "identity-hygiene",
 )
-_TYPING_SEED_TYPES = frozenset(
-    {
-        "Company",
-        "Organization",
-        "Entity",
-        "Location",
-        "Person",
-        "Customer",
-        "Product",
-    }
-)
+_DISTRACTOR_RELATION = "SUBSIDIARY_OF"
 _BANNED_TYPE_NAMES = (
     "Supplier",
     "Company",
@@ -61,16 +51,25 @@ def _distractor_ids(ontology) -> frozenset[str]:
     )
 
 
-def test_distractors_are_off_typing_seed_types() -> None:
+def test_distractors_attach_to_subsidiary_of_not_a_type() -> None:
     bundle, _ = _et001()
     ids = _distractor_ids(bundle.ontology)
     assert 20 <= len(ids) <= 40
+    assert _DISTRACTOR_RELATION in bundle.ontology.relations
+    typing_rel_seeds = {
+        rid
+        for task in bundle.tasks
+        if task.family == "entity_typing"
+        for rid in task.neighborhood.relation_ids
+    }
+    assert _DISTRACTOR_RELATION not in typing_rel_seeds
     for skill in bundle.ontology.skills:
         if skill.provenance != "distractor":
             continue
-        assert skill.attached_to not in _TYPING_SEED_TYPES, skill.skill_id
-        assert skill.attached_to == "Supplier", skill.skill_id
-        assert skill.kind == "type"
+        assert skill.kind == "relation", skill.skill_id
+        assert skill.attached_to == _DISTRACTOR_RELATION, skill.skill_id
+        assert skill.attached_to in bundle.ontology.relations
+        assert skill.attached_to not in bundle.ontology.types
 
 
 def test_distractor_bodies_omit_gold_type_names() -> None:
@@ -120,6 +119,19 @@ def test_et001_flat_is_much_larger_than_routed() -> None:
     flat = compile_flat(bundle.ontology)
     assert len(flat.skills) >= len(routed.skills) + 15
     assert set(_ROUTED_CORE) <= set(flat.skill_ids)
+
+
+def test_et001_dump_all_distractor_headers_are_not_type_supplier() -> None:
+    bundle, task = _et001()
+    cond = condition_by_id("4b_flat_skills")
+    flat = compile_flat(bundle.ontology)
+    prompt = build_prompt(task, bundle.ontology, flat, cond)
+    distractors = _distractor_ids(bundle.ontology)
+    for skill_id in distractors:
+        header = f"### {skill_id} [relation:{_DISTRACTOR_RELATION}]"
+        assert header in prompt.text, skill_id
+        assert f"### {skill_id} [type:Supplier]" not in prompt.text
+    assert "### vendor-reconciliation [type:Supplier]" in prompt.text
 
 
 def test_et001_rag_top_k_includes_a_distractor() -> None:

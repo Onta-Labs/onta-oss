@@ -32,7 +32,8 @@ def test_supplier_inherits_ancestor_type_skills() -> None:
         "temporal-window",
     ):
         assert skill_id in compiled.skill_ids
-    assert any(sid.startswith("distract-") for sid in compiled.skill_ids)
+    # Incident SUBSIDIARY_OF (Company in lineage) may staple relation distractors.
+    # Those are not type skills on Supplier.
 
 
 def test_supplier_does_not_pull_far_side_person_skill() -> None:
