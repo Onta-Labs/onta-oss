@@ -7,7 +7,6 @@ import json
 from vrdu_binder.bind import KeywordBinder, TypeCatalog
 from vrdu_binder.extract import KeywordExtractor
 from vrdu_binder.fixtures import FIXTURE_KEYS, build_memory_fixtures
-from vrdu_binder.ocr import bind_prompt
 from vrdu_binder.run import run_corpus
 from vrdu_binder.skills import write_skills_for_seed
 from vrdu_binder.splits import RunSplit, load_run_split
@@ -37,7 +36,7 @@ def test_loader_does_not_store_valid(tmp_path):
     assert "SHOULD_NEVER_BE_READ.pdf" not in split.test
 
 
-def test_bind_prompts_never_see_valid_docs(tmp_path):
+def test_bind_loop_only_walks_test_filenames(tmp_path):
     mem = build_memory_fixtures()
     skills = write_skills_for_seed(
         split_by_type=mem["splits"],
@@ -45,7 +44,7 @@ def test_bind_prompts_never_see_valid_docs(tmp_path):
         seed=0,
         keys_by_type=FIXTURE_KEYS,
     )
-    run_corpus(
+    result = run_corpus(
         corpus="registration",
         seed=0,
         split=mem["splits"]["type_0"],
@@ -57,14 +56,12 @@ def test_bind_prompts_never_see_valid_docs(tmp_path):
         out_dir=tmp_path,
         dump_split_name="SYNTH-mixed_template-train_1-test_2-valid_1-SD_0",
     )
-    for name, doc in mem["index_by_type"]["type_0"].items():
-        if name.startswith("valid_"):
-            prompt = bind_prompt(doc)
-            assert "LEAK_VALID_A" not in skills["type_0"].body
-            # Valid OCR is never passed into run_corpus (only test filenames).
-            assert name not in mem["splits"]["type_0"].test
-            assert name not in mem["splits"]["type_0"].train
-            assert "LEAK_VALID_A" in prompt  # the doc itself still has it
+    seen = [o.filename for o in result.outcomes]
+    assert seen == list(mem["splits"]["type_0"].test)
+    assert "valid_a_1.pdf" not in seen
+    assert "LEAK_VALID_A" not in skills["type_0"].body
+    valid = mem["index_by_type"]["type_0"]["valid_a_1.pdf"]
+    assert "LEAK_VALID_A" in valid["ocr"]["text"]
 
 
 def test_write_skills_ignores_valid_and_test_docs_sitting_in_the_pile():
