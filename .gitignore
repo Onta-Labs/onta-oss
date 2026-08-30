@@ -21,6 +21,9 @@ web/.env.local
 eval_holdout_v2/
 eval_reports/
 
+# VRDU binder-bench downloads (dataset.jsonl.gz + pdfs). Never vendor.
+benchmarks/vrdu-binder/data/
+
 # Node packages (infona npm SDK + MCP)
 node_modules/
 *.log

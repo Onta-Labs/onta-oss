@@ -1,0 +1,5 @@
+{
+  "train": ["train_b_1.pdf"],
+  "valid": ["valid_b_1.pdf"],
+  "test": ["test_b_1.pdf"]
+}

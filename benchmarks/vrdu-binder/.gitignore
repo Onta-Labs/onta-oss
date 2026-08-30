@@ -1,0 +1,4 @@
+# Published VRDU downloads. dataset.jsonl.gz is ~55MB per corpus; pdfs/ is worse.
+data/
+*.jsonl.gz
+pdfs/

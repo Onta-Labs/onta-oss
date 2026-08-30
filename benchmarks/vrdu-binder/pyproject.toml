@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vrdu-binder"
+version = "0.0.0"
+description = "Infona binder-bench spec v11 (constructed VRDU mix)"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+# Isolated bench. Do not add this to the published infona-client wheel.
+dependencies = []
+
+[project.scripts]
+vrdu-binder = "vrdu_binder.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
