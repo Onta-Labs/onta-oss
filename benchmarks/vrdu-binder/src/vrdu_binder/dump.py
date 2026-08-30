@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from vrdu_binder.gate import KEYWORD_ADAPTER_NAMES, is_published_split_name
 from vrdu_binder.protocol import ProtocolError
 from vrdu_binder.splits import RunSplit
 
@@ -72,6 +73,12 @@ def write_predictions(
     """Write ``{split_name}-test_predictions.json`` for stock ``vrdu.evaluate``."""
     dest = Path(out_dir)
     dest.mkdir(parents=True, exist_ok=True)
+    adapter = (extra_meta or {}).get("adapter")
+    if is_published_split_name(split_name) and adapter in KEYWORD_ADAPTER_NAMES:
+        raise ProtocolError(
+            "KeywordBinder/KeywordExtractor cannot write a published-split "
+            f"dump ({split_name})."
+        )
     results = build_results(split, filled, misbound=misbound)
     payload = predictions_payload(
         split_name=split_name, results=results, extra_meta=extra_meta

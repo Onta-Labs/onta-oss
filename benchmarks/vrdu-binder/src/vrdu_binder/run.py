@@ -10,6 +10,7 @@ from vrdu_binder.bind import Binder, TypeCatalog, bind_one, skill_for_bind
 from vrdu_binder.constants import TYPE_FOR_CORPUS, split_filename
 from vrdu_binder.dump import write_predictions
 from vrdu_binder.extract import Extractor, extract_one
+from vrdu_binder.gate import assert_may_dump
 from vrdu_binder.headline import bind_accuracy
 from vrdu_binder.ocr import bind_prompt
 from vrdu_binder.protocol import OpaqueDoc, ProtocolError, opaque_id
@@ -68,6 +69,7 @@ def run_corpus(
     """Unmodified test list. Misbind writes ``results[filename] = []``."""
     gold = gold_type_for_corpus(corpus)
     split_name = dump_split_name or split_filename(corpus, seed).removesuffix(".json")
+    assert_may_dump(split_name=split_name, binder=binder, extractor=extractor)
     filled: dict[str, list[Any]] = {}
     misbound: set[str] = set()
     outcomes: list[DocOutcome] = []
@@ -112,6 +114,7 @@ def run_corpus(
         split=split,
         filled=filled,
         misbound=misbound,
+        extra_meta={"adapter": type(binder).__name__},
     )
     return CorpusRun(
         corpus=corpus, split_name=split_name, dump_path=dump_path, outcomes=outcomes

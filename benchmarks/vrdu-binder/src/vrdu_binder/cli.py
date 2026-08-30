@@ -23,6 +23,8 @@ from vrdu_binder.extract import KeywordExtractor
 from vrdu_binder.fetch import default_data_root, fetch_meta, fetch_ocr, fetch_splits
 from vrdu_binder.fixtures import FIXTURE_KEYS, build_memory_fixtures
 from vrdu_binder.headline import Headline, make_headline
+from vrdu_binder.llm import LlmBinder, LlmExtractor
+from vrdu_binder.protocol import ProtocolError
 from vrdu_binder.run import run_corpus
 from vrdu_binder.skills import write_skills_for_seed
 from vrdu_binder.splits import load_run_split, published_split_path
@@ -63,15 +65,23 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--out", type=Path, required=True)
     p_run.add_argument(
         "--binder",
-        default="keyword",
-        choices=("keyword",),
-        help="keyword is dry-run. Live model adapters are out of scope for v11.",
+        default="llm",
+        choices=("llm", "keyword"),
+        help="llm writes published dumps. keyword is fixtures/dry-run only.",
     )
 
     p_dry = sub.add_parser("dry-run", help="Fixture mix. No VRDU download, no LLM.")
     p_dry.add_argument("--out", type=Path, required=True)
 
     args = parser.parse_args(argv)
+    try:
+        return _dispatch(args)
+    except ProtocolError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+
+
+def _dispatch(args: argparse.Namespace) -> int:
     if args.cmd == "fetch-splits":
         paths = fetch_splits(args.dest)
         print("\n".join(str(p) for p in paths))
@@ -126,6 +136,14 @@ def _cmd_write_skills(args: argparse.Namespace) -> int:
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
+    if args.binder == "keyword":
+        raise ProtocolError(
+            "KeywordBinder cannot dump published VRDU splits. "
+            "Use `dry-run` for fixtures, or --binder llm with INFONA_BINDER_API_KEY. "
+            "Refusing rather than writing a keyword score."
+        )
+    binder = LlmBinder()
+    extractor = LlmExtractor()
     root = args.data or default_data_root()
     split = load_run_split(
         published_split_path(root, args.corpus, args.seed),
@@ -174,8 +192,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
         documents=documents,
         skills=skills,
         catalog=catalog,
-        binder=KeywordBinder(),
-        extractor=KeywordExtractor(),
+        binder=binder,
+        extractor=extractor,
         out_dir=args.out,
     )
     print(result.dump_path)

@@ -54,10 +54,19 @@ python -m vrdu_binder write-skills --seed 0 \
   --out /tmp/binder-skills-sd0.json
 ```
 
-Dump one corpus at a time. The keyword binder is a leak-honest dry adapter,
-not a result you publish.
+`KeywordBinder` is a freeze adapter, not a score. `python -m vrdu_binder run`
+writes published-split `*-test_predictions.json` and therefore refuses
+`--binder keyword` (the default is `llm`). Pointing `--data` at real VRDU
+and `--binder keyword` is an error, not a dump. Dry-run fixtures stay on
+the `dry-run` command and use `SYNTH-…` dump names.
+
+A published dump needs `--binder llm` and `INFONA_BINDER_API_KEY`. If the
+key is missing, the command exits 2. It does not fall back to KeywordBinder.
+This PR does not run a 300-per-corpus live sweep and does not invent F1.
 
 ```bash
+export INFONA_BINDER_API_KEY=...          # required for `run`; no keyword fallback
+# optional: INFONA_LLM_BASE_URL  INFONA_LLM_MODEL
 python -m vrdu_binder run --seed 0 --corpus registration \
   --data benchmarks/vrdu-binder/data \
   --out /tmp/vrdu-dumps/registration
