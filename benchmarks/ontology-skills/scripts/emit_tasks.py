@@ -52,6 +52,14 @@ NB_PROD = {
     "include_ancestors": True,
     "include_incident_relations": False,
 }
+# Typing / ingest seed a parent, not the gold leaf. Entity is the parent of
+# Person, Location, and Product.
+NB_ENT = {
+    "type_ids": ["Entity"],
+    "relation_ids": [],
+    "include_ancestors": True,
+    "include_incident_relations": False,
+}
 NB_REL = {
     "type_ids": ["Supplier", "Customer"],
     "relation_ids": ["SUPPLIES_TO"],
@@ -132,7 +140,7 @@ def entity_typing() -> list[dict]:
             "entity_typing",
             KNOWN,
             "Vendor row for a company not previously seen. Gold leaf type is Supplier.",
-            NB_SUP,
+            NB_CO,
             {
                 "record": {
                     "name": "Acme Components Ltd",
@@ -154,7 +162,7 @@ def entity_typing() -> list[dict]:
             "entity_typing",
             KNOWN,
             "Buying organization. Leaf type is Customer, not Supplier.",
-            NB_CUST,
+            NB_ORG,
             {
                 "record": {"name": "Globex Manufacturing", "role": "buyer"},
                 "mention": "Globex Manufacturing",
@@ -169,7 +177,7 @@ def entity_typing() -> list[dict]:
             "entity_typing",
             KNOWN,
             "Site name with no org cues. Leaf type is Location.",
-            NB_LOC,
+            NB_ENT,
             {
                 "record": {"name": "Leeds Depot", "kind": "site"},
                 "mention": "Leeds Depot",
@@ -184,7 +192,7 @@ def entity_typing() -> list[dict]:
             "entity_typing",
             KNOWN,
             "SKU row. Leaf type is Product, not Supplier.",
-            NB_PROD,
+            NB_ENT,
             {
                 "record": {"sku": "WGT-440", "name": "M8 steel widget"},
                 "mention": "WGT-440",
@@ -202,7 +210,7 @@ def entity_typing() -> list[dict]:
             "entity_typing",
             KNOWN,
             "Human contact. Leaf type is Person.",
-            NB_PERSON,
+            NB_ENT,
             {
                 "record": {"name": "Riley Chen", "title": "buyer"},
                 "mention": "Riley Chen",
@@ -217,7 +225,7 @@ def entity_typing() -> list[dict]:
             "entity_typing",
             KNOWN,
             "Registered company with no vendor/buyer role. Leaf is Company.",
-            NB_CO,
+            NB_ORG,
             {
                 "record": {
                     "name": "Initech Ltd",
@@ -274,7 +282,7 @@ def entity_typing() -> list[dict]:
             "entity_typing",
             ADV,
             "Vendor contact is a Person, not a Supplier. Do not launder the type.",
-            NB_PERSON,
+            NB_ENT,
             {
                 "record": {
                     "name": "Jamie Lee",
@@ -293,7 +301,7 @@ def entity_typing() -> list[dict]:
             "entity_typing",
             ADV,
             "PO footer labels the buyer as vendor. Leaf type is Customer.",
-            NB_CUST,
+            NB_ORG,
             {
                 "record": {
                     "name": "Soylent Packaging",
@@ -1696,7 +1704,7 @@ def multistep() -> list[dict]:
             "multi_step_ingest",
             KNOWN,
             "Ingest → map → resolve → normalize → mutate. Already-known survivor URI.",
-            NB_SUP,
+            NB_CO,
             {
                 "row": {
                     "Vendor": "acme components",
@@ -1720,7 +1728,7 @@ def multistep() -> list[dict]:
             "multi_step_ingest",
             KNOWN,
             "New vendor, mint URI, type Supplier, add SUPPLIES_TO.",
-            NB_SUP,
+            NB_CO,
             {
                 "row": {
                     "Vendor": "Umbrella Parts",
@@ -1743,7 +1751,7 @@ def multistep() -> list[dict]:
             "multi_step_ingest",
             KNOWN,
             "EIN maps to registrationId and resolves to the known survivor.",
-            NB_SUP,
+            NB_CO,
             {
                 "row": {"Name": "stark bolts", "EIN": "12-3456789"},
                 "existing_uris": {"12-3456789": stark},
@@ -1762,7 +1770,7 @@ def multistep() -> list[dict]:
             KNOWN,
             "Contact column mints a Person and EMPLOYS from the Supplier.",
             {
-                "type_ids": ["Supplier", "Person"],
+                "type_ids": ["Company", "Entity"],
                 "relation_ids": ["EMPLOYS"],
                 "include_ancestors": True,
                 "include_incident_relations": True,
@@ -1786,7 +1794,7 @@ def multistep() -> list[dict]:
             KNOWN,
             "Subsidiary row writes SUBSIDIARY_OF.",
             {
-                "type_ids": ["Company"],
+                "type_ids": ["Organization"],
                 "relation_ids": ["SUBSIDIARY_OF"],
                 "include_ancestors": True,
                 "include_incident_relations": True,
@@ -1808,7 +1816,7 @@ def multistep() -> list[dict]:
             "multi_step_ingest",
             KNOWN,
             "Dirty name + VAT merge + SUPPLIES_TO.",
-            NB_SUP,
+            NB_CO,
             {
                 "row": {
                     "Vendor": "WAYNE fasteners",
@@ -1877,7 +1885,7 @@ def multistep() -> list[dict]:
             ADV,
             "Person in the vendor column: type Person, EMPLOYS from the company, company SUPPLIES_TO.",
             {
-                "type_ids": ["Person", "Supplier"],
+                "type_ids": ["Entity", "Company"],
                 "relation_ids": ["EMPLOYS", "SUPPLIES_TO"],
                 "include_ancestors": True,
                 "include_incident_relations": True,
@@ -1901,7 +1909,7 @@ def multistep() -> list[dict]:
             "multi_step_ingest",
             ADV,
             "Negative qty is dropped; still resolve and type the Supplier.",
-            NB_SUP,
+            NB_CO,
             {
                 "row": {
                     "Vendor": "acme components",

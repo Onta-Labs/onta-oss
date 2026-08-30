@@ -74,6 +74,19 @@ def test_no_gold_key_in_input() -> None:
         assert "gold" not in task.input, task.task_id
 
 
+_LEAF_SEED_FAMILIES = frozenset({"entity_typing", "multi_step_ingest"})
+
+
+def test_typing_and_ingest_do_not_seed_gold_leaf() -> None:
+    """Parent seed only. A gold leaf in type_ids leaks into types-only prompts."""
+    for task in load_tasks():
+        if task.family not in _LEAF_SEED_FAMILIES:
+            continue
+        gold = {item.type_id for item in task.gold.type_assertions}
+        leak = set(task.neighborhood.type_ids) & gold
+        assert not leak, f"{task.task_id} seeds gold leaf {sorted(leak)}"
+
+
 GOLD_OPS_SHA256 = (
     "9b1c641deb4f486d2c81408fa6e4a89e1067fcf36dd7a61cc079383fd44257ce"
 )

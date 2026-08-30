@@ -25,7 +25,8 @@ def test_canned_et001_is_exact_success() -> None:
     assert row["compiler"]["skill_ids"]
     assert "temporal-window" not in row["compiler"]["skill_ids"]
     assert "quantity-validation" not in row["compiler"]["skill_ids"]
-    assert "vendor-reconciliation" in row["compiler"]["skill_ids"]
+    assert "vendor-reconciliation" not in row["compiler"]["skill_ids"]
+    assert "registration-id" in row["compiler"]["skill_ids"]
     assert row["model"]["backend"] == "fixture"
     assert row["resources"]["latency_ms"] is None
     assert row["resources"]["hosted_cost_usd"] is None

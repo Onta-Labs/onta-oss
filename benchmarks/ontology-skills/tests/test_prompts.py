@@ -30,8 +30,8 @@ def test_ontology_context_lists_lineage_without_skill_bodies() -> None:
     prompt, compiled = _built("4b_ontology_context")
     assert prompt.skill_injection == "ontology_context"
     assert compiled.skills == ()
-    assert "type Supplier parents=Company" in prompt.text
-    assert "relation SUPPLIES_TO" in prompt.text
+    assert "type Company parents=Organization" in prompt.text
+    assert "Supplier" not in prompt.text
     assert "skills: none" in prompt.text
     assert "Mint one entity URI" not in prompt.text
 
@@ -46,11 +46,14 @@ def test_flat_includes_unrelated_person_skill() -> None:
 def test_routed_omits_person_skill_for_supplier_neighborhood() -> None:
     prompt, compiled = _built("4b_ontology_routed")
     assert prompt.skill_injection == "routed"
-    assert "vendor-reconciliation" in compiled.skill_ids
-    assert "### vendor-reconciliation" in prompt.text
+    assert "registration-id" in compiled.skill_ids
+    assert "legal-name-normalization" in compiled.skill_ids
+    assert "vendor-reconciliation" not in compiled.skill_ids
+    assert "### vendor-reconciliation" not in prompt.text
     assert "Mint one entity URI" in prompt.text
     assert "person-not-org" not in compiled.skill_ids
     assert "### person-not-org" not in prompt.text
+    assert all(skill.attached_to != "Supplier" for skill in compiled.skills)
 
 
 def test_vanilla_conditions_share_prompt_text() -> None:

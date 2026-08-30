@@ -31,17 +31,18 @@ def test_et001_routed_omits_incident_relation_skills() -> None:
     bundle, task = _task("et-001")
     cond = condition_by_id("4b_ontology_routed")
     compiled = compile_for_task(bundle.ontology, task, cond)
+    assert task.neighborhood.type_ids == ("Company",)
     assert compiled.mode == "routed"
     for skill_id in INCIDENT_SUPPLIES_TO_SKILLS:
         assert skill_id not in compiled.skill_ids
     assert "SUPPLIES_TO" not in compiled.relation_ids
-    assert "vendor-reconciliation" in compiled.skill_ids
+    assert "vendor-reconciliation" not in compiled.skill_ids
     assert compiled.skill_ids == (
-        "vendor-reconciliation",
         "registration-id",
         "legal-name-normalization",
         "identity-hygiene",
     )
+    assert all(skill.attached_to != "Supplier" for skill in compiled.skills)
 
 
 def test_et001_two_arg_compile_for_task_is_primary_routed() -> None:
@@ -54,7 +55,7 @@ def test_et001_two_arg_compile_for_task_is_primary_routed() -> None:
 
 def test_raw_neighborhood_still_leaks_without_policy() -> None:
     """compiler.py is unchanged: fixture incident flag still pulls SUPPLIES_TO."""
-    bundle, task = _task("et-001")
+    bundle, task = _task("map-005")
     cond = condition_by_id("4b_ontology_routed")
     raw = compile_for_condition(bundle.ontology, task.neighborhood, cond)
     assert "temporal-window" in raw.skill_ids
@@ -78,8 +79,19 @@ def test_multi_step_ingest_keeps_incident_relations() -> None:
     compiled = compile_for_task(
         bundle.ontology, task, condition_by_id("4b_ontology_routed")
     )
+    # Company seed: incident walk sees EMPLOYS / LOCATED_IN / SUBSIDIARY_OF,
+    # not SUPPLIES_TO (source type is the gold leaf Supplier).
+    assert "EMPLOYS" in compiled.relation_ids
+    assert "LOCATED_IN" in compiled.relation_ids
+    assert "SUPPLIES_TO" not in compiled.relation_ids
+
+    bundle, seeded = _task("ms-009")
+    compiled = compile_for_task(
+        bundle.ontology, seeded, condition_by_id("4b_ontology_routed")
+    )
     assert "temporal-window" in compiled.skill_ids
     assert "quantity-validation" in compiled.skill_ids
+    assert "SUPPLIES_TO" in compiled.relation_ids
 
 
 def test_property_schema_mapping_does_not_seed_relations() -> None:
@@ -95,7 +107,7 @@ def test_property_schema_mapping_does_not_seed_relations() -> None:
 
 
 def test_entity_typing_strips_fixture_relation_seeds() -> None:
-    _, task = _task("et-003")
+    _, task = _task("et-007")
     assert task.neighborhood.relation_ids == ("LOCATED_IN",)
     nb = neighborhood_for_task(task)
     assert nb.relation_ids == ()
@@ -118,7 +130,7 @@ def test_policy_does_not_mutate_task_or_gold() -> None:
     neighborhood_for_task(task)
     compile_for_task(load_fixture_bundle().ontology, task)
     assert task.neighborhood is before_nb
-    assert task.neighborhood.include_incident_relations is True
+    assert task.neighborhood.include_incident_relations is False
     assert task.gold.canonical_ops() == before_gold
 
 

@@ -80,6 +80,7 @@ Every task has `family` in this closed set. Gold is a `GraphDelta` (and only a `
 ### 6.1 `entity_typing`
 
 - **Input:** a mention / record plus neighborhood seeds.
+- **Neighborhood:** seed a fixture parent, never the gold leaf. Prefer `Company` when the leaf is a Company subtype (`Supplier`). Otherwise seed the listed `parent_id` (`Organization` for `Customer` / `Company`; `Entity` for `Person` / `Location` / `Product`). Empty `type_ids` would start the compiler at `Entity`; v1 seeds the parent instead. Do not invent types.
 - **Gold:** `type_assertions` of the **leaf** type (`Supplier`, not `Organization`). Optional identifying `literals`.
 - **Success:** exact canonical-op match.
 - **Diagnostic:** ancestor-type match is not success.
@@ -124,6 +125,7 @@ Every task has `family` in this closed set. Gold is a `GraphDelta` (and only a `
 ### 6.8 `multi_step_ingest`
 
 - **Input:** one dirty row + any already-known URI map.
+- **Neighborhood:** same parent-not-leaf rule as typing when a seed would equal a gold `type_assertions.type_id`. Relation seeds stay.
 - **Gold:** the composed delta of map → resolve → normalize → mutate (types, literals, adds). Intermediate traces are not scored in v1.
 - **Success:** exact composed `GraphDelta`.
 
@@ -233,6 +235,7 @@ Stub runs set `status=stub`, all `metrics` null, resource fields null, `model.na
 - Tasks: `fixtures/tasks.jsonl`, one object per line
 - Required task keys: `task_id`, `family`, `split`, `neighborhood`, `input`, `gold`
 - `neighborhood` keys: `type_ids`, `relation_ids`, `include_ancestors`, `include_incident_relations`
+- `entity_typing` and `multi_step_ingest` must not put a gold leaf `type_id` in `neighborhood.type_ids` (parent seed only)
 - `gold` is a GraphDelta object (same keys as `GraphDelta.to_dict`)
 - Do **not** put gold `entity_uri` / `mint_as`, `type_id`, or literals into `input`. URI minting is in-task.
 
