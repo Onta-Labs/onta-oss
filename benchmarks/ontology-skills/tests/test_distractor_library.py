@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 from ontology_skills.compiler import compile_flat, compile_routed
 from ontology_skills.conditions import condition_by_id
@@ -18,7 +19,33 @@ _ROUTED_CORE = (
     "legal-name-normalization",
     "identity-hygiene",
 )
-_BLOCKED_CHAIN = frozenset({"Company", "Organization", "Entity"})
+_TYPING_SEED_TYPES = frozenset(
+    {
+        "Company",
+        "Organization",
+        "Entity",
+        "Location",
+        "Person",
+        "Customer",
+        "Product",
+    }
+)
+_BANNED_TYPE_NAMES = (
+    "Supplier",
+    "Company",
+    "Organization",
+    "Entity",
+    "Customer",
+    "Person",
+    "Location",
+    "Product",
+    "ThirdPartyWarehouse",
+    "BondedWarehouse",
+)
+_TYPE_NAME_RE = re.compile(
+    r"\b(" + "|".join(re.escape(n) for n in _BANNED_TYPE_NAMES) + r")\b",
+    re.I,
+)
 _LEAF_SEED_FAMILIES = frozenset({"entity_typing", "multi_step_ingest"})
 
 
@@ -34,15 +61,29 @@ def _distractor_ids(ontology) -> frozenset[str]:
     )
 
 
-def test_distractors_are_off_the_company_chain() -> None:
+def test_distractors_are_off_typing_seed_types() -> None:
     bundle, _ = _et001()
     ids = _distractor_ids(bundle.ontology)
     assert 20 <= len(ids) <= 40
     for skill in bundle.ontology.skills:
         if skill.provenance != "distractor":
             continue
-        assert skill.attached_to not in _BLOCKED_CHAIN, skill.skill_id
+        assert skill.attached_to not in _TYPING_SEED_TYPES, skill.skill_id
+        assert skill.attached_to == "Supplier", skill.skill_id
         assert skill.kind == "type"
+
+
+def test_distractor_bodies_omit_gold_type_names() -> None:
+    """Lowercase 'supplier' is bait. Any other type-id token is a leak."""
+    bundle, _ = _et001()
+    for skill in bundle.ontology.skills:
+        if skill.provenance != "distractor":
+            continue
+        assert "type_id" not in skill.body, skill.skill_id
+        assert "type_assertions" not in skill.body, skill.skill_id
+        for match in _TYPE_NAME_RE.finditer(skill.body):
+            token = match.group(0)
+            assert token == "supplier", f"{skill.skill_id} names type {token!r}"
 
 
 def test_original_four_skills_still_attached() -> None:

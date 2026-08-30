@@ -84,4 +84,7 @@ def test_without_ancestors_does_not_inherit() -> None:
     )
     compiled = compile_routed(onto, nb)
     assert compiled.type_lineage == ("Supplier",)
-    assert compiled.skill_ids == ("vendor-reconciliation",)
+    assert "vendor-reconciliation" in compiled.skill_ids
+    assert "registration-id" not in compiled.skill_ids
+    assert "identity-hygiene" not in compiled.skill_ids
+    assert all(skill.attached_to == "Supplier" for skill in compiled.skills)

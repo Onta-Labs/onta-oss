@@ -23,14 +23,16 @@ def test_supplier_lineage_is_specific_first() -> None:
 
 def test_supplier_inherits_ancestor_type_skills() -> None:
     compiled = compile_routed(load_ontology(), _supplier_nb())
-    assert compiled.skill_ids == (
+    for skill_id in (
         "vendor-reconciliation",
         "registration-id",
         "legal-name-normalization",
         "identity-hygiene",
         "quantity-validation",
         "temporal-window",
-    )
+    ):
+        assert skill_id in compiled.skill_ids
+    assert any(sid.startswith("distract-") for sid in compiled.skill_ids)
 
 
 def test_supplier_does_not_pull_far_side_person_skill() -> None:

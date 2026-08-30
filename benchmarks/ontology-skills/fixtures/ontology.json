@@ -1,7 +1,7 @@
 {
   "iri_prefix": "https://graph.infona.ai/bench/onto/",
   "entity_prefix": "https://graph.infona.ai/bench/ent/",
-  "notes": "Synthetic procurement fixture. Entity → Organization → Company → Supplier is the inheritance example locked by INF-606. Distractor skills for the RAG/dump-all control live in skills_distractors.json and must not attach to Company / Organization / Entity.",
+  "notes": "Synthetic procurement fixture. Entity → Organization → Company → Supplier is the inheritance example locked by INF-606. Distractor skills for the RAG/dump-all control live in skills_distractors.json and attach to Supplier only (not a typing seed; not an ancestor of one).",
   "types": [
     {
       "type_id": "Entity",
