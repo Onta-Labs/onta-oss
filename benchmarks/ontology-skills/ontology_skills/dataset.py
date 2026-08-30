@@ -93,19 +93,15 @@ def load_ontology(path: Path | None = None) -> Ontology:
         )
         for item in raw["relations"]
     }
-    skills = tuple(
-        Skill(
-            skill_id=item["skill_id"],
-            title=item.get("title", item["skill_id"]),
-            body=item["body"],
-            attached_to=item["attached_to"],
-            kind=item["kind"],
-            provenance=item.get("provenance", "curated"),
-            enabled=bool(item.get("enabled", True)),
-            version=int(item.get("version", 1) or 1),
-        )
-        for item in raw.get("skills") or ()
-    )
+    items = list(raw.get("skills") or ())
+    extra = path.parent / "skills_distractors.json"
+    if extra.is_file():
+        payload = json.loads(extra.read_text(encoding="utf-8"))
+        if isinstance(payload, list):
+            items.extend(payload)
+        elif isinstance(payload, dict):
+            items.extend(payload.get("skills") or ())
+    skills = tuple(_parse_skill(item) for item in items)
     return Ontology(types=types, relations=relations, skills=skills)
 
 
@@ -124,6 +120,19 @@ def load_fixture_bundle(
     return FixtureBundle(
         ontology=load_ontology(ontology_path),
         tasks=load_tasks(tasks_path),
+    )
+
+
+def _parse_skill(item: Mapping[str, Any]) -> Skill:
+    return Skill(
+        skill_id=item["skill_id"],
+        title=item.get("title", item["skill_id"]),
+        body=item["body"],
+        attached_to=item["attached_to"],
+        kind=item["kind"],
+        provenance=item.get("provenance", "curated"),
+        enabled=bool(item.get("enabled", True)),
+        version=int(item.get("version", 1) or 1),
     )
 
 

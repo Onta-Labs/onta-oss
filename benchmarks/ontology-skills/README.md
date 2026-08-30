@@ -62,7 +62,8 @@ Primary comparison: **4 vs 1, 2, 3, 7, 9**. Dump-all is not the investor objecti
 benchmarks/ontology-skills/
   SPEC.md                         # locked contract — read this before coding slices
   ontology_skills/                # importable package (stdlib only)
-  fixtures/ontology.json          # Supplier inheritance fixture
+  fixtures/ontology.json          # Supplier inheritance fixture (core four skills)
+  fixtures/skills_distractors.json # RAG / dump-all control; off the Company chain
   fixtures/tasks.jsonl            # gold GraphDeltas (~10 tasks per family)
   fixtures/canned_responses.jsonl # dry-run model text (not a scoreboard)
   schemas/run_result.v1.json      # run-log JSON Schema
@@ -127,7 +128,9 @@ PYTHONPATH=benchmarks/ontology-skills python -m ontology_skills execute \
 
 Prompt template `ontology_skills.prompt.v5` is a short GraphDelta contract: leaf type only; camelCase attrs (`registrationId`, not `vat`); mint an entity URI if the input has none; types/attrs in `type_assertions`/`literals`, not duplicated as `adds`. The hint does not name a gold type or gold URI. Typing and ingest fixtures seed a parent, not the gold leaf (`Company` for `Supplier`; `Organization` for `Customer` / `Company`; `Entity` for `Person` / `Location` / `Product`), so types-only prompts and routed type tags cannot name the answer. Scoring aligns a minted slug to the gold entity (legalName / mention / single-entity), drops adds that only restate those facts, and keeps only leaf types when a prediction also dumps ancestors (Company / Organization / Entity next to Supplier). Gold ops were not changed.
 
-Condition 9 (`4b_rag_skills`) retrieves the same fixture skill bodies by cosine similarity to `json.dumps(task.input)`. k equals the routed compiled skill count for that task. Live embeddings POST `{base}/embeddings` as `openai/text-embedding-3-small` (override `INFONA_BENCH_EMBED_MODEL`) on the same Bearer key as chat. Missing key fails closed. A local hashing embedder is **not** the published RAG baseline (CI uses `MockEmbedder` only). Retrieval scores are logged; they are not compiler provenance.
+The skill library includes distractors (`fixtures/skills_distractors.json`, provenance `distractor`) on Person, Product, Location, and Customer. They are off the Company→Organization→Entity chain so routed et-001 stays neighborhood-legal. Dump-all (condition 3) injects them; that path is lab-only. Condition 9 retrieves from the same full enabled set.
+
+Condition 9 (`4b_rag_skills`) retrieves the same fixture skill bodies by cosine similarity to `json.dumps(task.input)`. k equals the routed compiled skill count for that task. Live embeddings POST `{base}/embeddings` as `openai/text-embedding-3-small` (override `INFONA_BENCH_EMBED_MODEL`) on the same Bearer key as chat. Missing key fails closed. A local hashing embedder is **not** the published RAG baseline (CI uses `MockEmbedder`; hermetic distractor ranking uses a pinned `TableEmbedder`). Retrieval scores are logged; they are not compiler provenance.
 
 ## OpenRouter env
 

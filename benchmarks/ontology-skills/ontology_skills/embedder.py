@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Protocol
+from typing import Mapping, Protocol
 from urllib.request import Request
 
 ENV_EMBED_MODEL = "INFONA_BENCH_EMBED_MODEL"
@@ -13,6 +13,7 @@ ALIAS_EMBED_MODEL = ("OPENAI_EMBED_MODEL",)
 # Hosted on OpenRouter; used only when a Bearer key is present.
 DEFAULT_EMBED_MODEL = "openai/text-embedding-3-small"
 MOCK_EMBEDDER_ID = "mock.deterministic.v1"
+TABLE_EMBEDDER_ID = "fixture.table.v1"
 MOCK_DIM = 16
 
 
@@ -31,6 +32,29 @@ class MockEmbedder:
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         return [_hash_vector(text, self.dim) for text in texts]
+
+
+@dataclass(frozen=True, slots=True)
+class TableEmbedder:
+    """Pinned text → vector. Missing texts are the zero vector of ``dim``.
+
+    Used so hermetic RAG tests can force a distractor into top-k without a
+    live embedding model. Not the published RAG baseline.
+    """
+
+    table: Mapping[str, tuple[float, ...]]
+    dim: int = 4
+    embedder_id: str = TABLE_EMBEDDER_ID
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        zero = (0.0,) * self.dim
+        out: list[list[float]] = []
+        for text in texts:
+            vec = self.table.get(text, zero)
+            if len(vec) != self.dim:
+                raise RuntimeError("fixture embedding dim mismatch")
+            out.append(list(vec))
+        return out
 
 
 @dataclass

@@ -42,7 +42,7 @@ A skill is procedural text attached to **exactly one** type or relation.
 | `skill_id` | Shadowing key. Unique per `(attached_to, skill_id)`. The same id on a more specific type **replaces** the ancestor. |
 | `kind` | `type` or `relation`. Must match `attached_to`. |
 | `body` | Non-empty markdown / prose the executor will read. Not code that this package runs. |
-| `provenance` | Recorded (`curated`, `teacher`, `executor`, …). **Never a rank or retrieval score.** |
+| `provenance` | Recorded (`curated`, `teacher`, `executor`, `distractor`, …). **Never a rank or retrieval score.** |
 | `enabled` | `false` on a more specific attachment suppresses that `skill_id` from ancestors (does not fall through). |
 
 Types have ordered `parent_ids` (single inheritance in the fixture; multiple is legal). Relations may have `parent_ids` (unused in the v1 fixture). Type ids and relation ids share one namespace and must not collide.
@@ -202,7 +202,7 @@ Order is locked in `ontology_skills.conditions.CONDITION_MATRIX`. Ids:
 8. `teacher_skills_4b`
 9. `4b_rag_skills` ← cosine top-k over the same enabled fixture skill bodies; k = routed compiled skill count for that task; no ontology walk
 
-Condition 2 injects lineage / relation names as schema text and **no** skill bodies. Condition 8 uses `compile_routed` on a skill library whose `provenance` is `teacher`; gold and neighborhoods stay the same. The v1 fixture has only `curated` bodies — INF-608/611 may add a parallel `fixtures/skills_teacher.json` **without** changing this schema. Condition 9 is retrieval, not compilation. Do not cook routed to beat RAG. Retrieval scores are logged and must not be written as skill provenance.
+Condition 2 injects lineage / relation names as schema text and **no** skill bodies. Condition 8 uses `compile_routed` on a skill library whose `provenance` is `teacher`; gold and neighborhoods stay the same. The fixture also loads `fixtures/skills_distractors.json`: extra curated bodies on `Person`, `Product`, `Location`, and `Customer` (a Company sibling). They share vendor / VAT / registration / supplier / warehouse / legal-name tokens with typing inputs so dump-all and embedding RAG are tempted. They must not attach to `Company` / `Organization` / `Entity`, because et-001 seeds Company and walks that chain. Condition 3 dump-all remains the WikiSkill lab control, not a product path. Condition 9 is retrieval, not compilation. Do not cook routed to beat RAG. Retrieval scores are logged and must not be written as skill provenance.
 
 Harness `compile_for_condition` raises if condition 5 is requested.
 
@@ -231,7 +231,7 @@ Stub runs set `status=stub`, all `metrics` null, resource fields null, `model.na
 
 ## 12. Dataset format
 
-- Ontology + skills: `fixtures/ontology.json`
+- Ontology + core skills: `fixtures/ontology.json`. Distractors: `fixtures/skills_distractors.json` (merged at load; dump-all / RAG control only).
 - Tasks: `fixtures/tasks.jsonl`, one object per line
 - Required task keys: `task_id`, `family`, `split`, `neighborhood`, `input`, `gold`
 - `neighborhood` keys: `type_ids`, `relation_ids`, `include_ancestors`, `include_incident_relations`

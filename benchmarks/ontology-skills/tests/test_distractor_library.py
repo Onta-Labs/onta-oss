@@ -1,0 +1,107 @@
+"""Distractor cabinet: dump-all / RAG control. Routed et-001 stays neighborhood-legal."""
+
+from __future__ import annotations
+
+import json
+
+from ontology_skills.compiler import compile_flat, compile_routed
+from ontology_skills.conditions import condition_by_id
+from ontology_skills.dataset import load_fixture_bundle, load_tasks
+from ontology_skills.embedder import TABLE_EMBEDDER_ID, TableEmbedder
+from ontology_skills.harness import compile_for_condition
+from ontology_skills.neighborhood_policy import compile_for_task
+from ontology_skills.prompts import build_prompt
+from ontology_skills.rag import retrieve_skills
+
+_ROUTED_CORE = (
+    "registration-id",
+    "legal-name-normalization",
+    "identity-hygiene",
+)
+_BLOCKED_CHAIN = frozenset({"Company", "Organization", "Entity"})
+_LEAF_SEED_FAMILIES = frozenset({"entity_typing", "multi_step_ingest"})
+
+
+def _et001():
+    bundle = load_fixture_bundle()
+    task = next(t for t in bundle.tasks if t.task_id == "et-001")
+    return bundle, task
+
+
+def _distractor_ids(ontology) -> frozenset[str]:
+    return frozenset(
+        s.skill_id for s in ontology.skills if s.provenance == "distractor"
+    )
+
+
+def test_distractors_are_off_the_company_chain() -> None:
+    bundle, _ = _et001()
+    ids = _distractor_ids(bundle.ontology)
+    assert 20 <= len(ids) <= 40
+    for skill in bundle.ontology.skills:
+        if skill.provenance != "distractor":
+            continue
+        assert skill.attached_to not in _BLOCKED_CHAIN, skill.skill_id
+        assert skill.kind == "type"
+
+
+def test_original_four_skills_still_attached() -> None:
+    bundle, _ = _et001()
+    by_id = {s.skill_id: s for s in bundle.ontology.skills}
+    assert by_id["identity-hygiene"].attached_to == "Entity"
+    assert by_id["legal-name-normalization"].attached_to == "Organization"
+    assert by_id["registration-id"].attached_to == "Company"
+    assert by_id["vendor-reconciliation"].attached_to == "Supplier"
+
+
+def test_et001_routed_excludes_distractors_and_vendor_reconciliation() -> None:
+    bundle, task = _et001()
+    compiled = compile_for_task(bundle.ontology, task)
+    distractors = _distractor_ids(bundle.ontology)
+    assert compiled.skill_ids == _ROUTED_CORE
+    assert "vendor-reconciliation" not in compiled.skill_ids
+    assert set(compiled.skill_ids).isdisjoint(distractors)
+    assert all(skill.attached_to != "Supplier" for skill in compiled.skills)
+
+
+def test_et001_types_only_prompt_has_no_supplier_token() -> None:
+    bundle, task = _et001()
+    cond = condition_by_id("4b_ontology_context")
+    compiled = compile_for_condition(bundle.ontology, task.neighborhood, cond)
+    prompt = build_prompt(task, bundle.ontology, compiled, cond)
+    assert "Supplier" not in prompt.text
+    assert "type Company parents=Organization" in prompt.text
+
+
+def test_et001_flat_is_much_larger_than_routed() -> None:
+    bundle, task = _et001()
+    routed = compile_routed(bundle.ontology, task.neighborhood)
+    flat = compile_flat(bundle.ontology)
+    assert len(flat.skills) >= len(routed.skills) + 15
+    assert set(_ROUTED_CORE) <= set(flat.skill_ids)
+
+
+def test_et001_rag_top_k_includes_a_distractor() -> None:
+    """Hash mock is not lexical. Pin one distractor body next to the query."""
+    bundle, task = _et001()
+    distractors = _distractor_ids(bundle.ontology)
+    bait = next(s for s in bundle.ontology.skills if s.skill_id in distractors)
+    query = json.dumps(dict(task.input), sort_keys=True, ensure_ascii=False)
+    aligned = (1.0, 0.0, 0.0, 0.0)
+    embedder = TableEmbedder(table={query: aligned, bait.body: aligned})
+    routed = compile_routed(bundle.ontology, task.neighborhood)
+    rag = retrieve_skills(bundle.ontology, task, embedder)
+    assert embedder.embedder_id == TABLE_EMBEDDER_ID
+    assert rag.k == len(routed.skills)
+    assert rag.k == 3
+    assert bait.skill_id in rag.compiled.skill_ids
+    assert set(rag.compiled.skill_ids) & distractors
+
+
+def test_typing_and_ingest_still_do_not_seed_gold_leaf() -> None:
+    for task in load_tasks():
+        if task.family not in _LEAF_SEED_FAMILIES:
+            continue
+        gold = {item.type_id for item in task.gold.type_assertions}
+        leak = set(task.neighborhood.type_ids) & gold
+        assert not leak, f"{task.task_id} seeds gold leaf {sorted(leak)}"
