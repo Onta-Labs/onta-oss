@@ -39,8 +39,6 @@ export interface BlueprintInstallBody {
   manifest_yaml?: string;
   seed?: string;
   target?: "existing" | "new_workspace";
-  first_run?: boolean;
-  credentials?: Record<string, string>;
 }
 
 export interface BlueprintUninstallResult {

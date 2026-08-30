@@ -8,7 +8,8 @@ not a second identity-scoped family.
   POST   /graphs/{tenant}/blueprints/validate
   POST   /graphs/{tenant}/blueprints/install
          body may include seed=infona/clinical-trials, target=new_workspace
-         (INF-605: outsider default is a new workspace + first-run)
+         (INF-605: outsider default is a new workspace; install does not
+         acquire — first-run is a separate command)
   GET    /graphs/{tenant}/blueprints
   GET    /graphs/{tenant}/blueprints/{namespace}/{name}
   DELETE /graphs/{tenant}/blueprints/{namespace}/{name}
@@ -69,13 +70,11 @@ class ValidateRequest(BaseModel):
 
 class InstallRequest(BaseModel):
     kg: Optional[str] = Field(default=None, min_length=1)
-    include_sample: bool = True
+    include_sample: Optional[bool] = None
     manifest: Optional[dict[str, Any]] = None
     manifest_yaml: Optional[str] = None
     seed: Optional[str] = None
     target: Literal["existing", "new_workspace"] = TARGET_EXISTING
-    first_run: Optional[bool] = None
-    credentials: Optional[dict[str, str]] = None
 
 
 class ForkRequest(BaseModel):
@@ -163,8 +162,6 @@ async def install_blueprint_route(
             kg=body.kg,
             include_sample=body.include_sample,
             target=body.target,
-            first_run=body.first_run,
-            credentials=body.credentials,
         )
     except BlueprintError as exc:
         _raise(exc)

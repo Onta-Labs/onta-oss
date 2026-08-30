@@ -6,12 +6,14 @@ for that outsider path is a newly minted workspace, never an existing
 tenant that already holds a KG. Optional later: install into an
 existing workspace as an explicit warned action (``target=existing``).
 
-A sample needs a registered KG in that workspace — created here, not
-left as a write-path side effect. After a successful public-path
-install, first-run is kicked on the same request and fails closed.
+Install writes ontology-layer content only (INF-564). It registers an
+empty KG slot so later first-run has somewhere to land. It does not
+acquire, enrich, ingest, or kick ``run_first_run``. First-run stays
+``POST …/first-run`` / ``infona blueprint first-run``.
 
-CLI / explicit ``target=existing`` is unchanged: write into the path
-tenant. No Install-vs-Fork chooser.
+Public install defaults to no package sample either — copying sample
+rows is still instance data. CLI ``target=existing`` may still ask for
+the bounded sample. No Install-vs-Fork chooser.
 
 Boundary: OSS. ``infona_client.*`` / stdlib only. No ``from infona.*``.
 """
@@ -25,13 +27,10 @@ from infona_client.blueprint.catalog import (
     make_blueprint_package_store,
     shipped_seed_path,
 )
-from infona_client.blueprint.first_run import missing_credentials, run_first_run
 from infona_client.blueprint.fork import fork_blueprint, resolve_package
 from infona_client.blueprint.install import install_blueprint
 from infona_client.blueprint.lock import make_blueprint_lock_store
 from infona_client.blueprint.plan import (
-    BlueprintCredentialsMissing,
-    BlueprintError,
     BlueprintNewWorkspaceUnavailable,
     BlueprintNotFound,
     BlueprintValidationError,
@@ -79,7 +78,7 @@ async def tenant_holds_graph(tenant_id: str) -> bool:
 
 
 async def path_holds_blueprint(tenant_id: str, blueprint_id: str) -> bool:
-    """Same-pin leftover (failed first-run) must retry here, not mint again."""
+    """Same-pin leftover (re-install / retry) must stay here, not mint again."""
     if await make_blueprint_lock_store().get(tenant_id, blueprint_id):
         return True
     return await make_blueprint_package_store().get(tenant_id, blueprint_id) is not None
@@ -117,8 +116,8 @@ async def resolve_install_tenant(
 ) -> str:
     """INF-605: ``new_workspace`` never writes into a tenant that already
     holds a *different* graph. An empty path tenant (just minted) is
-    reused. A leftover pin of the same Blueprint (first-run failed) is
-    also reused so retry does not mint another workspace."""
+    reused. A leftover pin of the same Blueprint is also reused so a
+    second install click does not mint another workspace."""
     if target == TARGET_EXISTING:
         return path_tenant
     if target != TARGET_NEW_WORKSPACE:
@@ -135,7 +134,7 @@ async def resolve_install_tenant(
 async def ensure_install_kg(
     tenant_id: str, kg: str, *, neptune: Any = None
 ) -> None:
-    """Register the KG before sample facts land. Not a write-path side effect."""
+    """Register an empty KG slot. Does not fetch or ingest instance data."""
     if not kg or not is_valid_kg_name(kg):
         raise BlueprintValidationError(f"invalid knowledge graph name {kg!r}")
     await ensure_kg_registered_store(tenant_id, kg)
@@ -148,29 +147,20 @@ async def install_with_target(
     tenant_id: str,
     api_key: str,
     kg: str | None = None,
-    include_sample: bool = True,
+    include_sample: bool | None = None,
     target: str = TARGET_EXISTING,
-    first_run: bool | None = None,
-    credentials: Mapping[str, str] | None = None,
     neptune: Any = None,
 ) -> dict[str, Any]:
-    """Install, optionally into a new workspace, then kick first-run.
+    """Install ontology-layer content, optionally into a new workspace.
 
-    ``target=new_workspace`` always runs first-run and fails closed.
-    ``target=existing`` (CLI) kicks first-run only when ``first_run=True``.
+    Does not acquire, enrich, or kick first-run. Public
+    ``target=new_workspace`` defaults to no package sample. CLI
+    ``target=existing`` keeps the optional bounded sample unless the
+    caller passes ``include_sample=False``.
     """
     loaded = load_and_validate(source)
-    kick = bool(first_run) or target == TARGET_NEW_WORKSPACE
-    if kick:
-        missing = missing_credentials(loaded, provided=credentials)
-        if missing:
-            raise BlueprintCredentialsMissing(
-                "required source credentials are missing",
-                details={
-                    "missing": [req.to_dict() for req in missing],
-                    "fail_closed": True,
-                },
-            )
+    if include_sample is None:
+        include_sample = target != TARGET_NEW_WORKSPACE
     dest = await resolve_install_tenant(
         api_key=api_key,
         path_tenant=tenant_id,
@@ -192,19 +182,6 @@ async def install_with_target(
         else TARGET_EXISTING
     )
     payload["tenant_id"] = dest
-    if kick:
-        try:
-            first = await run_first_run(
-                dest,
-                result.blueprint_id,
-                credentials=credentials,
-                neptune=neptune,
-            )
-        except BlueprintError as exc:
-            exc.details.setdefault("tenant_id", dest)
-            exc.details.setdefault("install_status", result.status)
-            raise
-        payload["first_run"] = first.to_dict()
     return payload
 
 

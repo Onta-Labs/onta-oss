@@ -219,7 +219,7 @@ export function registerBlueprintTools(server: McpServer): void {
     "install_blueprint",
     {
       description:
-        "Install a Blueprint into this workspace (idempotent). Optional bounded sample is never current. Same route as `infona blueprint install`.",
+        "Install a Blueprint into this workspace (idempotent). Writes ontology-layer content. Does not acquire or run first-run. Optional bounded sample is never current. Same route as `infona blueprint install`.",
       inputSchema: {
         kg: z.string().describe("Knowledge graph that receives the optional sample."),
         path: z.string().optional().describe("Local package directory; MCP reads blueprint.yaml and POSTs the document."),

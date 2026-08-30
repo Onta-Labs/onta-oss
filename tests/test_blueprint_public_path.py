@@ -1,16 +1,15 @@
-"""INF-605 — public install target is a new workspace; first-run is kicked."""
+"""INF-605 — public install target is a new workspace; install does not acquire."""
 
 from __future__ import annotations
 
 import pytest
 
-from infona_client.api_registry.executor import ApiCallResult, RegistryApiSource
+from infona_client.api_registry.executor import RegistryApiSource
 from infona_client.auth.tenant_directory import (
     Tenant,
     TenantProviderError,
     register_tenant_provider,
 )
-from infona_client.blueprint.plan import BlueprintAcquisitionFailed
 from infona_client.blueprint.catalog import reset_blueprint_package_store
 from infona_client.blueprint.install import inspect_blueprint, list_installed_blueprints
 from infona_client.blueprint.lock import reset_blueprint_lock_store
@@ -20,6 +19,7 @@ from infona_client.blueprint.public_path import (
     resolve_shipped_seed,
     tenant_holds_graph,
 )
+from infona_client.enrichment.job_store import InMemoryJobStore
 from infona_client.graph.kg_registry import list_registered_kgs, upsert_registered_kg
 from infona_client.skills.store import reset_type_skill_store
 
@@ -69,23 +69,33 @@ def _reset_blueprint_state():
     reset_type_skill_store()
 
 
-def _stub_first_run(monkeypatch) -> None:
-    async def fake_execute(self, spec, bindings=None, **kwargs):
-        return ApiCallResult(
-            slug=spec.slug,
-            rows=[
-                {
-                    "nct_id": "NCT09990001",
-                    "title": "Phase 3 obesity recruiting study",
-                    "status": "RECRUITING",
-                    "phase": "PHASE3",
-                    "lead_sponsor": "Live Example Sponsor",
-                    "conditions": ["Obesity"],
-                }
-            ],
-        )
+def _forbid_acquisition(monkeypatch) -> dict[str, int]:
+    """Install must not call first-run, hit CT.gov, or create an enrich job."""
+    hits = {"first_run": 0, "registry_execute": 0, "enrich_jobs": 0}
 
-    monkeypatch.setattr(RegistryApiSource, "execute", fake_execute)
+    async def boom_first_run(*args, **kwargs):
+        hits["first_run"] += 1
+        raise AssertionError("install must not call run_first_run")
+
+    async def boom_execute(self, spec, bindings=None, **kwargs):
+        hits["registry_execute"] += 1
+        raise AssertionError("install must not hit ClinicalTrials.gov")
+
+    async def boom_job(self, job):
+        hits["enrich_jobs"] += 1
+        raise AssertionError("install must not create an enrichment job")
+
+    monkeypatch.setattr(
+        "infona_client.blueprint.first_run.run_first_run", boom_first_run
+    )
+    monkeypatch.setattr(
+        "infona_client.blueprint.public_path.run_first_run",
+        boom_first_run,
+        raising=False,
+    )
+    monkeypatch.setattr(RegistryApiSource, "execute", boom_execute)
+    monkeypatch.setattr(InMemoryJobStore, "create", boom_job)
+    return hits
 
 
 @pytest.mark.asyncio
@@ -99,7 +109,7 @@ def test_public_install_seed_one_shot_reuses_empty_path_tenant(
     client, auth_headers, monkeypatch
 ):
     """Just-minted empty workspace is the new workspace — no second mint."""
-    _stub_first_run(monkeypatch)
+    hits = _forbid_acquisition(monkeypatch)
     resp = client.post(
         f"/graphs/{TENANT}/blueprints/install",
         json={
@@ -114,9 +124,14 @@ def test_public_install_seed_one_shot_reuses_empty_path_tenant(
     assert body["tenant_id"] == TENANT
     assert body["kg"] == "clinical-trials"
     assert body["target"] == TARGET_NEW_WORKSPACE
-    assert body["first_run"]["status"] == "answered"
-    assert body["first_run"]["sample_is_current"] is False
-    assert "NCT09990001" in body["first_run"]["answer"]
+    assert body["sample_included"] is False
+    assert body["sample_is_current"] is False
+    assert body["types"]
+    assert "first_run" not in body
+    assert hits == {"first_run": 0, "registry_execute": 0, "enrich_jobs": 0}
+    jobs = client.get(f"/graphs/{TENANT}/jobs", headers=auth_headers)
+    assert jobs.status_code == 200
+    assert jobs.json() == []
 
 
 @pytest.mark.asyncio
@@ -124,7 +139,7 @@ async def test_public_install_does_not_contaminate_tenant_with_unrelated_kg(
     client, auth_headers, monkeypatch
 ):
     """INF-605: default new-workspace path must not write into a dirty tenant."""
-    _stub_first_run(monkeypatch)
+    hits = _forbid_acquisition(monkeypatch)
     await upsert_registered_kg(TENANT, UNRELATED_KG, description="pre-existing")
     assert await tenant_holds_graph(TENANT) is True
 
@@ -143,7 +158,8 @@ async def test_public_install_does_not_contaminate_tenant_with_unrelated_kg(
     assert dest != TENANT
     assert dest.startswith("untitled-workspace")
     assert body["kg"] == "clinical-trials"
-    assert body["first_run"]["status"] == "answered"
+    assert "first_run" not in body
+    assert hits == {"first_run": 0, "registry_execute": 0, "enrich_jobs": 0}
 
     dirty_kgs = {row["name"] for row in await list_registered_kgs(TENANT)}
     assert UNRELATED_KG in dirty_kgs
@@ -157,11 +173,36 @@ async def test_public_install_does_not_contaminate_tenant_with_unrelated_kg(
     assert card["sample_is_current"] is False
 
 
+def test_public_install_ignores_first_run_body_and_does_not_hit_ctgov(
+    client, auth_headers, monkeypatch
+):
+    """A leftover first_run=true on POST /install must not acquire."""
+    hits = _forbid_acquisition(monkeypatch)
+    resp = client.post(
+        f"/graphs/{TENANT}/blueprints/install",
+        json={
+            "seed": "infona/clinical-trials",
+            "target": "new_workspace",
+            "first_run": True,
+            "credentials": {"INFONA_UNUSED": "nope"},
+        },
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "installed"
+    assert "first_run" not in body
+    assert hits["first_run"] == 0
+    assert hits["registry_execute"] == 0
+    assert hits["enrich_jobs"] == 0
+
+
 @pytest.mark.asyncio
 async def test_existing_target_still_writes_the_path_tenant_when_dirty(
-    client, auth_headers
+    client, auth_headers, monkeypatch
 ):
     """CLI / explicit existing-workspace install writes the path tenant."""
+    hits = _forbid_acquisition(monkeypatch)
     await upsert_registered_kg(TENANT, UNRELATED_KG, description="pre-existing")
     resp = client.post(
         f"/graphs/{TENANT}/blueprints/install",
@@ -173,12 +214,15 @@ async def test_existing_target_still_writes_the_path_tenant_when_dirty(
     assert body["tenant_id"] == TENANT
     assert "first_run" not in body
     assert body.get("target") == "existing"
+    assert hits["first_run"] == 0
+    assert hits["registry_execute"] == 0
 
 
 def test_public_fork_uses_new_workspace_and_keeps_lineage(
-    client, auth_headers
+    client, auth_headers, monkeypatch
 ):
     """Public Fork is fork-with-lineage, not install. No first-run."""
+    hits = _forbid_acquisition(monkeypatch)
     # Dirty the path tenant so target=new_workspace must mint.
     client.post(
         f"/graphs/{TENANT}/blueprints/install",
@@ -197,6 +241,7 @@ def test_public_fork_uses_new_workspace_and_keeps_lineage(
     assert body["parent_id"] == "infona/clinical-trials"
     assert body["lineage"]["parent"]["id"] == "infona/clinical-trials"
     assert "first_run" not in body
+    assert hits["first_run"] == 0
     listed = client.get(f"/graphs/{TENANT}/blueprints", headers=auth_headers)
     ids = [row["blueprint_id"] for row in listed.json()["blueprints"]]
     assert "infona/clinical-trials" in ids
@@ -204,83 +249,17 @@ def test_public_fork_uses_new_workspace_and_keeps_lineage(
     assert body["blueprint_id"] not in ids
 
 
-def test_public_install_first_run_fail_closed(client, auth_headers):
-    """Missing BYOK on the public path is an error, not a skipped first-run."""
-    import json
-    from pathlib import Path
-
-    body = json.loads(
-        (
-            Path(__file__).resolve().parents[1]
-            / "infona_client/blueprint/data/clinical_trials_min.json"
-        ).read_text(encoding="utf-8")
-    )
-    body["sources"].append(
-        {
-            "id": "private-tracker",
-            "title": "Private trial tracker",
-            "kind": "licensed_api",
-            "publisher": "Example",
-            "description": "Keyed source.",
-            "license": "Apache-2.0",
-            "url": "https://clinicaltrials.gov/api/v2/studies",
-            "credential": "byok",
-            "key_env": "INFONA_TEST_TRACKER_KEY",
-            "declared_cadence": "weekly",
-            "mappings": [
-                {
-                    "source_field": "id",
-                    "lands_on": "ClinicalTrial.nct_id",
-                    "kind": "literal",
-                }
-            ],
-        }
-    )
-    ctgov = next(row for row in body["acquisition"] if row["source"] == "ctgov")
-    body["acquisition"] = [{**ctgov, "source": "private-tracker"}]
-    resp = client.post(
-        f"/graphs/{TENANT}/blueprints/install",
-        json={
-            "kg": "clinical-trials",
-            "include_sample": False,
-            "manifest": body,
-            "target": "new_workspace",
-        },
-        headers=auth_headers,
-    )
-    assert resp.status_code == 400, resp.text
-    detail = resp.json()["detail"]
-    assert detail["fail_closed"] is True
-    assert detail["missing"][0]["key_env"] == "INFONA_TEST_TRACKER_KEY"
-    listed = client.get(f"/graphs/{TENANT}/blueprints", headers=auth_headers)
-    assert listed.json()["blueprints"] == []
-
-
-def test_public_install_retries_same_workspace_after_first_run_failure(
+def test_public_install_retries_same_workspace_on_same_pin(
     client, auth_headers, monkeypatch
 ):
-    """Failed first-run leaves a pin; retry must not mint a second workspace."""
-    from infona_client.blueprint import public_path as pp
-
-    real = pp.run_first_run
-    state = {"n": 0}
-
-    async def fail_once(*args, **kwargs):
-        state["n"] += 1
-        if state["n"] == 1:
-            raise BlueprintAcquisitionFailed(
-                "ctgov unavailable", details={"fail_closed": True}
-            )
-        return await real(*args, **kwargs)
-
-    monkeypatch.setattr(pp, "run_first_run", fail_once)
+    """Re-install of the same seed stays on the leftover pin; no second mint."""
+    hits = _forbid_acquisition(monkeypatch)
     first = client.post(
         f"/graphs/{TENANT}/blueprints/install",
         json={"seed": "infona/clinical-trials", "target": "new_workspace"},
         headers=auth_headers,
     )
-    assert first.status_code == 400, first.text
-    assert first.json()["detail"]["tenant_id"] == TENANT
+    assert first.status_code == 200, first.text
     listed = client.get(f"/graphs/{TENANT}/blueprints", headers=auth_headers)
     assert listed.json()["blueprints"][0]["blueprint_id"] == "infona/clinical-trials"
 
@@ -291,7 +270,10 @@ def test_public_install_retries_same_workspace_after_first_run_failure(
     )
     assert retry.status_code == 200, retry.text
     assert retry.json()["tenant_id"] == TENANT
-    assert retry.json()["first_run"]["status"] == "answered"
+    assert retry.json()["status"] == "already_installed"
+    assert "first_run" not in retry.json()
+    assert hits["first_run"] == 0
+    assert hits["registry_execute"] == 0
 
 
 @pytest.mark.asyncio
