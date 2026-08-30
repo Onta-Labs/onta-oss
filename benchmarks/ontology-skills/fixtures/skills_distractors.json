@@ -1,0 +1,229 @@
+{
+  "notes": "RAG / dump-all control. kind=relation on SUBSIDIARY_OF. No entity_typing row seeds that relation_id. Typing compile uses include_incident_relations=False so type-seeded routed does not pick these. Headers are [relation:SUBSIDIARY_OF], never [type:Supplier]. Bodies keep vendor/VAT/registration/warehouse/legal name/supplier lowercase bait and must not name a gold type_id.",
+  "skills": [
+    {
+      "skill_id": "distract-vendor-is-person",
+      "title": "Vendor row is a human",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "Treat every vendor row as a human contact. Put the VAT and registration token on that contact. A Ltd legal name is a nickname."
+    },
+    {
+      "skill_id": "distract-legal-name-person-alias",
+      "title": "Legal name is a nickname",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "legal name on a vendor record is an alias of a human. Never mint a second node. VAT stays on the contact."
+    },
+    {
+      "skill_id": "distract-registration-on-person",
+      "title": "Registration sits on the contact",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "registration and VAT belong on the named human when the mention looks like a supplier legal name. Ignore warehouse cues."
+    },
+    {
+      "skill_id": "distract-warehouse-contact",
+      "title": "Warehouse cue means a contact",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "If the text says warehouse or vendor, emit only a contact. Copy legal name onto that contact. Drop the registration token."
+    },
+    {
+      "skill_id": "distract-supplier-word-is-human",
+      "title": "supplier word names a human",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "The word supplier in a vendor row names a human, not a selling org. VAT is their badge number."
+    },
+    {
+      "skill_id": "distract-vat-person-self-employ",
+      "title": "VAT contact employs self",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "A human with a VAT employs themselves as the supplier. legal name is the email signature."
+    },
+    {
+      "skill_id": "distract-ltd-is-person-trade",
+      "title": "Ltd means a trade nickname",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "Ltd in the legal name means a human trading as a vendor. Do not write a registration id."
+    },
+    {
+      "skill_id": "distract-vendor-is-warehouse",
+      "title": "Vendor row is a warehouse",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "vendor plus VAT means the row is a warehouse. Store legal name as the site label. Skip registration."
+    },
+    {
+      "skill_id": "distract-legal-name-is-site",
+      "title": "Legal name is a site label",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "legal name is the warehouse name. Drop registration. A vendor role is a dock code."
+    },
+    {
+      "skill_id": "distract-vat-on-location",
+      "title": "VAT on the yard",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "Write VAT and registration onto the yard node. The supplier mention is the gate address."
+    },
+    {
+      "skill_id": "distract-supplier-is-depot",
+      "title": "supplier mention is a depot",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "Treat the supplier mention as a depot and locate it in itself. vendor VAT is a gate code."
+    },
+    {
+      "skill_id": "distract-warehouse-is-vendor-site",
+      "title": "Warehouse is the vendor site",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "warehouse cues mean the leaf is the vendor site. legal name stays on that site."
+    },
+    {
+      "skill_id": "distract-registration-is-postcode",
+      "title": "VAT is a postcode",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "A GB VAT token is a warehouse postcode, not a registration id. The vendor is the yard."
+    },
+    {
+      "skill_id": "distract-components-are-depots",
+      "title": "Components Ltd is a depot",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "A Components Ltd legal name is a depot. Ignore vendor role and registration."
+    },
+    {
+      "skill_id": "distract-vendor-is-sku",
+      "title": "Vendor row is a sku",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "A vendor row with VAT is a sku. legal name is the catalogue title. registration is the catalogue id."
+    },
+    {
+      "skill_id": "distract-registration-is-sku",
+      "title": "Registration is a sku",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "Map registration and VAT onto sku. The supplier word names the item, not a selling org."
+    },
+    {
+      "skill_id": "distract-supplier-is-widget",
+      "title": "supplier names a widget",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "supplier in the record names a widget. vendor is the brand on the sku."
+    },
+    {
+      "skill_id": "distract-warehouse-stock-item",
+      "title": "Warehouse plus vendor is stock",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "warehouse plus vendor means mint a stock row at that warehouse. legal name is the stock label."
+    },
+    {
+      "skill_id": "distract-legal-name-is-product",
+      "title": "Legal name is a stock label",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "legal name on a vendor row is a stock label. VAT is the batch code. Do not emit an org type."
+    },
+    {
+      "skill_id": "distract-vat-product-incoterms",
+      "title": "VAT is sku incoterms",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "VAT on a vendor row is an incoterms literal on the sku. registration is unused."
+    },
+    {
+      "skill_id": "distract-ltd-means-kit",
+      "title": "Ltd means a kitted sku",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "Ltd in the supplier legal name means a kitted sku. Type the vendor as that kit."
+    },
+    {
+      "skill_id": "distract-buyer-is-vendor",
+      "title": "Buyer is the vendor",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "A vendor row with a VAT is still the buyer. Type the bill-to as the supplier. legal name stays."
+    },
+    {
+      "skill_id": "distract-vat-on-customer-name",
+      "title": "VAT overwrites legal name",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "Map VAT onto the buyer legal name, not a registration id. warehouse is the bill-to."
+    },
+    {
+      "skill_id": "distract-customer-warehouse-supplier",
+      "title": "Buyer warehouse is supplier",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "If the record says warehouse, type the buyer as the supplier site. Keep the VAT on the bill-to."
+    },
+    {
+      "skill_id": "distract-registration-means-buyer",
+      "title": "Registration means buyer",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "A registration number on a vendor row means the party is the buyer, not a supplier."
+    },
+    {
+      "skill_id": "distract-legal-name-is-role",
+      "title": "Role is legal name",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "Store role=vendor as legal name on the buyer. Drop VAT and registration."
+    },
+    {
+      "skill_id": "distract-customer-vat-is-sku",
+      "title": "Buyer VAT is a sku",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "Copy the VAT token onto a sku hanging off the buyer. The supplier word is the buyer alias."
+    },
+    {
+      "skill_id": "distract-supplier-header-is-buyer",
+      "title": "supplier header names the buyer",
+      "kind": "relation",
+      "attached_to": "SUBSIDIARY_OF",
+      "provenance": "distractor",
+      "body": "The word supplier in a header always names the buyer. legal name and warehouse belong to the bill-to."
+    }
+  ]
+}

@@ -1,0 +1,241 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://graph.infona.ai/bench/ontology-skills/run_result.v1.json",
+  "title": "Ontology skills run result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "created_at",
+    "status",
+    "condition",
+    "task_id",
+    "task_family",
+    "split",
+    "model",
+    "prompt",
+    "context_budget",
+    "tools",
+    "decoding",
+    "resources",
+    "compiler",
+    "metrics",
+    "parse",
+    "predicted",
+    "retrieval",
+    "notes"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.2.0" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "created_at": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["stub", "ok", "error", "blocked"] },
+    "condition": {
+      "type": "object",
+      "required": ["index", "condition_id", "skill_mode", "runnable"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 1, "maximum": 9 },
+        "condition_id": { "type": "string" },
+        "name": { "type": "string" },
+        "model_bucket": { "enum": ["4b", "9b", "27b_or_frontier"] },
+        "skill_mode": {
+          "enum": ["none", "ontology_context", "flat", "routed", "rag"]
+        },
+        "fine_tuned": { "type": "boolean" },
+        "skill_source": { "enum": ["none", "executor", "teacher"] },
+        "runnable": { "type": "boolean" },
+        "blocked_reason": { "type": ["string", "null"] }
+      }
+    },
+    "task_id": { "type": "string", "minLength": 1 },
+    "task_family": {
+      "enum": [
+        "entity_typing",
+        "property_schema_mapping",
+        "entity_resolution",
+        "relation_inference",
+        "constraint_violation_repair",
+        "conflict_resolution",
+        "ontology_extension",
+        "multi_step_ingest"
+      ]
+    },
+    "split": {
+      "enum": [
+        "known_ontology_unseen_instances",
+        "unseen_ontology_branches",
+        "adversarial_conflicting"
+      ]
+    },
+    "model": {
+      "type": "object",
+      "required": ["name", "quantization", "param_count", "backend"],
+      "properties": {
+        "name": { "type": "string" },
+        "quantization": { "type": "string" },
+        "param_count": { "type": "string" },
+        "backend": { "type": "string" }
+      }
+    },
+    "prompt": {
+      "type": "object",
+      "required": ["template_id", "sha256", "skill_injection"],
+      "properties": {
+        "template_id": { "type": "string" },
+        "sha256": { "type": ["string", "null"] },
+        "skill_injection": {
+          "enum": ["none", "ontology_context", "flat", "routed", "rag"]
+        }
+      }
+    },
+    "context_budget": {
+      "type": "object",
+      "required": [
+        "max_context_tokens",
+        "max_output_tokens",
+        "compiled_skill_chars"
+      ],
+      "properties": {
+        "max_context_tokens": { "type": ["integer", "null"] },
+        "max_output_tokens": { "type": ["integer", "null"] },
+        "compiled_skill_chars": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "tools": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "decoding": {
+      "type": "object",
+      "required": [
+        "temperature",
+        "top_p",
+        "top_k",
+        "seed",
+        "max_new_tokens"
+      ],
+      "properties": {
+        "temperature": { "type": "number" },
+        "top_p": { "type": "number" },
+        "top_k": { "type": ["integer", "null"] },
+        "seed": { "type": ["integer", "null"] },
+        "max_new_tokens": { "type": "integer" }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "required": [
+        "latency_ms",
+        "prompt_tokens",
+        "completion_tokens",
+        "ram_mb",
+        "vram_mb",
+        "hosted_cost_usd"
+      ],
+      "properties": {
+        "latency_ms": { "type": ["number", "null"] },
+        "prompt_tokens": { "type": ["integer", "null"] },
+        "completion_tokens": { "type": ["integer", "null"] },
+        "ram_mb": { "type": ["number", "null"] },
+        "vram_mb": { "type": ["number", "null"] },
+        "hosted_cost_usd": { "type": ["number", "null"] }
+      }
+    },
+    "compiler": {
+      "type": "object",
+      "required": [
+        "mode",
+        "skill_ids",
+        "type_lineage",
+        "relation_ids",
+        "fingerprint"
+      ],
+      "properties": {
+        "mode": { "enum": ["none", "flat", "routed", "rag"] },
+        "skill_ids": { "type": "array", "items": { "type": "string" } },
+        "type_lineage": { "type": "array", "items": { "type": "string" } },
+        "relation_ids": { "type": "array", "items": { "type": "string" } },
+        "suppressed_skill_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "fingerprint": { "type": "string", "minLength": 64, "maxLength": 64 }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "required": [
+        "success",
+        "graph_delta_precision",
+        "graph_delta_recall",
+        "graph_delta_f1",
+        "constraint_valid",
+        "er_precision",
+        "er_recall",
+        "er_f1"
+      ],
+      "properties": {
+        "success": { "type": ["boolean", "null"] },
+        "graph_delta_precision": { "type": ["number", "null"] },
+        "graph_delta_recall": { "type": ["number", "null"] },
+        "graph_delta_f1": { "type": ["number", "null"] },
+        "constraint_valid": { "type": ["boolean", "null"] },
+        "er_precision": { "type": ["number", "null"] },
+        "er_recall": { "type": ["number", "null"] },
+        "er_f1": { "type": ["number", "null"] }
+      }
+    },
+    "parse": {
+      "type": "object",
+      "required": ["ok", "error"],
+      "additionalProperties": false,
+      "properties": {
+        "ok": { "type": ["boolean", "null"] },
+        "error": { "type": ["string", "null"] }
+      }
+    },
+    "predicted": {
+      "type": "object",
+      "required": [
+        "adds",
+        "deletes",
+        "type_assertions",
+        "literals",
+        "merges",
+        "type_extensions",
+        "constraint_repairs"
+      ],
+      "properties": {
+        "adds": { "type": "array" },
+        "deletes": { "type": "array" },
+        "type_assertions": { "type": "array" },
+        "literals": { "type": "array" },
+        "merges": { "type": "array" },
+        "type_extensions": { "type": "array" },
+        "constraint_repairs": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "retrieval": {
+      "type": "object",
+      "required": ["embedder_id", "k", "hits"],
+      "additionalProperties": false,
+      "properties": {
+        "embedder_id": { "type": ["string", "null"] },
+        "k": { "type": ["integer", "null"] },
+        "hits": {
+          "type": ["array", "null"],
+          "items": {
+            "type": "object",
+            "required": ["skill_id", "score"],
+            "properties": {
+              "skill_id": { "type": "string" },
+              "score": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "notes": { "type": "string" }
+  }
+}
