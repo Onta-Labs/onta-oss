@@ -4,19 +4,20 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 from typing import Any, Callable, Mapping, Protocol
 
 from vrdu_binder.bind import TypeCatalog
-from vrdu_binder.constants import LEAK_LITERALS, LEAK_PATTERNS
+from vrdu_binder.constants import LEAK_LITERALS, LEAK_PATTERNS, TOGETHER_BASE_URL
 from vrdu_binder.extract import entity_item
 from vrdu_binder.protocol import ProtocolError, require_one_skill
 from vrdu_binder.skills import Skill, assert_extract_keys_subset
 
-API_KEY_VARS = ("INFONA_BINDER_API_KEY",)
-DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
-DEFAULT_MODEL = "openai/gpt-4o-mini"
+API_KEY_VARS = ("INFONA_BINDER_API_KEY", "TOGETHER_API_KEY")
+DEFAULT_BASE_URL = TOGETHER_BASE_URL
+DEFAULT_MODEL = "Qwen/Qwen3.5-0.8B"
 
 
 class ChatClient(Protocol):
@@ -30,7 +31,7 @@ def resolve_api_key() -> str:
         if val:
             return val
     raise ProtocolError(
-        "LLM binder/extractor needs INFONA_BINDER_API_KEY. "
+        "LLM binder/extractor needs INFONA_BINDER_API_KEY or TOGETHER_API_KEY. "
         "Refusing rather than falling back to KeywordBinder on real data."
     )
 
@@ -54,15 +55,29 @@ PostFn = Callable[[str, dict[str, str], dict[str, Any]], dict[str, Any]]
 
 def _default_post(url: str, headers: dict[str, str], body: dict[str, Any]) -> dict[str, Any]:
     payload = json.dumps(body).encode("utf-8")
-    req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            raw = json.loads(resp.read().decode("utf-8"))
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-        raise ProtocolError(f"LLM HTTP call failed: {exc}") from exc
-    if not isinstance(raw, dict):
-        raise ProtocolError("LLM response is not a JSON object")
-    return raw
+    last_exc: Exception | None = None
+    for attempt in range(4):
+        req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=180) as resp:
+                raw = json.loads(resp.read().decode("utf-8"))
+            if not isinstance(raw, dict):
+                raise ProtocolError("LLM response is not a JSON object")
+            return raw
+        except urllib.error.HTTPError as exc:
+            code = exc.code
+            last_exc = exc
+            if code in {429, 500, 502, 503, 504} and attempt < 3:
+                time.sleep(2 ** attempt)
+                continue
+            raise ProtocolError(f"LLM HTTP call failed: {exc}") from exc
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            last_exc = exc
+            if attempt < 3:
+                time.sleep(2 ** attempt)
+                continue
+            raise ProtocolError(f"LLM HTTP call failed: {exc}") from exc
+    raise ProtocolError(f"LLM HTTP call failed: {last_exc}")
 
 
 class UrllibChatClient:
@@ -90,10 +105,13 @@ class UrllibChatClient:
         body = {
             "model": self.model,
             "temperature": 0,
+            "max_tokens": 1024,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
+            # Qwen3.5 thinking is on by default. Bind replies must stay type ids.
+            "chat_template_kwargs": {"enable_thinking": False},
         }
         raw = self._post(url, headers, body)
         return _assistant_text(raw)
@@ -108,7 +126,15 @@ def _assistant_text(payload: Mapping[str, Any]) -> str:
     text = message.get("content")
     if not isinstance(text, str) or not text.strip():
         raise ProtocolError("LLM response content is empty")
-    return text.strip()
+    return _strip_thinking(text)
+
+
+def _strip_thinking(text: str) -> str:
+    """Drop a leading think block if a provider ignores enable_thinking=false."""
+    stripped = text.strip()
+    if "</think>" in stripped:
+        stripped = stripped.split("</think>", 1)[-1].strip()
+    return stripped
 
 
 def bind_system_prompt(catalog: TypeCatalog) -> str:

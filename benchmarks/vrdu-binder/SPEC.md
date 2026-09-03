@@ -74,8 +74,9 @@ STL FormNet Registration 92.12 is Task 1. Exclude it.
 Do not claim this is a published VRDU task. Do not claim Infona≫RAG or
 8B+Infona≈27B.
 
-Four-arm SD_0 scaffolding (32B bare, 0.8B bare, 0.8B vanilla-FT, 0.8B
-FT+Infona) lives in [EXPERIMENT.md](EXPERIMENT.md). No scores are filled
+Four-arm SD_0 scaffolding (27B bare, 0.8B bare, 0.8B vanilla-FT, 0.8B
+FT+Infona) lives in [EXPERIMENT.md](EXPERIMENT.md). Large bare is
+`Qwen/Qwen3.5-27B` (Together deprecated Qwen3-32B). No scores are filled
 in. Publish only if arm4 ≈ arm1 and arm4 ≫ arm3 on both headlines.
 
 ## Leak-honest choices this tree made
@@ -91,12 +92,13 @@ in. Publish only if arm4 ≈ arm1 and arm4 ≫ arm3 on both headlines.
   the document.
 - `KeywordBinder` / `KeywordExtractor` may write fixture dumps only. A
   published-split `*-test_predictions.json` requires the LLM adapters and
-  `INFONA_BINDER_API_KEY`. Missing key refuses. No keyword fallback.
+  `INFONA_BINDER_API_KEY` or `TOGETHER_API_KEY`. Missing both refuses. No
+  keyword fallback. Default host is `https://api.together.xyz/v1`.
 - The LLM bind catalog is `type_0` / `type_1` plus official keys. The LLM
   extract prompt is OCR tokens plus the one skill body.
 
 ## Out of scope
 
-Live SD_0 scoring, downloading Qwen weights, GraphDelta JSON, OSKGC,
+Downloading Qwen weights into git, GraphDelta JSON, OSKGC,
 LettrIA, patching #1882, rewriting published test lists, oracle-type F1
 as a headline script, auto-claiming the publish gate.

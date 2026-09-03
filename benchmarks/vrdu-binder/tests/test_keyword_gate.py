@@ -120,6 +120,7 @@ def test_cli_run_keyword_refuses_before_touching_data(tmp_path, capsys):
 
 def test_cli_run_llm_without_key_refuses(tmp_path, capsys, monkeypatch):
     monkeypatch.delenv("INFONA_BINDER_API_KEY", raising=False)
+    monkeypatch.delenv("TOGETHER_API_KEY", raising=False)
     rc = main(
         [
             "run",

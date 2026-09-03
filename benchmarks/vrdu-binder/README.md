@@ -4,7 +4,7 @@ Constructed mix of two published VRDU MTL tests. Not a VRDU task. Isolated
 from any GraphDelta ontology-skills bench.
 
 Locked rules: [SPEC.md](SPEC.md). Four-arm SD_0 runbook: [EXPERIMENT.md](EXPERIMENT.md).
-Say 32B, not 20B. This README does not contain Bind@type or F1 numbers.
+Say 27B, not 20B or 32B. This README does not contain Bind@type or F1 numbers.
 
 ## What is on the slide
 
@@ -62,13 +62,15 @@ writes published-split `*-test_predictions.json` and therefore refuses
 and `--binder keyword` is an error, not a dump. Dry-run fixtures stay on
 the `dry-run` command and use `SYNTH-…` dump names.
 
-A published dump needs `--binder llm` and `INFONA_BINDER_API_KEY`. If the
-key is missing, the command exits 2. It does not fall back to KeywordBinder.
-This PR does not run a 300-per-corpus live sweep and does not invent F1.
+A published dump needs `--binder llm` and `INFONA_BINDER_API_KEY` or
+`TOGETHER_API_KEY`. If both are missing, the command exits 2. It does not
+fall back to KeywordBinder. Default chat host is
+`https://api.together.xyz/v1`. Override with `INFONA_BINDER_BASE_URL`.
 
 ```bash
-export INFONA_BINDER_API_KEY=...          # required for `run`; no keyword fallback
-# optional: INFONA_LLM_BASE_URL  INFONA_LLM_MODEL
+export INFONA_BINDER_API_KEY=...          # wins if set
+# or: export TOGETHER_API_KEY=...
+# optional: INFONA_LLM_BASE_URL  INFONA_BINDER_MODEL
 python -m vrdu_binder run --seed 0 --corpus registration \
   --data benchmarks/vrdu-binder/data \
   --out /tmp/vrdu-dumps/registration
@@ -92,5 +94,5 @@ Same for `ad-buy-form`. Do not patch
 ## Claims this package will not make
 
 This is not a published VRDU task. It does not show Infona≫RAG. It does not
-show 8B+Infona≈27B. It does not ship live 32B or 0.8B scores. The four-arm
-publish gate is in EXPERIMENT.md and is not auto-claimed.
+show 8B+Infona≈27B as a prior. The four-arm publish gate is in EXPERIMENT.md
+and is not auto-claimed.

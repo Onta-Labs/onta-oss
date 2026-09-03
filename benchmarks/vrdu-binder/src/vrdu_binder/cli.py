@@ -143,7 +143,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
     if args.binder == "keyword":
         raise ProtocolError(
             "KeywordBinder cannot dump published VRDU splits. "
-            "Use `dry-run` for fixtures, or --binder llm with INFONA_BINDER_API_KEY. "
+            "Use `dry-run` for fixtures, or --binder llm with "
+            "INFONA_BINDER_API_KEY or TOGETHER_API_KEY. "
             "Refusing rather than writing a keyword score."
         )
     binder = LlmBinder()

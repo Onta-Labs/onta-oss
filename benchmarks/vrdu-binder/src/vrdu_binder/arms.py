@@ -5,15 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from vrdu_binder.bare import BareBinder, BareExtractor
-from vrdu_binder.constants import MODEL_08B, MODEL_32B
+from vrdu_binder.constants import MODEL_08B, MODEL_27B
 from vrdu_binder.llm import ChatClient, LlmBinder, LlmExtractor
 from vrdu_binder.protocol import ProtocolError
 
-ARM_32B_BARE = "32b_bare"
+ARM_27B_BARE = "27b_bare"
 ARM_08B_BARE = "0.8b_bare"
 ARM_08B_VANILLA_FT = "0.8b_vanilla_ft"
 ARM_08B_FT_INFONA = "0.8b_ft_infona"
-ARM_IDS = (ARM_32B_BARE, ARM_08B_BARE, ARM_08B_VANILLA_FT, ARM_08B_FT_INFONA)
+ARM_IDS = (ARM_27B_BARE, ARM_08B_BARE, ARM_08B_VANILLA_FT, ARM_08B_FT_INFONA)
 
 
 @dataclass(frozen=True)
@@ -26,12 +26,12 @@ class Arm:
 
 
 ARMS: dict[str, Arm] = {
-    ARM_32B_BARE: Arm(
-        arm_id=ARM_32B_BARE,
-        model_id=MODEL_32B,
+    ARM_27B_BARE: Arm(
+        arm_id=ARM_27B_BARE,
+        model_id=MODEL_27B,
         uses_infona_router=False,
         lora_recipe=None,
-        title="32B bare",
+        title="27B bare",
     ),
     ARM_08B_BARE: Arm(
         arm_id=ARM_08B_BARE,

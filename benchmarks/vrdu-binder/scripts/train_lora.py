@@ -7,9 +7,10 @@ Usage (from repo root):
       python benchmarks/vrdu-binder/scripts/train_lora.py check \\
       --jsonl /tmp/lora/sd0-vanilla.jsonl
 
-`train` is a documented GPU step. It refuses unless transformers+peft are
-installed and `--i-have-gpu` is set. Valid is not a flag. There is no
-early-stopping split.
+`train` is a documented local-GPU step. It refuses unless transformers+peft
+are installed and `--i-have-gpu` is set. Preferred hosted path is
+`together_lora.py` (Together LoRA on Qwen/Qwen3.5-0.8B). Valid is not a
+flag. There is no early-stopping split.
 """
 
 from __future__ import annotations

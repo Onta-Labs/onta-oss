@@ -12,11 +12,13 @@ from typing import Final
 
 SPEC_VERSION: Final = "v11"
 
-# Slide models. Say 32B (same family). Do not write "20B".
-MODEL_32B: Final = "Qwen/Qwen3-32B"
+# Slide models. Say 27B (same family). Do not write "20B" or "32B".
+# Together deprecated Qwen3-32B; the locked large bare model is Qwen3.5-27B.
+MODEL_27B: Final = "Qwen/Qwen3.5-27B"
 MODEL_08B: Final = "Qwen/Qwen3.5-0.8B"
-MODEL_32B_URL: Final = "https://huggingface.co/Qwen/Qwen3-32B"
+MODEL_27B_URL: Final = "https://huggingface.co/Qwen/Qwen3.5-27B"
 MODEL_08B_URL: Final = "https://huggingface.co/Qwen/Qwen3.5-0.8B"
+TOGETHER_BASE_URL: Final = "https://api.together.xyz/v1"
 
 VRDU_RAW_BASE: Final = (
     "https://raw.githubusercontent.com/google-research-datasets/vrdu/main"

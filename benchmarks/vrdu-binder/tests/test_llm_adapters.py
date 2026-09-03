@@ -12,10 +12,12 @@ from vrdu_binder.llm import (
     UrllibChatClient,
     bind_system_prompt,
     extract_system_prompt,
+    llm_base_url,
     parse_extract_json,
     parse_type_id,
     resolve_api_key,
 )
+from vrdu_binder.constants import TOGETHER_BASE_URL
 from vrdu_binder.ocr import bind_prompt
 from vrdu_binder.protocol import ProtocolError
 from vrdu_binder.skills import write_skills_for_seed
@@ -43,17 +45,32 @@ def _skills():
 
 def test_resolve_api_key_refuses_when_missing(monkeypatch):
     monkeypatch.delenv("INFONA_BINDER_API_KEY", raising=False)
+    monkeypatch.delenv("TOGETHER_API_KEY", raising=False)
     try:
         resolve_api_key()
     except ProtocolError as exc:
         assert "INFONA_BINDER_API_KEY" in str(exc)
+        assert "TOGETHER_API_KEY" in str(exc)
         assert "KeywordBinder" in str(exc)
     else:
         raise AssertionError("missing key must refuse")
 
 
+def test_together_key_is_fallback(monkeypatch):
+    monkeypatch.delenv("INFONA_BINDER_API_KEY", raising=False)
+    monkeypatch.setenv("TOGETHER_API_KEY", "together-not-a-real-key")
+    assert resolve_api_key() == "together-not-a-real-key"
+
+
+def test_default_base_url_is_together(monkeypatch):
+    monkeypatch.delenv("INFONA_LLM_BASE_URL", raising=False)
+    monkeypatch.delenv("INFONA_BINDER_BASE_URL", raising=False)
+    assert llm_base_url() == TOGETHER_BASE_URL
+
+
 def test_llm_binder_does_not_construct_keyword_fallback(monkeypatch):
     monkeypatch.delenv("INFONA_BINDER_API_KEY", raising=False)
+    monkeypatch.delenv("TOGETHER_API_KEY", raising=False)
     try:
         LlmBinder()
     except ProtocolError as exc:
@@ -136,3 +153,4 @@ def test_urllib_client_uses_injected_post(monkeypatch):
     messages = seen["body"]["messages"]  # type: ignore[index]
     assert messages[0]["content"] == "keys only"
     assert messages[1]["content"] == "ocr tokens"
+    assert seen["body"]["chat_template_kwargs"]["enable_thinking"] is False

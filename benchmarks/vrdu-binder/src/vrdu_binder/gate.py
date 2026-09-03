@@ -45,5 +45,5 @@ def assert_may_dump(
             "KeywordBinder/KeywordExtractor cannot write a published-split "
             f"dump ({split_name}). That adapter is a freeze/dry tool, not a "
             "score. Use `dry-run` for fixtures, or --binder llm with "
-            "INFONA_BINDER_API_KEY."
+            "INFONA_BINDER_API_KEY or TOGETHER_API_KEY."
         )

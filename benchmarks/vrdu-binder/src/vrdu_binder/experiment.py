@@ -44,6 +44,11 @@ def add_experiment_parsers(sub) -> None:
         action="store_true",
         help="Synthetic mix + stub client. No VRDU download, no live HTTP.",
     )
+    p_exp.add_argument(
+        "--model",
+        default=None,
+        help="Override served model id (Together FT endpoint name, etc.).",
+    )
 
     p_lora = sub.add_parser("write-lora-data", help="Train-only LoRA JSONL for one recipe")
     p_lora.add_argument("--recipe", required=True, choices=("vanilla", "infona"))
@@ -86,7 +91,7 @@ def cmd_experiment_run(args: Namespace) -> int:
     if args.fixtures:
         _run_fixtures(arm, args.out / arm.arm_id / args.corpus, args.corpus)
         return 0
-    client = UrllibChatClient(model=arm.model_id)
+    client = UrllibChatClient(model=args.model or arm.model_id)
     binder, extractor = adapters_for_arm(arm, client=client)
     root = args.data or default_data_root()
     split = load_run_split(

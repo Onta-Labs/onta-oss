@@ -103,6 +103,18 @@ def test_cli_write_lora_fixtures(tmp_path):
     assert meta["test_used"] is False
     assert meta["early_stopping"] == "none"
     assert Path(dest).is_file()
+    together = dest.with_name(dest.stem + ".together.jsonl")
+    assert together.is_file()
+    row = json.loads(together.read_text(encoding="utf-8").splitlines()[0])
+    assert set(row.keys()) == {"messages"}
+    import importlib.util
+
+    script = Path(__file__).resolve().parents[1] / "scripts" / "together_lora.py"
+    spec = importlib.util.spec_from_file_location("together_lora_check", script)
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    mod._assert_messages_only(together)
 
 
 def test_train_lora_check_script(tmp_path):

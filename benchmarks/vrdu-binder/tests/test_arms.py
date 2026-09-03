@@ -6,7 +6,7 @@ from vrdu_binder.arms import (
     ARM_08B_BARE,
     ARM_08B_FT_INFONA,
     ARM_08B_VANILLA_FT,
-    ARM_32B_BARE,
+    ARM_27B_BARE,
     ARM_IDS,
     adapters_for_arm,
     get_arm,
@@ -14,7 +14,7 @@ from vrdu_binder.arms import (
 from vrdu_binder.bare import BareBinder, BareExtractor
 from vrdu_binder.bind import TypeCatalog, bind_one
 from vrdu_binder.cli import main
-from vrdu_binder.constants import KEYS_FOR_TYPE, MODEL_08B, MODEL_32B, TYPE_0, TYPE_1
+from vrdu_binder.constants import KEYS_FOR_TYPE, MODEL_08B, MODEL_27B, TYPE_0, TYPE_1
 from vrdu_binder.extract import extract_one
 from vrdu_binder.fixtures import FIXTURE_KEYS, build_memory_fixtures
 from vrdu_binder.llm import LlmBinder, LlmExtractor
@@ -45,11 +45,12 @@ def _skills():
 
 
 def test_arm_table_is_the_locked_four():
-    assert ARM_IDS == (ARM_32B_BARE, ARM_08B_BARE, ARM_08B_VANILLA_FT, ARM_08B_FT_INFONA)
-    assert get_arm(ARM_32B_BARE).model_id == MODEL_32B
+    assert ARM_IDS == (ARM_27B_BARE, ARM_08B_BARE, ARM_08B_VANILLA_FT, ARM_08B_FT_INFONA)
+    assert get_arm(ARM_27B_BARE).model_id == MODEL_27B
     assert get_arm(ARM_08B_BARE).model_id == MODEL_08B
-    assert "20B" not in get_arm(ARM_32B_BARE).model_id
-    assert get_arm(ARM_32B_BARE).uses_infona_router is False
+    assert "20B" not in get_arm(ARM_27B_BARE).model_id
+    assert "32B" not in get_arm(ARM_27B_BARE).model_id
+    assert get_arm(ARM_27B_BARE).uses_infona_router is False
     assert get_arm(ARM_08B_VANILLA_FT).uses_infona_router is False
     assert get_arm(ARM_08B_FT_INFONA).uses_infona_router is True
     assert get_arm(ARM_08B_VANILLA_FT).lora_recipe == "vanilla"
@@ -57,7 +58,7 @@ def test_arm_table_is_the_locked_four():
 
 
 def test_bare_arms_use_bare_adapters():
-    for arm_id in (ARM_32B_BARE, ARM_08B_BARE, ARM_08B_VANILLA_FT):
+    for arm_id in (ARM_27B_BARE, ARM_08B_BARE, ARM_08B_VANILLA_FT):
         binder, extractor = adapters_for_arm(get_arm(arm_id), client=RecordingClient("type_0"))
         assert type(binder).__name__ == "BareBinder"
         assert type(extractor).__name__ == "BareExtractor"
@@ -124,11 +125,12 @@ def test_official_catalog_keys_stay_out_of_bare_bind():
 
 def test_experiment_run_official_without_key_refuses(tmp_path, capsys, monkeypatch):
     monkeypatch.delenv("INFONA_BINDER_API_KEY", raising=False)
+    monkeypatch.delenv("TOGETHER_API_KEY", raising=False)
     rc = main(
         [
             "experiment-run",
             "--arm",
-            "32b_bare",
+            "27b_bare",
             "--corpus",
             "registration",
             "--data",
@@ -138,7 +140,9 @@ def test_experiment_run_official_without_key_refuses(tmp_path, capsys, monkeypat
         ]
     )
     assert rc == 2
-    assert "INFONA_BINDER_API_KEY" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "INFONA_BINDER_API_KEY" in err
+    assert "TOGETHER_API_KEY" in err
 
 
 def test_experiment_run_fixtures_needs_no_key(tmp_path, monkeypatch):

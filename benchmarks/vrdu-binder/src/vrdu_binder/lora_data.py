@@ -61,6 +61,11 @@ def write_lora_jsonl(
     dest = Path(out_path)
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
+    together = dest.with_name(dest.stem + ".together.jsonl")
+    together.write_text(
+        "".join(json.dumps({"messages": r["messages"]}, ensure_ascii=False) + "\n" for r in rows),
+        encoding="utf-8",
+    )
     manifest = dest.with_suffix(".manifest.json")
     train_names = sorted({r["filename"] for r in rows})
     _assert_no_heldout_names(train_names, split_by_type)

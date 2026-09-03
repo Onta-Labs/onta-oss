@@ -6,21 +6,28 @@ not contain Bind@type or F1 numbers.
 
 ## Models
 
-Say **32B** (same family). Do not write "20B".
+Say **27B** (same family). Do not write "20B" or "32B". Together deprecated
+Qwen3-32B. The locked large bare model is Qwen3.5-27B.
 
-| Role | Hugging Face id | URL |
+| Role | Hugging Face / Together id | URL |
 | --- | --- | --- |
-| Large bare | `Qwen/Qwen3-32B` | https://huggingface.co/Qwen/Qwen3-32B |
-| Small local / FT base | `Qwen/Qwen3.5-0.8B` | https://huggingface.co/Qwen/Qwen3.5-0.8B |
+| Large bare | `Qwen/Qwen3.5-27B` | https://huggingface.co/Qwen/Qwen3.5-27B |
+| Small / FT base | `Qwen/Qwen3.5-0.8B` | https://huggingface.co/Qwen/Qwen3.5-0.8B |
 
-Do not download multi-GB weights from this repo. Serve them yourself
-(vLLM, OpenRouter, or another OpenAI-compatible `base_url`).
+Do not download multi-GB weights from this repo. Default chat host is
+Together (`https://api.together.xyz/v1`). Override with
+`INFONA_BINDER_BASE_URL` / `INFONA_LLM_BASE_URL` for local vLLM.
+
+## Auth
+
+Prefer `INFONA_BINDER_API_KEY`. If unset, the adapters use `TOGETHER_API_KEY`.
+Missing both refuses. No KeywordBinder fallback on official dumps.
 
 ## Arms (same seed SD_0, same unmodified test lists)
 
 | id | What the model is | Inference |
 | --- | --- | --- |
-| `32b_bare` | Qwen3-32B, no LoRA | OCR only. No Infona catalog. No skill body. |
+| `27b_bare` | Qwen3.5-27B, no LoRA | OCR only. No Infona catalog. No skill body. |
 | `0.8b_bare` | Qwen3.5-0.8B, no LoRA | Same bare prompts. |
 | `0.8b_vanilla_ft` | 0.8B LoRA on train-only bind+extract labels | Bare prompts. No Infona router or skills. |
 | `0.8b_ft_infona` | 0.8B LoRA on the compiled train-only slice | Bind@type → exactly one skill extract. |
@@ -52,7 +59,7 @@ Registration 90.51 and LayoutLMv2/FormNet Ad-buy 46.54/43.23.
 
 Write the slide only if **both** hold on the two headlines:
 
-1. arm4 ≈ arm1 (0.8B FT+Infona matches 32B bare)
+1. arm4 ≈ arm1 (0.8B FT+Infona matches 27B bare)
 2. arm4 ≫ arm3 (FT+Infona beats vanilla-FT by a wide margin)
 
 If arm4 ≈ arm3, the story is fine-tune, not Infona. This repo does not
@@ -61,24 +68,22 @@ compute those inequalities and does not fill in scores.
 Do not claim Infona≫RAG. Do not claim 8B+Infona≈27B. Do not call this a
 published VRDU task.
 
-## How to produce the four dumps (GPU box)
+## How to produce the four dumps (Together)
 
-Needs: published split JSON + `dataset.jsonl.gz` (see README fetch), a
-served model, `INFONA_BINDER_API_KEY` (any bearer the server accepts;
-local vLLM can use a dummy), and `INFONA_BINDER_BASE_URL` /
-`INFONA_LLM_BASE_URL` pointing at that server.
+Needs: published split JSON + `dataset.jsonl.gz` (see README fetch) and
+`TOGETHER_API_KEY` or `INFONA_BINDER_API_KEY`.
 
 ```bash
 export PYTHONPATH=benchmarks/vrdu-binder/src
-export INFONA_BINDER_API_KEY=local
-export INFONA_BINDER_BASE_URL=http://127.0.0.1:8000/v1   # OpenAI-compatible
+# INFONA_BINDER_API_KEY wins if both are set
+export TOGETHER_API_KEY=...   # not committed; Cloud Agents runtime secret is fine
 
 # 1. Train-only skills (arm 4 inference + infona LoRA rows)
 python -m vrdu_binder write-skills --seed 0 \
   --data benchmarks/vrdu-binder/data \
   --out /tmp/binder-skills-sd0.json
 
-# 2. LoRA JSONL (train filenames only)
+# 2. LoRA JSONL (train filenames only). Sibling *.together.jsonl is messages-only.
 python -m vrdu_binder write-lora-data --recipe vanilla --seed 0 \
   --data benchmarks/vrdu-binder/data \
   --out /tmp/lora/sd0-vanilla.jsonl
@@ -87,37 +92,42 @@ python -m vrdu_binder write-lora-data --recipe infona --seed 0 \
   --out /tmp/lora/sd0-infona.jsonl
 python benchmarks/vrdu-binder/scripts/train_lora.py check \
   --jsonl /tmp/lora/sd0-vanilla.jsonl
-# GPU train is documented in that script. This PR does not run it.
 
-# 3. Serve each model, then dump one corpus at a time
-# Arm 1: serve Qwen/Qwen3-32B
-export INFONA_BINDER_MODEL=Qwen/Qwen3-32B
-python -m vrdu_binder experiment-run --arm 32b_bare --seed 0 \
+# 3. Together LoRA (0.8B). Valid is not a file. No early stopping.
+python benchmarks/vrdu-binder/scripts/together_lora.py create \
+  --jsonl /tmp/lora/sd0-vanilla.together.jsonl \
+  --suffix vrdu-v11-vanilla-sd0
+python benchmarks/vrdu-binder/scripts/together_lora.py create \
+  --jsonl /tmp/lora/sd0-infona.together.jsonl \
+  --suffix vrdu-v11-infona-sd0
+# poll with: together_lora.py wait --job ft-...
+
+# 4. Dump one corpus at a time. FT arms pass the Together output model via --model.
+python -m vrdu_binder experiment-run --arm 27b_bare --seed 0 \
   --corpus registration --data benchmarks/vrdu-binder/data \
-  --out /tmp/arms/32b_bare/registration
-python -m vrdu_binder experiment-run --arm 32b_bare --seed 0 \
+  --out /tmp/arms/27b_bare/registration
+python -m vrdu_binder experiment-run --arm 27b_bare --seed 0 \
   --corpus adbuy --data benchmarks/vrdu-binder/data \
-  --out /tmp/arms/32b_bare/adbuy
+  --out /tmp/arms/27b_bare/adbuy
 
-# Arm 2: serve Qwen/Qwen3.5-0.8B
-export INFONA_BINDER_MODEL=Qwen/Qwen3.5-0.8B
 python -m vrdu_binder experiment-run --arm 0.8b_bare --seed 0 \
   --corpus registration --data benchmarks/vrdu-binder/data \
   --out /tmp/arms/0.8b_bare/registration
-# … same for adbuy
 
-# Arm 3: serve the vanilla LoRA adapter (still bare prompts)
-export INFONA_BINDER_MODEL=qwen35-0.8b-vanilla-ft
 python -m vrdu_binder experiment-run --arm 0.8b_vanilla_ft --seed 0 \
+  --model <together-vanilla-output> \
   --corpus registration --data benchmarks/vrdu-binder/data \
   --out /tmp/arms/0.8b_vanilla_ft/registration
 
-# Arm 4: serve the Infona LoRA adapter (bind → one skill)
-export INFONA_BINDER_MODEL=qwen35-0.8b-infona-ft
 python -m vrdu_binder experiment-run --arm 0.8b_ft_infona --seed 0 \
+  --model <together-infona-output> \
   --corpus registration --data benchmarks/vrdu-binder/data \
   --out /tmp/arms/0.8b_ft_infona/registration
 ```
+
+Together LoRA inference may need a dedicated endpoint
+(`https://api-inference.together.ai/v1` plus the endpoint string as `--model`).
+Bare 27B / 0.8B use serverless when Together lists a per-token price.
 
 Stock evaluate, one corpus directory per arm:
 
@@ -125,8 +135,8 @@ Stock evaluate, one corpus directory per arm:
 # from google_research/
 python -m vrdu.evaluate \
   --base_dirpath /path/to/vrdu/registration-form \
-  --extraction_path /tmp/arms/32b_bare/registration \
-  --eval_output_path /tmp/arms/32b_bare/registration.tsv
+  --extraction_path /tmp/arms/27b_bare/registration \
+  --eval_output_path /tmp/arms/27b_bare/registration.tsv
 ```
 
 Repeat for `ad-buy-form` and the other three arms. Bind@type accuracy is
@@ -142,11 +152,12 @@ python -m vrdu_binder write-lora-data --recipe vanilla --fixtures \
   --out /tmp/lora-fix-vanilla.jsonl
 ```
 
-The dry client is a fixture stub. It is not a VRDU score and not a 32B run.
+The dry client is a fixture stub. It is not a VRDU score and not a 27B run.
 
 ## Blockers this tree cannot remove
 
-- GPU (32B serve, 0.8B LoRA train)
+- Together (or another host) for 27B serve and 0.8B LoRA
 - `dataset.jsonl.gz` (not vendored)
-- A served OpenAI-compatible endpoint and `INFONA_BINDER_API_KEY`
+- `TOGETHER_API_KEY` or `INFONA_BINDER_API_KEY`
+- Dedicated-endpoint deploy if Together will not serve a LoRA on serverless
 - Human scoring with stock `vrdu.evaluate` after the dumps exist
