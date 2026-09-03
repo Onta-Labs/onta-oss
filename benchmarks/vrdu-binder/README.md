@@ -3,7 +3,7 @@
 Constructed mix of two published VRDU MTL tests. Not a VRDU task. Isolated
 from any GraphDelta ontology-skills bench.
 
-Locked rules: [SPEC.md](SPEC.md). Four-arm SD_0 runbook: [EXPERIMENT.md](EXPERIMENT.md).
+Locked rules: [SPEC.md](SPEC.md). Four-arm SD_0 runbook: [EXPERIMENT.md](EXPERIMENT.md). Mac-local 0.8B (Together cannot host): [MAC_RUNBOOK.md](MAC_RUNBOOK.md).
 Say 27B, not 20B or 32B. This README does not contain Bind@type or F1 numbers.
 
 ## What is on the slide

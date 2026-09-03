@@ -139,6 +139,7 @@ Bare 27B / 0.8B use serverless only when Together lists a per-token price.
 `Qwen/Qwen3.5-27B` is dedicated-only (2×H100). `Qwen/Qwen3.5-0.8B` is
 fine-tunable but currently has no dedicated deployment profile, so the
 three 0.8B arms cannot be hosted on Together until that catalog row exists.
+Finish them on an Apple Silicon Mac: [MAC_RUNBOOK.md](MAC_RUNBOOK.md).
 Stock `vrdu.evaluate` needs a decompressed `main/dataset.jsonl` next to the
 published `dataset.jsonl.gz`.
 
@@ -175,5 +176,5 @@ The dry client is a fixture stub. It is not a VRDU score and not a 27B run.
 - Dedicated v2 deploy (`tg beta endpoints deploy`). v1 create is retired
 - A dedicated deployment profile for `Qwen/Qwen3.5-0.8B` (fine-tune jobs
   complete; DMI `tg beta models configs` is empty for the base and the
-  output `ml_...` ids)
+  output `ml_...` ids). Mac path: [MAC_RUNBOOK.md](MAC_RUNBOOK.md)
 - Human scoring with stock `vrdu.evaluate` after the dumps exist

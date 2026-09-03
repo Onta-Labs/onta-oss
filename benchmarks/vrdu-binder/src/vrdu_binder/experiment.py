@@ -47,7 +47,11 @@ def add_experiment_parsers(sub) -> None:
     p_exp.add_argument(
         "--model",
         default=None,
-        help="Override served model id (Together FT endpoint name, etc.).",
+        help=(
+            "Served model id. Required for FT arms (mlx-lm default_model / "
+            "local path, or a Together output name). Bare arms default to "
+            "the locked Qwen id."
+        ),
     )
     p_exp.add_argument(
         "--concurrency",
@@ -97,7 +101,14 @@ def cmd_experiment_run(args: Namespace) -> int:
     if args.fixtures:
         _run_fixtures(arm, args.out / arm.arm_id / args.corpus, args.corpus)
         return 0
-    client = UrllibChatClient(model=args.model or arm.model_id)
+    served = (args.model or "").strip() or None
+    if arm.lora_recipe and not served:
+        raise ProtocolError(
+            f"{arm.arm_id} needs --model (local mlx path / default_model, "
+            "or Together output id). Refusing to score the base 0.8B as an "
+            "FT arm."
+        )
+    client = UrllibChatClient(model=served or arm.model_id)
     binder, extractor = adapters_for_arm(arm, client=client)
     root = args.data or default_data_root()
     split = load_run_split(
@@ -119,8 +130,7 @@ def cmd_experiment_run(args: Namespace) -> int:
         concurrency=args.concurrency,
     )
     print(result.dump_path)
-    served = args.model or arm.model_id
-    print(f"arm={arm.arm_id} model={served} infona_router={arm.uses_infona_router}")
+    print(f"arm={arm.arm_id} model={served or arm.model_id} infona_router={arm.uses_infona_router}")
     print(
         f"bind_at_type_accuracy (this corpus only)={result.bind_accuracy:.4f} "
         f"n={len(result.outcomes)}"

@@ -123,6 +123,28 @@ def test_official_catalog_keys_stay_out_of_bare_bind():
         assert key not in system
 
 
+def test_ft_arm_without_model_refuses(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("INFONA_BINDER_API_KEY", "local")
+    for arm_id in (ARM_08B_VANILLA_FT, ARM_08B_FT_INFONA):
+        rc = main(
+            [
+                "experiment-run",
+                "--arm",
+                arm_id,
+                "--corpus",
+                "registration",
+                "--data",
+                str(tmp_path / "missing"),
+                "--out",
+                str(tmp_path / "dumps"),
+            ]
+        )
+        assert rc == 2
+        err = capsys.readouterr().err
+        assert "--model" in err
+        assert "FT arm" in err
+
+
 def test_experiment_run_official_without_key_refuses(tmp_path, capsys, monkeypatch):
     monkeypatch.delenv("INFONA_BINDER_API_KEY", raising=False)
     monkeypatch.delenv("TOGETHER_API_KEY", raising=False)

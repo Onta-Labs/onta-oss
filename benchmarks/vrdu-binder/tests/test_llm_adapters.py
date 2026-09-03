@@ -137,6 +137,27 @@ def test_parse_type_id_json_wrapper():
     assert parse_type_id('{"id": "type_1"}', catalog) == TYPE_1
 
 
+def test_local_base_url_and_placeholder_key(monkeypatch):
+    monkeypatch.setenv("INFONA_BINDER_API_KEY", "local")
+    monkeypatch.setenv("INFONA_BINDER_BASE_URL", "http://127.0.0.1:8000/v1")
+    monkeypatch.delenv("INFONA_LLM_BASE_URL", raising=False)
+    assert resolve_api_key() == "local"
+    assert llm_base_url() == "http://127.0.0.1:8000/v1"
+    seen: dict[str, object] = {}
+
+    def post(url, headers, body):
+        seen["url"] = url
+        seen["headers"] = headers
+        seen["body"] = body
+        return {"choices": [{"message": {"content": "type_0"}}]}
+
+    client = UrllibChatClient(model="default_model", post=post)
+    assert client.complete(system="id only", user="ocr") == "type_0"
+    assert seen["url"] == "http://127.0.0.1:8000/v1/chat/completions"
+    assert seen["body"]["model"] == "default_model"  # type: ignore[index]
+    assert seen["headers"]["Authorization"] == "Bearer local"  # type: ignore[index]
+
+
 def test_urllib_client_uses_injected_post(monkeypatch):
     monkeypatch.setenv("INFONA_BINDER_API_KEY", "not-a-real-key")
     seen: dict[str, object] = {}
