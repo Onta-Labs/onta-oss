@@ -14,11 +14,13 @@ Usage (from repo root):
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -26,7 +28,7 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from vrdu_binder.constants import MODEL_08B, TOGETHER_BASE_URL
+from vrdu_binder.constants import MODEL_08B, TOGETHER_BASE_URL, TOGETHER_USER_AGENT
 from vrdu_binder.llm import resolve_api_key
 from vrdu_binder.protocol import ProtocolError
 
@@ -45,6 +47,23 @@ def main(argv: list[str] | None = None) -> int:
     p_wait.add_argument("--timeout-sec", type=int, default=6 * 60 * 60)
     p_get = sub.add_parser("get", help="Print job status fields (no key)")
     p_get.add_argument("--job", required=True)
+    p_est = sub.add_parser("estimate", help="Estimate LoRA job price after upload")
+    p_est.add_argument("--file", required=True, help="Together file id")
+    p_est.add_argument("--epochs", type=int, default=3)
+    p_hw = sub.add_parser("hardware", help="List hardware for a model (no key leak)")
+    p_hw.add_argument("--model", required=True)
+    p_ep = sub.add_parser("create-endpoint", help="Start a dedicated endpoint")
+    p_ep.add_argument("--model", required=True)
+    p_ep.add_argument("--hardware", required=True)
+    p_ep.add_argument("--display-name", required=True)
+    p_ep.add_argument("--inactive-timeout", type=int, default=20)
+    p_ew = sub.add_parser("wait-endpoint", help="Poll until STARTED")
+    p_ew.add_argument("--id", required=True)
+    p_ew.add_argument("--timeout-sec", type=int, default=45 * 60)
+    p_eg = sub.add_parser("get-endpoint", help="Print endpoint fields (no key)")
+    p_eg.add_argument("--id", required=True)
+    p_ed = sub.add_parser("delete-endpoint", help="Delete a dedicated endpoint")
+    p_ed.add_argument("--id", required=True)
     args = parser.parse_args(argv)
     try:
         key = resolve_api_key()
@@ -59,6 +78,30 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "wait":
             print(json.dumps(_wait(key, args.job, args.timeout_sec), indent=2))
             return 0
+        if args.cmd == "estimate":
+            print(json.dumps(_estimate(key, args.file, args.epochs), indent=2))
+            return 0
+        if args.cmd == "hardware":
+            print(json.dumps(_hardware(key, args.model), indent=2))
+            return 0
+        if args.cmd == "create-endpoint":
+            print(json.dumps(_create_endpoint(
+                key,
+                model=args.model,
+                hardware=args.hardware,
+                display_name=args.display_name,
+                inactive_timeout=args.inactive_timeout,
+            ), indent=2))
+            return 0
+        if args.cmd == "wait-endpoint":
+            print(json.dumps(_wait_endpoint(key, args.id, args.timeout_sec), indent=2))
+            return 0
+        if args.cmd == "get-endpoint":
+            print(json.dumps(_public_endpoint(_get_endpoint(key, args.id)), indent=2))
+            return 0
+        if args.cmd == "delete-endpoint":
+            print(json.dumps(_delete_endpoint(key, args.id), indent=2))
+            return 0
         print(json.dumps(_public_job(_get(key, args.job)), indent=2))
         return 0
     except ProtocolError as exc:
@@ -67,10 +110,23 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _headers(key: str, *, json_body: bool = True) -> dict[str, str]:
-    headers = {"Authorization": f"Bearer {key}"}
+    headers = {"Authorization": f"Bearer {key}", "User-Agent": TOGETHER_USER_AGENT}
     if json_body:
         headers["Content-Type"] = "application/json"
     return headers
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        return None
+
+
+def _sha256(path: Path) -> str:
+    hasher = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(65536), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
 
 
 def _upload(key: str, path: Path) -> str:
@@ -78,29 +134,72 @@ def _upload(key: str, path: Path) -> str:
         raise ProtocolError(f"missing jsonl {path}")
     _assert_messages_only(path)
     boundary = "----vrduBinderTogether"
-    raw = path.read_bytes()
-    body = (
-        f"--{boundary}\r\n"
-        f'Content-Disposition: form-data; name="purpose"\r\n\r\nfine-tune\r\n'
-        f"--{boundary}\r\n"
-        f'Content-Disposition: form-data; name="file_name"\r\n\r\n{path.name}\r\n'
-        f"--{boundary}\r\n"
-        f'Content-Disposition: form-data; name="file"; filename="{path.name}"\r\n'
-        f"Content-Type: application/jsonl\r\n\r\n"
-    ).encode("utf-8") + raw + f"\r\n--{boundary}--\r\n".encode("utf-8")
+    fields = {
+        "purpose": "fine-tune",
+        "file_name": path.name,
+        "file_type": "jsonl",
+        "checksum": _sha256(path),
+    }
+    chunks = []
+    for name, value in fields.items():
+        chunks.append(
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="{name}"\r\n\r\n'
+            f"{value}\r\n"
+        )
+    payload = "".join(chunks).encode("utf-8") + f"--{boundary}--\r\n".encode("utf-8")
     req = urllib.request.Request(
         f"{TOGETHER_BASE_URL}/files",
-        data=body,
+        data=payload,
         headers={
             "Authorization": f"Bearer {key}",
+            "User-Agent": TOGETHER_USER_AGENT,
             "Content-Type": f"multipart/form-data; boundary={boundary}",
         },
         method="POST",
     )
-    meta = _read_json(req)
-    file_id = meta.get("id")
-    if not isinstance(file_id, str) or not file_id:
-        raise ProtocolError(f"upload returned no file id (keys={sorted(meta)})")
+    opener = urllib.request.build_opener(_NoRedirect)
+    try:
+        with opener.open(req, timeout=180) as resp:
+            raise ProtocolError(
+                f"Together file init expected 302, got {resp.status}"
+            )
+    except urllib.error.HTTPError as exc:
+        if exc.code == 409:
+            body = json.loads(exc.read().decode("utf-8", errors="replace") or "{}")
+            existing = body.get("file_id")
+            if isinstance(existing, str) and existing:
+                _wait_file(key, existing)
+                return existing
+        if exc.code not in {301, 302, 303, 307, 308}:
+            body = exc.read().decode("utf-8", errors="replace")[:400]
+            raise ProtocolError(f"Together HTTP {exc.code}: {body}") from exc
+        redirect = exc.headers.get("Location")
+        file_id = exc.headers.get("X-Together-File-Id")
+        if not redirect or not file_id:
+            raise ProtocolError(
+                f"Together file init missing Location/File-Id (code={exc.code})"
+            )
+    put = urllib.request.Request(
+        redirect,
+        data=path.read_bytes(),
+        headers={"Content-Type": "application/octet-stream", "User-Agent": TOGETHER_USER_AGENT},
+        method="PUT",
+    )
+    try:
+        with urllib.request.urlopen(put, timeout=180) as resp:
+            if resp.status not in {200, 201, 204}:
+                raise ProtocolError(f"Together S3 PUT status {resp.status}")
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")[:400]
+        raise ProtocolError(f"Together S3 PUT HTTP {exc.code}: {body}") from exc
+    prep = urllib.request.Request(
+        f"{TOGETHER_BASE_URL}/files/{file_id}/preprocess",
+        data=b"{}",
+        headers=_headers(key),
+        method="POST",
+    )
+    _read_json(prep)
     _wait_file(key, file_id)
     return file_id
 
@@ -140,6 +239,7 @@ def _create(key: str, file_id: str, *, suffix: str, epochs: int) -> dict[str, ob
         "warmup_ratio": 0,
         "train_on_inputs": "auto",
         "lora": True,
+        "batch_size": 8,
         "suffix": suffix,
     }
     req = urllib.request.Request(
@@ -189,8 +289,116 @@ def _public_job(job: dict[str, object]) -> dict[str, object]:
         "model_object_id",
         "training_file",
         "created_at",
+        "token_count",
+        "total_price",
+        "estimated_token_count",
+        "price",
     )
     return {k: job[k] for k in keep if k in job}
+
+
+def _estimate(key: str, file_id: str, epochs: int) -> dict[str, object]:
+    payload = {
+        "training_file": file_id,
+        "model": MODEL_08B,
+        "n_epochs": epochs,
+        "n_checkpoints": 1,
+        "learning_rate": 1e-5,
+        "warmup_ratio": 0,
+        "train_on_inputs": "auto",
+        "lora": True,
+        "batch_size": 8,
+        "training_method": {"method": "sft"},
+        "training_type": {"type": "Lora", "lora_r": 8},
+    }
+    req = urllib.request.Request(
+        f"{TOGETHER_BASE_URL}/fine-tunes/estimate-price",
+        data=json.dumps(payload).encode("utf-8"),
+        headers=_headers(key),
+        method="POST",
+    )
+    return _read_json(req)
+
+
+def _hardware(key: str, model: str) -> dict[str, object]:
+    q = urllib.parse.quote(model, safe="")
+    req = urllib.request.Request(
+        f"{TOGETHER_BASE_URL}/hardware?model={q}",
+        headers=_headers(key, json_body=False),
+        method="GET",
+    )
+    return _read_json(req)
+
+
+def _public_endpoint(ep: dict[str, object]) -> dict[str, object]:
+    keep = (
+        "id",
+        "name",
+        "display_name",
+        "model",
+        "hardware",
+        "type",
+        "state",
+        "owner",
+        "inactive_timeout",
+        "created_at",
+    )
+    return {k: ep[k] for k in keep if k in ep}
+
+
+def _create_endpoint(
+    key: str,
+    *,
+    model: str,
+    hardware: str,
+    display_name: str,
+    inactive_timeout: int,
+) -> dict[str, object]:
+    del key, hardware, inactive_timeout
+    raise ProtocolError(
+        "Together v1 POST /endpoints create is disabled. Host with v2: "
+        f"tg beta endpoints deploy {model} --endpoint {display_name} "
+        "then pass --model <project-slug>/<endpoint> to experiment-run. "
+        "Scale to 0 when done. See EXPERIMENT.md."
+    )
+
+
+def _get_endpoint(key: str, endpoint_id: str) -> dict[str, object]:
+    req = urllib.request.Request(
+        f"{TOGETHER_BASE_URL}/endpoints/{endpoint_id}",
+        headers=_headers(key, json_body=False),
+        method="GET",
+    )
+    return _read_json(req)
+
+
+def _wait_endpoint(key: str, endpoint_id: str, timeout_sec: int) -> dict[str, object]:
+    deadline = time.time() + timeout_sec
+    while True:
+        ep = _get_endpoint(key, endpoint_id)
+        state = str(ep.get("state") or "")
+        print(f"endpoint={endpoint_id} state={state}", file=sys.stderr)
+        if state in {"STARTED", "ERROR", "FAILED", "STOPPED"}:
+            if state != "STARTED":
+                raise ProtocolError(f"Together endpoint {endpoint_id} ended {state}")
+            return _public_endpoint(ep)
+        if time.time() > deadline:
+            raise ProtocolError(f"Together endpoint {endpoint_id} still {state}")
+        time.sleep(15)
+
+
+def _delete_endpoint(key: str, endpoint_id: str) -> dict[str, object]:
+    req = urllib.request.Request(
+        f"{TOGETHER_BASE_URL}/endpoints/{endpoint_id}",
+        headers=_headers(key, json_body=False),
+        method="DELETE",
+    )
+    try:
+        return _public_endpoint(_read_json(req))
+    except ProtocolError as exc:
+        if "HTTP 404" in str(exc):
+            return {"id": endpoint_id, "state": "deleted"}
+        raise
 
 
 def _assert_messages_only(path: Path) -> None:

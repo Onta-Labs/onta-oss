@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
@@ -65,6 +66,7 @@ def run_corpus(
     extractor: Extractor,
     out_dir: Path | str,
     dump_split_name: str | None = None,
+    concurrency: int = 1,
 ) -> CorpusRun:
     """Unmodified test list. Misbind writes ``results[filename] = []``."""
     gold = gold_type_for_corpus(corpus)
@@ -74,39 +76,67 @@ def run_corpus(
     misbound: set[str] = set()
     outcomes: list[DocOutcome] = []
 
-    for i, filename in enumerate(split.test):
+    def _one(i: int, filename: str) -> DocOutcome:
         oid = opaque_id(i)
         if filename not in documents:
             raise ProtocolError(f"test filename {filename!r} has no document")
         doc = documents[filename]
         prompt = bind_prompt(doc)
         _ = OpaqueDoc(opaque_id=oid, ocr_tokens=prompt)
-        bound = bind_one(binder, prompt, catalog)
-        if bound != gold:
-            misbound.add(filename)
-            filled[filename] = []
-            outcomes.append(
-                DocOutcome(
-                    filename=filename,
-                    opaque_id=oid,
-                    bound_type=bound,
-                    gold_type=gold,
-                    items=[],
-                )
+        try:
+            bound = bind_one(binder, prompt, catalog)
+        except ProtocolError:
+            # Unparseable bind is not a catalog id. Count as misbind.
+            return DocOutcome(
+                filename=filename,
+                opaque_id=oid,
+                bound_type="__unparsed__",
+                gold_type=gold,
+                items=[],
             )
-            continue
-        skill = skill_for_bind(bound, skills)
-        items = extract_one(extractor, prompt, skill)
-        filled[filename] = items
-        outcomes.append(
-            DocOutcome(
+        if bound != gold:
+            return DocOutcome(
                 filename=filename,
                 opaque_id=oid,
                 bound_type=bound,
                 gold_type=gold,
-                items=items,
+                items=[],
             )
+        skill = skill_for_bind(bound, skills)
+        try:
+            items = extract_one(extractor, prompt, skill)
+        except ProtocolError:
+            # Bind counted; empty extract. Do not abort the corpus.
+            items = []
+        return DocOutcome(
+            filename=filename,
+            opaque_id=oid,
+            bound_type=bound,
+            gold_type=gold,
+            items=items,
         )
+
+    workers = max(1, int(concurrency))
+    if workers == 1:
+        ordered = [_one(i, filename) for i, filename in enumerate(split.test)]
+    else:
+        by_name: dict[str, DocOutcome] = {}
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futs = {
+                pool.submit(_one, i, filename): filename
+                for i, filename in enumerate(split.test)
+            }
+            for fut in as_completed(futs):
+                by_name[futs[fut]] = fut.result()
+        ordered = [by_name[name] for name in split.test]
+
+    for outcome in ordered:
+        if outcome.bound_type != gold:
+            misbound.add(outcome.filename)
+            filled[outcome.filename] = []
+        else:
+            filled[outcome.filename] = outcome.items
+        outcomes.append(outcome)
 
     dump_path = write_predictions(
         out_dir=out_dir,

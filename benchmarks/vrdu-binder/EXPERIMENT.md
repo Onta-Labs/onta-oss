@@ -125,9 +125,22 @@ python -m vrdu_binder experiment-run --arm 0.8b_ft_infona --seed 0 \
   --out /tmp/arms/0.8b_ft_infona/registration
 ```
 
-Together LoRA inference may need a dedicated endpoint
-(`https://api-inference.together.ai/v1` plus the endpoint string as `--model`).
-Bare 27B / 0.8B use serverless when Together lists a per-token price.
+Together LoRA inference needs dedicated model inference (serverless LoRA is
+gone). v1 `POST /endpoints` create is disabled. Host with v2:
+
+```bash
+tg beta endpoints deploy Qwen/Qwen3.5-27B --endpoint vrdu-v11-27b-sd0
+# pass --model <project-slug>/<endpoint> to experiment-run
+# optional: --concurrency 8 to cut GPU-hours
+# scale to 0 when done: tg beta endpoints update <dep_...> --min-replicas 0 --max-replicas 0
+```
+
+Bare 27B / 0.8B use serverless only when Together lists a per-token price.
+`Qwen/Qwen3.5-27B` is dedicated-only (2×H100). `Qwen/Qwen3.5-0.8B` is
+fine-tunable but currently has no dedicated deployment profile, so the
+three 0.8B arms cannot be hosted on Together until that catalog row exists.
+Stock `vrdu.evaluate` needs a decompressed `main/dataset.jsonl` next to the
+published `dataset.jsonl.gz`.
 
 Stock evaluate, one corpus directory per arm:
 
@@ -159,5 +172,8 @@ The dry client is a fixture stub. It is not a VRDU score and not a 27B run.
 - Together (or another host) for 27B serve and 0.8B LoRA
 - `dataset.jsonl.gz` (not vendored)
 - `TOGETHER_API_KEY` or `INFONA_BINDER_API_KEY`
-- Dedicated-endpoint deploy if Together will not serve a LoRA on serverless
+- Dedicated v2 deploy (`tg beta endpoints deploy`). v1 create is retired
+- A dedicated deployment profile for `Qwen/Qwen3.5-0.8B` (fine-tune jobs
+  complete; DMI `tg beta models configs` is empty for the base and the
+  output `ml_...` ids)
 - Human scoring with stock `vrdu.evaluate` after the dumps exist

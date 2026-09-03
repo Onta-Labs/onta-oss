@@ -49,6 +49,12 @@ def add_experiment_parsers(sub) -> None:
         default=None,
         help="Override served model id (Together FT endpoint name, etc.).",
     )
+    p_exp.add_argument(
+        "--concurrency",
+        type=int,
+        default=1,
+        help="Parallel test docs. Default 1. Dedicated GPU-hours drop if >1.",
+    )
 
     p_lora = sub.add_parser("write-lora-data", help="Train-only LoRA JSONL for one recipe")
     p_lora.add_argument("--recipe", required=True, choices=("vanilla", "infona"))
@@ -110,9 +116,11 @@ def cmd_experiment_run(args: Namespace) -> int:
         binder=binder,
         extractor=extractor,
         out_dir=args.out,
+        concurrency=args.concurrency,
     )
     print(result.dump_path)
-    print(f"arm={arm.arm_id} model={arm.model_id} infona_router={arm.uses_infona_router}")
+    served = args.model or arm.model_id
+    print(f"arm={arm.arm_id} model={served} infona_router={arm.uses_infona_router}")
     print(
         f"bind_at_type_accuracy (this corpus only)={result.bind_accuracy:.4f} "
         f"n={len(result.outcomes)}"

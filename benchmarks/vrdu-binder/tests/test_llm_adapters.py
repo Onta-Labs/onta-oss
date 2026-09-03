@@ -143,6 +143,7 @@ def test_urllib_client_uses_injected_post(monkeypatch):
 
     def post(url, headers, body):
         seen["url"] = url
+        seen["headers"] = headers
         seen["body"] = body
         return {"choices": [{"message": {"content": "type_1"}}]}
 
@@ -154,3 +155,4 @@ def test_urllib_client_uses_injected_post(monkeypatch):
     assert messages[0]["content"] == "keys only"
     assert messages[1]["content"] == "ocr tokens"
     assert seen["body"]["chat_template_kwargs"]["enable_thinking"] is False
+    assert seen["headers"]["User-Agent"] == "vrdu-binder/0.0.0"

@@ -10,7 +10,12 @@ import urllib.request
 from typing import Any, Callable, Mapping, Protocol
 
 from vrdu_binder.bind import TypeCatalog
-from vrdu_binder.constants import LEAK_LITERALS, LEAK_PATTERNS, TOGETHER_BASE_URL
+from vrdu_binder.constants import (
+    LEAK_LITERALS,
+    LEAK_PATTERNS,
+    TOGETHER_BASE_URL,
+    TOGETHER_USER_AGENT,
+)
 from vrdu_binder.extract import entity_item
 from vrdu_binder.protocol import ProtocolError, require_one_skill
 from vrdu_binder.skills import Skill, assert_extract_keys_subset
@@ -67,10 +72,11 @@ def _default_post(url: str, headers: dict[str, str], body: dict[str, Any]) -> di
         except urllib.error.HTTPError as exc:
             code = exc.code
             last_exc = exc
+            body = exc.read().decode("utf-8", errors="replace")[:400]
             if code in {429, 500, 502, 503, 504} and attempt < 3:
                 time.sleep(2 ** attempt)
                 continue
-            raise ProtocolError(f"LLM HTTP call failed: {exc}") from exc
+            raise ProtocolError(f"LLM HTTP {code}: {body}") from exc
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
             last_exc = exc
             if attempt < 3:
@@ -101,6 +107,7 @@ class UrllibChatClient:
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
+            "User-Agent": TOGETHER_USER_AGENT,
         }
         body = {
             "model": self.model,

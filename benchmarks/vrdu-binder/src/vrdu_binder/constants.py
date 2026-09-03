@@ -19,6 +19,8 @@ MODEL_08B: Final = "Qwen/Qwen3.5-0.8B"
 MODEL_27B_URL: Final = "https://huggingface.co/Qwen/Qwen3.5-27B"
 MODEL_08B_URL: Final = "https://huggingface.co/Qwen/Qwen3.5-0.8B"
 TOGETHER_BASE_URL: Final = "https://api.together.xyz/v1"
+# Python-urllib's default UA is blocked by Cloudflare (error 1010) from some IPs.
+TOGETHER_USER_AGENT: Final = "vrdu-binder/0.0.0"
 
 VRDU_RAW_BASE: Final = (
     "https://raw.githubusercontent.com/google-research-datasets/vrdu/main"
