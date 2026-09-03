@@ -118,16 +118,33 @@ def _annotation_values(annotations: Any, keys: set[str]) -> dict[str, str]:
         if not isinstance(item, (list, tuple)) or len(item) < 2:
             continue
         name = item[0]
-        if name not in keys:
-            continue
         cands = item[1]
         if not isinstance(cands, list) or not cands:
             continue
-        first = cands[0]
-        text = first[0] if isinstance(first, (list, tuple)) and first else None
-        if isinstance(text, str) and text.strip():
-            values[str(name)] = text.strip()
+        if isinstance(name, str):
+            if name not in keys:
+                continue
+            text = _cell_text(cands[0])
+            if text:
+                values[name] = text
+            continue
+        # Official ad-buy line items: [ [key,...], [ [cell,...] ] ]
+        if isinstance(name, list) and isinstance(cands[0], list):
+            for key, cell in zip(name, cands[0]):
+                if not isinstance(key, str) or key not in keys or key in values:
+                    continue
+                text = _cell_text(cell)
+                if text:
+                    values[key] = text
     return values
+
+
+def _cell_text(cell: Any) -> str | None:
+    if isinstance(cell, (list, tuple)) and cell:
+        text = cell[0]
+        if isinstance(text, str) and text.strip():
+            return text.strip()
+    return None
 
 
 def _procedure(keys: Sequence[str], examples: Sequence[Mapping[str, str]]) -> str:

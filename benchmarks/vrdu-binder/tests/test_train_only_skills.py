@@ -79,3 +79,22 @@ def test_skill_body_has_keys_and_no_nicknames():
         assert banned not in body
     assert "invoice_id" not in skills[TYPE_0].body
     assert "widget_id" not in skills[TYPE_1].body
+
+
+def test_grouped_line_item_keys():
+    from vrdu_binder.skills import annotation_values
+
+    anns = [
+        ["advertiser", [["Acme", [0, 0, 0, 0, 0], [[0, 4]]]]],
+        [
+            ["channel", "program_desc"],
+            [
+                [
+                    ["9\n", [0, 0, 0, 0, 0], [[0, 1]]],
+                    ["News\n", [0, 0, 0, 0, 0], [[1, 5]]],
+                ]
+            ],
+        ],
+    ]
+    got = annotation_values(anns, {"advertiser", "channel", "program_desc"})
+    assert got == {"advertiser": "Acme", "channel": "9", "program_desc": "News"}
