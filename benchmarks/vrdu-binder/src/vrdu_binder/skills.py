@@ -105,6 +105,11 @@ def _example_is_clean(values: Mapping[str, str]) -> bool:
     return True
 
 
+def annotation_values(annotations: Any, keys: set[str]) -> dict[str, str]:
+    """Gold field values from a document's annotations. Train-only callers."""
+    return _annotation_values(annotations, keys)
+
+
 def _annotation_values(annotations: Any, keys: set[str]) -> dict[str, str]:
     if not isinstance(annotations, list):
         return {}

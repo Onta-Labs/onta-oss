@@ -22,6 +22,7 @@ from vrdu_binder.documents import docs_for_filenames, load_documents
 from vrdu_binder.extract import KeywordExtractor
 from vrdu_binder.fetch import default_data_root, fetch_meta, fetch_ocr, fetch_splits
 from vrdu_binder.fixtures import FIXTURE_KEYS, build_memory_fixtures
+from vrdu_binder.experiment import add_experiment_parsers, dispatch_experiment
 from vrdu_binder.headline import Headline, make_headline
 from vrdu_binder.llm import LlmBinder, LlmExtractor
 from vrdu_binder.protocol import ProtocolError
@@ -72,6 +73,7 @@ def main(argv: list[str] | None = None) -> int:
 
     p_dry = sub.add_parser("dry-run", help="Fixture mix. No VRDU download, no LLM.")
     p_dry.add_argument("--out", type=Path, required=True)
+    add_experiment_parsers(sub)
 
     args = parser.parse_args(argv)
     try:
@@ -100,6 +102,8 @@ def _dispatch(args: argparse.Namespace) -> int:
         return _cmd_run(args)
     if args.cmd == "dry-run":
         return _cmd_dry_run(args)
+    if args.cmd in {"experiment-run", "write-lora-data", "experiment-dry"}:
+        return dispatch_experiment(args)
     raise AssertionError(args.cmd)
 
 

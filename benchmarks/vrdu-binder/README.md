@@ -3,7 +3,8 @@
 Constructed mix of two published VRDU MTL tests. Not a VRDU task. Isolated
 from any GraphDelta ontology-skills bench.
 
-Locked rules: [SPEC.md](SPEC.md).
+Locked rules: [SPEC.md](SPEC.md). Four-arm SD_0 runbook: [EXPERIMENT.md](EXPERIMENT.md).
+Say 32B, not 20B. This README does not contain Bind@type or F1 numbers.
 
 ## What is on the slide
 
@@ -27,6 +28,7 @@ From the repo root:
 ```bash
 PYTHONPATH=benchmarks/vrdu-binder/src pytest benchmarks/vrdu-binder/tests -q
 python -m vrdu_binder dry-run --out /tmp/binder-v11-dry
+python -m vrdu_binder experiment-dry --out /tmp/binder-v11-exp-dry
 ```
 
 The dry-run uses a two-type synthetic mix with disjoint keys. It exercises
@@ -90,4 +92,5 @@ Same for `ad-buy-form`. Do not patch
 ## Claims this package will not make
 
 This is not a published VRDU task. It does not show Infona≫RAG. It does not
-show 8B+Infona≈27B. It does not ship live 8B OpenRouter numbers.
+show 8B+Infona≈27B. It does not ship live 32B or 0.8B scores. The four-arm
+publish gate is in EXPERIMENT.md and is not auto-claimed.

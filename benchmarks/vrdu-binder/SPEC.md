@@ -74,6 +74,10 @@ STL FormNet Registration 92.12 is Task 1. Exclude it.
 Do not claim this is a published VRDU task. Do not claim Infona≫RAG or
 8B+Infona≈27B.
 
+Four-arm SD_0 scaffolding (32B bare, 0.8B bare, 0.8B vanilla-FT, 0.8B
+FT+Infona) lives in [EXPERIMENT.md](EXPERIMENT.md). No scores are filled
+in. Publish only if arm4 ≈ arm1 and arm4 ≫ arm3 on both headlines.
+
 ## Leak-honest choices this tree made
 
 - Bind catalog is schema-key sets keyed by opaque `type_0` / `type_1`. Those
@@ -93,5 +97,6 @@ Do not claim this is a published VRDU task. Do not claim Infona≫RAG or
 
 ## Out of scope
 
-LoRA, live model matrix, GraphDelta JSON, OSKGC, LettrIA, patching #1882,
-rewriting published test lists, oracle-type F1 as a headline script.
+Live SD_0 scoring, downloading Qwen weights, GraphDelta JSON, OSKGC,
+LettrIA, patching #1882, rewriting published test lists, oracle-type F1
+as a headline script, auto-claiming the publish gate.

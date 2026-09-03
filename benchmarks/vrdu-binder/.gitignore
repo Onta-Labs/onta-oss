@@ -2,3 +2,4 @@
 data/
 *.jsonl.gz
 pdfs/
+lora-out/

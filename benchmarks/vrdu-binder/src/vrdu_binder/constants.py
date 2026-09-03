@@ -12,6 +12,12 @@ from typing import Final
 
 SPEC_VERSION: Final = "v11"
 
+# Slide models. Say 32B (same family). Do not write "20B".
+MODEL_32B: Final = "Qwen/Qwen3-32B"
+MODEL_08B: Final = "Qwen/Qwen3.5-0.8B"
+MODEL_32B_URL: Final = "https://huggingface.co/Qwen/Qwen3-32B"
+MODEL_08B_URL: Final = "https://huggingface.co/Qwen/Qwen3.5-0.8B"
+
 VRDU_RAW_BASE: Final = (
     "https://raw.githubusercontent.com/google-research-datasets/vrdu/main"
 )
