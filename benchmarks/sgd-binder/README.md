@@ -7,7 +7,8 @@ Goal Accuracy.
 Freeze: [SPEC.md](SPEC.md). Runbook: [EXPERIMENT.md](EXPERIMENT.md).
 
 Type = SGD **service** (one schema). Test has **15 services that are not in
-train**. Chance bind on the test schema list is `1/21`, not 50%.
+train**. Bind catalog is train∪test schemas; chance bind is `1/n_catalog`
+(~1/41), not 50% and not `1/21`.
 
 ```bash
 PYTHONPATH=benchmarks/sgd-binder/src pytest benchmarks/sgd-binder/tests -q

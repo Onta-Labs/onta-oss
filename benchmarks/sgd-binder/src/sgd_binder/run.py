@@ -19,6 +19,7 @@ def run_instances(
     extractor: Any,
     out_path: Path,
     concurrency: int = 1,
+    extra_meta: dict[str, Any] | None = None,
 ) -> Score:
     pred_type: dict[str, str] = {}
     pred_slots: dict[str, dict[str, str]] = {}
@@ -48,8 +49,11 @@ def run_instances(
         pred_type[iid] = bound
         pred_slots[iid] = slots
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    meta = {"spec": "sgd-v1", "bind": "predicted", "n": len(instances)}
+    if extra_meta:
+        meta.update(extra_meta)
     payload = {
-        "meta": {"spec": "sgd-v1", "bind": "predicted", "n": len(instances)},
+        "meta": meta,
         "pred_type": pred_type,
         "pred_slots": pred_slots,
     }

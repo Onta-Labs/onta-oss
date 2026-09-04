@@ -40,8 +40,11 @@ collapse by domain.
    interface). Never test-dialogue annotations. No few-shots from test.
 5. **Dev unused** for train, model selection, early stopping, or calibration.
 6. Headlines: Bind@service (overall + **seen** vs **unseen**). Slot
-   `micro_f1` on predicted-bind dumps. Chance bind is `1/n_test_services`
-   (~1/21), not 50%. Write that next to Bind@.
+   `micro_f1` on predicted-bind dumps. Chance bind is `1/n_catalog` where
+   `n_catalog` is the bind catalog the model is offered (train∪test schemas,
+   ~41), **not** 50% and not `1/n_test_services`. Print `chance_bind=1/{n}`
+   next to Bind@. Gold support on the official test dialogues uses 21
+   services; 15 of those are unseen in train.
 7. Do not claim official SGD DST / Joint Goal Accuracy. Do not claim
    Infona≫vanilla from VRDU n=2.
 

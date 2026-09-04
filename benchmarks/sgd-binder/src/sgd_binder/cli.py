@@ -71,8 +71,18 @@ def _dry(out: Path) -> int:
             needles=needles,
         )
         dest = out / arm_id / "predictions.json"
-        score = run_instances(instances, binder=binder, extractor=extractor, out_path=dest)
-        print(f"{arm_id} bind={score.bind_accuracy:.4f} unseen_n={score.unseen_n} f1={score.slot_micro_f1:.4f}")
+        score = run_instances(
+            instances,
+            binder=binder,
+            extractor=extractor,
+            out_path=dest,
+            extra_meta={"fixture": True, "not_a_score": True},
+        )
+        print(
+            f"FIXTURE {arm_id} bind={score.bind_accuracy:.4f} "
+            f"unseen_n={score.unseen_n} f1={score.slot_micro_f1:.4f} "
+            f"(stub; not an SGD score)"
+        )
     print("fixture stub only. not an SGD score.")
     return 0
 
@@ -110,11 +120,13 @@ def _live(args: argparse.Namespace) -> int:
     )
     print(dest)
     print(json.dumps(score.__dict__, indent=2))
+    n_types = len(catalog.type_ids())
     print(
         f"bind={score.bind_accuracy:.4f} n={score.n} "
         f"seen={score.seen_bind_hits}/{score.seen_n} "
         f"unseen={score.unseen_bind_hits}/{score.unseen_n} "
-        f"slot_micro_f1={score.slot_micro_f1:.4f}"
+        f"slot_micro_f1={score.slot_micro_f1:.4f} "
+        f"n_catalog={n_types} chance_bind=1/{n_types}"
     )
     print("constructed Infona task on SGD. not official DST Joint Goal Accuracy.")
     return 0

@@ -1,8 +1,8 @@
 # Four-arm SGD run (constructed Infona task)
 
 Not official DST. Headlines: Bind@service (overall / seen / unseen) and
-slot `micro_f1` on predicted-bind dumps. Chance bind ≈ `1/21` on the test
-schema list.
+slot `micro_f1` on predicted-bind dumps. Chance bind is `1/n_catalog`
+(train∪test schemas, ~41), not 50%.
 
 Same arms as the VRDU mix: `27b_bare`, `0.8b_bare`, `0.8b_vanilla_ft`,
 `0.8b_ft_infona`. Models `Qwen/Qwen3.5-27B` and `Qwen/Qwen3.5-0.8B`.
