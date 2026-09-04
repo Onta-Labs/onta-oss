@@ -11,6 +11,7 @@ from sgd_binder.constants import ARM_IDS, SPEC_VERSION
 from sgd_binder.fetch import default_data_root, fetch_all, fetch_split
 from sgd_binder.fixtures import StubClient, fixture_catalog, fixture_instances
 from sgd_binder.instances import instances_from_dialogues, load_dialogues
+from sgd_binder.lora_data import write_infona_together_jsonl
 from sgd_binder.llm import UrllibChatClient
 from sgd_binder.protocol import ProtocolError
 from sgd_binder.run import run_instances
@@ -38,6 +39,12 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--model", default=None)
     p_run.add_argument("--concurrency", type=int, default=1)
     p_run.add_argument("--limit", type=int, default=0, help="cap test instances (0=all)")
+    p_lora = sub.add_parser("write-lora-data")
+    p_lora.add_argument("--recipe", required=True, choices=("infona",))
+    p_lora.add_argument("--data", type=Path, default=None)
+    p_lora.add_argument("--out", type=Path, required=True)
+    p_lora.add_argument("--max-per-service", type=int, default=250)
+    p_lora.add_argument("--fixtures", action="store_true")
     args = parser.parse_args(argv)
     try:
         if args.cmd == "fetch":
@@ -49,6 +56,8 @@ def main(argv: list[str] | None = None) -> int:
             return _dry(args.out)
         if args.cmd == "experiment-run":
             return _live(args)
+        if args.cmd == "write-lora-data":
+            return _lora(args)
     except ProtocolError as exc:
         print(exc)
         return 2
@@ -129,4 +138,42 @@ def _live(args: argparse.Namespace) -> int:
         f"n_catalog={n_types} chance_bind=1/{n_types}"
     )
     print("constructed Infona task on SGD. not official DST Joint Goal Accuracy.")
+    return 0
+
+
+def _lora(args: argparse.Namespace) -> int:
+    if args.recipe != "infona":
+        raise ProtocolError(f"unknown recipe {args.recipe}")
+    if args.fixtures:
+        catalog = fixture_catalog()
+        needles = leak_needles(catalog)
+        skills = write_skills(catalog, needles)
+        instances = [i for i in fixture_instances(catalog) if i.seen_in_train]
+        path = write_infona_together_jsonl(
+            instances, catalog, skills, args.out, max_per_service=args.max_per_service
+        )
+        print(path)
+        print("fixture LoRA jsonl only. not a train set.")
+        return 0
+    root = args.data or default_data_root()
+    train_sch = load_schema_list(root / "train" / "schema.json")
+    test_sch = load_schema_list(root / "test" / "schema.json")
+    catalog = build_catalog(train_schemas=train_sch, test_schemas=test_sch)
+    needles = leak_needles(catalog)
+    skills = write_skills(catalog, needles)
+    dialogues = []
+    for path in sorted((root / "train").glob("dialogues_*.json")):
+        dialogues.extend(load_dialogues(path))
+    instances = instances_from_dialogues(
+        dialogues, catalog, needles=redact_needles(catalog)
+    )
+    instances = [i for i in instances if i.seen_in_train]
+    out = write_infona_together_jsonl(
+        instances,
+        catalog,
+        skills,
+        args.out,
+        max_per_service=args.max_per_service,
+    )
+    print(out)
     return 0
