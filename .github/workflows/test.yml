@@ -57,6 +57,13 @@ jobs:
           INFONA_NEPTUNE_ENDPOINT: "http://fake-neptune:8182"
           PYTHONPATH: ${{ github.workspace }}
 
+      - name: Run binder-bench freeze tests
+        run: |
+          source .venv/bin/activate
+          pytest benchmarks/vrdu-binder/tests -q --tb=short
+        env:
+          PYTHONPATH: ${{ github.workspace }}/benchmarks/vrdu-binder/src
+
       # DSN-gated pgvector integration tests (ONTA-176): re-run the semantic
       # test files with the service-container DSN so the live-Postgres tests
       # (skipped above) execute. Kept as a separate step so the DSN never
