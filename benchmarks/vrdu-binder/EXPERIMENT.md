@@ -129,8 +129,8 @@ Together LoRA inference needs dedicated model inference (serverless LoRA is
 gone). v1 `POST /endpoints` create is disabled. Host with v2:
 
 ```bash
-tg beta endpoints deploy Qwen/Qwen3.5-27B --endpoint vrdu-v11-27b-sd0
-# pass --model <project-slug>/<endpoint> to experiment-run
+tg beta endpoints deploy Qwen/Qwen3.5-27B --endpoint <TOGETHER_ENDPOINT>
+# pass --model <TOGETHER_USER>/<TOGETHER_ENDPOINT> to experiment-run
 # optional: --concurrency 8 to cut GPU-hours
 # scale to 0 when done: tg beta endpoints update <dep_...> --min-replicas 0 --max-replicas 0
 ```

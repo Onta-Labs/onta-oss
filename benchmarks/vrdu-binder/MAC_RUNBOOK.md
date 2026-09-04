@@ -88,14 +88,16 @@ show `--chat-template-args` and `--adapter-path`.
 
 ## Download
 
+Fill job ids from your own `tg fine-tuning list`; do not commit account ids.
+
 The Together **names are not Hugging Face repos**. Do not
-`huggingface-cli download moeen/Qwen3.5-0.8B-…`. Download by **fine-tune
+`huggingface-cli download <TOGETHER_USER>/Qwen3.5-0.8B-…`. Download by **fine-tune
 job id**. `ml_…` is a Together registry object id, not a Hub id.
 
 | Recipe | Job | Together output name | Registry object |
 | --- | --- | --- | --- |
-| vanilla | `ft-a3f6bc21-99fe` | `moeen/Qwen3.5-0.8B-vrdu-v11-vanilla-sd0-e681e594` | `ml_CehNckVd41nrKTNNd3qxn` |
-| infona | `ft-24beac8a-abea` | `moeen/Qwen3.5-0.8B-vrdu-v11-infona-sd0-b1a134bd` | `ml_CehNdCJeTGEWLovr2iPJD` |
+| vanilla | `<VANILLA_FT_JOB_ID>` | `<TOGETHER_USER>/…` | `<VANILLA_ML_ID>` |
+| infona | `<INFONA_FT_JOB_ID>` | `<TOGETHER_USER>/…` | `<INFONA_ML_ID>` |
 
 Base (Hub, public): `Qwen/Qwen3.5-0.8B`
 (https://huggingface.co/Qwen/Qwen3.5-0.8B).
@@ -106,16 +108,16 @@ optional path below.
 ```bash
 mkdir -p ~/vrdu-models
 # current CLI
-tg fine-tuning download ft-a3f6bc21-99fe \
+tg fine-tuning download <VANILLA_FT_JOB_ID> \
   --output-dir ~/vrdu-models/together-vanilla \
   --checkpoint-type merged
-tg fine-tuning download ft-24beac8a-abea \
+tg fine-tuning download <INFONA_FT_JOB_ID> \
   --output-dir ~/vrdu-models/together-infona \
   --checkpoint-type merged
 
 # older together CLI (same jobs)
-# together fine-tuning download ft-a3f6bc21-99fe -o ~/vrdu-models/vanilla.tar.zst
-# together fine-tuning download ft-24beac8a-abea -o ~/vrdu-models/infona.tar.zst
+# together fine-tuning download <VANILLA_FT_JOB_ID> -o ~/vrdu-models/vanilla.tar.zst
+# together fine-tuning download <INFONA_FT_JOB_ID> -o ~/vrdu-models/infona.tar.zst
 ```
 
 If you only have curl (still do not `echo "$TOGETHER_API_KEY"`):
@@ -123,11 +125,11 @@ If you only have curl (still do not `echo "$TOGETHER_API_KEY"`):
 ```bash
 curl -L \
   -H "Authorization: Bearer ${TOGETHER_API_KEY}" \
-  "https://api.together.xyz/v1/finetune/download?ft_id=ft-a3f6bc21-99fe&checkpoint=merged" \
+  "https://api.together.xyz/v1/finetune/download?ft_id=<VANILLA_FT_JOB_ID>&checkpoint=merged" \
   -o ~/vrdu-models/vanilla.tar.zst
 curl -L \
   -H "Authorization: Bearer ${TOGETHER_API_KEY}" \
-  "https://api.together.xyz/v1/finetune/download?ft_id=ft-24beac8a-abea&checkpoint=merged" \
+  "https://api.together.xyz/v1/finetune/download?ft_id=<INFONA_FT_JOB_ID>&checkpoint=merged" \
   -o ~/vrdu-models/infona.tar.zst
 ```
 
@@ -271,7 +273,7 @@ export INFONA_BINDER_BASE_URL=http://127.0.0.1:8000/v1
 `--model` is **required** for the two FT arms (refuses rather than scoring
 the base 0.8B). For mlx-lm, pass `default_model` or the **same** path you
 gave `mlx_lm.server --model`. Do **not** pass the Together registry name
-`moeen/Qwen3.5-0.8B-…` at a local server — mlx-lm will try to fetch it
+`<TOGETHER_USER>/Qwen3.5-0.8B-…` at a local server — mlx-lm will try to fetch it
 from Hugging Face.
 
 ```bash
