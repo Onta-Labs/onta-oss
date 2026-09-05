@@ -121,6 +121,17 @@ def bind_system(catalog: TypeCatalog) -> str:
     return "\n".join(lines)
 
 
+def bare_bind_system(catalog: TypeCatalog) -> str:
+    ids = ", ".join(catalog.type_ids())
+    return f"Reply with exactly one id: {ids}. Reply with the id only."
+
+
+BARE_EXTRACT_SYSTEM = (
+    "Extract a JSON object mapping field names to string values. "
+    "Omit missing keys. Do not invent values."
+)
+
+
 def parse_type_id(text: str, catalog: TypeCatalog) -> str:
     allowed = set(catalog.type_ids())
     stripped = text.strip().strip("`")
@@ -194,8 +205,7 @@ class BareBinder:
         self.needles = needles
 
     def bind(self, prompt: str) -> str:
-        ids = ", ".join(self.catalog.type_ids())
-        system = f"Reply with exactly one id: {ids}. Reply with the id only."
+        system = bare_bind_system(self.catalog)
         assert_no_leaks(system + "\n" + prompt, self.needles)
         if "keys:" in system.lower():
             raise ProtocolError("bare bind leaked catalog keys")
@@ -210,10 +220,7 @@ class BareExtractor:
 
     def extract(self, prompt: str, type_id: str) -> dict[str, str]:
         skill = self.skills[type_id]
-        system = (
-            "Extract a JSON object mapping field names to string values. "
-            "Omit missing keys. Do not invent values."
-        )
+        system = BARE_EXTRACT_SYSTEM
         assert_no_leaks(system + "\n" + prompt, self.needles)
         try:
             return parse_extract(self.client.complete(system=system, user=prompt), skill)

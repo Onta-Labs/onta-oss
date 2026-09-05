@@ -14,7 +14,10 @@ split that can show Infona ≫ FT memorization.
 ```bash
 export PYTHONPATH=benchmarks/sgd-binder/src
 python -m sgd_binder fetch --dest benchmarks/sgd-binder/data
-python -m sgd_binder experiment-run --arm 0.8b_ft_infona \
+python -m sgd_binder write-lora-data --recipe vanilla \
+  --data benchmarks/sgd-binder/data \
+  --out /tmp/sgd-lora/vanilla.together.jsonl --max-per-service 250
+python -m sgd_binder experiment-run --arm 0.8b_vanilla_ft \
   --model default_model --data benchmarks/sgd-binder/data \
   --out /tmp/sgd-arms --concurrency 2
 ```
